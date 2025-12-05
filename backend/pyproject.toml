@@ -24,9 +24,8 @@ dependencies = [
     "pandas>=2.1.4",
     "numpy>=1.26.3",
 
-    # Technical analysis
+    # Technical analysis (ta library uses pure Python)
     "ta>=0.11.0",
-    "talib-binary>=0.4.19; platform_system != 'Windows'",
 
     # Security
     "python-jose[cryptography]>=3.3.0",
