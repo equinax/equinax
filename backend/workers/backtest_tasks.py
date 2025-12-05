@@ -80,7 +80,7 @@ async def run_backtest_job(ctx: dict, job_id: str) -> Dict[str, Any]:
                     except Exception as e:
                         failed += 1
                         # Create failed result
-                        failed_result = BacktestResult(
+                        failed_result = BacktestResultModel(
                             job_id=job.id,
                             strategy_id=UUID(strategy_id),
                             stock_code=stock_code,
@@ -228,7 +228,7 @@ async def execute_single_backtest(
     # Create backtest config
     config = BacktestConfig(
         initial_capital=float(job.initial_capital),
-        commission=float(job.commission),
+        commission=float(job.commission_rate),
         slippage_perc=float(job.slippage),
         stake_type='percent',
         stake_value=95.0,

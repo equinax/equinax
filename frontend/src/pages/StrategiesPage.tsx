@@ -2,6 +2,8 @@ import { useState } from 'react'
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
+import { useToast } from '@/components/ui/use-toast'
+import { ToastAction } from '@/components/ui/toast'
 import { Plus, Search, Play, Edit, Trash2, Code2, CheckCircle, XCircle, Loader2 } from 'lucide-react'
 import {
   useListStrategiesApiV1StrategiesGet,
@@ -22,6 +24,7 @@ export default function StrategiesPage() {
   const [searchQuery, setSearchQuery] = useState('')
   const navigate = useNavigate()
   const queryClient = useQueryClient()
+  const { toast } = useToast()
 
   // Fetch strategies
   const { data: strategiesData, isLoading } = useListStrategiesApiV1StrategiesGet({
@@ -35,16 +38,39 @@ export default function StrategiesPage() {
     mutation: {
       onSuccess: () => {
         queryClient.invalidateQueries({ queryKey: ['/api/v1/strategies'] })
+        toast({
+          title: '策略已删除',
+          description: '删除成功',
+        })
+      },
+      onError: (error) => {
+        toast({
+          variant: 'destructive',
+          title: '删除失败',
+          description: error.message || '请稍后重试',
+        })
       },
     },
   })
 
   const strategies = strategiesData?.items || []
 
-  const handleDelete = (id: string) => {
-    if (confirm('确定要删除这个策略吗？')) {
-      deleteMutation.mutate({ strategyId: id })
-    }
+  const handleDelete = (id: string, name: string) => {
+    // Show toast with action to confirm deletion
+    toast({
+      title: '确认删除',
+      description: `确定要删除策略 "${name}" 吗？`,
+      action: (
+        <ToastAction
+          altText="确认删除"
+          onClick={() => {
+            deleteMutation.mutate({ strategyId: id })
+          }}
+        >
+          删除
+        </ToastAction>
+      ),
+    })
   }
 
   return (
@@ -157,7 +183,7 @@ export default function StrategiesPage() {
                     <Button
                       variant="ghost"
                       size="icon"
-                      onClick={() => handleDelete(strategy.id)}
+                      onClick={() => handleDelete(strategy.id, strategy.name)}
                       disabled={deleteMutation.isPending}
                     >
                       <Trash2 className="h-4 w-4 text-muted-foreground" />

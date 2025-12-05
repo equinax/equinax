@@ -4,8 +4,10 @@ import { Toaster } from '@/components/ui/toaster'
 import AppLayout from '@/components/layout/AppLayout'
 import DashboardPage from '@/pages/DashboardPage'
 import StrategiesPage from '@/pages/StrategiesPage'
+import StrategyEditorPage from '@/pages/StrategyEditorPage'
 import BacktestPage from '@/pages/BacktestPage'
 import ResultsPage from '@/pages/ResultsPage'
+import ResultDetailPage from '@/pages/ResultDetailPage'
 import DataExplorerPage from '@/pages/DataExplorerPage'
 
 function App() {
@@ -15,8 +17,11 @@ function App() {
         <Route path="/" element={<AppLayout />}>
           <Route index element={<DashboardPage />} />
           <Route path="strategies" element={<StrategiesPage />} />
+          <Route path="strategies/new" element={<StrategyEditorPage />} />
+          <Route path="strategies/:strategyId" element={<StrategyEditorPage />} />
           <Route path="backtest" element={<BacktestPage />} />
           <Route path="results" element={<ResultsPage />} />
+          <Route path="results/:jobId" element={<ResultDetailPage />} />
           <Route path="data" element={<DataExplorerPage />} />
         </Route>
       </Routes>

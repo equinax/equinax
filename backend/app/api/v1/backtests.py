@@ -1,6 +1,6 @@
 """Backtest execution API endpoints."""
 
-from datetime import date
+from datetime import date, datetime
 from typing import List, Optional
 from uuid import UUID
 from decimal import Decimal
@@ -12,6 +12,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.session import get_db
 from app.db.models.backtest import BacktestJob, BacktestResult, BacktestStatus
+from app.core.arq import get_arq_pool
 
 router = APIRouter()
 
@@ -59,9 +60,9 @@ class BacktestJobResponse(BaseModel):
     total_backtests: int
     successful_backtests: int
     failed_backtests: int
-    created_at: str
-    started_at: Optional[str]
-    completed_at: Optional[str]
+    created_at: datetime
+    started_at: Optional[datetime]
+    completed_at: Optional[datetime]
 
     class Config:
         from_attributes = True
@@ -91,7 +92,7 @@ class BacktestResultResponse(BaseModel):
     execution_time_ms: Optional[int]
     status: str
     error_message: Optional[str]
-    created_at: str
+    created_at: datetime
 
     class Config:
         from_attributes = True
@@ -198,8 +199,13 @@ async def create_backtest(
     await db.commit()
     await db.refresh(job)
 
-    # TODO: Queue ARQ task here
-    # await arq_redis.enqueue_job('run_backtest_job', job.id)
+    # Queue ARQ task
+    try:
+        arq_pool = await get_arq_pool()
+        await arq_pool.enqueue_job('run_backtest_job', str(job.id))
+    except Exception as e:
+        # Log error but don't fail the request
+        print(f"Failed to enqueue backtest job: {e}")
 
     return BacktestJobResponse.model_validate(job)
 

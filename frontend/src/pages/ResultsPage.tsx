@@ -1,18 +1,36 @@
 import { Card, CardContent } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { formatPercent, formatDate } from '@/lib/utils'
-import { ArrowUpRight, ArrowDownRight, Download, Eye, Loader2, FileX2 } from 'lucide-react'
+import { ArrowUpRight, ArrowDownRight, Download, Eye, Loader2, FileX2, Clock, CheckCircle, XCircle, RefreshCw } from 'lucide-react'
 import { useListBacktestsApiV1BacktestsGet } from '@/api/generated/backtests/backtests'
 import { useNavigate } from 'react-router-dom'
+
+const statusConfig: Record<string, { label: string; color: string; icon: React.ReactNode }> = {
+  QUEUED: { label: '排队中', color: 'text-muted-foreground', icon: <Clock className="h-4 w-4" /> },
+  PENDING: { label: '等待中', color: 'text-muted-foreground', icon: <Clock className="h-4 w-4" /> },
+  RUNNING: { label: '运行中', color: 'text-primary', icon: <Loader2 className="h-4 w-4 animate-spin" /> },
+  COMPLETED: { label: '已完成', color: 'text-profit', icon: <CheckCircle className="h-4 w-4" /> },
+  FAILED: { label: '失败', color: 'text-loss', icon: <XCircle className="h-4 w-4" /> },
+  CANCELLED: { label: '已取消', color: 'text-muted-foreground', icon: <XCircle className="h-4 w-4" /> },
+}
 
 export default function ResultsPage() {
   const navigate = useNavigate()
 
-  // Fetch completed backtests
-  const { data: backtestsData, isLoading } = useListBacktestsApiV1BacktestsGet({
+  // Fetch all backtests (not just completed)
+  const { data: backtestsData, isLoading, refetch } = useListBacktestsApiV1BacktestsGet({
     page: 1,
     page_size: 50,
-    status: 'COMPLETED',
+  }, {
+    query: {
+      // Auto-refresh every 5 seconds if there are running jobs
+      refetchInterval: (data) => {
+        const hasRunning = data?.items?.some(
+          item => item.status === 'RUNNING' || item.status === 'QUEUED' || item.status === 'PENDING'
+        )
+        return hasRunning ? 5000 : false
+      }
+    }
   })
 
   const backtests = backtestsData?.items || []
@@ -25,10 +43,16 @@ export default function ResultsPage() {
           <h1 className="text-3xl font-bold">结果分析</h1>
           <p className="text-muted-foreground">查看和分析回测结果</p>
         </div>
-        <Button variant="outline">
-          <Download className="mr-2 h-4 w-4" />
-          导出报告
-        </Button>
+        <div className="flex gap-2">
+          <Button variant="outline" onClick={() => refetch()}>
+            <RefreshCw className="mr-2 h-4 w-4" />
+            刷新
+          </Button>
+          <Button variant="outline">
+            <Download className="mr-2 h-4 w-4" />
+            导出报告
+          </Button>
+        </div>
       </div>
 
       {/* Loading state */}
@@ -81,11 +105,12 @@ export default function ResultsPage() {
                     {/* Status */}
                     <div className="text-center">
                       <p className="text-sm text-muted-foreground">状态</p>
-                      <span className={`text-lg font-medium ${
-                        backtest.status === 'COMPLETED' ? 'text-profit' : 'text-muted-foreground'
-                      }`}>
-                        {backtest.status === 'COMPLETED' ? '已完成' : backtest.status}
-                      </span>
+                      <div className={`flex items-center gap-1 justify-center ${statusConfig[backtest.status]?.color || 'text-muted-foreground'}`}>
+                        {statusConfig[backtest.status]?.icon}
+                        <span className="font-medium">
+                          {statusConfig[backtest.status]?.label || backtest.status}
+                        </span>
+                      </div>
                     </div>
 
                     {/* Actions */}
