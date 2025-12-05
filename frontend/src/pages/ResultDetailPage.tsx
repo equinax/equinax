@@ -3,17 +3,14 @@ import { useParams, useNavigate } from 'react-router-dom'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
-import { formatPercent, formatCurrency, formatDate } from '@/lib/utils'
+import { formatPercent } from '@/lib/utils'
 import {
   ArrowLeft,
   Loader2,
   CheckCircle,
   XCircle,
   Clock,
-  TrendingUp,
-  TrendingDown,
   BarChart3,
-  RefreshCw,
   ExternalLink,
   List,
   GitCompare,
@@ -22,7 +19,6 @@ import {
   useGetBacktestApiV1BacktestsJobIdGet,
   useGetBacktestResultsApiV1BacktestsJobIdResultsGet,
 } from '@/api/generated/backtests/backtests'
-import { useQueryClient } from '@tanstack/react-query'
 import { ResultDetailSheet } from '@/components/backtest/ResultDetailSheet'
 import { ResultComparisonView } from '@/components/backtest/ResultComparisonView'
 
@@ -38,7 +34,6 @@ const statusConfig: Record<string, { label: string; color: string; icon: React.R
 export default function ResultDetailPage() {
   const { jobId } = useParams<{ jobId: string }>()
   const navigate = useNavigate()
-  const queryClient = useQueryClient()
 
   // Fetch backtest job
   const { data: job, isLoading: isLoadingJob } = useGetBacktestApiV1BacktestsJobIdGet(
