@@ -1,7 +1,7 @@
 """PostgreSQL data feed for Backtrader."""
 
-from datetime import datetime
-from typing import List, Optional
+from datetime import datetime, date
+from typing import List, Optional, Union
 import pandas as pd
 import backtrader as bt
 
@@ -43,8 +43,8 @@ class PostgreSQLDataFeed(bt.feeds.PandasData):
         cls,
         df: pd.DataFrame,
         stock_code: str,
-        start_date: Optional[datetime] = None,
-        end_date: Optional[datetime] = None,
+        start_date: Optional[Union[datetime, date]] = None,
+        end_date: Optional[Union[datetime, date]] = None,
     ) -> 'PostgreSQLDataFeed':
         """
         Create a data feed from a pandas DataFrame.
@@ -67,11 +67,13 @@ class PostgreSQLDataFeed(bt.feeds.PandasData):
         df = df.set_index('date')
         df = df.sort_index()
 
-        # Filter by date range
+        # Filter by date range (convert date to datetime for comparison)
         if start_date:
-            df = df[df.index >= start_date]
+            start_dt = pd.Timestamp(start_date)
+            df = df[df.index >= start_dt]
         if end_date:
-            df = df[df.index <= end_date]
+            end_dt = pd.Timestamp(end_date)
+            df = df[df.index <= end_dt]
 
         # Ensure required columns exist
         required_cols = ['open', 'high', 'low', 'close', 'volume']
@@ -110,8 +112,8 @@ class AdjustedDataFeed(PostgreSQLDataFeed):
         adjust_factors: pd.DataFrame,
         stock_code: str,
         adjust_type: str = 'forward',  # 'forward', 'backward', 'none'
-        start_date: Optional[datetime] = None,
-        end_date: Optional[datetime] = None,
+        start_date: Optional[Union[datetime, date]] = None,
+        end_date: Optional[Union[datetime, date]] = None,
     ) -> 'AdjustedDataFeed':
         """
         Create a data feed with price adjustment.

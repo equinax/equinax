@@ -1,3 +1,4 @@
+import { useState } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
@@ -12,13 +13,14 @@ import {
   TrendingDown,
   BarChart3,
   RefreshCw,
+  ExternalLink,
 } from 'lucide-react'
 import {
   useGetBacktestApiV1BacktestsJobIdGet,
   useGetBacktestResultsApiV1BacktestsJobIdResultsGet,
 } from '@/api/generated/backtests/backtests'
-import { useEffect } from 'react'
 import { useQueryClient } from '@tanstack/react-query'
+import { ResultDetailSheet } from '@/components/backtest/ResultDetailSheet'
 
 const statusConfig: Record<string, { label: string; color: string; icon: React.ReactNode }> = {
   QUEUED: { label: '排队中', color: 'text-muted-foreground', icon: <Clock className="h-5 w-5" /> },
@@ -51,6 +53,15 @@ export default function ResultDetailPage() {
     jobId || '',
     { query: { enabled: !!jobId && job?.status === 'COMPLETED' }}
   )
+
+  // State for result detail sheet
+  const [selectedResultId, setSelectedResultId] = useState<string | null>(null)
+  const [isSheetOpen, setIsSheetOpen] = useState(false)
+
+  const handleResultClick = (resultId: string) => {
+    setSelectedResultId(resultId)
+    setIsSheetOpen(true)
+  }
 
   const status = statusConfig[job?.status || 'PENDING'] || statusConfig.PENDING
 
@@ -224,8 +235,17 @@ export default function ResultDetailPage() {
                     </thead>
                     <tbody>
                       {results.map((result) => (
-                        <tr key={result.id} className="border-b hover:bg-muted/50">
-                          <td className="py-3 font-medium">{result.stock_code}</td>
+                        <tr
+                          key={result.id}
+                          className="border-b hover:bg-muted/50 cursor-pointer transition-colors"
+                          onClick={() => handleResultClick(result.id)}
+                        >
+                          <td className="py-3 font-medium">
+                            <span className="flex items-center gap-1">
+                              {result.stock_code}
+                              <ExternalLink className="h-3 w-3 text-muted-foreground" />
+                            </span>
+                          </td>
                           <td className={`py-3 text-right ${(Number(result.total_return) || 0) >= 0 ? 'text-profit' : 'text-loss'}`}>
                             {result.total_return != null ? formatPercent(Number(result.total_return)) : '-'}
                           </td>
@@ -297,6 +317,14 @@ export default function ResultDetailPage() {
           </div>
         </CardContent>
       </Card>
+
+      {/* Result Detail Sheet */}
+      <ResultDetailSheet
+        jobId={jobId || ''}
+        resultId={selectedResultId}
+        open={isSheetOpen}
+        onOpenChange={setIsSheetOpen}
+      />
     </div>
   )
 }

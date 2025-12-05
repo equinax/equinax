@@ -86,7 +86,7 @@ export default function DashboardPage() {
                   : '-'}
               </div>
               <p className="text-xs text-muted-foreground">
-                最佳 Sharpe: {stats?.best_sharpe?.toFixed(2) || '-'}
+                最佳 Sharpe: {stats?.best_sharpe != null ? Number(stats.best_sharpe).toFixed(2) : '-'}
               </p>
             </CardContent>
           </Card>
@@ -101,7 +101,7 @@ export default function DashboardPage() {
             <CardContent>
               <div className="text-2xl font-bold">{stats?.total_stocks || 0}</div>
               <p className="text-xs text-muted-foreground">
-                平均 Sharpe: {stats?.avg_sharpe?.toFixed(2) || '-'}
+                平均 Sharpe: {stats?.avg_sharpe != null ? Number(stats.avg_sharpe).toFixed(2) : '-'}
               </p>
             </CardContent>
           </Card>
