@@ -143,3 +143,7 @@ export * from "./validateCodeRequest";
 export * from "./validationError";
 export * from "./validationErrorLocItem";
 export * from "./validationResult";
+export * from "./dashboardStats";
+export * from "./dashboardStatsAvgSharpe";
+export * from "./dashboardStatsBestReturn";
+export * from "./dashboardStatsBestSharpe";

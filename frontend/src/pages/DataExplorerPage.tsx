@@ -2,66 +2,49 @@ import { useState } from 'react'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import { formatCurrency, formatPercent } from '@/lib/utils'
-import { Search, TrendingUp, TrendingDown } from 'lucide-react'
-
-// Mock data
-const stocks = [
-  {
-    code: 'sh.600519',
-    name: '贵州茅台',
-    price: 1688.88,
-    change: 0.0235,
-    volume: 12500000,
-    pe: 28.5,
-    pb: 8.2,
-  },
-  {
-    code: 'sz.000001',
-    name: '平安银行',
-    price: 10.25,
-    change: -0.0125,
-    volume: 85000000,
-    pe: 5.2,
-    pb: 0.6,
-  },
-  {
-    code: 'sz.300750',
-    name: '宁德时代',
-    price: 185.50,
-    change: 0.0456,
-    volume: 35000000,
-    pe: 22.8,
-    pb: 4.5,
-  },
-  {
-    code: 'sh.601318',
-    name: '中国平安',
-    price: 42.80,
-    change: -0.0085,
-    volume: 45000000,
-    pe: 8.5,
-    pb: 1.1,
-  },
-  {
-    code: 'sz.002594',
-    name: '比亚迪',
-    price: 225.60,
-    change: 0.0312,
-    volume: 28000000,
-    pe: 35.2,
-    pb: 5.8,
-  },
-]
+import { Search, TrendingUp, TrendingDown, Loader2 } from 'lucide-react'
+import {
+  useListStocksApiV1StocksGet,
+  useGetKlineApiV1StocksCodeKlineGet,
+  useGetIndicatorsApiV1StocksCodeIndicatorsGet,
+  useGetFundamentalsApiV1StocksCodeFundamentalsGet,
+} from '@/api/generated/stocks/stocks'
 
 export default function DataExplorerPage() {
   const [searchQuery, setSearchQuery] = useState('')
   const [selectedStock, setSelectedStock] = useState<string | null>(null)
 
-  const filteredStocks = stocks.filter(
-    (s) =>
-      s.code.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      s.name.toLowerCase().includes(searchQuery.toLowerCase())
+  // Fetch stock list
+  const { data: stocksData, isLoading: isLoadingStocks } = useListStocksApiV1StocksGet({
+    page_size: 100,
+    search: searchQuery || undefined,
+  })
+
+  // Fetch K-line data for selected stock
+  const { data: klineData } = useGetKlineApiV1StocksCodeKlineGet(
+    selectedStock || '',
+    { limit: 30 },
+    { query: { enabled: !!selectedStock } }
   )
+
+  // Fetch technical indicators for selected stock
+  const { data: indicatorsData } = useGetIndicatorsApiV1StocksCodeIndicatorsGet(
+    selectedStock || '',
+    {},
+    { query: { enabled: !!selectedStock } }
+  )
+
+  // Fetch fundamentals for selected stock
+  const { data: fundamentalsData } = useGetFundamentalsApiV1StocksCodeFundamentalsGet(
+    selectedStock || '',
+    { query: { enabled: !!selectedStock } }
+  )
+
+  const stocks = stocksData?.items || []
+  const selectedStockInfo = stocks.find((s) => s.code === selectedStock)
+
+  // Get latest K-line data for price info
+  const latestKline = klineData?.data?.[klineData.data.length - 1]
 
   return (
     <div className="space-y-6">
@@ -86,41 +69,41 @@ export default function DataExplorerPage() {
             </div>
           </CardHeader>
           <CardContent className="max-h-[600px] overflow-auto p-0">
-            <div className="divide-y">
-              {filteredStocks.map((stock) => (
-                <button
-                  key={stock.code}
-                  onClick={() => setSelectedStock(stock.code)}
-                  className={`w-full p-4 text-left transition-colors hover:bg-accent ${
-                    selectedStock === stock.code ? 'bg-accent' : ''
-                  }`}
-                >
-                  <div className="flex items-center justify-between">
-                    <div>
-                      <p className="font-medium">{stock.name}</p>
-                      <p className="text-sm text-muted-foreground">
-                        {stock.code}
-                      </p>
-                    </div>
-                    <div className="text-right">
-                      <p className="font-medium">{stock.price.toFixed(2)}</p>
-                      <div
-                        className={`flex items-center justify-end gap-1 text-sm ${
-                          stock.change >= 0 ? 'text-profit' : 'text-loss'
-                        }`}
-                      >
-                        {stock.change >= 0 ? (
-                          <TrendingUp className="h-3 w-3" />
-                        ) : (
-                          <TrendingDown className="h-3 w-3" />
-                        )}
-                        {formatPercent(stock.change)}
+            {isLoadingStocks ? (
+              <div className="flex items-center justify-center p-8">
+                <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+              </div>
+            ) : stocks.length === 0 ? (
+              <div className="p-8 text-center text-muted-foreground">
+                暂无数据
+              </div>
+            ) : (
+              <div className="divide-y">
+                {stocks.map((stock) => (
+                  <button
+                    key={stock.code}
+                    onClick={() => setSelectedStock(stock.code)}
+                    className={`w-full p-4 text-left transition-colors hover:bg-accent ${
+                      selectedStock === stock.code ? 'bg-accent' : ''
+                    }`}
+                  >
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <p className="font-medium">{stock.code_name || stock.code}</p>
+                        <p className="text-sm text-muted-foreground">
+                          {stock.code}
+                        </p>
+                      </div>
+                      <div className="text-right">
+                        <p className="text-sm text-muted-foreground">
+                          {stock.exchange?.toUpperCase()}
+                        </p>
                       </div>
                     </div>
-                  </div>
-                </button>
-              ))}
-            </div>
+                  </button>
+                ))}
+              </div>
+            )}
           </CardContent>
         </Card>
 
@@ -128,82 +111,85 @@ export default function DataExplorerPage() {
         <Card className="lg:col-span-2">
           <CardHeader>
             <CardTitle>
-              {selectedStock
-                ? stocks.find((s) => s.code === selectedStock)?.name
+              {selectedStockInfo
+                ? `${selectedStockInfo.code_name} (${selectedStockInfo.code})`
                 : '选择股票查看详情'}
             </CardTitle>
           </CardHeader>
           <CardContent>
-            {selectedStock ? (
+            {selectedStock && selectedStockInfo ? (
               <div className="space-y-6">
-                {/* Price info */}
+                {/* Price info from K-line */}
                 <div className="grid grid-cols-4 gap-4">
-                  {(() => {
-                    const stock = stocks.find((s) => s.code === selectedStock)!
-                    return (
-                      <>
-                        <div className="rounded-lg bg-muted p-4">
-                          <p className="text-sm text-muted-foreground">
-                            当前价格
-                          </p>
-                          <p className="text-2xl font-bold">
-                            {stock.price.toFixed(2)}
-                          </p>
-                        </div>
-                        <div className="rounded-lg bg-muted p-4">
-                          <p className="text-sm text-muted-foreground">涨跌幅</p>
-                          <p
-                            className={`text-2xl font-bold ${
-                              stock.change >= 0 ? 'text-profit' : 'text-loss'
-                            }`}
-                          >
-                            {formatPercent(stock.change)}
-                          </p>
-                        </div>
-                        <div className="rounded-lg bg-muted p-4">
-                          <p className="text-sm text-muted-foreground">
-                            成交量
-                          </p>
-                          <p className="text-2xl font-bold">
-                            {formatCurrency(stock.volume)}
-                          </p>
-                        </div>
-                        <div className="rounded-lg bg-muted p-4">
-                          <p className="text-sm text-muted-foreground">PE</p>
-                          <p className="text-2xl font-bold">
-                            {stock.pe.toFixed(1)}
-                          </p>
-                        </div>
-                      </>
-                    )
-                  })()}
+                  <div className="rounded-lg bg-muted p-4">
+                    <p className="text-sm text-muted-foreground">收盘价</p>
+                    <p className="text-2xl font-bold">
+                      {latestKline?.close?.toFixed(2) || '-'}
+                    </p>
+                  </div>
+                  <div className="rounded-lg bg-muted p-4">
+                    <p className="text-sm text-muted-foreground">涨跌幅</p>
+                    <p
+                      className={`text-2xl font-bold ${
+                        (latestKline?.pct_chg || 0) >= 0 ? 'text-profit' : 'text-loss'
+                      }`}
+                    >
+                      {latestKline?.pct_chg != null
+                        ? formatPercent(latestKline.pct_chg / 100)
+                        : '-'}
+                    </p>
+                  </div>
+                  <div className="rounded-lg bg-muted p-4">
+                    <p className="text-sm text-muted-foreground">成交量</p>
+                    <p className="text-2xl font-bold">
+                      {latestKline?.volume
+                        ? formatCurrency(latestKline.volume)
+                        : '-'}
+                    </p>
+                  </div>
+                  <div className="rounded-lg bg-muted p-4">
+                    <p className="text-sm text-muted-foreground">PE(TTM)</p>
+                    <p className="text-2xl font-bold">
+                      {fundamentalsData?.pe_ttm?.toFixed(1) || '-'}
+                    </p>
+                  </div>
                 </div>
 
                 {/* Chart placeholder */}
                 <div className="flex h-[400px] items-center justify-center rounded-lg border border-dashed bg-muted/50">
-                  <p className="text-muted-foreground">K线图表区域</p>
+                  <p className="text-muted-foreground">
+                    K线图表区域 (共 {klineData?.data?.length || 0} 条数据)
+                  </p>
                 </div>
 
-                {/* Technical indicators placeholder */}
+                {/* Technical indicators & Fundamentals */}
                 <div className="grid grid-cols-2 gap-4">
                   <div className="rounded-lg border p-4">
                     <h4 className="font-medium">技术指标</h4>
                     <div className="mt-4 space-y-2 text-sm">
                       <div className="flex justify-between">
                         <span className="text-muted-foreground">MA5</span>
-                        <span>1685.20</span>
+                        <span>{indicatorsData?.ma_5?.toFixed(2) || '-'}</span>
                       </div>
                       <div className="flex justify-between">
                         <span className="text-muted-foreground">MA20</span>
-                        <span>1672.50</span>
+                        <span>{indicatorsData?.ma_20?.toFixed(2) || '-'}</span>
                       </div>
                       <div className="flex justify-between">
-                        <span className="text-muted-foreground">RSI(14)</span>
-                        <span>58.5</span>
+                        <span className="text-muted-foreground">RSI(12)</span>
+                        <span>{indicatorsData?.rsi_12?.toFixed(1) || '-'}</span>
                       </div>
                       <div className="flex justify-between">
-                        <span className="text-muted-foreground">MACD</span>
-                        <span className="text-profit">+2.35</span>
+                        <span className="text-muted-foreground">MACD DIF</span>
+                        <span
+                          className={
+                            (indicatorsData?.macd_dif || 0) >= 0
+                              ? 'text-profit'
+                              : 'text-loss'
+                          }
+                        >
+                          {indicatorsData?.macd_dif?.toFixed(3) || '-'}
+                        </span>
                       </div>
                     </div>
                   </div>
@@ -212,19 +198,19 @@ export default function DataExplorerPage() {
                     <div className="mt-4 space-y-2 text-sm">
                       <div className="flex justify-between">
                         <span className="text-muted-foreground">PE(TTM)</span>
-                        <span>28.5</span>
+                        <span>{fundamentalsData?.pe_ttm?.toFixed(1) || '-'}</span>
                       </div>
                       <div className="flex justify-between">
                         <span className="text-muted-foreground">PB(MRQ)</span>
-                        <span>8.2</span>
+                        <span>{fundamentalsData?.pb_mrq?.toFixed(2) || '-'}</span>
                       </div>
                       <div className="flex justify-between">
-                        <span className="text-muted-foreground">ROE</span>
-                        <span>32.5%</span>
+                        <span className="text-muted-foreground">PS(TTM)</span>
+                        <span>{fundamentalsData?.ps_ttm?.toFixed(2) || '-'}</span>
                       </div>
                       <div className="flex justify-between">
-                        <span className="text-muted-foreground">市值</span>
-                        <span>2.12万亿</span>
+                        <span className="text-muted-foreground">ST状态</span>
+                        <span>{fundamentalsData?.is_st ? '是' : '否'}</span>
                       </div>
                     </div>
                   </div>

@@ -28,7 +28,7 @@ import asyncpg
 
 # Default paths
 SCRIPT_DIR = Path(__file__).parent
-SAMPLE_DATA_PATH = SCRIPT_DIR.parent / "data" / "sample_data.db"
+SAMPLE_DATA_PATH = SCRIPT_DIR.parent / "examples" / "data" / "sample_data.db"
 DEFAULT_POSTGRES_URL = os.environ.get(
     "DATABASE_URL",
     "postgresql://quant:quant_dev_password@localhost:5432/quantdb"

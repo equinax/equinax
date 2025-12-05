@@ -1,58 +1,22 @@
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+import { Card, CardContent } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
-import { formatPercent } from '@/lib/utils'
-import { ArrowUpRight, ArrowDownRight, Download, Eye } from 'lucide-react'
-
-// Mock data
-const results = [
-  {
-    id: '1',
-    jobName: '双均线全市场测试',
-    strategy: '双均线策略',
-    stockCount: 50,
-    dateRange: '2024-01-01 ~ 2024-12-31',
-    avgReturn: 0.245,
-    bestReturn: 0.82,
-    worstReturn: -0.35,
-    avgSharpe: 1.82,
-    winRate: 0.62,
-    totalTrades: 1250,
-    createdAt: '2024-01-20 14:30',
-    status: 'completed',
-  },
-  {
-    id: '2',
-    jobName: 'MACD科技板块测试',
-    strategy: 'MACD动量策略',
-    stockCount: 30,
-    dateRange: '2024-01-01 ~ 2024-06-30',
-    avgReturn: 0.156,
-    bestReturn: 0.45,
-    worstReturn: -0.18,
-    avgSharpe: 1.45,
-    winRate: 0.58,
-    totalTrades: 680,
-    createdAt: '2024-01-19 09:15',
-    status: 'completed',
-  },
-  {
-    id: '3',
-    jobName: 'RSI金融板块测试',
-    strategy: 'RSI反转策略',
-    stockCount: 25,
-    dateRange: '2024-01-01 ~ 2024-12-31',
-    avgReturn: -0.023,
-    bestReturn: 0.15,
-    worstReturn: -0.42,
-    avgSharpe: -0.32,
-    winRate: 0.38,
-    totalTrades: 520,
-    createdAt: '2024-01-18 16:45',
-    status: 'completed',
-  },
-]
+import { formatPercent, formatDate } from '@/lib/utils'
+import { ArrowUpRight, ArrowDownRight, Download, Eye, Loader2, FileX2 } from 'lucide-react'
+import { useListBacktestsApiV1BacktestsGet } from '@/api/generated/backtests/backtests'
+import { useNavigate } from 'react-router-dom'
 
 export default function ResultsPage() {
+  const navigate = useNavigate()
+
+  // Fetch completed backtests
+  const { data: backtestsData, isLoading } = useListBacktestsApiV1BacktestsGet({
+    page: 1,
+    page_size: 50,
+    status: 'COMPLETED',
+  })
+
+  const backtests = backtestsData?.items || []
+
   return (
     <div className="space-y-6">
       {/* Header */}
@@ -67,100 +31,134 @@ export default function ResultsPage() {
         </Button>
       </div>
 
-      {/* Results list */}
-      <div className="space-y-4">
-        {results.map((result) => (
-          <Card key={result.id}>
-            <CardContent className="p-6">
-              <div className="flex items-start justify-between">
-                {/* Left: Basic info */}
-                <div className="space-y-1">
-                  <h3 className="text-lg font-semibold">{result.jobName}</h3>
-                  <p className="text-sm text-muted-foreground">
-                    {result.strategy} · {result.stockCount}只股票 · {result.dateRange}
-                  </p>
-                  <p className="text-xs text-muted-foreground">
-                    {result.createdAt}
-                  </p>
-                </div>
+      {/* Loading state */}
+      {isLoading && (
+        <div className="flex items-center justify-center p-12">
+          <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+        </div>
+      )}
 
-                {/* Right: Metrics */}
-                <div className="flex items-center gap-8">
-                  {/* Average Return */}
-                  <div className="text-center">
-                    <p className="text-sm text-muted-foreground">平均收益</p>
-                    <div className="flex items-center justify-center gap-1">
-                      {result.avgReturn >= 0 ? (
-                        <ArrowUpRight className="h-4 w-4 text-profit" />
-                      ) : (
-                        <ArrowDownRight className="h-4 w-4 text-loss" />
-                      )}
-                      <span
-                        className={`text-xl font-bold ${
-                          result.avgReturn >= 0 ? 'text-profit' : 'text-loss'
-                        }`}
-                      >
-                        {formatPercent(result.avgReturn)}
+      {/* Results list */}
+      {!isLoading && backtests.length > 0 && (
+        <div className="space-y-4">
+          {backtests.map((backtest) => (
+            <Card key={backtest.id}>
+              <CardContent className="p-6">
+                <div className="flex items-start justify-between">
+                  {/* Left: Basic info */}
+                  <div className="space-y-1">
+                    <h3 className="text-lg font-semibold">
+                      {backtest.name || `回测任务 ${backtest.id.slice(0, 8)}`}
+                    </h3>
+                    <p className="text-sm text-muted-foreground">
+                      {backtest.strategy_ids?.length || 0} 个策略 · {backtest.stock_codes?.length || 0} 只股票 · {backtest.start_date} ~ {backtest.end_date}
+                    </p>
+                    <p className="text-xs text-muted-foreground">
+                      {formatDate(backtest.created_at)}
+                    </p>
+                  </div>
+
+                  {/* Right: Metrics */}
+                  <div className="flex items-center gap-8">
+                    {/* Success rate */}
+                    <div className="text-center">
+                      <p className="text-sm text-muted-foreground">成功率</p>
+                      <span className="text-xl font-bold">
+                        {backtest.total_backtests > 0
+                          ? ((backtest.successful_backtests / backtest.total_backtests) * 100).toFixed(0)
+                          : 0}%
                       </span>
                     </div>
-                  </div>
 
-                  {/* Sharpe Ratio */}
-                  <div className="text-center">
-                    <p className="text-sm text-muted-foreground">夏普比率</p>
-                    <span
-                      className={`text-xl font-bold ${
-                        result.avgSharpe >= 0 ? 'text-profit' : 'text-loss'
-                      }`}
-                    >
-                      {result.avgSharpe.toFixed(2)}
-                    </span>
-                  </div>
+                    {/* Total backtests */}
+                    <div className="text-center">
+                      <p className="text-sm text-muted-foreground">回测数量</p>
+                      <span className="text-xl font-bold">
+                        {backtest.total_backtests}
+                      </span>
+                    </div>
 
-                  {/* Win Rate */}
-                  <div className="text-center">
-                    <p className="text-sm text-muted-foreground">胜率</p>
-                    <span className="text-xl font-bold">
-                      {(result.winRate * 100).toFixed(0)}%
-                    </span>
-                  </div>
+                    {/* Status */}
+                    <div className="text-center">
+                      <p className="text-sm text-muted-foreground">状态</p>
+                      <span className={`text-lg font-medium ${
+                        backtest.status === 'COMPLETED' ? 'text-profit' : 'text-muted-foreground'
+                      }`}>
+                        {backtest.status === 'COMPLETED' ? '已完成' : backtest.status}
+                      </span>
+                    </div>
 
-                  {/* Total Trades */}
-                  <div className="text-center">
-                    <p className="text-sm text-muted-foreground">交易次数</p>
-                    <span className="text-xl font-bold">
-                      {result.totalTrades}
-                    </span>
+                    {/* Actions */}
+                    <Button onClick={() => navigate(`/results/${backtest.id}`)}>
+                      <Eye className="mr-2 h-4 w-4" />
+                      查看详情
+                    </Button>
                   </div>
-
-                  {/* Actions */}
-                  <Button>
-                    <Eye className="mr-2 h-4 w-4" />
-                    查看详情
-                  </Button>
                 </div>
-              </div>
 
-              {/* Range bar */}
-              <div className="mt-4">
-                <div className="flex justify-between text-xs text-muted-foreground">
-                  <span>最差: {formatPercent(result.worstReturn)}</span>
-                  <span>最佳: {formatPercent(result.bestReturn)}</span>
-                </div>
-                <div className="mt-1 h-2 rounded-full bg-gradient-to-r from-loss via-muted to-profit" />
-                <div
-                  className="relative -mt-3"
-                  style={{
-                    left: `${((result.avgReturn - result.worstReturn) / (result.bestReturn - result.worstReturn)) * 100}%`,
-                  }}
-                >
-                  <div className="h-4 w-0.5 bg-primary" />
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-        ))}
-      </div>
+                {/* Progress bar for non-completed */}
+                {backtest.status !== 'COMPLETED' && (
+                  <div className="mt-4">
+                    <div className="flex justify-between text-xs text-muted-foreground mb-1">
+                      <span>进度</span>
+                      <span>{Number(backtest.progress).toFixed(0)}%</span>
+                    </div>
+                    <div className="h-2 rounded-full bg-muted">
+                      <div
+                        className="h-2 rounded-full bg-primary transition-all"
+                        style={{ width: `${backtest.progress}%` }}
+                      />
+                    </div>
+                  </div>
+                )}
+
+                {/* Summary metrics for completed */}
+                {backtest.status === 'COMPLETED' && (
+                  <div className="mt-4 grid grid-cols-4 gap-4 rounded-lg bg-muted/50 p-4">
+                    <div>
+                      <p className="text-xs text-muted-foreground">成功数</p>
+                      <p className="font-medium text-profit">{backtest.successful_backtests}</p>
+                    </div>
+                    <div>
+                      <p className="text-xs text-muted-foreground">失败数</p>
+                      <p className="font-medium text-loss">{backtest.failed_backtests}</p>
+                    </div>
+                    <div>
+                      <p className="text-xs text-muted-foreground">初始资金</p>
+                      <p className="font-medium">¥{Number(backtest.initial_capital).toLocaleString()}</p>
+                    </div>
+                    <div>
+                      <p className="text-xs text-muted-foreground">手续费率</p>
+                      <p className="font-medium">{(Number(backtest.commission_rate) * 100).toFixed(2)}%</p>
+                    </div>
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+          ))}
+        </div>
+      )}
+
+      {/* Empty state */}
+      {!isLoading && backtests.length === 0 && (
+        <Card className="p-12 text-center">
+          <FileX2 className="mx-auto h-12 w-12 text-muted-foreground" />
+          <h3 className="mt-4 text-lg font-semibold">暂无回测结果</h3>
+          <p className="mt-2 text-muted-foreground">
+            前往回测页面创建您的第一个回测任务
+          </p>
+          <Button className="mt-4" onClick={() => navigate('/backtest')}>
+            开始回测
+          </Button>
+        </Card>
+      )}
+
+      {/* Pagination info */}
+      {backtestsData && backtestsData.total > 0 && (
+        <div className="text-sm text-muted-foreground text-center">
+          共 {backtestsData.total} 个回测任务
+        </div>
+      )}
     </div>
   )
 }
