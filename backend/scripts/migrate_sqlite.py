@@ -2,22 +2,51 @@
 """
 SQLite to PostgreSQL Data Migration Script
 
-Migrates data from the existing SQLite database to PostgreSQL.
-Source: /Users/dan/Code/q/trading_data/a_stock_2024.db
+Migrates data from SQLite database to PostgreSQL.
+Supports both the bundled sample data and external full dataset.
+
+Usage:
+    # Use bundled sample data (default)
+    python scripts/migrate_sqlite.py
+
+    # Use external full dataset
+    python scripts/migrate_sqlite.py --source /path/to/a_stock_2024.db
+
+    # Specify custom PostgreSQL URL
+    python scripts/migrate_sqlite.py --database-url postgresql://user:pass@host:5432/db
 """
 
+import argparse
 import asyncio
+import os
 import sqlite3
-from datetime import datetime
+from datetime import datetime, date
 from decimal import Decimal
 from pathlib import Path
 
 import asyncpg
 
-# Configuration
-SQLITE_PATH = Path("/Users/dan/Code/q/trading_data/a_stock_2024.db")
-POSTGRES_URL = "postgresql://quant:quant_dev_password@localhost:5432/quantdb"
+# Default paths
+SCRIPT_DIR = Path(__file__).parent
+SAMPLE_DATA_PATH = SCRIPT_DIR.parent / "examples" / "data" / "sample_data.db"
+DEFAULT_POSTGRES_URL = os.environ.get(
+    "DATABASE_URL",
+    "postgresql://quant:quant_dev_password@localhost:5432/quantdb"
+).replace("+asyncpg", "").replace("postgresql+asyncpg", "postgresql")
+
 BATCH_SIZE = 10000
+
+
+def parse_date(val):
+    """Parse date string to date object."""
+    if val is None or val == "":
+        return None
+    if isinstance(val, date):
+        return val
+    try:
+        return datetime.strptime(str(val), "%Y-%m-%d").date()
+    except:
+        return None
 
 
 async def create_tables(conn: asyncpg.Connection) -> None:
@@ -110,8 +139,8 @@ async def migrate_stock_basic(sqlite_conn: sqlite3.Connection, pg_conn: asyncpg.
         records.append((
             code,
             record.get("code_name"),
-            record.get("ipo_date"),
-            record.get("out_date"),
+            parse_date(record.get("ipo_date")),
+            parse_date(record.get("out_date")),
             record.get("type"),
             record.get("status"),
             exchange,
@@ -123,7 +152,7 @@ async def migrate_stock_basic(sqlite_conn: sqlite3.Connection, pg_conn: asyncpg.
     await pg_conn.executemany(
         """
         INSERT INTO stock_basic (code, code_name, ipo_date, out_date, stock_type, status, exchange, sector, industry)
-        VALUES ($1, $2, $3::date, $4::date, $5, $6, $7, $8, $9)
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
         ON CONFLICT (code) DO UPDATE SET
             code_name = EXCLUDED.code_name,
             updated_at = CURRENT_TIMESTAMP
@@ -176,7 +205,7 @@ async def migrate_daily_k_data(sqlite_conn: sqlite3.Connection, pg_conn: asyncpg
                     return None
 
             batch.append((
-                record.get("date"),
+                parse_date(record.get("date")),
                 record.get("code"),
                 safe_decimal(record.get("open")),
                 safe_decimal(record.get("high")),
@@ -202,7 +231,7 @@ async def migrate_daily_k_data(sqlite_conn: sqlite3.Connection, pg_conn: asyncpg
                 date, code, open, high, low, close, preclose, volume, amount,
                 turn, trade_status, pct_chg, pe_ttm, pb_mrq, ps_ttm, pcf_ncf_ttm, is_st
             )
-            VALUES ($1::date, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17)
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17)
             ON CONFLICT (code, date) DO NOTHING
             """,
             batch,
@@ -245,7 +274,7 @@ async def migrate_adjust_factor(sqlite_conn: sqlite3.Connection, pg_conn: asyncp
 
         records.append((
             record.get("code"),
-            record.get("dividOperateDate"),
+            parse_date(record.get("dividOperateDate")),
             safe_decimal(record.get("foreAdjustFactor")),
             safe_decimal(record.get("backAdjustFactor")),
             safe_decimal(record.get("adjustFactor")),
@@ -254,7 +283,7 @@ async def migrate_adjust_factor(sqlite_conn: sqlite3.Connection, pg_conn: asyncp
     await pg_conn.executemany(
         """
         INSERT INTO adjust_factor (code, divid_operate_date, fore_adjust_factor, back_adjust_factor, adjust_factor)
-        VALUES ($1, $2::date, $3, $4, $5)
+        VALUES ($1, $2, $3, $4, $5)
         ON CONFLICT (code, divid_operate_date) DO NOTHING
         """,
         records,
@@ -264,27 +293,42 @@ async def migrate_adjust_factor(sqlite_conn: sqlite3.Connection, pg_conn: asyncp
     return len(records)
 
 
-async def main():
+async def main(source_path: Path, postgres_url: str):
     """Main migration function."""
     print("=" * 60)
     print("SQLite to PostgreSQL Migration")
     print("=" * 60)
-    print(f"\nSource: {SQLITE_PATH}")
-    print(f"Target: {POSTGRES_URL.split('@')[1]}")  # Hide credentials
+    print(f"\nSource: {source_path}")
+
+    # Parse and display target (hide password)
+    try:
+        from urllib.parse import urlparse
+        parsed = urlparse(postgres_url)
+        display_url = f"{parsed.hostname}:{parsed.port or 5432}/{parsed.path.lstrip('/')}"
+    except:
+        display_url = postgres_url.split('@')[-1] if '@' in postgres_url else postgres_url
+    print(f"Target: {display_url}")
 
     # Check SQLite database exists
-    if not SQLITE_PATH.exists():
-        print(f"\nError: SQLite database not found at {SQLITE_PATH}")
-        return
+    if not source_path.exists():
+        print(f"\nError: SQLite database not found at {source_path}")
+        return 1
 
     # Connect to SQLite
     print("\nConnecting to SQLite...")
-    sqlite_conn = sqlite3.connect(str(SQLITE_PATH))
+    sqlite_conn = sqlite3.connect(str(source_path))
     sqlite_conn.row_factory = sqlite3.Row
 
     # Connect to PostgreSQL
     print("Connecting to PostgreSQL...")
-    pg_conn = await asyncpg.connect(POSTGRES_URL)
+    try:
+        pg_conn = await asyncpg.connect(postgres_url)
+    except Exception as e:
+        print(f"\nError connecting to PostgreSQL: {e}")
+        print("\nMake sure PostgreSQL is running and the database exists.")
+        print("For Docker: docker-compose up -d db")
+        print("Then create database: docker-compose exec db createdb -U quant quantdb")
+        return 1
 
     try:
         # Create tables
@@ -307,11 +351,54 @@ async def main():
         print(f"  - daily_k_data: {kdata_count:,} records")
         print(f"  - adjust_factor: {adjust_count:,} records")
         print(f"  - Total time: {elapsed}")
+        return 0
 
     finally:
         sqlite_conn.close()
         await pg_conn.close()
 
 
+def cli():
+    """Command line interface."""
+    parser = argparse.ArgumentParser(
+        description="Migrate stock data from SQLite to PostgreSQL",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog="""
+Examples:
+  # Use bundled sample data (15 stocks, ~3600 daily records)
+  python scripts/migrate_sqlite.py
+
+  # Use full external dataset
+  python scripts/migrate_sqlite.py --source /path/to/a_stock_2024.db
+
+  # Custom database URL
+  python scripts/migrate_sqlite.py --database-url postgresql://user:pass@localhost:5432/mydb
+
+Environment Variables:
+  DATABASE_URL    PostgreSQL connection URL (can be overridden with --database-url)
+        """
+    )
+
+    parser.add_argument(
+        "--source", "-s",
+        type=Path,
+        default=SAMPLE_DATA_PATH,
+        help=f"Path to SQLite database (default: bundled sample data)"
+    )
+
+    parser.add_argument(
+        "--database-url", "-d",
+        type=str,
+        default=DEFAULT_POSTGRES_URL,
+        help="PostgreSQL connection URL"
+    )
+
+    args = parser.parse_args()
+
+    # Run migration
+    exit_code = asyncio.run(main(args.source, args.database_url))
+    exit(exit_code)
+
+
 if __name__ == "__main__":
-    asyncio.run(main())
+    cli()

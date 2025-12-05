@@ -10,7 +10,7 @@ dist/
 downloads/
 eggs/
 .eggs/
-lib/
+backend/**/lib/**
 lib64/
 parts/
 sdist/
@@ -59,8 +59,9 @@ htmlcov/
 .tox/
 .nox/
 
-# Database
+# Database (except sample data)
 *.db
+!backend/examples/data/sample_data.db
 *.sqlite3
 
 # Logs

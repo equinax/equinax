@@ -8,6 +8,8 @@ import backtrader as bt
 
 # Restricted builtins for sandboxed execution
 SAFE_BUILTINS = {
+    '__build_class__': __build_class__,  # Required for class definitions
+    '__name__': '__main__',
     'abs': abs,
     'all': all,
     'any': any,
@@ -31,17 +33,23 @@ SAFE_BUILTINS = {
     'max': max,
     'min': min,
     'next': next,
+    'object': object,  # Required for class inheritance
     'pow': pow,
     'print': print,
+    'property': property,
     'range': range,
     'repr': repr,
     'reversed': reversed,
     'round': round,
     'set': set,
+    'setattr': setattr,
     'slice': slice,
     'sorted': sorted,
+    'staticmethod': staticmethod,
+    'classmethod': classmethod,
     'str': str,
     'sum': sum,
+    'super': super,  # Required for class inheritance
     'tuple': tuple,
     'type': type,
     'zip': zip,

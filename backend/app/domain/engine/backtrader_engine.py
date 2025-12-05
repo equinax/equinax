@@ -1,5 +1,6 @@
 """Main Backtrader engine for executing backtests."""
 
+import traceback
 from datetime import datetime
 from typing import Dict, Any, Optional, List
 from dataclasses import dataclass
@@ -217,9 +218,10 @@ class BacktraderEngine:
 
         except Exception as e:
             execution_time = int((time.time() - start_time) * 1000)
+            error_detail = f"Backtest execution failed: {str(e)}\n{traceback.format_exc()}"
             return BacktestResult(
                 success=False,
-                error_message=f"Backtest execution failed: {str(e)}",
+                error_message=error_detail,
                 execution_time_ms=execution_time,
             )
 
@@ -349,9 +351,10 @@ class BacktraderEngine:
 
         except Exception as e:
             execution_time = int((time.time() - start_time) * 1000)
+            error_detail = f"Backtest execution failed: {str(e)}\n{traceback.format_exc()}"
             return BacktestResult(
                 success=False,
-                error_message=f"Backtest execution failed: {str(e)}",
+                error_message=error_detail,
                 execution_time_ms=execution_time,
             )
 

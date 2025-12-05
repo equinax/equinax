@@ -1,6 +1,7 @@
 """Strategy management API endpoints."""
 
 import hashlib
+from datetime import datetime
 from typing import List, Optional
 from uuid import UUID
 
@@ -71,8 +72,8 @@ class StrategyResponse(BaseModel):
     is_active: bool
     is_public: bool
     execution_mode: str
-    created_at: str
-    updated_at: str
+    created_at: datetime
+    updated_at: datetime
 
     class Config:
         from_attributes = True

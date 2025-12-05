@@ -216,10 +216,17 @@ class TradeAnalyzer(bt.Analyzer):
             }
         elif trade.isclosed:
             open_info = self.open_trades.pop(trade.ref, {})
+            # Determine direction safely - check if history exists
+            if trade.history and len(trade.history) > 0:
+                direction = 'long' if trade.history[0].event.size > 0 else 'short'
+            else:
+                # Fallback: infer from trade size (positive = was long, negative = was short)
+                direction = 'long' if trade.size >= 0 else 'short'
+
             self.trades.append({
                 'ref': trade.ref,
                 'data': trade.data._name,
-                'direction': 'long' if trade.history[0].event.size > 0 else 'short',
+                'direction': direction,
                 'size': abs(trade.size),
                 'open_price': open_info.get('price', trade.price),
                 'close_price': trade.price,

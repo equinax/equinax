@@ -1,8 +1,10 @@
 """Backtest execution tasks for ARQ."""
 
 import asyncio
-from datetime import datetime
-from typing import Dict, Any, Optional
+import logging
+import traceback
+from datetime import datetime, date
+from typing import Dict, Any, Optional, Union
 from uuid import UUID
 import time
 import pandas as pd
@@ -16,6 +18,13 @@ from app.db.models.backtest import BacktestJob, BacktestResult as BacktestResult
 from app.db.models.strategy import Strategy
 from app.db.models.stock import DailyKData, AdjustFactor
 from app.domain.engine import BacktraderEngine, BacktestConfig
+
+# Setup logging
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+)
+logger = logging.getLogger(__name__)
 
 
 # Create engine for worker (separate from main app)
@@ -39,6 +48,8 @@ async def run_backtest_job(ctx: dict, job_id: str) -> Dict[str, Any]:
     Master task that orchestrates a batch backtest job.
     Runs individual backtests sequentially or in parallel.
     """
+    logger.info(f"Starting backtest job: {job_id}")
+
     async with worker_session_maker() as db:
         # Get job
         result = await db.execute(
@@ -47,7 +58,10 @@ async def run_backtest_job(ctx: dict, job_id: str) -> Dict[str, Any]:
         job = result.scalar_one_or_none()
 
         if not job:
+            logger.error(f"Job not found: {job_id}")
             return {"error": "Job not found"}
+
+        logger.info(f"Job {job_id}: {len(job.strategy_ids)} strategies x {len(job.stock_codes)} stocks")
 
         # Update status to running
         job.status = BacktestStatus.RUNNING
@@ -63,6 +77,7 @@ async def run_backtest_job(ctx: dict, job_id: str) -> Dict[str, Any]:
             # Run backtests
             for strategy_id in job.strategy_ids:
                 for stock_code in job.stock_codes:
+                    logger.info(f"Running backtest: strategy={strategy_id}, stock={stock_code}")
                     try:
                         # Run single backtest
                         backtest_result = await execute_single_backtest(
@@ -74,19 +89,23 @@ async def run_backtest_job(ctx: dict, job_id: str) -> Dict[str, Any]:
 
                         if backtest_result.status == BacktestStatus.COMPLETED:
                             successful += 1
+                            logger.info(f"Backtest completed: {stock_code}, return={backtest_result.total_return}")
                         else:
                             failed += 1
+                            logger.warning(f"Backtest failed: {stock_code}, error={backtest_result.error_message}")
 
                     except Exception as e:
                         failed += 1
+                        error_msg = f"{str(e)}\n{traceback.format_exc()}"
+                        logger.error(f"Backtest exception for {stock_code}:\n{error_msg}")
                         # Create failed result
-                        failed_result = BacktestResult(
+                        failed_result = BacktestResultModel(
                             job_id=job.id,
                             strategy_id=UUID(strategy_id),
                             stock_code=stock_code,
                             parameters={},
                             status=BacktestStatus.FAILED,
-                            error_message=str(e),
+                            error_message=error_msg[:2000],  # Truncate to fit DB
                         )
                         db.add(failed_result)
 
@@ -103,6 +122,8 @@ async def run_backtest_job(ctx: dict, job_id: str) -> Dict[str, Any]:
             job.completed_at = datetime.utcnow()
             await db.commit()
 
+            logger.info(f"Job {job_id} completed: {successful} successful, {failed} failed")
+
             return {
                 "job_id": str(job_id),
                 "status": "completed",
@@ -112,6 +133,8 @@ async def run_backtest_job(ctx: dict, job_id: str) -> Dict[str, Any]:
             }
 
         except Exception as e:
+            error_msg = f"{str(e)}\n{traceback.format_exc()}"
+            logger.error(f"Job {job_id} failed:\n{error_msg}")
             job.status = BacktestStatus.FAILED
             job.error_message = str(e)
             job.completed_at = datetime.utcnow()
@@ -122,17 +145,21 @@ async def run_backtest_job(ctx: dict, job_id: str) -> Dict[str, Any]:
 async def load_stock_data(
     db: AsyncSession,
     stock_code: str,
-    start_date: Optional[datetime],
-    end_date: Optional[datetime],
+    start_date: Optional[date],
+    end_date: Optional[date],
 ) -> tuple[pd.DataFrame, pd.DataFrame]:
     """Load stock OHLCV data and adjustment factors from database."""
+    from datetime import date as date_type
 
     # Build query for daily k-line data
     query = select(DailyKData).where(DailyKData.code == stock_code)
     if start_date:
-        query = query.where(DailyKData.date >= start_date.date())
+        # Handle both date and datetime objects
+        sd = start_date if isinstance(start_date, date_type) else start_date.date()
+        query = query.where(DailyKData.date >= sd)
     if end_date:
-        query = query.where(DailyKData.date <= end_date.date())
+        ed = end_date if isinstance(end_date, date_type) else end_date.date()
+        query = query.where(DailyKData.date <= ed)
     query = query.order_by(DailyKData.date)
 
     result = await db.execute(query)
@@ -153,7 +180,7 @@ async def load_stock_data(
             'volume': float(row.volume),
             'amount': float(row.amount) if row.amount else 0,
             'turn': float(row.turn) if row.turn else 0,
-            'pctChg': float(row.pctChg) if row.pctChg else 0,
+            'pctChg': float(row.pct_chg) if row.pct_chg else 0,
         })
 
     data_df = pd.DataFrame(data)
@@ -161,9 +188,9 @@ async def load_stock_data(
     # Load adjustment factors
     adjust_query = select(AdjustFactor).where(AdjustFactor.code == stock_code)
     if start_date:
-        adjust_query = adjust_query.where(AdjustFactor.date >= start_date.date())
+        adjust_query = adjust_query.where(AdjustFactor.divid_operate_date >= sd)
     if end_date:
-        adjust_query = adjust_query.where(AdjustFactor.date <= end_date.date())
+        adjust_query = adjust_query.where(AdjustFactor.divid_operate_date <= ed)
 
     adjust_result = await db.execute(adjust_query)
     adjust_rows = adjust_result.scalars().all()
@@ -171,9 +198,9 @@ async def load_stock_data(
     adjust_data = []
     for row in adjust_rows:
         adjust_data.append({
-            'date': row.date,
-            'foreAdjustFactor': float(row.foreAdjustFactor) if row.foreAdjustFactor else 1.0,
-            'backAdjustFactor': float(row.backAdjustFactor) if row.backAdjustFactor else 1.0,
+            'date': row.divid_operate_date,
+            'foreAdjustFactor': float(row.fore_adjust_factor) if row.fore_adjust_factor else 1.0,
+            'backAdjustFactor': float(row.back_adjust_factor) if row.back_adjust_factor else 1.0,
         })
 
     adjust_df = pd.DataFrame(adjust_data) if adjust_data else pd.DataFrame()
@@ -228,7 +255,7 @@ async def execute_single_backtest(
     # Create backtest config
     config = BacktestConfig(
         initial_capital=float(job.initial_capital),
-        commission=float(job.commission),
+        commission=float(job.commission_rate),
         slippage_perc=float(job.slippage),
         stake_type='percent',
         stake_value=95.0,
