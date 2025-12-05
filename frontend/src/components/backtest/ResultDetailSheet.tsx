@@ -130,9 +130,9 @@ export function ResultDetailSheet({ jobId, resultId, open, onOpenChange }: Resul
           </SheetTitle>
           {data && (
             <SheetDescription>
-              {data.status === 'COMPLETED' ? (
+              {data.status === 'completed' ? (
                 <span className="text-profit">已完成</span>
-              ) : data.status === 'FAILED' ? (
+              ) : data.status === 'failed' ? (
                 <span className="text-loss">执行失败</span>
               ) : (
                 data.status
