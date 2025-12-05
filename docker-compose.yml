@@ -54,6 +54,7 @@ services:
       - ./backend/alembic:/app/alembic:cached
       - ./backend/scripts:/app/scripts:cached
       - ./backend/examples:/app/examples:cached
+      - ./backend/cmd.py:/app/cmd.py:cached
     ports:
       - "8000:8000"
     depends_on:
