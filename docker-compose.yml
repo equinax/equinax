@@ -1,0 +1,116 @@
+version: '3.8'
+
+services:
+  # PostgreSQL Database
+  db:
+    image: postgres:15-alpine
+    container_name: quant_db
+    environment:
+      POSTGRES_USER: quant
+      POSTGRES_PASSWORD: quant_dev_password
+      POSTGRES_DB: quantdb
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./backend/scripts/init_db.sql:/docker-entrypoint-initdb.d/init_db.sql:ro
+    ports:
+      - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U quant -d quantdb"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    networks:
+      - quant_network
+
+  # Redis for task queue and caching
+  redis:
+    image: redis:7-alpine
+    container_name: quant_redis
+    command: redis-server --appendonly yes
+    volumes:
+      - redis_data:/data
+    ports:
+      - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    networks:
+      - quant_network
+
+  # FastAPI Backend
+  api:
+    build:
+      context: ./backend
+      dockerfile: docker/Dockerfile
+    container_name: quant_api
+    environment:
+      - DATABASE_URL=postgresql+asyncpg://quant:quant_dev_password@db:5432/quantdb
+      - REDIS_URL=redis://redis:6379/0
+      - SECRET_KEY=dev-secret-key-change-in-production
+      - DEBUG=true
+      - CORS_ORIGINS=["http://localhost:3000","http://localhost:5173"]
+    volumes:
+      - ./backend/app:/app/app:cached
+      - ./backend/workers:/app/workers:cached
+      - ./backend/alembic:/app/alembic:cached
+    ports:
+      - "8000:8000"
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    command: uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
+    networks:
+      - quant_network
+
+  # ARQ Worker for background tasks
+  worker:
+    build:
+      context: ./backend
+      dockerfile: docker/Dockerfile
+    container_name: quant_worker
+    environment:
+      - DATABASE_URL=postgresql+asyncpg://quant:quant_dev_password@db:5432/quantdb
+      - REDIS_URL=redis://redis:6379/0
+    volumes:
+      - ./backend/app:/app/app:cached
+      - ./backend/workers:/app/workers:cached
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    command: arq workers.settings.WorkerSettings
+    networks:
+      - quant_network
+
+  # React Frontend
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: docker/Dockerfile
+    container_name: quant_frontend
+    environment:
+      - VITE_API_URL=http://localhost:8000
+    volumes:
+      - ./frontend/src:/app/src:cached
+      - ./frontend/public:/app/public:cached
+      - /app/node_modules
+    ports:
+      - "3000:3000"
+    depends_on:
+      - api
+    command: pnpm dev --host 0.0.0.0 --port 3000
+    networks:
+      - quant_network
+
+volumes:
+  postgres_data:
+  redis_data:
+
+networks:
+  quant_network:
+    driver: bridge
