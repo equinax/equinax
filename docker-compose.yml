@@ -42,12 +42,8 @@ services:
       context: ./backend
       dockerfile: docker/Dockerfile
     container_name: quant_api
-    environment:
-      - DATABASE_URL=postgresql+asyncpg://quant:quant_dev_password@db:5432/quantdb
-      - REDIS_URL=redis://redis:6379/0
-      - SECRET_KEY=dev-secret-key-change-in-production
-      - DEBUG=true
-      - CORS_ORIGINS=["http://localhost:3000","http://localhost:5173"]
+    env_file:
+      - ./backend/.env.docker
     volumes:
       - ./backend/app:/app/app:cached
       - ./backend/workers:/app/workers:cached
@@ -72,9 +68,8 @@ services:
       context: ./backend
       dockerfile: docker/Dockerfile
     container_name: quant_worker
-    environment:
-      - DATABASE_URL=postgresql+asyncpg://quant:quant_dev_password@db:5432/quantdb
-      - REDIS_URL=redis://redis:6379/0
+    env_file:
+      - ./backend/.env.docker
     volumes:
       - ./backend/app:/app/app:cached
       - ./backend/workers:/app/workers:cached
@@ -93,8 +88,8 @@ services:
       context: ./frontend
       dockerfile: docker/Dockerfile
     container_name: quant_frontend
-    environment:
-      - VITE_API_URL=http://localhost:8000
+    env_file:
+      - ./frontend/.env
     volumes:
       - ./frontend/src:/app/src:cached
       - ./frontend/public:/app/public:cached

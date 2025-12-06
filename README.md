@@ -150,10 +150,11 @@ just seed-stocks-file /path/to/new_data.db
 ```
 trader/
 ├── justfile                # 开发命令定义
-├── .env.docker             # Docker 开发环境配置
-├── .env.example            # 环境变量模板
 ├── docker-compose.yml      # Docker 服务定义
 ├── backend/
+│   ├── .env.docker         # Docker 开发环境配置
+│   ├── .env.example        # 环境变量模板
+│   ├── .env                # 本地开发配置 (gitignore)
 │   ├── app/
 │   │   ├── api/v1/         # API 路由
 │   │   ├── cli/            # CLI 命令 (db, seed)
@@ -168,6 +169,7 @@ trader/
 │       ├── data/           # 示例数据 + 默认策略
 │       └── strategies/     # 策略代码示例
 ├── frontend/
+│   ├── .env                # 前端配置 (VITE_API_URL)
 │   ├── src/
 │   │   ├── components/     # UI 组件
 │   │   ├── api/generated/  # 自动生成的 API 客户端
@@ -195,7 +197,7 @@ trader/
 
 ## 环境变量
 
-### 后端
+### 后端 (`backend/.env.docker`)
 
 ```env
 DATABASE_URL=postgresql+asyncpg://quant:quant_dev_password@db:5432/quantdb

@@ -2,7 +2,6 @@
 # Usage: just <command> [args...]
 # Run `just` or `just --list` to see all available commands
 
-set dotenv-load := true
 set positional-arguments := true
 
 # Default recipe - show help
@@ -189,6 +188,7 @@ test-coverage:
 # Internal Helpers
 # ==============================================================================
 
-# Ensure .env file exists
+# Ensure backend .env file exists for Docker
 _ensure-env:
-    @test -f .env || (echo "Creating .env from .env.docker..." && cp .env.docker .env)
+    @test -f backend/.env.docker || (echo "Error: backend/.env.docker not found" && exit 1)
+    @test -f frontend/.env || (echo "Creating frontend/.env..." && cp frontend/.env.example frontend/.env)

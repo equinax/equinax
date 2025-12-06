@@ -104,3 +104,10 @@
 .bg-loss {
   background-color: hsl(var(--loss));
 }
+
+/* Hide TradingView branding from lightweight-charts */
+.tv-lightweight-charts a[href*="tradingview"],
+.tv-lightweight-charts [class*="apply-common-tooltip"],
+a[href*="tradingview.com"] {
+  display: none !important;
+}
