@@ -1,0 +1,28 @@
+{
+  "strategies": [
+    {
+      "name": "SMA Crossover",
+      "description": "双均线交叉策略 - 当短期均线上穿长期均线时买入，下穿时卖出",
+      "is_public": true,
+      "code": "class Strategy(bt.Strategy):\n    \"\"\"双均线交叉策略\n    \n    当短期均线上穿长期均线时买入，下穿时卖出。\n    \"\"\"\n    params = (\n        ('fast_period', 10),\n        ('slow_period', 30),\n    )\n\n    def __init__(self):\n        self.sma_fast = bt.indicators.SMA(self.data.close, period=self.p.fast_period)\n        self.sma_slow = bt.indicators.SMA(self.data.close, period=self.p.slow_period)\n        self.crossover = bt.indicators.CrossOver(self.sma_fast, self.sma_slow)\n\n    def next(self):\n        if not self.position:\n            if self.crossover > 0:\n                self.buy()\n        elif self.crossover < 0:\n            self.close()\n"
+    },
+    {
+      "name": "RSI Strategy",
+      "description": "RSI 超买超卖策略 - RSI低于30时买入，高于70时卖出",
+      "is_public": true,
+      "code": "class Strategy(bt.Strategy):\n    \"\"\"RSI 超买超卖策略\n    \n    当 RSI 低于超卖线时买入，高于超买线时卖出。\n    \"\"\"\n    params = (\n        ('rsi_period', 14),\n        ('oversold', 30),\n        ('overbought', 70),\n    )\n\n    def __init__(self):\n        self.rsi = bt.indicators.RSI(self.data.close, period=self.p.rsi_period)\n\n    def next(self):\n        if not self.position:\n            if self.rsi < self.p.oversold:\n                self.buy()\n        elif self.rsi > self.p.overbought:\n            self.close()\n"
+    },
+    {
+      "name": "MACD Strategy",
+      "description": "MACD 金叉死叉策略 - MACD金叉时买入，死叉时卖出",
+      "is_public": true,
+      "code": "class Strategy(bt.Strategy):\n    \"\"\"MACD 金叉死叉策略\n    \n    当 MACD 线上穿信号线时买入，下穿时卖出。\n    \"\"\"\n    params = (\n        ('fast_period', 12),\n        ('slow_period', 26),\n        ('signal_period', 9),\n    )\n\n    def __init__(self):\n        self.macd = bt.indicators.MACD(\n            self.data.close,\n            period_me1=self.p.fast_period,\n            period_me2=self.p.slow_period,\n            period_signal=self.p.signal_period\n        )\n        self.crossover = bt.indicators.CrossOver(self.macd.macd, self.macd.signal)\n\n    def next(self):\n        if not self.position:\n            if self.crossover > 0:\n                self.buy()\n        elif self.crossover < 0:\n            self.close()\n"
+    },
+    {
+      "name": "Bollinger Bands",
+      "description": "布林带均值回归策略 - 价格触及下轨时买入，触及上轨时卖出",
+      "is_public": true,
+      "code": "class Strategy(bt.Strategy):\n    \"\"\"布林带均值回归策略\n    \n    当价格触及布林带下轨时买入，触及上轨时卖出。\n    \"\"\"\n    params = (\n        ('period', 20),\n        ('devfactor', 2.0),\n    )\n\n    def __init__(self):\n        self.boll = bt.indicators.BollingerBands(\n            self.data.close,\n            period=self.p.period,\n            devfactor=self.p.devfactor\n        )\n\n    def next(self):\n        if not self.position:\n            if self.data.close[0] < self.boll.lines.bot[0]:\n                self.buy()\n        elif self.data.close[0] > self.boll.lines.top[0]:\n            self.close()\n"
+    }
+  ]
+}

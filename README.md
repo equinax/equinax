@@ -10,89 +10,110 @@
 
 ## 快速开始
 
-### 方式一：Docker Compose（推荐）
+### 前置要求
+
+- Docker & Docker Compose
+- [Just](https://github.com/casey/just) 命令运行器
+
+```bash
+# macOS
+brew install just
+
+# Linux
+curl --proto '=https' --tlsv1.2 -sSf https://just.systems/install.sh | bash -s -- --to /usr/local/bin
+```
+
+### 首次设置
 
 ```bash
 # 克隆项目
 git clone https://github.com/equinax/trader.git
 cd trader
 
-# 启动所有服务
-docker-compose up -d
-
-# 等待服务启动后，运行数据库迁移
-docker-compose exec api alembic upgrade head
-
-# 导入示例数据
-docker-compose exec api python scripts/migrate_sqlite.py
+# 一键设置（创建 .env + 启动服务 + 初始化数据库 + 导入种子数据）
+just setup
 
 # 访问应用
 # 前端: http://localhost:3000
 # API文档: http://localhost:8000/api/docs
 ```
 
-### 方式二：本地开发
-
-#### 1. 准备数据库
+### 日常开发
 
 ```bash
-# 确保 PostgreSQL 和 Redis 已启动
-# 创建数据库
-createdb quantdb
+# 启动服务
+just up
+
+# 停止服务
+just down
+
+# 重启服务
+just restart
+
+# 查看状态
+just status
+
+# 查看所有可用命令
+just
 ```
 
-#### 2. 启动后端
+## 命令参考
 
-```bash
-cd backend
+运行 `just` 或 `just --list` 查看所有可用命令。
 
-# 创建虚拟环境
-python -m venv .venv
-source .venv/bin/activate
+### 核心命令
 
-# 安装依赖
-pip install -e ".[dev]"
+| 命令 | 描述 |
+|------|------|
+| `just up` | 启动所有服务 |
+| `just down` | 停止所有服务 |
+| `just restart` | 重启服务 |
+| `just status` | 查看服务状态 |
+| `just setup` | 首次项目设置 |
 
-# 配置环境变量
-cp .env.example .env
-# 编辑 .env 设置数据库连接
+### 数据库命令
 
-# 运行数据库迁移
-alembic upgrade head
+| 命令 | 描述 |
+|------|------|
+| `just db-setup` | 完整数据库初始化（迁移 + 种子数据） |
+| `just db-migrate` | 运行数据库迁移 |
+| `just db-migrate-new "msg"` | 创建新迁移 |
+| `just db-migrate-down` | 回滚一个版本 |
+| `just db-migrate-status` | 查看迁移状态 |
+| `just db-reset` | 重置数据库（需确认） |
+| `just db-status` | 查看数据统计 |
+| `just db-console` | 打开 psql 控制台 |
 
-# 导入示例数据（内置15只股票）
-python scripts/migrate_sqlite.py
+### 种子数据命令
 
-# 或导入完整数据集（如果有）
-# python scripts/migrate_sqlite.py --source /path/to/a_stock_2024.db
+| 命令 | 描述 |
+|------|------|
+| `just seed-all` | 导入所有种子数据 |
+| `just seed-user` | 创建默认用户 |
+| `just seed-strategy` | 加载默认策略 |
+| `just seed-stocks` | 加载示例股票数据（内置15只） |
+| `just seed-stocks-file FILE` | 从外部 SQLite 文件导入股票数据 |
+| `just seed-stocks-clear` | 清空股票数据 |
 
-# 启动 API 服务
-uvicorn app.main:app --reload
-```
+### 开发命令
 
-#### 3. 启动前端
+| 命令 | 描述 |
+|------|------|
+| `just dev-logs` | 查看所有服务日志 |
+| `just dev-logs-api` | 查看 API 日志 |
+| `just dev-logs-worker` | 查看 Worker 日志 |
+| `just dev-shell` | 进入 API 容器 |
+| `just dev-python` | 打开 Python REPL |
+| `just dev-lint` | 运行代码检查 |
+| `just dev-format` | 格式化代码 |
+| `just dev-api-gen` | 生成前端 API 客户端 |
 
-```bash
-cd frontend
+### 测试命令
 
-# 安装依赖
-pnpm install
-
-# 配置环境变量
-cp .env.example .env
-
-# 生成 API 客户端（需要后端运行）
-pnpm run api:generate
-
-# 启动开发服务器
-pnpm dev
-```
-
-### 3. 访问应用
-
-- **前端**: http://localhost:5173 (本地开发) 或 http://localhost:3000 (Docker)
-- **API文档**: http://localhost:8000/api/docs
-- **OpenAPI JSON**: http://localhost:8000/api/openapi.json
+| 命令 | 描述 |
+|------|------|
+| `just test-backend` | 运行后端测试 |
+| `just test-coverage` | 运行测试并生成覆盖率报告 |
 
 ## 示例数据
 
@@ -107,36 +128,51 @@ pnpm dev
 
 共 15 只股票，约 3,600 条日线数据（2024年全年）。
 
+### 导入完整数据集
+
 如需完整数据（5,662只股票，136万条记录），请使用外部数据源：
 
 ```bash
-python scripts/migrate_sqlite.py --source /path/to/a_stock_2024.db
+just seed-stocks-file /path/to/a_stock_2024.db
+```
+
+### 切换数据源
+
+如需切换到不同的数据源，先清空现有数据：
+
+```bash
+just seed-stocks-clear
+just seed-stocks-file /path/to/new_data.db
 ```
 
 ## 项目结构
 
 ```
 trader/
+├── justfile                # 开发命令定义
+├── .env.docker             # Docker 开发环境配置
+├── .env.example            # 环境变量模板
+├── docker-compose.yml      # Docker 服务定义
 ├── backend/
 │   ├── app/
-│   │   ├── api/v1/          # API 路由
-│   │   ├── db/models/       # 数据库模型
-│   │   ├── services/        # 业务逻辑
-│   │   └── domain/engine/   # Backtrader 集成
-│   ├── alembic/             # 数据库迁移
-│   │   └── versions/        # 迁移文件
-│   ├── workers/             # ARQ 任务
-│   ├── scripts/             # 工具脚本
+│   │   ├── api/v1/         # API 路由
+│   │   ├── cli/            # CLI 命令 (db, seed)
+│   │   ├── db/models/      # 数据库模型
+│   │   ├── services/       # 业务逻辑
+│   │   └── domain/engine/  # Backtrader 集成
+│   ├── alembic/            # 数据库迁移
+│   │   └── versions/       # 迁移文件
+│   ├── workers/            # ARQ 任务
+│   ├── cmd.py              # CLI 入口
 │   └── examples/
-│       ├── data/            # 示例数据 (sample_data.db)
-│       └── strategies/      # 策略代码示例
+│       ├── data/           # 示例数据 + 默认策略
+│       └── strategies/     # 策略代码示例
 ├── frontend/
 │   ├── src/
-│   │   ├── components/      # UI 组件
-│   │   ├── api/generated/   # 自动生成的 API 客户端
-│   │   └── pages/           # 页面组件
-│   └── orval.config.ts      # API 生成配置
-└── docker-compose.yml
+│   │   ├── components/     # UI 组件
+│   │   ├── api/generated/  # 自动生成的 API 客户端
+│   │   └── pages/          # 页面组件
+│   └── orval.config.ts     # API 生成配置
 ```
 
 ## API 端点
@@ -157,85 +193,44 @@ trader/
 - **MACD Strategy** - MACD 金叉死叉策略
 - **Bollinger Bands** - 布林带均值回归策略
 
-## 数据库迁移
-
-### 本地开发
-
-```bash
-cd backend
-
-# 创建新迁移
-alembic revision --autogenerate -m "description"
-
-# 执行迁移
-alembic upgrade head
-
-# 回滚迁移
-alembic downgrade -1
-```
-
-### Docker 环境
-
-```bash
-# 执行迁移
-docker-compose exec api alembic upgrade head
-
-# 创建新迁移（修改模型后）
-docker-compose exec api alembic revision --autogenerate -m "add new field"
-
-# 查看迁移历史
-docker-compose exec api alembic history
-
-# 查看当前版本
-docker-compose exec api alembic current
-
-# 回滚到上一版本
-docker-compose exec api alembic downgrade -1
-
-# 回滚到指定版本
-docker-compose exec api alembic downgrade <revision_id>
-```
-
-**注意**: 在 Docker 中创建迁移后，迁移文件会生成在容器内的 `/app/alembic/versions/` 目录。
-由于 `docker-compose.yml` 已配置 volume 映射 (`./backend/alembic:/app/alembic:cached`)，
-新生成的迁移文件会自动同步到本地 `backend/alembic/versions/` 目录。
-
-### 常见操作流程
-
-1. **添加新模型或修改字段**:
-   ```bash
-   # 1. 修改 backend/app/db/models/ 中的模型代码
-   # 2. 生成迁移文件
-   docker-compose exec api alembic revision --autogenerate -m "add user avatar field"
-   # 3. 检查生成的迁移文件 (backend/alembic/versions/xxx_add_user_avatar_field.py)
-   # 4. 执行迁移
-   docker-compose exec api alembic upgrade head
-   ```
-
-2. **重置数据库** (开发环境):
-   ```bash
-   # 删除所有数据并重新创建
-   docker-compose down -v
-   docker-compose up -d
-   docker-compose exec api alembic upgrade head
-   docker-compose exec api python scripts/migrate_sqlite.py
-   ```
-
 ## 环境变量
 
-### 后端 (backend/.env)
+### 后端
 
 ```env
-DATABASE_URL=postgresql+asyncpg://user:pass@localhost:5432/quantdb
-REDIS_URL=redis://localhost:6379/0
-SECRET_KEY=your-secret-key
+DATABASE_URL=postgresql+asyncpg://quant:quant_dev_password@db:5432/quantdb
+REDIS_URL=redis://redis:6379/0
+SECRET_KEY=dev-secret-key-change-in-production
+JWT_SECRET_KEY=dev-jwt-secret-key-change-in-production
 DEBUG=true
+CORS_ORIGINS=["http://localhost:3000","http://localhost:5173"]
 ```
 
-### 前端 (frontend/.env)
+### 前端
 
 ```env
 VITE_API_URL=http://localhost:8000/api
+```
+
+## CLI 命令（容器内）
+
+在容器内可以直接使用 Python CLI：
+
+```bash
+# 进入容器
+just dev-shell
+
+# 数据库命令
+python cmd.py db reset          # 重置数据库
+python cmd.py db status         # 查看状态
+
+# 种子数据命令
+python cmd.py seed user         # 创建默认用户
+python cmd.py seed strategy     # 加载默认策略
+python cmd.py seed stocks       # 加载股票数据
+python cmd.py seed stocks --clear   # 清空股票数据
+python cmd.py seed stocks --source /path/to/data.db  # 从指定文件加载
+python cmd.py seed all          # 加载所有种子数据
 ```
 
 ## License
