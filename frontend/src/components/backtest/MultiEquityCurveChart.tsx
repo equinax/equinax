@@ -1,15 +1,16 @@
 import { useEffect, useRef } from 'react'
-import { createChart, IChartApi, ISeriesApi, LineStyle, ColorType, LineData, Time } from 'lightweight-charts'
+import { createChart, IChartApi, ISeriesApi, LineStyle, ColorType, LineData, Time, SeriesMarker } from 'lightweight-charts'
 import { useTheme } from '@/components/theme-provider'
-import { CHART_PALETTE } from '@/lib/market-colors'
-import type { EquityCurvePoint } from '@/types/backtest'
+import { CHART_PALETTE, getMarketColors } from '@/lib/market-colors'
+import type { EquityCurvePoint, TradeRecord } from '@/types/backtest'
 
 interface MultiEquityCurveChartProps {
   data: Record<string, EquityCurvePoint[]> | null | undefined
+  trades?: Record<string, TradeRecord[]> | null
   height?: number
 }
 
-export function MultiEquityCurveChart({ data, height = 400 }: MultiEquityCurveChartProps) {
+export function MultiEquityCurveChart({ data, trades, height = 400 }: MultiEquityCurveChartProps) {
   const chartContainerRef = useRef<HTMLDivElement>(null)
   const chartRef = useRef<IChartApi | null>(null)
   const seriesMapRef = useRef<Map<string, ISeriesApi<'Line'>>>(new Map())
@@ -134,6 +135,58 @@ export function MultiEquityCurveChart({ data, height = 400 }: MultiEquityCurveCh
 
     chart.timeScale().fitContent()
   }, [data])
+
+  // Update trade markers
+  useEffect(() => {
+    if (!chartRef.current || !trades) return
+
+    const colors = getMarketColors()
+    const existingSeries = seriesMapRef.current
+
+    // Add markers to each series
+    existingSeries.forEach((series, stockCode) => {
+      const stockTrades = trades[stockCode]
+      if (!stockTrades || !Array.isArray(stockTrades) || stockTrades.length === 0) {
+        series.setMarkers([])
+        return
+      }
+
+      const markers: SeriesMarker<Time>[] = stockTrades.flatMap((trade) => {
+        const entryDate = trade.entry_date || trade.open_datetime?.split(' ')[0]
+        const exitDate = trade.exit_date || trade.close_datetime?.split(' ')[0]
+        const entryPrice = trade.entry_price ?? trade.open_price
+        const exitPrice = trade.exit_price ?? trade.close_price
+
+        const result: SeriesMarker<Time>[] = []
+
+        // Entry marker (buy)
+        if (entryDate) {
+          result.push({
+            time: entryDate as Time,
+            position: 'belowBar',
+            color: colors.profit,
+            shape: 'arrowUp',
+            text: `B @${entryPrice?.toFixed(2) ?? ''}`,
+          })
+        }
+
+        // Exit marker (sell)
+        if (exitDate) {
+          result.push({
+            time: exitDate as Time,
+            position: 'aboveBar',
+            color: colors.loss,
+            shape: 'arrowDown',
+            text: `S @${exitPrice?.toFixed(2) ?? ''}`,
+          })
+        }
+
+        return result
+      }).sort((a, b) => (a.time as string).localeCompare(b.time as string))
+
+      series.setMarkers(markers)
+    })
+  }, [trades])
 
   if (!data || Object.keys(data).length === 0) {
     return (

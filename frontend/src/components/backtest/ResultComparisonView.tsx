@@ -143,7 +143,7 @@ export function ResultComparisonView({ jobId, results }: ResultComparisonViewPro
           {isLoading ? (
             <LoadingSkeleton />
           ) : (
-            <MultiEquityCurveChart data={aggregatedData.equityCurves} height={400} />
+            <MultiEquityCurveChart data={aggregatedData.equityCurves} trades={aggregatedData.trades} height={400} />
           )}
         </TabsContent>
 

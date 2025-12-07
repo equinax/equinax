@@ -22,7 +22,7 @@ class BacktestConfig:
     stake_value: float = 95.0  # 95% of portfolio or fixed amount
     start_date: Optional[datetime] = None
     end_date: Optional[datetime] = None
-    adjust_type: str = 'forward'  # 'forward', 'backward', 'none'
+    adjust_type: str = 'backward'  # 'backward' (recommended for backtesting), 'forward', 'none'
 
 
 @dataclass

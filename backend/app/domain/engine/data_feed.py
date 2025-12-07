@@ -111,7 +111,7 @@ class AdjustedDataFeed(PostgreSQLDataFeed):
         df: pd.DataFrame,
         adjust_factors: pd.DataFrame,
         stock_code: str,
-        adjust_type: str = 'forward',  # 'forward', 'backward', 'none'
+        adjust_type: str = 'backward',  # 'backward' (recommended), 'forward', 'none'
         start_date: Optional[Union[datetime, date]] = None,
         end_date: Optional[Union[datetime, date]] = None,
     ) -> 'AdjustedDataFeed':

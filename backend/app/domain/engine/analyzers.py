@@ -206,33 +206,49 @@ class TradeAnalyzer(bt.Analyzer):
 
     def notify_trade(self, trade):
         if trade.isopen:
+            # Record opening trade info
+            # trade.size here is the position size (positive for long, negative for short)
             self.open_trades[trade.ref] = {
                 'ref': trade.ref,
                 'data': trade.data._name,
-                'size': trade.size,
+                'size': abs(trade.size),  # Store absolute size
                 'price': trade.price,
-                'value': trade.value,
+                'value': abs(trade.value),  # Store absolute value
+                'direction': 'long' if trade.size > 0 else 'short',
                 'open_datetime': str(trade.open_datetime()) if trade.open_datetime() else None,
             }
         elif trade.isclosed:
             open_info = self.open_trades.pop(trade.ref, {})
-            # Determine direction safely - check if history exists
-            if trade.history and len(trade.history) > 0:
+
+            # Get direction from open info, or infer from history
+            direction = open_info.get('direction', 'long')
+            if not open_info and trade.history and len(trade.history) > 0:
                 direction = 'long' if trade.history[0].event.size > 0 else 'short'
-            else:
-                # Fallback: infer from trade size (positive = was long, negative = was short)
-                direction = 'long' if trade.size >= 0 else 'short'
 
             open_datetime = open_info.get('open_datetime')
             close_datetime = str(trade.close_datetime()) if trade.close_datetime() else None
+
+            # Get open price from stored info
             open_price = open_info.get('price', trade.price)
-            close_price = trade.price
+
+            # Get close price from trade history (last event is the closing trade)
+            close_price = open_price  # fallback
+            if trade.history and len(trade.history) > 1:
+                # The last history entry is the closing event
+                close_price = trade.history[-1].event.price
+            elif hasattr(self.strategy, 'data') and len(self.strategy.data) > 0:
+                # Fallback: use current bar's close price
+                close_price = self.strategy.data.close[0]
+
+            # Get size from open info (trade.size after close might be 0 or residual)
+            size = open_info.get('size', abs(trade.size)) if open_info.get('size') else abs(trade.size)
+            trade_value = open_info.get('value', abs(size * open_price))
 
             self.trades.append({
                 'ref': trade.ref,
                 'data': trade.data._name,
                 'direction': direction,
-                'size': abs(trade.size),
+                'size': size,
                 # Original fields (backward compatibility)
                 'open_price': open_price,
                 'close_price': close_price,
@@ -246,7 +262,7 @@ class TradeAnalyzer(bt.Analyzer):
                 'exit_date': close_datetime.split(' ')[0] if close_datetime else None,
                 # PnL fields
                 'pnl': trade.pnl,
-                'pnl_percent': (trade.pnl / open_info.get('value', 1)) if open_info.get('value') else 0,
+                'pnl_percent': (trade.pnl / trade_value) if trade_value else 0,
                 'commission': trade.commission,
                 'net_pnl': trade.pnlcomm,
                 'bars_held': trade.barclose - trade.baropen,

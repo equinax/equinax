@@ -377,7 +377,7 @@ async def execute_single_backtest(
         stake_value=95.0,
         start_date=job.start_date,
         end_date=job.end_date,
-        adjust_type='forward',
+        adjust_type='backward',  # Use backward adjustment for backtesting (includes dividend returns)
     )
 
     # Run backtest in thread pool (backtrader is synchronous)

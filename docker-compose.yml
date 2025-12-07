@@ -48,6 +48,7 @@ services:
       - ./backend/app:/app/app:cached
       - ./backend/workers:/app/workers:cached
       - ./backend/alembic:/app/alembic:cached
+      - ./backend/alembic.ini:/app/alembic.ini:cached
       - ./backend/scripts:/app/scripts:cached
       - ./backend/examples:/app/examples:cached
       - ./backend/cmd.py:/app/cmd.py:cached
