@@ -3,7 +3,8 @@ import { useParams, useNavigate } from 'react-router-dom'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
-import { formatPercent } from '@/lib/utils'
+import { ScrollArea } from '@/components/ui/scroll-area'
+import { formatPercent, cn } from '@/lib/utils'
 import {
   ArrowLeft,
   Loader2,
@@ -14,6 +15,7 @@ import {
   ExternalLink,
   List,
   GitCompare,
+  Terminal,
 } from 'lucide-react'
 import {
   useGetBacktestApiV1BacktestsJobIdGet,
@@ -21,6 +23,7 @@ import {
 } from '@/api/generated/backtests/backtests'
 import { ResultDetailSheet } from '@/components/backtest/ResultDetailSheet'
 import { ResultComparisonView } from '@/components/backtest/ResultComparisonView'
+import { useBacktestSSE } from '@/hooks/useBacktestSSE'
 
 const statusConfig: Record<string, { label: string; color: string; icon: React.ReactNode }> = {
   queued: { label: '排队中', color: 'text-muted-foreground', icon: <Clock className="h-5 w-5" /> },
@@ -38,14 +41,24 @@ export default function ResultDetailPage() {
   // Fetch backtest job
   const { data: job, isLoading: isLoadingJob } = useGetBacktestApiV1BacktestsJobIdGet(
     jobId || '',
-    { query: { enabled: !!jobId, refetchInterval: (data) => {
-      // Auto-refresh if job is still running
+    { query: { enabled: !!jobId, refetchInterval: (query) => {
+      // Use longer polling interval as backup (SSE handles real-time updates)
+      const data = query.state.data
       if (data?.status === 'running' || data?.status === 'queued' || data?.status === 'pending') {
-        return 3000
+        return 10000  // 10 seconds as fallback
       }
       return false
     }}}
   )
+
+  // Determine if job is running
+  const isRunning = job?.status === 'running' || job?.status === 'queued' || job?.status === 'pending'
+
+  // SSE for real-time updates when job is running
+  const { logs, isConnected } = useBacktestSSE({
+    jobId: jobId || '',
+    enabled: isRunning,
+  })
 
   // Fetch results
   const { data: results, isLoading: isLoadingResults } = useGetBacktestResultsApiV1BacktestsJobIdResultsGet(
@@ -105,7 +118,7 @@ export default function ResultDetailPage() {
       </div>
 
       {/* Progress */}
-      {(job.status === 'running' || job.status === 'queued' || job.status === 'pending') && (
+      {isRunning && (
         <Card>
           <CardContent className="pt-6">
             <div className="space-y-2">
@@ -126,6 +139,51 @@ export default function ResultDetailPage() {
                 )}
               </p>
             </div>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Execution Logs */}
+      {isRunning && (
+        <Card>
+          <CardHeader className="py-3">
+            <CardTitle className="text-sm font-medium flex items-center gap-2">
+              <Terminal className="h-4 w-4" />
+              执行日志
+              {isConnected && (
+                <span className="w-2 h-2 bg-green-500 rounded-full animate-pulse" title="SSE 已连接" />
+              )}
+              {!isConnected && (
+                <span className="w-2 h-2 bg-yellow-500 rounded-full" title="正在连接..." />
+              )}
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="p-0">
+            <ScrollArea className="h-48">
+              <div className="font-mono text-xs p-3 space-y-0.5 bg-muted/30">
+                {logs.length === 0 ? (
+                  <div className="text-muted-foreground py-4 text-center">
+                    等待日志...
+                  </div>
+                ) : (
+                  logs.map((log, i) => (
+                    <div
+                      key={i}
+                      className={cn(
+                        'py-0.5',
+                        log.level === 'error' && 'text-red-500',
+                        log.level === 'warning' && 'text-yellow-500',
+                      )}
+                    >
+                      <span className="text-muted-foreground">
+                        [{log.timestamp.split('T')[1]?.slice(0, 8) || ''}]
+                      </span>{' '}
+                      {log.message}
+                    </div>
+                  ))
+                )}
+              </div>
+            </ScrollArea>
           </CardContent>
         </Card>
       )}

@@ -4,7 +4,7 @@ import asyncio
 import logging
 import traceback
 from datetime import datetime, date
-from typing import Dict, Any, Optional, Union
+from typing import Dict, Any, Optional, Union, List
 from uuid import UUID
 import time
 import pandas as pd
@@ -18,6 +18,7 @@ from app.db.models.backtest import BacktestJob, BacktestResult as BacktestResult
 from app.db.models.strategy import Strategy
 from app.db.models.stock import DailyKData, AdjustFactor
 from app.domain.engine import BacktraderEngine, BacktestConfig
+from app.core.redis_pubsub import publish_event
 
 # Setup logging
 logging.basicConfig(
@@ -41,6 +42,42 @@ worker_session_maker = async_sessionmaker(
 
 # Thread pool for running synchronous backtrader code
 _executor = ThreadPoolExecutor(max_workers=4)
+
+
+def calculate_monthly_returns(equity_curve: List[Dict[str, Any]]) -> Dict[str, float]:
+    """
+    Calculate monthly returns from equity curve data.
+
+    Args:
+        equity_curve: List of {date: "YYYY-MM-DD", value: float}
+
+    Returns:
+        Dict mapping "YYYY-MM" -> monthly return (as decimal, e.g., 0.05 for 5%)
+    """
+    if not equity_curve or len(equity_curve) < 2:
+        return {}
+
+    # Group by month, keep last value of each month
+    monthly_last = {}
+    for point in equity_curve:
+        date_str = point.get('date', '')
+        value = point.get('value', 0)
+        if date_str and value:
+            month_key = date_str[:7]  # "YYYY-MM"
+            monthly_last[month_key] = value
+
+    # Calculate monthly returns
+    returns = {}
+    months = sorted(monthly_last.keys())
+    for i, month in enumerate(months):
+        if i == 0:
+            continue  # First month has no previous month to compare
+        prev_value = monthly_last[months[i - 1]]
+        curr_value = monthly_last[month]
+        if prev_value > 0:
+            returns[month] = (curr_value - prev_value) / prev_value
+
+    return returns
 
 
 async def run_backtest_job(ctx: dict, job_id: str) -> Dict[str, Any]:
@@ -78,6 +115,13 @@ async def run_backtest_job(ctx: dict, job_id: str) -> Dict[str, Any]:
             for strategy_id in job.strategy_ids:
                 for stock_code in job.stock_codes:
                     logger.info(f"Running backtest: strategy={strategy_id}, stock={stock_code}")
+
+                    # Publish log event
+                    await publish_event("log", job_id, {
+                        "level": "info",
+                        "message": f"开始回测: {stock_code}",
+                    })
+
                     try:
                         # Run single backtest
                         backtest_result = await execute_single_backtest(
@@ -90,14 +134,50 @@ async def run_backtest_job(ctx: dict, job_id: str) -> Dict[str, Any]:
                         if backtest_result.status == BacktestStatus.COMPLETED:
                             successful += 1
                             logger.info(f"Backtest completed: {stock_code}, return={backtest_result.total_return}")
+
+                            # Publish result event
+                            await publish_event("result", job_id, {
+                                "result_id": str(backtest_result.id),
+                                "stock_code": stock_code,
+                                "status": "completed",
+                                "total_return": float(backtest_result.total_return) if backtest_result.total_return else None,
+                                "sharpe_ratio": float(backtest_result.sharpe_ratio) if backtest_result.sharpe_ratio else None,
+                            })
+
+                            # Publish log event for completion
+                            await publish_event("log", job_id, {
+                                "level": "info",
+                                "message": f"回测完成: {stock_code}, 收益率={float(backtest_result.total_return)*100:.2f}%" if backtest_result.total_return else f"回测完成: {stock_code}",
+                            })
                         else:
                             failed += 1
                             logger.warning(f"Backtest failed: {stock_code}, error={backtest_result.error_message}")
+
+                            # Publish result event for failure
+                            await publish_event("result", job_id, {
+                                "result_id": str(backtest_result.id),
+                                "stock_code": stock_code,
+                                "status": "failed",
+                                "error_message": backtest_result.error_message,
+                            })
+
+                            # Publish log event for failure
+                            await publish_event("log", job_id, {
+                                "level": "error",
+                                "message": f"回测失败: {stock_code}",
+                            })
 
                     except Exception as e:
                         failed += 1
                         error_msg = f"{str(e)}\n{traceback.format_exc()}"
                         logger.error(f"Backtest exception for {stock_code}:\n{error_msg}")
+
+                        # Publish log event for exception
+                        await publish_event("log", job_id, {
+                            "level": "error",
+                            "message": f"回测异常: {stock_code} - {str(e)[:100]}",
+                        })
+
                         # Create failed result
                         failed_result = BacktestResultModel(
                             job_id=job.id,
@@ -117,12 +197,35 @@ async def run_backtest_job(ctx: dict, job_id: str) -> Dict[str, Any]:
                     job.failed_backtests = failed
                     await db.commit()
 
+                    # Publish progress event
+                    await publish_event("progress", job_id, {
+                        "progress": float(job.progress),
+                        "completed": completed,
+                        "total": total,
+                        "successful": successful,
+                        "failed": failed,
+                    })
+
             # Mark job as completed
             job.status = BacktestStatus.COMPLETED
             job.completed_at = datetime.utcnow()
             await db.commit()
 
             logger.info(f"Job {job_id} completed: {successful} successful, {failed} failed")
+
+            # Publish job_complete event
+            await publish_event("job_complete", job_id, {
+                "status": "completed",
+                "successful": successful,
+                "failed": failed,
+                "total": total,
+            })
+
+            # Publish final log
+            await publish_event("log", job_id, {
+                "level": "info",
+                "message": f"任务完成: 成功 {successful}, 失败 {failed}",
+            })
 
             return {
                 "job_id": str(job_id),
@@ -139,6 +242,19 @@ async def run_backtest_job(ctx: dict, job_id: str) -> Dict[str, Any]:
             job.error_message = str(e)
             job.completed_at = datetime.utcnow()
             await db.commit()
+
+            # Publish job_complete event for failure
+            await publish_event("job_complete", job_id, {
+                "status": "failed",
+                "error_message": str(e)[:200],
+            })
+
+            # Publish error log
+            await publish_event("log", job_id, {
+                "level": "error",
+                "message": f"任务失败: {str(e)[:100]}",
+            })
+
             raise
 
 
@@ -279,6 +395,9 @@ async def execute_single_backtest(
 
     # Create result model
     if bt_result.success:
+        # Calculate monthly returns from equity curve
+        monthly_returns = calculate_monthly_returns(bt_result.equity_curve or [])
+
         result = BacktestResultModel(
             job_id=job.id,
             strategy_id=strategy_id,
@@ -297,6 +416,7 @@ async def execute_single_backtest(
             status=BacktestStatus.COMPLETED,
             equity_curve=bt_result.equity_curve or [],
             trades=bt_result.trades or [],
+            monthly_returns=monthly_returns,
         )
     else:
         result = BacktestResultModel(

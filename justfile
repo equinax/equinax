@@ -170,6 +170,16 @@ dev-format:
 dev-api-gen:
     cd frontend && pnpm run api:generate
 
+# Install/update frontend dependencies (syncs package.json to container)
+[group('dev')]
+fe-install *args='':
+    docker compose exec -e CI=true frontend pnpm install {{args}}
+
+# Add a frontend dependency
+[group('dev')]
+fe-add *packages:
+    docker compose exec -e CI=true frontend pnpm add {{packages}}
+
 # ==============================================================================
 # Test Commands
 # ==============================================================================

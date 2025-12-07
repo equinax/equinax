@@ -1,14 +1,15 @@
-import { useEffect, useRef, useState } from 'react'
-import { createChart, IChartApi, ISeriesApi, LineStyle, ColorType, AreaData, Time } from 'lightweight-charts'
+import { useEffect, useRef } from 'react'
+import { createChart, IChartApi, ISeriesApi, LineStyle, ColorType, AreaData, Time, SeriesMarker } from 'lightweight-charts'
 import { useTheme } from '@/components/theme-provider'
-import type { EquityCurvePoint } from '@/types/backtest'
+import type { EquityCurvePoint, TradeRecord } from '@/types/backtest'
 
 interface EquityCurveChartProps {
   data: EquityCurvePoint[] | { [key: string]: unknown }[] | null | undefined
+  trades?: TradeRecord[] | null
   height?: number
 }
 
-export function EquityCurveChart({ data, height = 400 }: EquityCurveChartProps) {
+export function EquityCurveChart({ data, trades, height = 400 }: EquityCurveChartProps) {
   const chartContainerRef = useRef<HTMLDivElement>(null)
   const chartRef = useRef<IChartApi | null>(null)
   const seriesRef = useRef<ISeriesApi<'Area'> | null>(null)
@@ -110,6 +111,52 @@ export function EquityCurveChart({ data, height = 400 }: EquityCurveChartProps) 
       chartRef.current?.timeScale().fitContent()
     }
   }, [data])
+
+  // Update trade markers
+  useEffect(() => {
+    if (!seriesRef.current || !trades || !Array.isArray(trades) || trades.length === 0) {
+      // Clear markers if no trades
+      seriesRef.current?.setMarkers([])
+      return
+    }
+
+    const markers: SeriesMarker<Time>[] = trades.flatMap((trade) => {
+      // Support both frontend and backend field names
+      const isBuy = trade.type === 'LONG' || trade.type === 'long' || trade.direction === 'long'
+      const entryDate = trade.entry_date || trade.open_datetime?.split(' ')[0]
+      const exitDate = trade.exit_date || trade.close_datetime?.split(' ')[0]
+      const entryPrice = trade.entry_price ?? trade.open_price
+      const exitPrice = trade.exit_price ?? trade.close_price
+
+      const result: SeriesMarker<Time>[] = []
+
+      // Entry marker (buy)
+      if (entryDate) {
+        result.push({
+          time: entryDate as Time,
+          position: 'belowBar',
+          color: '#22c55e',  // green
+          shape: 'arrowUp',
+          text: `B @${entryPrice?.toFixed(2) ?? ''}`,
+        })
+      }
+
+      // Exit marker (sell)
+      if (exitDate) {
+        result.push({
+          time: exitDate as Time,
+          position: 'aboveBar',
+          color: '#ef4444',  // red
+          shape: 'arrowDown',
+          text: `S @${exitPrice?.toFixed(2) ?? ''}`,
+        })
+      }
+
+      return result
+    }).sort((a, b) => (a.time as string).localeCompare(b.time as string))
+
+    seriesRef.current.setMarkers(markers)
+  }, [trades])
 
   if (!data || !Array.isArray(data) || data.length === 0) {
     return (

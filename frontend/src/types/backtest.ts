@@ -11,14 +11,25 @@ export interface EquityCurvePoint {
 
 export interface TradeRecord {
   id?: string;
-  entry_date: string;
-  exit_date: string;
-  type: 'LONG' | 'SHORT' | 'long' | 'short';
-  entry_price: number;
-  exit_price: number;
+  // Frontend-compatible fields
+  entry_date?: string;
+  exit_date?: string;
+  type?: 'LONG' | 'SHORT' | 'long' | 'short';
+  entry_price?: number;
+  exit_price?: number;
+  // Backend original fields (for compatibility)
+  open_datetime?: string;
+  close_datetime?: string;
+  direction?: 'long' | 'short';
+  open_price?: number;
+  close_price?: number;
+  // Common fields
   size: number;
   pnl: number;
   pnl_percent: number;
+  net_pnl?: number;
+  commission?: number;
+  bars_held?: number;
   duration_days?: number;
   stock_code?: string;
 }

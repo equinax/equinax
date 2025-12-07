@@ -223,15 +223,28 @@ class TradeAnalyzer(bt.Analyzer):
                 # Fallback: infer from trade size (positive = was long, negative = was short)
                 direction = 'long' if trade.size >= 0 else 'short'
 
+            open_datetime = open_info.get('open_datetime')
+            close_datetime = str(trade.close_datetime()) if trade.close_datetime() else None
+            open_price = open_info.get('price', trade.price)
+            close_price = trade.price
+
             self.trades.append({
                 'ref': trade.ref,
                 'data': trade.data._name,
                 'direction': direction,
                 'size': abs(trade.size),
-                'open_price': open_info.get('price', trade.price),
-                'close_price': trade.price,
-                'open_datetime': open_info.get('open_datetime'),
-                'close_datetime': str(trade.close_datetime()) if trade.close_datetime() else None,
+                # Original fields (backward compatibility)
+                'open_price': open_price,
+                'close_price': close_price,
+                'open_datetime': open_datetime,
+                'close_datetime': close_datetime,
+                # Frontend-compatible fields
+                'type': direction.upper(),  # 'LONG' or 'SHORT'
+                'entry_price': open_price,
+                'exit_price': close_price,
+                'entry_date': open_datetime.split(' ')[0] if open_datetime else None,
+                'exit_date': close_datetime.split(' ')[0] if close_datetime else None,
+                # PnL fields
                 'pnl': trade.pnl,
                 'pnl_percent': (trade.pnl / open_info.get('value', 1)) if open_info.get('value') else 0,
                 'commission': trade.commission,

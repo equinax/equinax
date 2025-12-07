@@ -6,6 +6,7 @@ from uuid import UUID
 from decimal import Decimal
 
 from fastapi import APIRouter, Depends, HTTPException, status, Query
+from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 from sqlalchemy import select, func
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -13,6 +14,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.db.session import get_db
 from app.db.models.backtest import BacktestJob, BacktestResult, BacktestStatus
 from app.core.arq import get_arq_pool
+from app.core.redis_pubsub import subscribe_events
 
 router = APIRouter()
 
@@ -397,4 +399,44 @@ async def compare_strategies(
     return ComparisonResponse(
         strategies=strategies,
         rankings=rankings,
+    )
+
+
+@router.get("/{job_id}/events")
+async def stream_backtest_events(
+    job_id: UUID,
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    Stream real-time backtest events via Server-Sent Events (SSE).
+
+    Events include:
+    - progress: Job progress updates
+    - result: Individual backtest completions
+    - log: Execution logs
+    - job_complete: Job completion notification
+    """
+    # Verify job exists and belongs to user
+    result = await db.execute(
+        select(BacktestJob).where(
+            BacktestJob.id == job_id,
+            BacktestJob.user_id == MOCK_USER_ID,
+        )
+    )
+    job = result.scalar_one_or_none()
+
+    if not job:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Backtest job not found",
+        )
+
+    return StreamingResponse(
+        subscribe_events(str(job_id)),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "Connection": "keep-alive",
+            "X-Accel-Buffering": "no",  # Disable nginx buffering
+        }
     )

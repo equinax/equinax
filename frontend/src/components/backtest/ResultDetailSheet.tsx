@@ -181,6 +181,7 @@ export function ResultDetailSheet({ jobId, resultId, open, onOpenChange }: Resul
                 <TabsContent value="equity" className="mt-4">
                   <EquityCurveChart
                     data={data.equity_curve as EquityCurvePoint[] | undefined}
+                    trades={data.trades as TradeRecord[] | undefined}
                     height={350}
                   />
                 </TabsContent>

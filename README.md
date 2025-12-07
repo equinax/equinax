@@ -107,6 +107,8 @@ just
 | `just dev-lint` | 运行代码检查 |
 | `just dev-format` | 格式化代码 |
 | `just dev-api-gen` | 生成前端 API 客户端 |
+| `just fe-install` | 同步前端依赖到容器 |
+| `just fe-add <pkg>` | 添加前端依赖 |
 
 ### 测试命令
 
@@ -143,6 +145,33 @@ just seed-stocks-file /path/to/a_stock_2024.db
 ```bash
 just seed-stocks-clear
 just seed-stocks-file /path/to/new_data.db
+```
+
+## 前端开发
+
+前端代码在 Docker 容器中运行，但 `src/` 和 `public/` 目录已挂载，**代码修改会自动热更新**。
+
+### 依赖管理
+
+由于 `node_modules` 在容器内独立管理，添加/更新依赖需要通过 just 命令：
+
+```bash
+# 添加新依赖
+just fe-add @radix-ui/react-scroll-area
+
+# 添加开发依赖
+just fe-add -D @types/some-package
+
+# 本地编辑 package.json 后同步到容器
+just fe-install
+```
+
+### API 客户端生成
+
+后端 API 变更后，重新生成前端类型：
+
+```bash
+just dev-api-gen
 ```
 
 ## 项目结构
