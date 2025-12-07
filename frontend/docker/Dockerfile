@@ -15,8 +15,14 @@ RUN pnpm install --frozen-lockfile || pnpm install
 # Copy source code
 COPY . .
 
+# Copy and setup entrypoint
+COPY docker/entrypoint.sh /entrypoint.sh
+RUN chmod +x /entrypoint.sh
+
 # Expose port
 EXPOSE 3000
+
+ENTRYPOINT ["/entrypoint.sh"]
 
 # Development command (can be overridden)
 CMD ["pnpm", "dev", "--host", "0.0.0.0", "--port", "3000"]
