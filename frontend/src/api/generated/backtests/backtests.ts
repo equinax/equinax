@@ -1229,3 +1229,212 @@ export const useCompareStrategiesApiV1BacktestsJobIdCompareGet = <
 
   return query;
 };
+
+/**
+ * Stream real-time backtest events via Server-Sent Events (SSE).
+
+Events include:
+- progress: Job progress updates
+- result: Individual backtest completions
+- log: Execution logs
+- job_complete: Job completion notification
+ * @summary Stream Backtest Events
+ */
+export const streamBacktestEventsApiV1BacktestsJobIdEventsGet = (
+  jobId: string,
+  signal?: AbortSignal,
+) => {
+  return customInstance<unknown>({
+    url: `/api/v1/backtests/${jobId}/events`,
+    method: "GET",
+    signal,
+  });
+};
+
+export const getStreamBacktestEventsApiV1BacktestsJobIdEventsGetQueryKey = (
+  jobId: string,
+) => {
+  return [`/api/v1/backtests/${jobId}/events`] as const;
+};
+
+export const getStreamBacktestEventsApiV1BacktestsJobIdEventsGetInfiniteQueryOptions =
+  <
+    TData = InfiniteData<
+      Awaited<
+        ReturnType<typeof streamBacktestEventsApiV1BacktestsJobIdEventsGet>
+      >
+    >,
+    TError = HTTPValidationError,
+  >(
+    jobId: string,
+    options?: {
+      query?: Partial<
+        UseInfiniteQueryOptions<
+          Awaited<
+            ReturnType<typeof streamBacktestEventsApiV1BacktestsJobIdEventsGet>
+          >,
+          TError,
+          TData
+        >
+      >;
+    },
+  ) => {
+    const { query: queryOptions } = options ?? {};
+
+    const queryKey =
+      queryOptions?.queryKey ??
+      getStreamBacktestEventsApiV1BacktestsJobIdEventsGetQueryKey(jobId);
+
+    const queryFn: QueryFunction<
+      Awaited<
+        ReturnType<typeof streamBacktestEventsApiV1BacktestsJobIdEventsGet>
+      >
+    > = ({ signal }) =>
+      streamBacktestEventsApiV1BacktestsJobIdEventsGet(jobId, signal);
+
+    return {
+      queryKey,
+      queryFn,
+      enabled: !!jobId,
+      ...queryOptions,
+    } as UseInfiniteQueryOptions<
+      Awaited<
+        ReturnType<typeof streamBacktestEventsApiV1BacktestsJobIdEventsGet>
+      >,
+      TError,
+      TData
+    > & { queryKey: QueryKey };
+  };
+
+export type StreamBacktestEventsApiV1BacktestsJobIdEventsGetInfiniteQueryResult =
+  NonNullable<
+    Awaited<ReturnType<typeof streamBacktestEventsApiV1BacktestsJobIdEventsGet>>
+  >;
+export type StreamBacktestEventsApiV1BacktestsJobIdEventsGetInfiniteQueryError =
+  HTTPValidationError;
+
+/**
+ * @summary Stream Backtest Events
+ */
+export const useStreamBacktestEventsApiV1BacktestsJobIdEventsGetInfinite = <
+  TData = InfiniteData<
+    Awaited<ReturnType<typeof streamBacktestEventsApiV1BacktestsJobIdEventsGet>>
+  >,
+  TError = HTTPValidationError,
+>(
+  jobId: string,
+  options?: {
+    query?: Partial<
+      UseInfiniteQueryOptions<
+        Awaited<
+          ReturnType<typeof streamBacktestEventsApiV1BacktestsJobIdEventsGet>
+        >,
+        TError,
+        TData
+      >
+    >;
+  },
+): UseInfiniteQueryResult<TData, TError> & { queryKey: QueryKey } => {
+  const queryOptions =
+    getStreamBacktestEventsApiV1BacktestsJobIdEventsGetInfiniteQueryOptions(
+      jobId,
+      options,
+    );
+
+  const query = useInfiniteQuery(queryOptions) as UseInfiniteQueryResult<
+    TData,
+    TError
+  > & { queryKey: QueryKey };
+
+  query.queryKey = queryOptions.queryKey;
+
+  return query;
+};
+
+export const getStreamBacktestEventsApiV1BacktestsJobIdEventsGetQueryOptions = <
+  TData = Awaited<
+    ReturnType<typeof streamBacktestEventsApiV1BacktestsJobIdEventsGet>
+  >,
+  TError = HTTPValidationError,
+>(
+  jobId: string,
+  options?: {
+    query?: Partial<
+      UseQueryOptions<
+        Awaited<
+          ReturnType<typeof streamBacktestEventsApiV1BacktestsJobIdEventsGet>
+        >,
+        TError,
+        TData
+      >
+    >;
+  },
+) => {
+  const { query: queryOptions } = options ?? {};
+
+  const queryKey =
+    queryOptions?.queryKey ??
+    getStreamBacktestEventsApiV1BacktestsJobIdEventsGetQueryKey(jobId);
+
+  const queryFn: QueryFunction<
+    Awaited<ReturnType<typeof streamBacktestEventsApiV1BacktestsJobIdEventsGet>>
+  > = ({ signal }) =>
+    streamBacktestEventsApiV1BacktestsJobIdEventsGet(jobId, signal);
+
+  return {
+    queryKey,
+    queryFn,
+    enabled: !!jobId,
+    ...queryOptions,
+  } as UseQueryOptions<
+    Awaited<
+      ReturnType<typeof streamBacktestEventsApiV1BacktestsJobIdEventsGet>
+    >,
+    TError,
+    TData
+  > & { queryKey: QueryKey };
+};
+
+export type StreamBacktestEventsApiV1BacktestsJobIdEventsGetQueryResult =
+  NonNullable<
+    Awaited<ReturnType<typeof streamBacktestEventsApiV1BacktestsJobIdEventsGet>>
+  >;
+export type StreamBacktestEventsApiV1BacktestsJobIdEventsGetQueryError =
+  HTTPValidationError;
+
+/**
+ * @summary Stream Backtest Events
+ */
+export const useStreamBacktestEventsApiV1BacktestsJobIdEventsGet = <
+  TData = Awaited<
+    ReturnType<typeof streamBacktestEventsApiV1BacktestsJobIdEventsGet>
+  >,
+  TError = HTTPValidationError,
+>(
+  jobId: string,
+  options?: {
+    query?: Partial<
+      UseQueryOptions<
+        Awaited<
+          ReturnType<typeof streamBacktestEventsApiV1BacktestsJobIdEventsGet>
+        >,
+        TError,
+        TData
+      >
+    >;
+  },
+): UseQueryResult<TData, TError> & { queryKey: QueryKey } => {
+  const queryOptions =
+    getStreamBacktestEventsApiV1BacktestsJobIdEventsGetQueryOptions(
+      jobId,
+      options,
+    );
+
+  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
+    queryKey: QueryKey;
+  };
+
+  query.queryKey = queryOptions.queryKey;
+
+  return query;
+};

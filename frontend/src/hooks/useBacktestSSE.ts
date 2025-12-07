@@ -10,6 +10,7 @@
 
 import { useEffect, useRef, useState, useCallback } from 'react'
 import { useQueryClient } from '@tanstack/react-query'
+import { getStreamBacktestEventsApiV1BacktestsJobIdEventsGetQueryKey } from '@/api/generated/backtests/backtests'
 
 export interface LogEvent {
   type: 'log'
@@ -92,8 +93,10 @@ export function useBacktestSSE({
       return
     }
 
-    // Build the SSE endpoint URL (relative path, proxied by vite in dev)
-    const url = `/api/v1/backtests/${jobId}/events`
+    // Build SSE endpoint URL using same baseURL logic as axios in mutator.ts
+    const baseURL = import.meta.env.VITE_API_URL || ''
+    const [path] = getStreamBacktestEventsApiV1BacktestsJobIdEventsGetQueryKey(jobId)
+    const url = `${baseURL}${path}`
 
     const eventSource = new EventSource(url)
     eventSourceRef.current = eventSource
