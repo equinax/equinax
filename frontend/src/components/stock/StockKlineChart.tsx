@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import { createChart, ColorType, IChartApi, CandlestickData, Time } from 'lightweight-charts'
 import { Button } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
+import { getMarketColors } from '@/lib/market-colors'
 
 interface KLineDataPoint {
   date: string
@@ -32,8 +33,6 @@ const timeRanges: { value: TimeRange; label: string; days: number }[] = [
 const CHART_COLORS = {
   text: '#71717a',
   border: '#27272a',
-  profit: '#22c55e',
-  loss: '#ef4444',
 }
 
 export function StockKlineChart({ data, className }: StockKlineChartProps) {
@@ -69,7 +68,10 @@ export function StockKlineChart({ data, className }: StockKlineChartProps) {
     }
 
     // Use fixed colors since lightweight-charts doesn't support CSS variables
-    const { text: textColor, border: borderColor, profit: profitColor, loss: lossColor } = CHART_COLORS
+    const { text: textColor, border: borderColor } = CHART_COLORS
+    const marketColors = getMarketColors()
+    const profitColor = marketColors.profit
+    const lossColor = marketColors.loss
 
     const chart = createChart(chartContainerRef.current, {
       layout: {

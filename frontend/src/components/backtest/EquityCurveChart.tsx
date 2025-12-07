@@ -1,6 +1,7 @@
 import { useEffect, useRef } from 'react'
 import { createChart, IChartApi, ISeriesApi, LineStyle, ColorType, AreaData, Time, SeriesMarker } from 'lightweight-charts'
 import { useTheme } from '@/components/theme-provider'
+import { getMarketColors } from '@/lib/market-colors'
 import type { EquityCurvePoint, TradeRecord } from '@/types/backtest'
 
 interface EquityCurveChartProps {
@@ -120,6 +121,8 @@ export function EquityCurveChart({ data, trades, height = 400 }: EquityCurveChar
       return
     }
 
+    const colors = getMarketColors()
+
     const markers: SeriesMarker<Time>[] = trades.flatMap((trade) => {
       // Support both frontend and backend field names
       const isBuy = trade.type === 'LONG' || trade.type === 'long' || trade.direction === 'long'
@@ -130,23 +133,23 @@ export function EquityCurveChart({ data, trades, height = 400 }: EquityCurveChar
 
       const result: SeriesMarker<Time>[] = []
 
-      // Entry marker (buy)
+      // Entry marker (buy) - use profit color (red for CN, green for US)
       if (entryDate) {
         result.push({
           time: entryDate as Time,
           position: 'belowBar',
-          color: '#22c55e',  // green
+          color: colors.profit,
           shape: 'arrowUp',
           text: `B @${entryPrice?.toFixed(2) ?? ''}`,
         })
       }
 
-      // Exit marker (sell)
+      // Exit marker (sell) - use loss color (green for CN, red for US)
       if (exitDate) {
         result.push({
           time: exitDate as Time,
           position: 'aboveBar',
-          color: '#ef4444',  // red
+          color: colors.loss,
           shape: 'arrowDown',
           text: `S @${exitPrice?.toFixed(2) ?? ''}`,
         })

@@ -26,9 +26,9 @@
     --ring: 222.2 84% 4.9%;
     --radius: 0.5rem;
 
-    /* Trading colors */
-    --profit: 142 76% 36%;
-    --loss: 0 84% 60%;
+    /* Trading colors - China A-shares: Red up, Green down */
+    --profit: 0 84% 60%;
+    --loss: 142 76% 36%;
   }
 
   .dark {
@@ -53,9 +53,9 @@
     --input: 216 34% 17%;
     --ring: 224 64% 33%;
 
-    /* Trading colors - brighter for dark mode */
-    --profit: 142 69% 58%;
-    --loss: 0 91% 71%;
+    /* Trading colors - brighter for dark mode - China A-shares: Red up, Green down */
+    --profit: 0 91% 71%;
+    --loss: 142 69% 58%;
   }
 }
 

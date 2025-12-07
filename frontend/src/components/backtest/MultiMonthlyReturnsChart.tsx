@@ -1,18 +1,8 @@
 import { useMemo } from 'react'
 import ReactECharts from 'echarts-for-react'
 import { useTheme } from '@/components/theme-provider'
+import { CHART_PALETTE } from '@/lib/market-colors'
 import type { MonthlyReturns } from '@/types/backtest'
-
-const STOCK_COLORS = [
-  '#3b82f6',  // 蓝色
-  '#22c55e',  // 绿色
-  '#f97316',  // 橙色
-  '#a855f7',  // 紫色
-  '#ef4444',  // 红色
-  '#06b6d4',  // 青色
-  '#78716c',  // 棕色
-  '#64748b',  // 灰蓝色
-]
 
 interface MultiMonthlyReturnsChartProps {
   data: Record<string, MonthlyReturns> | null | undefined
@@ -51,7 +41,7 @@ export function MultiMonthlyReturnsChart({ data, height = 350 }: MultiMonthlyRet
           return typeof value === 'number' ? value : 0
         }),
         itemStyle: {
-          color: STOCK_COLORS[index % STOCK_COLORS.length],
+          color: CHART_PALETTE[index % CHART_PALETTE.length],
         },
       }
     })

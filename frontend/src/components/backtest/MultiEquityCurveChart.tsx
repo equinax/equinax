@@ -1,18 +1,8 @@
 import { useEffect, useRef } from 'react'
 import { createChart, IChartApi, ISeriesApi, LineStyle, ColorType, LineData, Time } from 'lightweight-charts'
 import { useTheme } from '@/components/theme-provider'
+import { CHART_PALETTE } from '@/lib/market-colors'
 import type { EquityCurvePoint } from '@/types/backtest'
-
-const STOCK_COLORS = [
-  '#3b82f6',  // 蓝色
-  '#22c55e',  // 绿色
-  '#f97316',  // 橙色
-  '#a855f7',  // 紫色
-  '#ef4444',  // 红色
-  '#06b6d4',  // 青色
-  '#78716c',  // 棕色
-  '#64748b',  // 灰蓝色
-]
 
 interface MultiEquityCurveChartProps {
   data: Record<string, EquityCurvePoint[]> | null | undefined
@@ -108,7 +98,7 @@ export function MultiEquityCurveChart({ data, height = 400 }: MultiEquityCurveCh
     Object.entries(data).forEach(([stockCode, points], index) => {
       if (!Array.isArray(points)) return
 
-      const color = STOCK_COLORS[index % STOCK_COLORS.length]
+      const color = CHART_PALETTE[index % CHART_PALETTE.length]
 
       let series = existingSeries.get(stockCode)
       if (!series) {
@@ -167,7 +157,7 @@ export function MultiEquityCurveChart({ data, height = 400 }: MultiEquityCurveCh
           <div key={stockCode} className="flex items-center gap-2">
             <div
               className="w-3 h-3 rounded-full"
-              style={{ backgroundColor: STOCK_COLORS[index % STOCK_COLORS.length] }}
+              style={{ backgroundColor: CHART_PALETTE[index % CHART_PALETTE.length] }}
             />
             <span className="text-sm text-muted-foreground">{stockCode}</span>
           </div>

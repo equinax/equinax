@@ -3,6 +3,7 @@ import ReactECharts from 'echarts-for-react'
 import { useTheme } from '@/components/theme-provider'
 import { Button } from '@/components/ui/button'
 import { BarChart3, Grid3X3 } from 'lucide-react'
+import { getMarketColors } from '@/lib/market-colors'
 import type { MonthlyReturns } from '@/types/backtest'
 
 interface MonthlyReturnsChartProps {
@@ -39,7 +40,10 @@ export function MonthlyReturnsChart({ data, height = 300 }: MonthlyReturnsChartP
     return Array.from(yearSet).sort()
   }, [normalizedData])
 
-  const heatmapOption = useMemo(() => ({
+  const heatmapOption = useMemo(() => {
+    const colors = getMarketColors()
+
+    return {
     tooltip: {
       position: 'top',
       formatter: (params: { data: [number, number, number] }) => {
@@ -78,7 +82,7 @@ export function MonthlyReturnsChart({ data, height = 300 }: MonthlyReturnsChartP
       top: 0,
       textStyle: { color: isDark ? '#a1a1aa' : '#71717a' },
       inRange: {
-        color: ['#ef4444', '#fca5a5', '#ffffff', '#86efac', '#22c55e'],
+        color: colors.heatmapGradient,
       },
       formatter: (value: number) => `${(value * 100).toFixed(0)}%`,
     },
@@ -105,9 +109,10 @@ export function MonthlyReturnsChart({ data, height = 300 }: MonthlyReturnsChartP
         itemStyle: { shadowBlur: 10, shadowColor: 'rgba(0, 0, 0, 0.5)' },
       },
     }],
-  }), [normalizedData, years, isDark])
+  }}, [normalizedData, years, isDark])
 
   const barOption = useMemo(() => {
+    const colors = getMarketColors()
     const sortedEntries = Object.entries(normalizedData).sort(([a], [b]) => a.localeCompare(b))
 
     return {
@@ -148,7 +153,7 @@ export function MonthlyReturnsChart({ data, height = 300 }: MonthlyReturnsChartP
         data: sortedEntries.map(([_, value]) => ({
           value,
           itemStyle: {
-            color: value >= 0 ? '#22c55e' : '#ef4444',
+            color: value >= 0 ? colors.profit : colors.loss,
           },
         })),
       }],
