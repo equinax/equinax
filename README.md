@@ -237,4 +237,4 @@ python cmd.py seed all          # 加载所有种子数据
 
 ## License
 
-Private
+MIT
