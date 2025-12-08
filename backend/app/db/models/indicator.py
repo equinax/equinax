@@ -4,18 +4,22 @@ from datetime import date, datetime
 from decimal import Decimal
 from typing import Optional
 
-from sqlalchemy import String, Date, DateTime, Numeric, BigInteger, Index, func
+from sqlalchemy import String, Date, DateTime, Numeric, BigInteger, Index, func, PrimaryKeyConstraint
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.db.base import Base
 
 
 class TechnicalIndicator(Base):
-    """Pre-computed technical indicators."""
+    """Pre-computed technical indicators.
+
+    This table is a TimescaleDB hypertable partitioned by date.
+    Primary key is (code, date) for optimal time-series queries.
+    """
 
     __tablename__ = "technical_indicators"
 
-    id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
+    # Composite primary key for TimescaleDB hypertable
     code: Mapped[str] = mapped_column(String(20), nullable=False)
     date: Mapped[date] = mapped_column(Date, nullable=False)
 
@@ -65,7 +69,9 @@ class TechnicalIndicator(Base):
     )
 
     __table_args__ = (
-        Index("idx_tech_ind_code_date", "code", "date", unique=True),
+        PrimaryKeyConstraint("code", "date"),
+        Index("idx_tech_ind_date", "date"),
+        Index("idx_tech_ind_code", "code"),
     )
 
     def __repr__(self) -> str:
@@ -73,13 +79,18 @@ class TechnicalIndicator(Base):
 
 
 class FundamentalIndicator(Base):
-    """Quarterly/annual fundamental indicators."""
+    """Quarterly/annual fundamental indicators.
+
+    This table is a TimescaleDB hypertable partitioned by report_date.
+    Primary key is (code, report_date) for optimal time-series queries.
+    """
 
     __tablename__ = "fundamental_indicators"
 
-    id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
+    # Composite primary key for TimescaleDB hypertable
     code: Mapped[str] = mapped_column(String(20), nullable=False)
     report_date: Mapped[date] = mapped_column(Date, nullable=False)
+
     report_type: Mapped[Optional[str]] = mapped_column(String(10), nullable=True)  # Q1, Q2, Q3, Q4, annual
 
     # Valuation
@@ -121,8 +132,9 @@ class FundamentalIndicator(Base):
     )
 
     __table_args__ = (
+        PrimaryKeyConstraint("code", "report_date"),
         Index("idx_fund_ind_code", "code"),
-        Index("idx_fund_ind_code_date", "code", "report_date", unique=True),
+        Index("idx_fund_ind_date", "report_date"),
     )
 
     def __repr__(self) -> str:

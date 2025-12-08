@@ -184,3 +184,56 @@ def status():
     except Exception as e:
         console.print(f"[red]Error: {e}[/red]")
         raise typer.Exit(1)
+
+
+# Continuous aggregates to refresh
+CONTINUOUS_AGGREGATES = [
+    "daily_k_weekly",
+    "daily_k_monthly",
+    "market_daily_stats",
+    "tech_indicators_weekly",
+]
+
+
+@app.command("refresh-caggs")
+def refresh_caggs():
+    """Refresh all TimescaleDB continuous aggregates."""
+    console.print("\n[bold blue]Refreshing continuous aggregates...[/bold blue]\n")
+
+    try:
+        result = asyncio.run(_refresh_continuous_aggregates())
+        if result == 0:
+            console.print("\n[green]All continuous aggregates refreshed![/green]")
+        else:
+            raise typer.Exit(result)
+    except typer.Exit:
+        raise
+    except Exception as e:
+        console.print(f"\n[red]Error: {e}[/red]")
+        raise typer.Exit(1)
+
+
+async def _refresh_continuous_aggregates() -> int:
+    """Refresh all continuous aggregates."""
+    import asyncpg
+
+    postgres_url = get_database_url()
+    try:
+        conn = await asyncpg.connect(postgres_url)
+    except Exception as e:
+        console.print(f"[red]Failed to connect to PostgreSQL: {e}[/red]")
+        return 1
+
+    try:
+        for view_name in CONTINUOUS_AGGREGATES:
+            console.print(f"  Refreshing [cyan]{view_name}[/cyan]...")
+            try:
+                await conn.execute(
+                    f"CALL refresh_continuous_aggregate('{view_name}', NULL, NULL)"
+                )
+                console.print(f"  [green]✓[/green] {view_name}")
+            except Exception as e:
+                console.print(f"  [yellow]⚠[/yellow] {view_name}: {e}")
+        return 0
+    finally:
+        await conn.close()

@@ -80,6 +80,11 @@ db-reset:
 db-status:
     docker compose exec api python cmd.py db status
 
+# Refresh TimescaleDB continuous aggregates
+[group('db')]
+db-refresh-caggs:
+    docker compose exec api python cmd.py db refresh-caggs
+
 # Open database console (psql)
 [group('db')]
 db-console:

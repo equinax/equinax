@@ -351,6 +351,11 @@ async def _load_stock_data(source_path: Path, clear: bool) -> int:
         table.add_row("[bold]Total time[/bold]", f"[bold]{elapsed}[/bold]")
         console.print(table)
 
+        # Refresh continuous aggregates after data load
+        if kdata_count > 0:
+            console.print("\n[bold]Refreshing continuous aggregates...[/bold]")
+            await _refresh_continuous_aggregates(pg_conn)
+
         return 0
 
     finally:
@@ -388,6 +393,28 @@ def _safe_int(val) -> Optional[int]:
         return int(float(val))
     except:
         return None
+
+
+# Continuous aggregates to refresh after data import
+CONTINUOUS_AGGREGATES = [
+    "daily_k_weekly",
+    "daily_k_monthly",
+    "market_daily_stats",
+    "tech_indicators_weekly",
+]
+
+
+async def _refresh_continuous_aggregates(pg_conn) -> None:
+    """Refresh all TimescaleDB continuous aggregates."""
+    for view_name in CONTINUOUS_AGGREGATES:
+        console.print(f"  Refreshing [cyan]{view_name}[/cyan]...")
+        try:
+            await pg_conn.execute(
+                f"CALL refresh_continuous_aggregate('{view_name}', NULL, NULL)"
+            )
+            console.print(f"  [green]✓[/green] {view_name}")
+        except Exception as e:
+            console.print(f"  [yellow]⚠[/yellow] {view_name}: {e}")
 
 
 async def _migrate_stock_basic(sqlite_conn: sqlite3.Connection, pg_conn) -> int:

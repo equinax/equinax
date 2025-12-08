@@ -4,7 +4,7 @@ from datetime import date, datetime
 from decimal import Decimal
 from typing import Optional
 
-from sqlalchemy import String, Integer, Date, DateTime, Numeric, BigInteger, Index, func
+from sqlalchemy import String, Integer, Date, DateTime, Numeric, BigInteger, Index, func, PrimaryKeyConstraint
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.db.base import Base
@@ -45,13 +45,17 @@ class StockBasic(Base):
 
 
 class DailyKData(Base):
-    """Daily K-line (OHLCV) data."""
+    """Daily K-line (OHLCV) data.
+
+    This table is a TimescaleDB hypertable partitioned by date.
+    Primary key is (code, date) for optimal time-series queries.
+    """
 
     __tablename__ = "daily_k_data"
 
-    id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
+    # Composite primary key for TimescaleDB hypertable
+    code: Mapped[str] = mapped_column(String(20), nullable=False)
     date: Mapped[date] = mapped_column(Date, nullable=False)
-    code: Mapped[str] = mapped_column(String(20), nullable=False, index=True)
 
     # OHLCV data
     open: Mapped[Optional[Decimal]] = mapped_column(Numeric(12, 4), nullable=True)
@@ -80,8 +84,9 @@ class DailyKData(Base):
     )
 
     __table_args__ = (
+        PrimaryKeyConstraint("code", "date"),
         Index("idx_daily_k_date", "date"),
-        Index("idx_daily_k_code_date", "code", "date", unique=True),
+        Index("idx_daily_k_code", "code"),
     )
 
     def __repr__(self) -> str:
@@ -89,13 +94,18 @@ class DailyKData(Base):
 
 
 class AdjustFactor(Base):
-    """Stock adjustment factors for splits and dividends."""
+    """Stock adjustment factors for splits and dividends.
+
+    This table is a TimescaleDB hypertable partitioned by divid_operate_date.
+    Primary key is (code, divid_operate_date) for optimal time-series queries.
+    """
 
     __tablename__ = "adjust_factor"
 
-    id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
-    code: Mapped[str] = mapped_column(String(20), nullable=False, index=True)
-    divid_operate_date: Mapped[Optional[date]] = mapped_column(Date, nullable=True)
+    # Composite primary key for TimescaleDB hypertable
+    code: Mapped[str] = mapped_column(String(20), nullable=False)
+    divid_operate_date: Mapped[date] = mapped_column(Date, nullable=False)
+
     fore_adjust_factor: Mapped[Optional[Decimal]] = mapped_column(Numeric(12, 6), nullable=True)
     back_adjust_factor: Mapped[Optional[Decimal]] = mapped_column(Numeric(12, 6), nullable=True)
     adjust_factor: Mapped[Optional[Decimal]] = mapped_column(Numeric(12, 6), nullable=True)
@@ -106,7 +116,9 @@ class AdjustFactor(Base):
     )
 
     __table_args__ = (
-        Index("idx_adjust_factor_code_date", "code", "divid_operate_date", unique=True),
+        PrimaryKeyConstraint("code", "divid_operate_date"),
+        Index("idx_adjust_factor_code", "code"),
+        Index("idx_adjust_factor_date", "divid_operate_date"),
     )
 
     def __repr__(self) -> str:
