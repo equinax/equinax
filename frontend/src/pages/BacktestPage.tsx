@@ -3,10 +3,10 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { useToast } from '@/components/ui/use-toast'
-import { PlayCircle, Loader2, X } from 'lucide-react'
+import { PlayCircle, Loader2, X, ListFilter, Plus, Trash2 } from 'lucide-react'
 import { useListStrategiesApiV1StrategiesGet } from '@/api/generated/strategies/strategies'
-import { useSearchStocksApiV1StocksSearchGet } from '@/api/generated/stocks/stocks'
-import { useListBacktestsApiV1BacktestsGet, useCreateBacktestApiV1BacktestsPost } from '@/api/generated/backtests/backtests'
+import { useListStocksApiV1StocksGet, useSearchStocksApiV1StocksSearchGet } from '@/api/generated/stocks/stocks'
+import { useCreateBacktestApiV1BacktestsPost } from '@/api/generated/backtests/backtests'
 import { useQueryClient } from '@tanstack/react-query'
 import { useNavigate } from 'react-router-dom'
 
@@ -26,22 +26,34 @@ export default function BacktestPage() {
   const [commissionRate, setCommissionRate] = useState('0.0003')
   const [slippage, setSlippage] = useState('0.001')
 
+  // Stock pool filter state
+  const [stockPoolExchange, setStockPoolExchange] = useState<string>('')
+  const [stockPoolSearch, setStockPoolSearch] = useState('')
+  const [stockPoolPage, setStockPoolPage] = useState(1)
+  const [showStockPool, setShowStockPool] = useState(false)
+
   // Fetch strategies
   const { data: strategiesData } = useListStrategiesApiV1StrategiesGet({
     page_size: 100,
     is_active: true,
   })
 
-  // Search stocks
+  // Search stocks for input
   const { data: stockSearchData } = useSearchStocksApiV1StocksSearchGet(
     { q: stockSearch },
     { query: { enabled: stockSearch.length >= 2 } }
   )
 
-  // Fetch running/pending backtests for queue
-  const { data: queueData } = useListBacktestsApiV1BacktestsGet({
-    page_size: 10,
-  })
+  // List stocks for stock pool
+  const { data: stockPoolData, isLoading: isLoadingStockPool } = useListStocksApiV1StocksGet(
+    {
+      page: stockPoolPage,
+      page_size: 50,
+      exchange: stockPoolExchange || undefined,
+      search: stockPoolSearch || undefined,
+    },
+    { query: { enabled: showStockPool } }
+  )
 
   // Create backtest mutation
   const createMutation = useCreateBacktestApiV1BacktestsPost({
@@ -65,19 +77,14 @@ export default function BacktestPage() {
   })
 
   const strategies = strategiesData?.items || []
-  // API returns array directly, not paginated object
   const searchResults = stockSearchData || []
-  const queuedJobs = queueData?.items?.filter(
-    (j) => j.status === 'PENDING' || j.status === 'RUNNING' || j.status === 'QUEUED'
-  ) || []
+  const stockPoolItems = stockPoolData?.items || []
+  const stockPoolTotal = stockPoolData?.total || 0
+  const stockPoolPages = stockPoolData?.pages || 1
 
   const handleAddStock = (code: string, name: string) => {
     if (!selectedStocks.find((s) => s.code === code)) {
       setSelectedStocks([...selectedStocks, { code, name }])
-      toast({
-        title: '已添加股票',
-        description: `${code} ${name}`,
-      })
     }
     setStockSearch('')
     setShowSearchResults(false)
@@ -85,6 +92,32 @@ export default function BacktestPage() {
 
   const handleRemoveStock = (code: string) => {
     setSelectedStocks(selectedStocks.filter((s) => s.code !== code))
+  }
+
+  const handleAddAllFromPool = () => {
+    const newStocks = stockPoolItems
+      .filter((stock) => !selectedStocks.find((s) => s.code === stock.code))
+      .map((stock) => ({ code: stock.code, name: stock.code_name || stock.code }))
+
+    if (newStocks.length > 0) {
+      setSelectedStocks([...selectedStocks, ...newStocks])
+      toast({
+        title: '批量添加成功',
+        description: `已添加 ${newStocks.length} 只股票`,
+      })
+    } else {
+      toast({
+        title: '无新股票可添加',
+        description: '当前页所有股票已在列表中',
+      })
+    }
+  }
+
+  const handleClearAllStocks = () => {
+    setSelectedStocks([])
+    toast({
+      title: '已清空股票池',
+    })
   }
 
   const handleSubmit = () => {
@@ -173,59 +206,6 @@ export default function BacktestPage() {
               )}
             </div>
 
-            {/* Stock selection */}
-            <div className="space-y-2">
-              <label className="text-sm font-medium">股票池</label>
-              <div className="relative">
-                <Input
-                  placeholder="搜索股票代码或名称..."
-                  value={stockSearch}
-                  onChange={(e) => {
-                    setStockSearch(e.target.value)
-                    setShowSearchResults(true)
-                  }}
-                  onFocus={() => setShowSearchResults(true)}
-                  onBlur={() => {
-                    // Delay hiding to allow click events on results
-                    setTimeout(() => setShowSearchResults(false), 200)
-                  }}
-                />
-                {showSearchResults && stockSearch.length >= 2 && searchResults.length > 0 && (
-                  <div className="absolute z-10 mt-1 w-full rounded-md border bg-background shadow-lg max-h-60 overflow-auto">
-                    {searchResults.slice(0, 10).map((stock) => (
-                      <button
-                        key={stock.code}
-                        type="button"
-                        className="w-full px-3 py-2 text-left text-sm hover:bg-accent"
-                        onMouseDown={(e) => {
-                          e.preventDefault()
-                          handleAddStock(stock.code, stock.code_name || stock.code)
-                        }}
-                      >
-                        {stock.code} - {stock.code_name}
-                      </button>
-                    ))}
-                  </div>
-                )}
-              </div>
-              <div className="flex flex-wrap gap-2">
-                {selectedStocks.map((stock) => (
-                  <span
-                    key={stock.code}
-                    className="flex items-center gap-1 rounded-full bg-primary/10 px-3 py-1 text-sm"
-                  >
-                    {stock.code} {stock.name}
-                    <button onClick={() => handleRemoveStock(stock.code)}>
-                      <X className="h-3 w-3" />
-                    </button>
-                  </span>
-                ))}
-                {selectedStocks.length === 0 && (
-                  <span className="text-sm text-muted-foreground">搜索并添加股票</span>
-                )}
-              </div>
-            </div>
-
             {/* Date range */}
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-2">
@@ -294,46 +274,213 @@ export default function BacktestPage() {
           </CardContent>
         </Card>
 
-        {/* Queue & Progress */}
+        {/* Stock Pool */}
         <Card>
-          <CardHeader>
-            <CardTitle>回测队列</CardTitle>
+          <CardHeader className="pb-3">
+            <div className="flex items-center justify-between">
+              <CardTitle>股票池</CardTitle>
+              <div className="flex items-center gap-2">
+                <span className="text-sm text-muted-foreground">
+                  已选 {selectedStocks.length} 只
+                </span>
+                {selectedStocks.length > 0 && (
+                  <Button variant="ghost" size="sm" onClick={handleClearAllStocks}>
+                    <Trash2 className="h-4 w-4" />
+                  </Button>
+                )}
+              </div>
+            </div>
           </CardHeader>
-          <CardContent>
-            <div className="space-y-4">
-              {queuedJobs.length > 0 ? (
-                queuedJobs.map((job) => (
-                  <div key={job.id} className="rounded-lg border p-4">
-                    <div className="flex items-center justify-between">
-                      <div className="flex items-center gap-2">
-                        {job.status === 'RUNNING' && (
-                          <Loader2 className="h-4 w-4 animate-spin text-primary" />
-                        )}
-                        <span className="font-medium">
-                          {job.name || `任务 ${job.id.slice(0, 8)}`}
-                        </span>
-                      </div>
-                      <span className="text-sm text-muted-foreground">
-                        {Number(job.progress).toFixed(0)}%
-                      </span>
-                    </div>
-                    <div className="mt-2 h-2 overflow-hidden rounded-full bg-secondary">
-                      <div
-                        className="h-full bg-primary transition-all"
-                        style={{ width: `${job.progress}%` }}
-                      />
-                    </div>
-                    <p className="mt-2 text-sm text-muted-foreground">
-                      {job.status} - {job.successful_backtests}/{job.total_backtests} 完成
-                    </p>
-                  </div>
-                ))
-              ) : (
-                <div className="rounded-lg border border-dashed p-4 text-center text-muted-foreground">
-                  <p>暂无运行中的任务</p>
+          <CardContent className="space-y-4">
+            {/* Search input */}
+            <div className="relative">
+              <Input
+                placeholder="搜索股票代码或名称..."
+                value={stockSearch}
+                onChange={(e) => {
+                  setStockSearch(e.target.value)
+                  setShowSearchResults(true)
+                }}
+                onFocus={() => setShowSearchResults(true)}
+                onBlur={() => {
+                  setTimeout(() => setShowSearchResults(false), 200)
+                }}
+              />
+              {showSearchResults && stockSearch.length >= 2 && searchResults.length > 0 && (
+                <div className="absolute z-10 mt-1 w-full rounded-md border bg-background shadow-lg max-h-60 overflow-auto">
+                  {searchResults.slice(0, 10).map((stock) => (
+                    <button
+                      key={stock.code}
+                      type="button"
+                      className="w-full px-3 py-2 text-left text-sm hover:bg-accent flex justify-between items-center"
+                      onMouseDown={(e) => {
+                        e.preventDefault()
+                        handleAddStock(stock.code, stock.code_name || stock.code)
+                      }}
+                    >
+                      <span>{stock.code} - {stock.code_name}</span>
+                      <Plus className="h-4 w-4 text-muted-foreground" />
+                    </button>
+                  ))}
                 </div>
               )}
             </div>
+
+            {/* Selected stocks */}
+            <div className="flex flex-wrap gap-2 min-h-[60px] p-2 border rounded-md bg-muted/30">
+              {selectedStocks.length > 0 ? (
+                selectedStocks.map((stock) => (
+                  <span
+                    key={stock.code}
+                    className="flex items-center gap-1 rounded-full bg-primary/10 px-2 py-0.5 text-xs"
+                  >
+                    {stock.code}
+                    <button onClick={() => handleRemoveStock(stock.code)}>
+                      <X className="h-3 w-3" />
+                    </button>
+                  </span>
+                ))
+              ) : (
+                <span className="text-sm text-muted-foreground m-auto">搜索或从下方列表添加股票</span>
+              )}
+            </div>
+
+            {/* Stock pool browser toggle */}
+            <div className="border-t pt-4">
+              <Button
+                variant="outline"
+                className="w-full"
+                onClick={() => setShowStockPool(!showStockPool)}
+              >
+                <ListFilter className="mr-2 h-4 w-4" />
+                {showStockPool ? '收起股票列表' : '浏览所有股票'}
+              </Button>
+            </div>
+
+            {/* Stock pool browser */}
+            {showStockPool && (
+              <div className="space-y-3 border-t pt-4">
+                {/* Filters */}
+                <div className="flex gap-2">
+                  <select
+                    className="flex-1 rounded-md border border-input bg-background px-3 py-2 text-sm"
+                    value={stockPoolExchange}
+                    onChange={(e) => {
+                      setStockPoolExchange(e.target.value)
+                      setStockPoolPage(1)
+                    }}
+                  >
+                    <option value="">全部交易所</option>
+                    <option value="sh">上海 (sh)</option>
+                    <option value="sz">深圳 (sz)</option>
+                  </select>
+                  <Input
+                    className="flex-1"
+                    placeholder="筛选..."
+                    value={stockPoolSearch}
+                    onChange={(e) => {
+                      setStockPoolSearch(e.target.value)
+                      setStockPoolPage(1)
+                    }}
+                  />
+                </div>
+
+                {/* Add all button */}
+                <Button
+                  variant="secondary"
+                  size="sm"
+                  className="w-full"
+                  onClick={handleAddAllFromPool}
+                  disabled={isLoadingStockPool || stockPoolItems.length === 0}
+                >
+                  <Plus className="mr-2 h-4 w-4" />
+                  添加当前页全部 ({stockPoolItems.length} 只)
+                </Button>
+
+                {/* Stock list */}
+                <div className="max-h-[300px] overflow-auto border rounded-md">
+                  {isLoadingStockPool ? (
+                    <div className="flex items-center justify-center py-8">
+                      <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
+                    </div>
+                  ) : stockPoolItems.length > 0 ? (
+                    <table className="w-full text-sm">
+                      <thead className="sticky top-0 bg-muted">
+                        <tr>
+                          <th className="text-left px-3 py-2 font-medium">代码</th>
+                          <th className="text-left px-3 py-2 font-medium">名称</th>
+                          <th className="text-right px-3 py-2 font-medium">操作</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {stockPoolItems.map((stock) => {
+                          const isSelected = selectedStocks.some((s) => s.code === stock.code)
+                          return (
+                            <tr
+                              key={stock.code}
+                              className={`border-t hover:bg-muted/50 ${isSelected ? 'bg-primary/5' : ''}`}
+                            >
+                              <td className="px-3 py-2 font-mono">{stock.code}</td>
+                              <td className="px-3 py-2 truncate max-w-[150px]">{stock.code_name}</td>
+                              <td className="px-3 py-2 text-right">
+                                {isSelected ? (
+                                  <Button
+                                    variant="ghost"
+                                    size="sm"
+                                    onClick={() => handleRemoveStock(stock.code)}
+                                  >
+                                    <X className="h-4 w-4 text-muted-foreground" />
+                                  </Button>
+                                ) : (
+                                  <Button
+                                    variant="ghost"
+                                    size="sm"
+                                    onClick={() => handleAddStock(stock.code, stock.code_name || stock.code)}
+                                  >
+                                    <Plus className="h-4 w-4" />
+                                  </Button>
+                                )}
+                              </td>
+                            </tr>
+                          )
+                        })}
+                      </tbody>
+                    </table>
+                  ) : (
+                    <div className="text-center py-8 text-muted-foreground">
+                      无匹配股票
+                    </div>
+                  )}
+                </div>
+
+                {/* Pagination */}
+                {stockPoolPages > 1 && (
+                  <div className="flex items-center justify-between text-sm">
+                    <span className="text-muted-foreground">
+                      共 {stockPoolTotal} 只，第 {stockPoolPage}/{stockPoolPages} 页
+                    </span>
+                    <div className="flex gap-1">
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        disabled={stockPoolPage <= 1}
+                        onClick={() => setStockPoolPage(stockPoolPage - 1)}
+                      >
+                        上一页
+                      </Button>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        disabled={stockPoolPage >= stockPoolPages}
+                        onClick={() => setStockPoolPage(stockPoolPage + 1)}
+                      >
+                        下一页
+                      </Button>
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
           </CardContent>
         </Card>
       </div>

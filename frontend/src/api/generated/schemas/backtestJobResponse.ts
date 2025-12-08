@@ -11,6 +11,7 @@ import type { BacktestJobResponseErrorMessage } from "./backtestJobResponseError
 import type { BacktestJobResponseName } from "./backtestJobResponseName";
 import type { BacktestJobResponsePositionSizing } from "./backtestJobResponsePositionSizing";
 import type { BacktestJobResponseStartedAt } from "./backtestJobResponseStartedAt";
+import type { BacktestJobResponseSummary } from "./backtestJobResponseSummary";
 
 /**
  * Schema for backtest job response.
@@ -39,5 +40,6 @@ export interface BacktestJobResponse {
   stock_codes: string[];
   strategy_ids: string[];
   successful_backtests: number;
+  summary?: BacktestJobResponseSummary;
   total_backtests: number;
 }

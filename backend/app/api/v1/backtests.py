@@ -43,6 +43,17 @@ class BacktestCreate(BaseModel):
     position_sizing: PositionSizing = Field(default_factory=PositionSizing)
 
 
+class BacktestJobSummaryMetrics(BaseModel):
+    """Summary metrics for a completed backtest job."""
+    avg_return: Optional[Decimal] = Field(default=None, description="Average return across all results")
+    best_return: Optional[Decimal] = Field(default=None, description="Best return")
+    worst_return: Optional[Decimal] = Field(default=None, description="Worst return")
+    avg_sharpe: Optional[Decimal] = Field(default=None, description="Average Sharpe ratio")
+    avg_max_drawdown: Optional[Decimal] = Field(default=None, description="Average max drawdown")
+    avg_win_rate: Optional[Decimal] = Field(default=None, description="Average win rate")
+    profitable_count: int = Field(default=0, description="Number of profitable backtests")
+
+
 class BacktestJobResponse(BaseModel):
     """Schema for backtest job response."""
     id: UUID
@@ -65,6 +76,8 @@ class BacktestJobResponse(BaseModel):
     created_at: datetime
     started_at: Optional[datetime]
     completed_at: Optional[datetime]
+    # Summary metrics for completed jobs
+    summary: Optional[BacktestJobSummaryMetrics] = None
 
     class Config:
         from_attributes = True
@@ -155,8 +168,51 @@ async def list_backtests(
     result = await db.execute(query)
     jobs = result.scalars().all()
 
+    # Get summary metrics for completed jobs (batch query for efficiency)
+    completed_job_ids = [j.id for j in jobs if j.status == BacktestStatus.COMPLETED]
+    job_summaries = {}
+
+    if completed_job_ids:
+        # Single query to get aggregated metrics for all completed jobs
+        summary_query = (
+            select(
+                BacktestResult.job_id,
+                func.avg(BacktestResult.total_return).label('avg_return'),
+                func.max(BacktestResult.total_return).label('best_return'),
+                func.min(BacktestResult.total_return).label('worst_return'),
+                func.avg(BacktestResult.sharpe_ratio).label('avg_sharpe'),
+                func.avg(BacktestResult.max_drawdown).label('avg_max_drawdown'),
+                func.avg(BacktestResult.win_rate).label('avg_win_rate'),
+                func.count().filter(BacktestResult.total_return > 0).label('profitable_count'),
+            )
+            .where(
+                BacktestResult.job_id.in_(completed_job_ids),
+                BacktestResult.status == 'completed',
+            )
+            .group_by(BacktestResult.job_id)
+        )
+        summary_result = await db.execute(summary_query)
+        for row in summary_result.all():
+            job_summaries[row.job_id] = BacktestJobSummaryMetrics(
+                avg_return=Decimal(str(round(float(row.avg_return), 6))) if row.avg_return else None,
+                best_return=Decimal(str(round(float(row.best_return), 6))) if row.best_return else None,
+                worst_return=Decimal(str(round(float(row.worst_return), 6))) if row.worst_return else None,
+                avg_sharpe=Decimal(str(round(float(row.avg_sharpe), 4))) if row.avg_sharpe else None,
+                avg_max_drawdown=Decimal(str(round(float(row.avg_max_drawdown), 6))) if row.avg_max_drawdown else None,
+                avg_win_rate=Decimal(str(round(float(row.avg_win_rate), 4))) if row.avg_win_rate else None,
+                profitable_count=row.profitable_count or 0,
+            )
+
+    # Build response with summaries
+    items = []
+    for job in jobs:
+        job_response = BacktestJobResponse.model_validate(job)
+        if job.id in job_summaries:
+            job_response.summary = job_summaries[job.id]
+        items.append(job_response)
+
     return BacktestListResponse(
-        items=[BacktestJobResponse.model_validate(j) for j in jobs],
+        items=items,
         total=total,
         page=page,
         page_size=page_size,

@@ -1,18 +1,28 @@
 import { Card, CardContent } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { formatPercent, formatDate } from '@/lib/utils'
-import { ArrowUpRight, ArrowDownRight, Download, Eye, Loader2, FileX2, Clock, CheckCircle, XCircle, RefreshCw } from 'lucide-react'
+import { Download, Eye, Loader2, FileX2, Clock, CheckCircle, XCircle, RefreshCw, TrendingUp, TrendingDown } from 'lucide-react'
 import { useListBacktestsApiV1BacktestsGet } from '@/api/generated/backtests/backtests'
 import { useNavigate } from 'react-router-dom'
 
 const statusConfig: Record<string, { label: string; color: string; icon: React.ReactNode }> = {
   QUEUED: { label: '排队中', color: 'text-muted-foreground', icon: <Clock className="h-4 w-4" /> },
+  queued: { label: '排队中', color: 'text-muted-foreground', icon: <Clock className="h-4 w-4" /> },
   PENDING: { label: '等待中', color: 'text-muted-foreground', icon: <Clock className="h-4 w-4" /> },
+  pending: { label: '等待中', color: 'text-muted-foreground', icon: <Clock className="h-4 w-4" /> },
   RUNNING: { label: '运行中', color: 'text-primary', icon: <Loader2 className="h-4 w-4 animate-spin" /> },
+  running: { label: '运行中', color: 'text-primary', icon: <Loader2 className="h-4 w-4 animate-spin" /> },
   COMPLETED: { label: '已完成', color: 'text-profit', icon: <CheckCircle className="h-4 w-4" /> },
+  completed: { label: '已完成', color: 'text-profit', icon: <CheckCircle className="h-4 w-4" /> },
   FAILED: { label: '失败', color: 'text-loss', icon: <XCircle className="h-4 w-4" /> },
+  failed: { label: '失败', color: 'text-loss', icon: <XCircle className="h-4 w-4" /> },
   CANCELLED: { label: '已取消', color: 'text-muted-foreground', icon: <XCircle className="h-4 w-4" /> },
+  cancelled: { label: '已取消', color: 'text-muted-foreground', icon: <XCircle className="h-4 w-4" /> },
 }
+
+// Helper to check if status is completed (case-insensitive)
+const isCompleted = (status: string) => status.toLowerCase() === 'completed'
+const isRunning = (status: string) => ['running', 'queued', 'pending'].includes(status.toLowerCase())
 
 export default function ResultsPage() {
   const navigate = useNavigate()
@@ -65,102 +75,132 @@ export default function ResultsPage() {
       {/* Results list */}
       {!isLoading && backtests.length > 0 && (
         <div className="space-y-4">
-          {backtests.map((backtest) => (
-            <Card key={backtest.id}>
-              <CardContent className="p-6">
-                <div className="flex items-start justify-between">
-                  {/* Left: Basic info */}
-                  <div className="space-y-1">
-                    <h3 className="text-lg font-semibold">
-                      {backtest.name || `回测任务 ${backtest.id.slice(0, 8)}`}
-                    </h3>
-                    <p className="text-sm text-muted-foreground">
-                      {backtest.strategy_ids?.length || 0} 个策略 · {backtest.stock_codes?.length || 0} 只股票 · {backtest.start_date} ~ {backtest.end_date}
-                    </p>
-                    <p className="text-xs text-muted-foreground">
-                      {formatDate(backtest.created_at)}
-                    </p>
-                  </div>
+          {backtests.map((backtest) => {
+            const summary = backtest.summary
+            const avgReturn = summary?.avg_return != null ? Number(summary.avg_return) : null
+            const isProfit = avgReturn != null && avgReturn >= 0
+            const completed = isCompleted(backtest.status)
+            const running = isRunning(backtest.status)
 
-                  {/* Right: Metrics */}
-                  <div className="flex items-center gap-8">
-                    {/* Success rate */}
-                    <div className="text-center">
-                      <p className="text-sm text-muted-foreground">成功率</p>
-                      <span className="text-xl font-bold">
-                        {backtest.total_backtests > 0
-                          ? ((backtest.successful_backtests / backtest.total_backtests) * 100).toFixed(0)
-                          : 0}%
-                      </span>
-                    </div>
+            return (
+              <Card key={backtest.id} className="overflow-hidden">
+                <CardContent className="p-0">
+                  <div className="flex">
+                    {/* Left section: Basic info */}
+                    <div className="flex-1 p-6">
+                      <div className="flex items-start justify-between">
+                        <div className="space-y-1">
+                          <p className="text-sm text-muted-foreground">
+                            {backtest.strategy_ids?.length || 0} 个策略 · {backtest.stock_codes?.length || 0} 只股票 · {backtest.start_date} ~ {backtest.end_date}
+                          </p>
+                          <p className="text-xs text-muted-foreground">
+                            {formatDate(backtest.created_at)}
+                          </p>
+                        </div>
 
-                    {/* Total backtests */}
-                    <div className="text-center">
-                      <p className="text-sm text-muted-foreground">回测数量</p>
-                      <span className="text-xl font-bold">
-                        {backtest.total_backtests}
-                      </span>
-                    </div>
-
-                    {/* Status */}
-                    <div className="text-center">
-                      <p className="text-sm text-muted-foreground">状态</p>
-                      <div className={`flex items-center gap-1 justify-center ${statusConfig[backtest.status]?.color || 'text-muted-foreground'}`}>
-                        {statusConfig[backtest.status]?.icon}
-                        <span className="font-medium">
-                          {statusConfig[backtest.status]?.label || backtest.status}
-                        </span>
+                        {/* Status badge - only show for non-completed */}
+                        {!completed && (
+                          <div className={`flex items-center gap-1 px-2 py-1 rounded-full text-sm ${statusConfig[backtest.status]?.color || 'text-muted-foreground'} bg-muted`}>
+                            {statusConfig[backtest.status]?.icon}
+                            <span>{statusConfig[backtest.status]?.label || backtest.status}</span>
+                          </div>
+                        )}
                       </div>
+
+                      {/* Progress bar for running jobs */}
+                      {running && (
+                        <div className="mt-4">
+                          <div className="flex justify-between text-xs text-muted-foreground mb-1">
+                            <span>进度</span>
+                            <span>{Number(backtest.progress).toFixed(0)}%</span>
+                          </div>
+                          <div className="h-2 rounded-full bg-muted">
+                            <div
+                              className="h-2 rounded-full bg-primary transition-all"
+                              style={{ width: `${backtest.progress}%` }}
+                            />
+                          </div>
+                          <p className="mt-1 text-xs text-muted-foreground">
+                            已完成 {backtest.successful_backtests + backtest.failed_backtests}/{backtest.total_backtests}
+                          </p>
+                        </div>
+                      )}
+
+                      {/* Summary metrics for completed - compact row */}
+                      {completed && summary && (
+                        <div className="mt-3 flex items-center gap-6 text-sm">
+                          <div className="flex items-center gap-1">
+                            <span className="text-muted-foreground">盈利:</span>
+                            <span className="font-medium text-profit">{summary.profitable_count}</span>
+                            <span className="text-muted-foreground">/</span>
+                            <span className="font-medium">{backtest.successful_backtests}</span>
+                          </div>
+                          <div className="flex items-center gap-1">
+                            <span className="text-muted-foreground">平均夏普:</span>
+                            <span className="font-medium">
+                              {summary.avg_sharpe != null ? Number(summary.avg_sharpe).toFixed(2) : '-'}
+                            </span>
+                          </div>
+                          <div className="flex items-center gap-1">
+                            <span className="text-muted-foreground">平均回撤:</span>
+                            <span className="font-medium text-loss">
+                              {summary.avg_max_drawdown != null ? formatPercent(Number(summary.avg_max_drawdown)) : '-'}
+                            </span>
+                          </div>
+                          <div className="flex items-center gap-1">
+                            <span className="text-muted-foreground">平均胜率:</span>
+                            <span className="font-medium">
+                              {summary.avg_win_rate != null ? formatPercent(Number(summary.avg_win_rate)) : '-'}
+                            </span>
+                          </div>
+                        </div>
+                      )}
+
+                      {/* Completed without summary data */}
+                      {completed && !summary && (
+                        <div className="mt-3 text-sm text-muted-foreground">
+                          共 {backtest.successful_backtests} 个成功回测
+                        </div>
+                      )}
                     </div>
 
-                    {/* Actions */}
-                    <Button onClick={() => navigate(`/results/${backtest.id}`)}>
-                      <Eye className="mr-2 h-4 w-4" />
-                      查看详情
-                    </Button>
-                  </div>
-                </div>
+                    {/* Right section: Key metric highlight for completed */}
+                    {completed && summary && (
+                      <div className={`w-48 flex flex-col items-center justify-center p-4 ${isProfit ? 'bg-profit/10' : 'bg-loss/10'}`}>
+                        <div className="flex items-center gap-1 mb-1">
+                          {isProfit ? (
+                            <TrendingUp className="h-5 w-5 text-profit" />
+                          ) : (
+                            <TrendingDown className="h-5 w-5 text-loss" />
+                          )}
+                          <span className="text-sm text-muted-foreground">平均收益</span>
+                        </div>
+                        <span className={`text-2xl font-bold ${isProfit ? 'text-profit' : 'text-loss'}`}>
+                          {avgReturn != null ? formatPercent(avgReturn) : '-'}
+                        </span>
+                        <div className="mt-2 text-xs text-muted-foreground space-y-0.5 text-center">
+                          <div>
+                            最佳 <span className="text-profit font-medium">{summary.best_return != null ? formatPercent(Number(summary.best_return)) : '-'}</span>
+                          </div>
+                          <div>
+                            最差 <span className="text-loss font-medium">{summary.worst_return != null ? formatPercent(Number(summary.worst_return)) : '-'}</span>
+                          </div>
+                        </div>
+                      </div>
+                    )}
 
-                {/* Progress bar for non-completed */}
-                {backtest.status !== 'COMPLETED' && (
-                  <div className="mt-4">
-                    <div className="flex justify-between text-xs text-muted-foreground mb-1">
-                      <span>进度</span>
-                      <span>{Number(backtest.progress).toFixed(0)}%</span>
-                    </div>
-                    <div className="h-2 rounded-full bg-muted">
-                      <div
-                        className="h-2 rounded-full bg-primary transition-all"
-                        style={{ width: `${backtest.progress}%` }}
-                      />
+                    {/* Right section: View button */}
+                    <div className="flex items-center px-4 border-l">
+                      <Button onClick={() => navigate(`/results/${backtest.id}`)}>
+                        <Eye className="mr-2 h-4 w-4" />
+                        详情
+                      </Button>
                     </div>
                   </div>
-                )}
-
-                {/* Summary metrics for completed */}
-                {backtest.status === 'COMPLETED' && (
-                  <div className="mt-4 grid grid-cols-4 gap-4 rounded-lg bg-muted/50 p-4">
-                    <div>
-                      <p className="text-xs text-muted-foreground">成功数</p>
-                      <p className="font-medium text-profit">{backtest.successful_backtests}</p>
-                    </div>
-                    <div>
-                      <p className="text-xs text-muted-foreground">失败数</p>
-                      <p className="font-medium text-loss">{backtest.failed_backtests}</p>
-                    </div>
-                    <div>
-                      <p className="text-xs text-muted-foreground">初始资金</p>
-                      <p className="font-medium">¥{Number(backtest.initial_capital).toLocaleString()}</p>
-                    </div>
-                    <div>
-                      <p className="text-xs text-muted-foreground">手续费率</p>
-                      <p className="font-medium">{(Number(backtest.commission_rate) * 100).toFixed(2)}%</p>
-                    </div>
-                  </div>
-                )}
-              </CardContent>
-            </Card>
-          ))}
+                </CardContent>
+              </Card>
+            )
+          })}
         </div>
       )}
 
