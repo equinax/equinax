@@ -12,7 +12,7 @@ import { Badge } from '@/components/ui/badge'
 import { formatPercent } from '@/lib/utils'
 import { LineChart, Calendar, List, BarChart3, AlertCircle } from 'lucide-react'
 import { useGetBacktestResultDetailApiV1BacktestsJobIdResultsResultIdGet } from '@/api/generated/backtests/backtests'
-import { EquityCurveChart } from './EquityCurveChart'
+import { EquityCurveWithIndicators } from './EquityCurveWithIndicators'
 import { MonthlyReturnsChart } from './MonthlyReturnsChart'
 import { TradesTable } from './TradesTable'
 import { MetricsCards } from './MetricsCards'
@@ -179,10 +179,11 @@ export function ResultDetailSheet({ jobId, resultId, open, onOpenChange }: Resul
                 </TabsList>
 
                 <TabsContent value="equity" className="mt-4">
-                  <EquityCurveChart
-                    data={data.equity_curve as EquityCurvePoint[] | undefined}
+                  <EquityCurveWithIndicators
+                    stockCode={data.stock_code}
+                    equityCurve={data.equity_curve as EquityCurvePoint[] | undefined}
                     trades={data.trades as TradeRecord[] | undefined}
-                    height={350}
+                    height={500}
                   />
                 </TabsContent>
 
