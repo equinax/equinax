@@ -1,11 +1,12 @@
 """Dashboard statistics API endpoints."""
 
 from typing import Optional
+from datetime import datetime
 from decimal import Decimal
 
 from fastapi import APIRouter, Depends
 from pydantic import BaseModel, Field
-from sqlalchemy import select, func
+from sqlalchemy import select, func, desc
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.session import get_db
@@ -19,6 +20,35 @@ router = APIRouter()
 # Pydantic Schemas
 # ============================================
 
+class BestStrategy(BaseModel):
+    """Best performing strategy based on average return."""
+    strategy_id: str = Field(description="Strategy UUID")
+    strategy_name: str = Field(description="Strategy name")
+    strategy_type: Optional[str] = Field(default=None, description="Strategy type")
+    avg_return: Decimal = Field(description="Average return across all backtests")
+    avg_sharpe: Optional[Decimal] = Field(default=None, description="Average Sharpe ratio")
+    backtest_count: int = Field(description="Number of backtests using this strategy")
+    avg_win_rate: Optional[Decimal] = Field(default=None, description="Average win rate")
+
+
+class BestBacktest(BaseModel):
+    """Best single backtest result by total return."""
+    result_id: str = Field(description="Backtest result UUID")
+    stock_code: str = Field(description="Stock code")
+    strategy_id: str = Field(description="Strategy UUID")
+    strategy_name: str = Field(description="Strategy name")
+    total_return: Decimal = Field(description="Total return")
+    annual_return: Optional[Decimal] = Field(default=None, description="Annualized return")
+    final_value: Optional[Decimal] = Field(default=None, description="Final portfolio value")
+    sharpe_ratio: Optional[Decimal] = Field(default=None, description="Sharpe ratio")
+    max_drawdown: Optional[Decimal] = Field(default=None, description="Maximum drawdown")
+    volatility: Optional[Decimal] = Field(default=None, description="Volatility")
+    total_trades: Optional[int] = Field(default=None, description="Total number of trades")
+    win_rate: Optional[Decimal] = Field(default=None, description="Win rate")
+    profit_factor: Optional[Decimal] = Field(default=None, description="Profit factor")
+    created_at: datetime = Field(description="Backtest creation time")
+
+
 class DashboardStats(BaseModel):
     """Dashboard statistics response."""
     total_strategies: int = Field(description="Total number of strategies")
@@ -30,6 +60,8 @@ class DashboardStats(BaseModel):
     best_sharpe: Optional[Decimal] = Field(default=None, description="Best Sharpe ratio")
     avg_sharpe: Optional[Decimal] = Field(default=None, description="Average Sharpe ratio")
     total_stocks: int = Field(default=0, description="Total number of stocks in database")
+    best_strategy: Optional[BestStrategy] = Field(default=None, description="Best performing strategy")
+    best_backtest: Optional[BestBacktest] = Field(default=None, description="Best single backtest")
 
 
 # Temporary: Mock user ID until auth is implemented
@@ -127,6 +159,86 @@ async def get_dashboard_stats(
     total_stocks_result = await db.execute(total_stocks_query)
     total_stocks = total_stocks_result.scalar() or 0
 
+    # Get best strategy (by average return)
+    best_strategy_data = None
+    best_strategy_query = (
+        select(
+            BacktestResult.strategy_id,
+            func.avg(BacktestResult.total_return).label('avg_return'),
+            func.avg(BacktestResult.sharpe_ratio).label('avg_sharpe'),
+            func.count().label('backtest_count'),
+            func.avg(BacktestResult.win_rate).label('avg_win_rate'),
+        )
+        .join(BacktestJob, BacktestResult.job_id == BacktestJob.id)
+        .where(
+            BacktestJob.user_id == MOCK_USER_ID,
+            BacktestResult.status == 'completed',
+            BacktestResult.total_return.isnot(None),
+        )
+        .group_by(BacktestResult.strategy_id)
+        .order_by(desc('avg_return'))
+        .limit(1)
+    )
+    best_strategy_result = await db.execute(best_strategy_query)
+    best_strategy_row = best_strategy_result.first()
+
+    if best_strategy_row:
+        # Get strategy details
+        strategy_query = select(Strategy).where(Strategy.id == best_strategy_row.strategy_id)
+        strategy_result = await db.execute(strategy_query)
+        strategy = strategy_result.scalar_one_or_none()
+
+        if strategy:
+            best_strategy_data = BestStrategy(
+                strategy_id=str(best_strategy_row.strategy_id),
+                strategy_name=strategy.name,
+                strategy_type=strategy.strategy_type,
+                avg_return=Decimal(str(round(float(best_strategy_row.avg_return), 6))),
+                avg_sharpe=Decimal(str(round(float(best_strategy_row.avg_sharpe), 4))) if best_strategy_row.avg_sharpe else None,
+                backtest_count=best_strategy_row.backtest_count,
+                avg_win_rate=Decimal(str(round(float(best_strategy_row.avg_win_rate), 4))) if best_strategy_row.avg_win_rate else None,
+            )
+
+    # Get best single backtest (by total return)
+    best_backtest_data = None
+    best_backtest_query = (
+        select(BacktestResult)
+        .join(BacktestJob, BacktestResult.job_id == BacktestJob.id)
+        .where(
+            BacktestJob.user_id == MOCK_USER_ID,
+            BacktestResult.status == 'completed',
+            BacktestResult.total_return.isnot(None),
+        )
+        .order_by(desc(BacktestResult.total_return))
+        .limit(1)
+    )
+    best_backtest_result = await db.execute(best_backtest_query)
+    best_backtest_row = best_backtest_result.scalar_one_or_none()
+
+    if best_backtest_row:
+        # Get strategy name
+        strategy_query = select(Strategy).where(Strategy.id == best_backtest_row.strategy_id)
+        strategy_result = await db.execute(strategy_query)
+        strategy = strategy_result.scalar_one_or_none()
+        strategy_name = strategy.name if strategy else "Unknown"
+
+        best_backtest_data = BestBacktest(
+            result_id=str(best_backtest_row.id),
+            stock_code=best_backtest_row.stock_code,
+            strategy_id=str(best_backtest_row.strategy_id),
+            strategy_name=strategy_name,
+            total_return=best_backtest_row.total_return,
+            annual_return=best_backtest_row.annual_return,
+            final_value=best_backtest_row.final_value,
+            sharpe_ratio=best_backtest_row.sharpe_ratio,
+            max_drawdown=best_backtest_row.max_drawdown,
+            volatility=best_backtest_row.volatility,
+            total_trades=best_backtest_row.total_trades,
+            win_rate=best_backtest_row.win_rate,
+            profit_factor=best_backtest_row.profit_factor,
+            created_at=best_backtest_row.created_at,
+        )
+
     return DashboardStats(
         total_strategies=total_strategies,
         active_strategies=active_strategies,
@@ -137,4 +249,6 @@ async def get_dashboard_stats(
         best_sharpe=best_sharpe,
         avg_sharpe=avg_sharpe,
         total_stocks=total_stocks,
+        best_strategy=best_strategy_data,
+        best_backtest=best_backtest_data,
     )

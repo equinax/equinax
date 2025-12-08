@@ -6,8 +6,10 @@
  * OpenAPI spec version: 1.0.0
  */
 import type { DashboardStatsAvgSharpe } from "./dashboardStatsAvgSharpe";
+import type { DashboardStatsBestBacktest } from "./dashboardStatsBestBacktest";
 import type { DashboardStatsBestReturn } from "./dashboardStatsBestReturn";
 import type { DashboardStatsBestSharpe } from "./dashboardStatsBestSharpe";
+import type { DashboardStatsBestStrategy } from "./dashboardStatsBestStrategy";
 
 /**
  * Dashboard statistics response.
@@ -17,10 +19,14 @@ export interface DashboardStats {
   active_strategies: number;
   /** Average Sharpe ratio */
   avg_sharpe?: DashboardStatsAvgSharpe;
+  /** Best single backtest */
+  best_backtest?: DashboardStatsBestBacktest;
   /** Best backtest return */
   best_return?: DashboardStatsBestReturn;
   /** Best Sharpe ratio */
   best_sharpe?: DashboardStatsBestSharpe;
+  /** Best performing strategy */
+  best_strategy?: DashboardStatsBestStrategy;
   /** Number of completed backtests */
   completed_backtests: number;
   /** Number of running backtests */

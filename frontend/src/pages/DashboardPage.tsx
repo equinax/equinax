@@ -1,31 +1,32 @@
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
-import { formatCurrency, formatPercent, formatDate } from '@/lib/utils'
+import { formatPercent, formatDate, formatCurrency } from '@/lib/utils'
 import {
   TrendingUp,
-  TrendingDown,
   Code2,
   PlayCircle,
-  BarChart3,
   Database,
   Loader2,
+  Trophy,
+  Crown,
 } from 'lucide-react'
 import { useGetDashboardStatsApiV1StatsGet } from '@/api/generated/statistics/statistics'
-import { useListBacktestsApiV1BacktestsGet } from '@/api/generated/backtests/backtests'
 import { useNavigate } from 'react-router-dom'
+
+// Helper component for metric display
+function MetricItem({ label, value, negative = false }: { label: string; value: string | number | undefined | null; negative?: boolean }) {
+  return (
+    <div>
+      <p className="text-xs text-muted-foreground">{label}</p>
+      <p className={`font-medium ${negative ? 'text-loss' : ''}`}>{value ?? '-'}</p>
+    </div>
+  )
+}
 
 export default function DashboardPage() {
   const navigate = useNavigate()
 
   // Fetch dashboard stats
   const { data: stats, isLoading: isLoadingStats } = useGetDashboardStatsApiV1StatsGet()
-
-  // Fetch recent backtests
-  const { data: backtestsData, isLoading: isLoadingBacktests } = useListBacktestsApiV1BacktestsGet({
-    page: 1,
-    page_size: 5,
-  })
-
-  const recentBacktests = backtestsData?.items || []
 
   return (
     <div className="space-y-6">
@@ -108,74 +109,118 @@ export default function DashboardPage() {
         </div>
       )}
 
-      {/* Recent backtests */}
-      <Card>
-        <CardHeader>
-          <CardTitle>最近回测</CardTitle>
-        </CardHeader>
-        <CardContent>
-          {isLoadingBacktests ? (
-            <div className="flex items-center justify-center p-8">
-              <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
-            </div>
-          ) : recentBacktests.length === 0 ? (
-            <div className="text-center text-muted-foreground py-8">
-              暂无回测记录
-            </div>
-          ) : (
-            <div className="space-y-4">
-              {recentBacktests.map((backtest) => (
-                <div
-                  key={backtest.id}
-                  className="flex items-center justify-between rounded-lg border p-4 cursor-pointer hover:bg-accent/50 transition-colors"
-                  onClick={() => navigate(`/results/${backtest.id}`)}
-                >
-                  <div className="space-y-1">
-                    <p className="font-medium">
-                      {backtest.name || `回测任务 ${backtest.id.slice(0, 8)}`}
-                    </p>
-                    <p className="text-sm text-muted-foreground">
-                      {backtest.strategy_ids?.length || 0} 个策略 · {backtest.stock_codes?.length || 0} 只股票 · {formatDate(backtest.created_at)}
-                    </p>
-                  </div>
-                  <div className="flex items-center gap-6">
-                    <div className="text-right">
-                      <p className="text-sm text-muted-foreground">状态</p>
-                      <p className={`font-medium ${
-                        backtest.status === 'COMPLETED' ? 'text-profit' :
-                        backtest.status === 'RUNNING' ? 'text-primary' :
-                        backtest.status === 'FAILED' ? 'text-loss' :
-                        'text-muted-foreground'
-                      }`}>
-                        {backtest.status === 'COMPLETED' ? '已完成' :
-                         backtest.status === 'RUNNING' ? '运行中' :
-                         backtest.status === 'FAILED' ? '失败' :
-                         backtest.status === 'PENDING' ? '等待中' :
-                         backtest.status}
-                      </p>
-                    </div>
-                    <div className="text-right">
-                      <p className="text-sm text-muted-foreground">进度</p>
-                      <p className="font-medium">
-                        {backtest.successful_backtests}/{backtest.total_backtests}
-                      </p>
-                    </div>
-                    <div className="flex items-center gap-1">
-                      {backtest.status === 'COMPLETED' && backtest.successful_backtests > 0 ? (
-                        <TrendingUp className="h-4 w-4 text-profit" />
-                      ) : backtest.status === 'FAILED' ? (
-                        <TrendingDown className="h-4 w-4 text-loss" />
-                      ) : (
-                        <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
-                      )}
-                    </div>
-                  </div>
+      {/* Best Strategy & Best Backtest Cards */}
+      <div className="grid gap-4 md:grid-cols-2">
+        {/* Best Strategy Card */}
+        <Card
+          className="cursor-pointer hover:bg-accent/30 transition-colors"
+          onClick={() => stats?.best_strategy && navigate(`/strategies`)}
+        >
+          <CardHeader className="flex flex-row items-center justify-between pb-2">
+            <CardTitle className="text-base">最佳策略</CardTitle>
+            <Trophy className="h-5 w-5 text-amber-500" />
+          </CardHeader>
+          <CardContent>
+            {isLoadingStats ? (
+              <div className="flex items-center justify-center py-4">
+                <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
+              </div>
+            ) : stats?.best_strategy ? (
+              <div className="space-y-4">
+                <div>
+                  <p className="text-lg font-semibold">{stats.best_strategy.strategy_name}</p>
+                  <p className="text-xs text-muted-foreground">
+                    {stats.best_strategy.strategy_type || '未分类'}
+                  </p>
                 </div>
-              ))}
-            </div>
-          )}
-        </CardContent>
-      </Card>
+                <div className="grid grid-cols-2 gap-4">
+                  <MetricItem
+                    label="平均收益"
+                    value={stats.best_strategy.avg_return != null ? formatPercent(Number(stats.best_strategy.avg_return)) : undefined}
+                  />
+                  <MetricItem
+                    label="平均 Sharpe"
+                    value={stats.best_strategy.avg_sharpe != null ? Number(stats.best_strategy.avg_sharpe).toFixed(2) : undefined}
+                  />
+                  <MetricItem
+                    label="回测次数"
+                    value={stats.best_strategy.backtest_count}
+                  />
+                  <MetricItem
+                    label="平均胜率"
+                    value={stats.best_strategy.avg_win_rate != null ? formatPercent(Number(stats.best_strategy.avg_win_rate)) : undefined}
+                  />
+                </div>
+              </div>
+            ) : (
+              <div className="text-center text-muted-foreground py-4">
+                暂无策略数据
+              </div>
+            )}
+          </CardContent>
+        </Card>
+
+        {/* Best Backtest Card */}
+        <Card
+          className="cursor-pointer hover:bg-accent/30 transition-colors"
+          onClick={() => stats?.best_backtest && navigate(`/analysis`)}
+        >
+          <CardHeader className="flex flex-row items-center justify-between pb-2">
+            <CardTitle className="text-base">最佳回测</CardTitle>
+            <Crown className="h-5 w-5 text-amber-500" />
+          </CardHeader>
+          <CardContent>
+            {isLoadingStats ? (
+              <div className="flex items-center justify-center py-4">
+                <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
+              </div>
+            ) : stats?.best_backtest ? (
+              <div className="space-y-4">
+                <div className="flex justify-between items-start">
+                  <div>
+                    <p className="text-lg font-semibold">{stats.best_backtest.stock_code}</p>
+                    <p className="text-xs text-muted-foreground">{stats.best_backtest.strategy_name}</p>
+                  </div>
+                  <p className={`text-2xl font-bold ${Number(stats.best_backtest.total_return) >= 0 ? 'text-profit' : 'text-loss'}`}>
+                    {formatPercent(Number(stats.best_backtest.total_return))}
+                  </p>
+                </div>
+                <div className="grid grid-cols-3 gap-3">
+                  <MetricItem
+                    label="年化收益"
+                    value={stats.best_backtest.annual_return != null ? formatPercent(Number(stats.best_backtest.annual_return)) : undefined}
+                  />
+                  <MetricItem
+                    label="Sharpe"
+                    value={stats.best_backtest.sharpe_ratio != null ? Number(stats.best_backtest.sharpe_ratio).toFixed(2) : undefined}
+                  />
+                  <MetricItem
+                    label="最大回撤"
+                    value={stats.best_backtest.max_drawdown != null ? formatPercent(Number(stats.best_backtest.max_drawdown)) : undefined}
+                    negative
+                  />
+                  <MetricItem
+                    label="交易次数"
+                    value={stats.best_backtest.total_trades}
+                  />
+                  <MetricItem
+                    label="胜率"
+                    value={stats.best_backtest.win_rate != null ? formatPercent(Number(stats.best_backtest.win_rate)) : undefined}
+                  />
+                  <MetricItem
+                    label="盈亏比"
+                    value={stats.best_backtest.profit_factor != null ? Number(stats.best_backtest.profit_factor).toFixed(2) : undefined}
+                  />
+                </div>
+              </div>
+            ) : (
+              <div className="text-center text-muted-foreground py-4">
+                暂无回测数据
+              </div>
+            )}
+          </CardContent>
+        </Card>
+      </div>
     </div>
   )
 }
