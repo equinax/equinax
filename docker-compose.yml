@@ -105,10 +105,30 @@ services:
     networks:
       - quant_network
 
+  # Metabase for data exploration and monitoring
+  metabase:
+    image: metabase/metabase:latest
+    container_name: quant_metabase
+    environment:
+      # Use embedded H2 database for Metabase metadata (simpler setup)
+      MB_DB_FILE: /metabase-data/metabase.db
+      # Timezone
+      JAVA_TIMEZONE: Asia/Shanghai
+    volumes:
+      - metabase_data:/metabase-data
+    ports:
+      - "7600:3000"
+    depends_on:
+      db:
+        condition: service_healthy
+    networks:
+      - quant_network
+
 volumes:
   postgres_data:
   redis_data:
   frontend_node_modules:
+  metabase_data:
 
 networks:
   quant_network:
