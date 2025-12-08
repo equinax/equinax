@@ -60,8 +60,8 @@ class DashboardStats(BaseModel):
     best_sharpe: Optional[Decimal] = Field(default=None, description="Best Sharpe ratio")
     avg_sharpe: Optional[Decimal] = Field(default=None, description="Average Sharpe ratio")
     total_stocks: int = Field(default=0, description="Total number of stocks in database")
-    best_strategy: Optional[BestStrategy] = Field(default=None, description="Best performing strategy")
-    best_backtest: Optional[BestBacktest] = Field(default=None, description="Best single backtest")
+    top_strategies: list[BestStrategy] = Field(default_factory=list, description="Top 3 performing strategies")
+    top_backtests: list[BestBacktest] = Field(default_factory=list, description="Top 3 backtests by return")
 
 
 # Temporary: Mock user ID until auth is implemented
@@ -159,9 +159,9 @@ async def get_dashboard_stats(
     total_stocks_result = await db.execute(total_stocks_query)
     total_stocks = total_stocks_result.scalar() or 0
 
-    # Get best strategy (by average return)
-    best_strategy_data = None
-    best_strategy_query = (
+    # Get top 3 strategies (by average return)
+    top_strategies_list = []
+    top_strategies_query = (
         select(
             BacktestResult.strategy_id,
             func.avg(BacktestResult.total_return).label('avg_return'),
@@ -177,31 +177,31 @@ async def get_dashboard_stats(
         )
         .group_by(BacktestResult.strategy_id)
         .order_by(desc('avg_return'))
-        .limit(1)
+        .limit(3)
     )
-    best_strategy_result = await db.execute(best_strategy_query)
-    best_strategy_row = best_strategy_result.first()
+    top_strategies_result = await db.execute(top_strategies_query)
+    top_strategies_rows = top_strategies_result.all()
 
-    if best_strategy_row:
+    for row in top_strategies_rows:
         # Get strategy details
-        strategy_query = select(Strategy).where(Strategy.id == best_strategy_row.strategy_id)
+        strategy_query = select(Strategy).where(Strategy.id == row.strategy_id)
         strategy_result = await db.execute(strategy_query)
         strategy = strategy_result.scalar_one_or_none()
 
         if strategy:
-            best_strategy_data = BestStrategy(
-                strategy_id=str(best_strategy_row.strategy_id),
+            top_strategies_list.append(BestStrategy(
+                strategy_id=str(row.strategy_id),
                 strategy_name=strategy.name,
                 strategy_type=strategy.strategy_type,
-                avg_return=Decimal(str(round(float(best_strategy_row.avg_return), 6))),
-                avg_sharpe=Decimal(str(round(float(best_strategy_row.avg_sharpe), 4))) if best_strategy_row.avg_sharpe else None,
-                backtest_count=best_strategy_row.backtest_count,
-                avg_win_rate=Decimal(str(round(float(best_strategy_row.avg_win_rate), 4))) if best_strategy_row.avg_win_rate else None,
-            )
+                avg_return=Decimal(str(round(float(row.avg_return), 6))),
+                avg_sharpe=Decimal(str(round(float(row.avg_sharpe), 4))) if row.avg_sharpe else None,
+                backtest_count=row.backtest_count,
+                avg_win_rate=Decimal(str(round(float(row.avg_win_rate), 4))) if row.avg_win_rate else None,
+            ))
 
-    # Get best single backtest (by total return)
-    best_backtest_data = None
-    best_backtest_query = (
+    # Get top 3 backtests (by total return)
+    top_backtests_list = []
+    top_backtests_query = (
         select(BacktestResult)
         .join(BacktestJob, BacktestResult.job_id == BacktestJob.id)
         .where(
@@ -210,34 +210,34 @@ async def get_dashboard_stats(
             BacktestResult.total_return.isnot(None),
         )
         .order_by(desc(BacktestResult.total_return))
-        .limit(1)
+        .limit(3)
     )
-    best_backtest_result = await db.execute(best_backtest_query)
-    best_backtest_row = best_backtest_result.scalar_one_or_none()
+    top_backtests_result = await db.execute(top_backtests_query)
+    top_backtests_rows = top_backtests_result.scalars().all()
 
-    if best_backtest_row:
+    for row in top_backtests_rows:
         # Get strategy name
-        strategy_query = select(Strategy).where(Strategy.id == best_backtest_row.strategy_id)
+        strategy_query = select(Strategy).where(Strategy.id == row.strategy_id)
         strategy_result = await db.execute(strategy_query)
         strategy = strategy_result.scalar_one_or_none()
         strategy_name = strategy.name if strategy else "Unknown"
 
-        best_backtest_data = BestBacktest(
-            result_id=str(best_backtest_row.id),
-            stock_code=best_backtest_row.stock_code,
-            strategy_id=str(best_backtest_row.strategy_id),
+        top_backtests_list.append(BestBacktest(
+            result_id=str(row.id),
+            stock_code=row.stock_code,
+            strategy_id=str(row.strategy_id),
             strategy_name=strategy_name,
-            total_return=best_backtest_row.total_return,
-            annual_return=best_backtest_row.annual_return,
-            final_value=best_backtest_row.final_value,
-            sharpe_ratio=best_backtest_row.sharpe_ratio,
-            max_drawdown=best_backtest_row.max_drawdown,
-            volatility=best_backtest_row.volatility,
-            total_trades=best_backtest_row.total_trades,
-            win_rate=best_backtest_row.win_rate,
-            profit_factor=best_backtest_row.profit_factor,
-            created_at=best_backtest_row.created_at,
-        )
+            total_return=row.total_return,
+            annual_return=row.annual_return,
+            final_value=row.final_value,
+            sharpe_ratio=row.sharpe_ratio,
+            max_drawdown=row.max_drawdown,
+            volatility=row.volatility,
+            total_trades=row.total_trades,
+            win_rate=row.win_rate,
+            profit_factor=row.profit_factor,
+            created_at=row.created_at,
+        ))
 
     return DashboardStats(
         total_strategies=total_strategies,
@@ -249,6 +249,6 @@ async def get_dashboard_stats(
         best_sharpe=best_sharpe,
         avg_sharpe=avg_sharpe,
         total_stocks=total_stocks,
-        best_strategy=best_strategy_data,
-        best_backtest=best_backtest_data,
+        top_strategies=top_strategies_list,
+        top_backtests=top_backtests_list,
     )

@@ -109,15 +109,12 @@ export default function DashboardPage() {
         </div>
       )}
 
-      {/* Best Strategy & Best Backtest Cards */}
+      {/* Top Strategies & Top Backtests Cards */}
       <div className="grid gap-4 md:grid-cols-2">
-        {/* Best Strategy Card */}
-        <Card
-          className="cursor-pointer hover:bg-accent/30 transition-colors"
-          onClick={() => stats?.best_strategy && navigate(`/strategies`)}
-        >
+        {/* Top Strategies Card */}
+        <Card>
           <CardHeader className="flex flex-row items-center justify-between pb-2">
-            <CardTitle className="text-base">最佳策略</CardTitle>
+            <CardTitle className="text-base">最佳策略 Top 3</CardTitle>
             <Trophy className="h-5 w-5 text-amber-500" />
           </CardHeader>
           <CardContent>
@@ -125,32 +122,48 @@ export default function DashboardPage() {
               <div className="flex items-center justify-center py-4">
                 <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
               </div>
-            ) : stats?.best_strategy ? (
+            ) : stats?.top_strategies && stats.top_strategies.length > 0 ? (
               <div className="space-y-4">
-                <div>
-                  <p className="text-lg font-semibold">{stats.best_strategy.strategy_name}</p>
-                  <p className="text-xs text-muted-foreground">
-                    {stats.best_strategy.strategy_type || '未分类'}
-                  </p>
-                </div>
-                <div className="grid grid-cols-2 gap-4">
-                  <MetricItem
-                    label="平均收益"
-                    value={stats.best_strategy.avg_return != null ? formatPercent(Number(stats.best_strategy.avg_return)) : undefined}
-                  />
-                  <MetricItem
-                    label="平均 Sharpe"
-                    value={stats.best_strategy.avg_sharpe != null ? Number(stats.best_strategy.avg_sharpe).toFixed(2) : undefined}
-                  />
-                  <MetricItem
-                    label="回测次数"
-                    value={stats.best_strategy.backtest_count}
-                  />
-                  <MetricItem
-                    label="平均胜率"
-                    value={stats.best_strategy.avg_win_rate != null ? formatPercent(Number(stats.best_strategy.avg_win_rate)) : undefined}
-                  />
-                </div>
+                {stats.top_strategies.map((strategy, index) => (
+                  <div
+                    key={strategy.strategy_id}
+                    className="p-3 rounded-lg bg-muted/50 hover:bg-muted cursor-pointer transition-colors"
+                    onClick={() => navigate(`/strategies`)}
+                  >
+                    <div className="flex items-start gap-3">
+                      <div className={`flex-shrink-0 w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold ${
+                        index === 0 ? 'bg-amber-500 text-white' :
+                        index === 1 ? 'bg-gray-400 text-white' :
+                        'bg-amber-700 text-white'
+                      }`}>
+                        {index + 1}
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <div className="flex justify-between items-start">
+                          <div>
+                            <p className="font-semibold truncate">{strategy.strategy_name}</p>
+                            <p className="text-xs text-muted-foreground">
+                              {strategy.strategy_type || '未分类'} · {strategy.backtest_count} 次回测
+                            </p>
+                          </div>
+                          <p className={`text-lg font-bold ${Number(strategy.avg_return) >= 0 ? 'text-profit' : 'text-loss'}`}>
+                            {formatPercent(Number(strategy.avg_return))}
+                          </p>
+                        </div>
+                        <div className="grid grid-cols-2 gap-2 mt-2 text-xs">
+                          <MetricItem
+                            label="平均 Sharpe"
+                            value={strategy.avg_sharpe != null ? Number(strategy.avg_sharpe).toFixed(2) : undefined}
+                          />
+                          <MetricItem
+                            label="平均胜率"
+                            value={strategy.avg_win_rate != null ? formatPercent(Number(strategy.avg_win_rate)) : undefined}
+                          />
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                ))}
               </div>
             ) : (
               <div className="text-center text-muted-foreground py-4">
@@ -160,13 +173,10 @@ export default function DashboardPage() {
           </CardContent>
         </Card>
 
-        {/* Best Backtest Card */}
-        <Card
-          className="cursor-pointer hover:bg-accent/30 transition-colors"
-          onClick={() => stats?.best_backtest && navigate(`/analysis`)}
-        >
+        {/* Top Backtests Card */}
+        <Card>
           <CardHeader className="flex flex-row items-center justify-between pb-2">
-            <CardTitle className="text-base">最佳回测</CardTitle>
+            <CardTitle className="text-base">最佳回测 Top 3</CardTitle>
             <Crown className="h-5 w-5 text-amber-500" />
           </CardHeader>
           <CardContent>
@@ -174,44 +184,51 @@ export default function DashboardPage() {
               <div className="flex items-center justify-center py-4">
                 <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
               </div>
-            ) : stats?.best_backtest ? (
+            ) : stats?.top_backtests && stats.top_backtests.length > 0 ? (
               <div className="space-y-4">
-                <div className="flex justify-between items-start">
-                  <div>
-                    <p className="text-lg font-semibold">{stats.best_backtest.stock_code}</p>
-                    <p className="text-xs text-muted-foreground">{stats.best_backtest.strategy_name}</p>
+                {stats.top_backtests.map((backtest, index) => (
+                  <div
+                    key={backtest.result_id}
+                    className="p-3 rounded-lg bg-muted/50 hover:bg-muted cursor-pointer transition-colors"
+                    onClick={() => navigate(`/analysis`)}
+                  >
+                    <div className="flex items-start gap-3">
+                      <div className={`flex-shrink-0 w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold ${
+                        index === 0 ? 'bg-amber-500 text-white' :
+                        index === 1 ? 'bg-gray-400 text-white' :
+                        'bg-amber-700 text-white'
+                      }`}>
+                        {index + 1}
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <div className="flex justify-between items-start">
+                          <div>
+                            <p className="font-semibold">{backtest.stock_code}</p>
+                            <p className="text-xs text-muted-foreground">{backtest.strategy_name}</p>
+                          </div>
+                          <p className={`text-lg font-bold ${Number(backtest.total_return) >= 0 ? 'text-profit' : 'text-loss'}`}>
+                            {formatPercent(Number(backtest.total_return))}
+                          </p>
+                        </div>
+                        <div className="grid grid-cols-3 gap-2 mt-2 text-xs">
+                          <MetricItem
+                            label="Sharpe"
+                            value={backtest.sharpe_ratio != null ? Number(backtest.sharpe_ratio).toFixed(2) : undefined}
+                          />
+                          <MetricItem
+                            label="最大回撤"
+                            value={backtest.max_drawdown != null ? formatPercent(Number(backtest.max_drawdown)) : undefined}
+                            negative
+                          />
+                          <MetricItem
+                            label="胜率"
+                            value={backtest.win_rate != null ? formatPercent(Number(backtest.win_rate)) : undefined}
+                          />
+                        </div>
+                      </div>
+                    </div>
                   </div>
-                  <p className={`text-2xl font-bold ${Number(stats.best_backtest.total_return) >= 0 ? 'text-profit' : 'text-loss'}`}>
-                    {formatPercent(Number(stats.best_backtest.total_return))}
-                  </p>
-                </div>
-                <div className="grid grid-cols-3 gap-3">
-                  <MetricItem
-                    label="年化收益"
-                    value={stats.best_backtest.annual_return != null ? formatPercent(Number(stats.best_backtest.annual_return)) : undefined}
-                  />
-                  <MetricItem
-                    label="Sharpe"
-                    value={stats.best_backtest.sharpe_ratio != null ? Number(stats.best_backtest.sharpe_ratio).toFixed(2) : undefined}
-                  />
-                  <MetricItem
-                    label="最大回撤"
-                    value={stats.best_backtest.max_drawdown != null ? formatPercent(Number(stats.best_backtest.max_drawdown)) : undefined}
-                    negative
-                  />
-                  <MetricItem
-                    label="交易次数"
-                    value={stats.best_backtest.total_trades}
-                  />
-                  <MetricItem
-                    label="胜率"
-                    value={stats.best_backtest.win_rate != null ? formatPercent(Number(stats.best_backtest.win_rate)) : undefined}
-                  />
-                  <MetricItem
-                    label="盈亏比"
-                    value={stats.best_backtest.profit_factor != null ? Number(stats.best_backtest.profit_factor).toFixed(2) : undefined}
-                  />
-                </div>
+                ))}
               </div>
             ) : (
               <div className="text-center text-muted-foreground py-4">
