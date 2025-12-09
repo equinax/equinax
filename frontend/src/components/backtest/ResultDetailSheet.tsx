@@ -116,7 +116,7 @@ export function ResultDetailSheet({ jobId, resultId, open, onOpenChange }: Resul
 
   return (
     <Sheet open={open} onOpenChange={onOpenChange}>
-      <SheetContent className="w-full sm:max-w-4xl overflow-y-auto">
+      <SheetContent className="w-full sm:max-w-[90vw] overflow-y-auto">
         <SheetHeader>
           <SheetTitle className="flex items-center gap-2">
             {data ? (

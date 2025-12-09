@@ -44,6 +44,9 @@ interface IndicatorState {
   rsi: boolean
 }
 
+// Marker display mode
+type MarkerMode = 'none' | 'arrow' | 'arrow_price'
+
 // Indicator color configuration
 const INDICATOR_COLORS = {
   ma5: '#f59e0b',     // amber
@@ -108,6 +111,9 @@ export function EquityCurveWithIndicators({
   const macdChartApiRef = useRef<IChartApi | null>(null)
   const rsiChartApiRef = useRef<IChartApi | null>(null)
 
+  // Version counter to trigger sync re-setup when any chart is recreated
+  const [chartVersion, setChartVersion] = useState(0)
+
   const { theme } = useTheme()
   const isDark = theme === 'dark' || (theme === 'system' && window.matchMedia('(prefers-color-scheme: dark)').matches)
   const colors = getMarketColors()
@@ -125,6 +131,25 @@ export function EquityCurveWithIndicators({
     macd: false,
     rsi: false,
   })
+
+  // Marker display mode
+  const [markerMode, setMarkerMode] = useState<MarkerMode>('arrow_price')
+
+  // Cycle marker mode
+  const cycleMarkerMode = () => {
+    setMarkerMode(prev => {
+      if (prev === 'arrow_price') return 'arrow'
+      if (prev === 'arrow') return 'none'
+      return 'arrow_price'
+    })
+  }
+
+  // Marker mode display text
+  const markerModeText = {
+    none: '信号:隐藏',
+    arrow: '信号:箭头',
+    arrow_price: '信号:详细',
+  }
 
   // Extract date range from equity curve
   const dateRange = useMemo(() => {
@@ -179,7 +204,7 @@ export function EquityCurveWithIndicators({
   }
 
   // Chart options factory
-  const getChartOptions = (chartHeight: number) => ({
+  const getChartOptions = (chartHeight: number, showTimeScale = true) => ({
     layout: {
       background: { type: ColorType.Solid, color: 'transparent' },
       textColor: isDark ? '#a1a1aa' : '#71717a',
@@ -202,6 +227,7 @@ export function EquityCurveWithIndicators({
       },
     },
     timeScale: {
+      visible: showTimeScale,
       borderColor: isDark ? '#27272a' : '#e4e4e7',
       timeVisible: true,
       secondsVisible: false,
@@ -209,6 +235,12 @@ export function EquityCurveWithIndicators({
     rightPriceScale: {
       borderColor: isDark ? '#27272a' : '#e4e4e7',
       scaleMargins: { top: 0.1, bottom: 0.1 },
+      minimumWidth: 80, // Fixed width for alignment
+    },
+    leftPriceScale: {
+      visible: true,
+      borderColor: isDark ? '#27272a' : '#e4e4e7',
+      minimumWidth: 80, // Fixed width for alignment
     },
     height: chartHeight,
   })
@@ -248,21 +280,21 @@ export function EquityCurveWithIndicators({
       wickDownColor: colors.loss,
     })
 
-    // Add equity curve on right scale
+    // Add equity curve on left scale
     const equitySeries = chart.addAreaSeries({
       lineColor: INDICATOR_COLORS.equity,
       topColor: `${INDICATOR_COLORS.equity}40`,
       bottomColor: `${INDICATOR_COLORS.equity}00`,
       lineWidth: 2,
-      priceScaleId: 'equity',
+      priceScaleId: 'left',
       priceFormat: {
         type: 'custom',
         formatter: (price: number) => '¥' + price.toLocaleString('zh-CN', { minimumFractionDigits: 0, maximumFractionDigits: 0 }),
       },
     })
 
-    // Configure equity price scale (right side)
-    chart.priceScale('equity').applyOptions({
+    // Configure left price scale for equity
+    chart.priceScale('left').applyOptions({
       scaleMargins: { top: 0.1, bottom: 0.1 },
     })
 
@@ -381,8 +413,8 @@ export function EquityCurveWithIndicators({
 
       equitySeries.setData(equityData)
 
-      // Add trade markers
-      if (trades && trades.length > 0) {
+      // Add trade markers based on markerMode
+      if (trades && trades.length > 0 && markerMode !== 'none') {
         const markers: SeriesMarker<Time>[] = trades.flatMap((trade) => {
           const entryDate = trade.entry_date || trade.open_datetime?.split(' ')[0]
           const exitDate = trade.exit_date || trade.close_datetime?.split(' ')[0]
@@ -397,7 +429,7 @@ export function EquityCurveWithIndicators({
               position: 'belowBar',
               color: colors.profit,
               shape: 'arrowUp',
-              text: `B @${entryPrice?.toFixed(2) ?? ''}`,
+              text: markerMode === 'arrow_price' ? `B @${entryPrice?.toFixed(2) ?? ''}` : '',
             })
           }
 
@@ -407,7 +439,7 @@ export function EquityCurveWithIndicators({
               position: 'aboveBar',
               color: colors.loss,
               shape: 'arrowDown',
-              text: `S @${exitPrice?.toFixed(2) ?? ''}`,
+              text: markerMode === 'arrow_price' ? `S @${exitPrice?.toFixed(2) ?? ''}` : '',
             })
           }
 
@@ -415,6 +447,8 @@ export function EquityCurveWithIndicators({
         }).sort((a, b) => (a.time as string).localeCompare(b.time as string))
 
         equitySeries.setMarkers(markers)
+      } else {
+        equitySeries.setMarkers([])
       }
     }
 
@@ -438,6 +472,9 @@ export function EquityCurveWithIndicators({
 
     chart.timeScale().fitContent()
 
+    // Trigger sync re-setup
+    setChartVersion(v => v + 1)
+
     // Resize handler
     const handleResize = () => {
       if (mainChartRef.current && mainChartApiRef.current) {
@@ -457,7 +494,8 @@ export function EquityCurveWithIndicators({
         // Chart already disposed
       }
     }
-  }, [isDark, mainChartHeight, klineData, calculatedIndicators, equityCurve, trades, indicators, colors])
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isDark, mainChartHeight, klineData, calculatedIndicators, equityCurve, trades, indicators, colors, markerMode])
 
   // Create/update volume chart
   useEffect(() => {
@@ -474,7 +512,7 @@ export function EquityCurveWithIndicators({
     }
 
     const chart = createChart(volumeChartRef.current, {
-      ...getChartOptions(subChartHeight),
+      ...getChartOptions(subChartHeight, false), // Hide time scale on sub-chart
       width: volumeChartRef.current.clientWidth,
     })
     volumeChartApiRef.current = chart
@@ -505,15 +543,8 @@ export function EquityCurveWithIndicators({
 
     chart.timeScale().fitContent()
 
-    // Sync time scale with main chart
-    if (mainChartApiRef.current) {
-      const mainTimeScale = mainChartApiRef.current.timeScale()
-      const volumeTimeScale = chart.timeScale()
-
-      mainTimeScale.subscribeVisibleLogicalRangeChange(range => {
-        if (range) volumeTimeScale.setVisibleLogicalRange(range)
-      })
-    }
+    // Trigger sync re-setup
+    setChartVersion(v => v + 1)
 
     const handleResize = () => {
       if (volumeChartRef.current && volumeChartApiRef.current) {
@@ -533,6 +564,7 @@ export function EquityCurveWithIndicators({
         // Chart already disposed
       }
     }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isDark, indicators.volume, klineData, colors])
 
   // Create/update MACD chart
@@ -550,7 +582,7 @@ export function EquityCurveWithIndicators({
     }
 
     const chart = createChart(macdChartRef.current, {
-      ...getChartOptions(subChartHeight),
+      ...getChartOptions(subChartHeight, false), // Hide time scale on sub-chart
       width: macdChartRef.current.clientWidth,
     })
     macdChartApiRef.current = chart
@@ -605,15 +637,8 @@ export function EquityCurveWithIndicators({
 
     chart.timeScale().fitContent()
 
-    // Sync time scale with main chart
-    if (mainChartApiRef.current) {
-      const mainTimeScale = mainChartApiRef.current.timeScale()
-      const macdTimeScale = chart.timeScale()
-
-      mainTimeScale.subscribeVisibleLogicalRangeChange(range => {
-        if (range) macdTimeScale.setVisibleLogicalRange(range)
-      })
-    }
+    // Trigger sync re-setup
+    setChartVersion(v => v + 1)
 
     const handleResize = () => {
       if (macdChartRef.current && macdChartApiRef.current) {
@@ -633,6 +658,7 @@ export function EquityCurveWithIndicators({
         // Chart already disposed
       }
     }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isDark, indicators.macd, calculatedIndicators, colors])
 
   // Create/update RSI chart
@@ -650,7 +676,7 @@ export function EquityCurveWithIndicators({
     }
 
     const chart = createChart(rsiChartRef.current, {
-      ...getChartOptions(subChartHeight),
+      ...getChartOptions(subChartHeight, false), // Hide time scale on sub-chart
       width: rsiChartRef.current.clientWidth,
     })
     rsiChartApiRef.current = chart
@@ -693,15 +719,8 @@ export function EquityCurveWithIndicators({
 
     chart.timeScale().fitContent()
 
-    // Sync time scale with main chart
-    if (mainChartApiRef.current) {
-      const mainTimeScale = mainChartApiRef.current.timeScale()
-      const rsiTimeScale = chart.timeScale()
-
-      mainTimeScale.subscribeVisibleLogicalRangeChange(range => {
-        if (range) rsiTimeScale.setVisibleLogicalRange(range)
-      })
-    }
+    // Trigger sync re-setup
+    setChartVersion(v => v + 1)
 
     const handleResize = () => {
       if (rsiChartRef.current && rsiChartApiRef.current) {
@@ -721,7 +740,56 @@ export function EquityCurveWithIndicators({
         // Chart already disposed
       }
     }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isDark, indicators.rsi, calculatedIndicators])
+
+  // Centralized time scale sync across all charts
+  useEffect(() => {
+    // Use requestAnimationFrame to ensure charts are fully initialized
+    const timeoutId = requestAnimationFrame(() => {
+      const charts = [
+        mainChartApiRef.current,
+        volumeChartApiRef.current,
+        macdChartApiRef.current,
+        rsiChartApiRef.current,
+      ].filter((c): c is IChartApi => c !== null)
+
+      if (charts.length < 2) return
+
+      let isSyncing = false
+
+      const syncToAll = (sourceChart: IChartApi) => {
+        if (isSyncing) return
+        const range = sourceChart.timeScale().getVisibleLogicalRange()
+        if (!range) return
+
+        isSyncing = true
+        charts.forEach(chart => {
+          if (chart !== sourceChart) {
+            try {
+              chart.timeScale().setVisibleLogicalRange(range)
+            } catch {
+              // Chart might be disposed
+            }
+          }
+        })
+        isSyncing = false
+      }
+
+      charts.forEach(chart => {
+        try {
+          chart.timeScale().subscribeVisibleLogicalRangeChange(() => syncToAll(chart))
+        } catch {
+          // Chart might be disposed
+        }
+      })
+    })
+
+    return () => {
+      cancelAnimationFrame(timeoutId)
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [chartVersion]) // Re-run whenever any chart is recreated
 
   if (!equityCurve || equityCurve.length === 0) {
     return (
@@ -754,6 +822,15 @@ export function EquityCurveWithIndicators({
             ))}
           </div>
         ))}
+        {/* Marker mode toggle - single cycling button */}
+        <Button
+          variant="outline"
+          size="sm"
+          className="h-6 px-2 text-xs"
+          onClick={cycleMarkerMode}
+        >
+          {markerModeText[markerMode]}
+        </Button>
       </div>
 
       {/* Charts container */}

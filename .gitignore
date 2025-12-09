@@ -86,3 +86,4 @@ backend/alembic/versions/*.pyc
 *.pem
 *.key
 credentials.json
+.tmp/
