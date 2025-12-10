@@ -18,6 +18,7 @@ import { Skeleton } from '@/components/ui/skeleton'
 import { useGetKlineApiV1StocksCodeKlineGet } from '@/api/generated/stocks/stocks'
 import { calcMA, calcEMA, calcBOLL, calcMACD, calcRSI } from '@/lib/indicators'
 import type { EquityCurvePoint, TradeRecord } from '@/types/backtest'
+import { cn } from '@/lib/utils'
 
 interface EquityCurveWithIndicatorsProps {
   stockCode: string
@@ -28,6 +29,9 @@ interface EquityCurveWithIndicatorsProps {
 
 // Indicator toggle configuration
 interface IndicatorState {
+  // Price display
+  candle: boolean
+  closeLine: boolean
   // Main chart - MA
   ma5: boolean
   ma10: boolean
@@ -38,11 +42,16 @@ interface IndicatorState {
   ema26: boolean
   // Main chart - Bollinger
   boll: boolean
-  // Sub charts
+  // Overlays
   volume: boolean
   macd: boolean
   rsi: boolean
+  // Equity
+  equity: boolean
 }
+
+// Y-axis display mode - which data's scale to show on right axis
+type YAxisMode = 'price' | 'volume' | 'macd' | 'rsi' | 'equity'
 
 // Marker display mode
 type MarkerMode = 'none' | 'arrow' | 'arrow_price'
@@ -59,41 +68,12 @@ const INDICATOR_COLORS = {
   bollMiddle: '#64748b', // slate
   bollLower: '#94a3b8', // slate (dashed)
   equity: '#ec4899',  // pink
-  rsi6: '#f59e0b',    // amber
-  rsi12: '#3b82f6',   // blue
-  rsi24: '#a855f7',   // purple
+  closeLine: '#6366f1', // indigo
+  rsi: '#8b5cf6',     // violet
   macdDif: '#3b82f6', // blue
   macdDea: '#f97316', // orange
+  volume: '#64748b',  // slate
 }
-
-// Indicator toggle button config
-const INDICATOR_GROUPS = [
-  {
-    name: '均线',
-    items: [
-      { key: 'ma5' as const, label: 'MA5' },
-      { key: 'ma10' as const, label: 'MA10' },
-      { key: 'ma20' as const, label: 'MA20' },
-      { key: 'ma60' as const, label: 'MA60' },
-    ],
-  },
-  {
-    name: 'EMA',
-    items: [
-      { key: 'ema12' as const, label: 'EMA12' },
-      { key: 'ema26' as const, label: 'EMA26' },
-    ],
-  },
-  {
-    name: '其他',
-    items: [
-      { key: 'boll' as const, label: 'BOLL' },
-      { key: 'volume' as const, label: '成交量' },
-      { key: 'macd' as const, label: 'MACD' },
-      { key: 'rsi' as const, label: 'RSI' },
-    ],
-  },
-]
 
 export function EquityCurveWithIndicators({
   stockCode,
@@ -101,18 +81,9 @@ export function EquityCurveWithIndicators({
   trades,
   height = 500,
 }: EquityCurveWithIndicatorsProps) {
-  const mainChartRef = useRef<HTMLDivElement>(null)
-  const volumeChartRef = useRef<HTMLDivElement>(null)
-  const macdChartRef = useRef<HTMLDivElement>(null)
-  const rsiChartRef = useRef<HTMLDivElement>(null)
-
-  const mainChartApiRef = useRef<IChartApi | null>(null)
-  const volumeChartApiRef = useRef<IChartApi | null>(null)
-  const macdChartApiRef = useRef<IChartApi | null>(null)
-  const rsiChartApiRef = useRef<IChartApi | null>(null)
-
-  // Version counter to trigger sync re-setup when any chart is recreated
-  const [chartVersion, setChartVersion] = useState(0)
+  const containerRef = useRef<HTMLDivElement>(null)
+  const chartRef = useRef<HTMLDivElement>(null)
+  const chartApiRef = useRef<IChartApi | null>(null)
 
   const { theme } = useTheme()
   const isDark = theme === 'dark' || (theme === 'system' && window.matchMedia('(prefers-color-scheme: dark)').matches)
@@ -120,6 +91,8 @@ export function EquityCurveWithIndicators({
 
   // Indicator toggle state
   const [indicators, setIndicators] = useState<IndicatorState>({
+    candle: true,
+    closeLine: false,
     ma5: true,
     ma10: true,
     ma20: true,
@@ -130,7 +103,11 @@ export function EquityCurveWithIndicators({
     volume: true,
     macd: false,
     rsi: false,
+    equity: true,
   })
+
+  // Y-axis mode
+  const [yAxisMode, setYAxisMode] = useState<YAxisMode>('price')
 
   // Marker display mode
   const [markerMode, setMarkerMode] = useState<MarkerMode>('arrow_price')
@@ -190,9 +167,7 @@ export function EquityCurveWithIndicators({
       ema26: calcEMA(sortedData, 26),
       boll: calcBOLL(sortedData),
       macd: calcMACD(sortedData),
-      rsi6: calcRSI(sortedData, 6),
-      rsi12: calcRSI(sortedData, 12),
-      rsi24: calcRSI(sortedData, 24),
+      rsi: calcRSI(sortedData, 14),
     }
   }, [klineData])
 
@@ -203,207 +178,298 @@ export function EquityCurveWithIndicators({
     setIndicators(prev => ({ ...prev, [key]: !prev[key] }))
   }
 
-  // Chart options factory
-  const getChartOptions = (chartHeight: number, showTimeScale = true) => ({
-    layout: {
-      background: { type: ColorType.Solid, color: 'transparent' },
-      textColor: isDark ? '#a1a1aa' : '#71717a',
-    },
-    grid: {
-      vertLines: { color: isDark ? '#27272a' : '#e4e4e7' },
-      horzLines: { color: isDark ? '#27272a' : '#e4e4e7' },
-    },
-    crosshair: {
-      mode: 1,
-      vertLine: {
-        color: isDark ? '#52525b' : '#a1a1aa',
-        width: 1 as const,
-        style: LineStyle.Dashed,
-      },
-      horzLine: {
-        color: isDark ? '#52525b' : '#a1a1aa',
-        width: 1 as const,
-        style: LineStyle.Dashed,
-      },
-    },
-    timeScale: {
-      visible: showTimeScale,
-      borderColor: isDark ? '#27272a' : '#e4e4e7',
-      timeVisible: true,
-      secondsVisible: false,
-    },
-    rightPriceScale: {
-      borderColor: isDark ? '#27272a' : '#e4e4e7',
-      scaleMargins: { top: 0.1, bottom: 0.1 },
-      minimumWidth: 80, // Fixed width for alignment
-    },
-    leftPriceScale: {
-      visible: true,
-      borderColor: isDark ? '#27272a' : '#e4e4e7',
-      minimumWidth: 80, // Fixed width for alignment
-    },
-    height: chartHeight,
-  })
-
-  // Calculate dynamic heights
-  const subChartHeight = 100
-  const activeSubCharts = [indicators.volume, indicators.macd, indicators.rsi].filter(Boolean).length
-  const mainChartHeight = height - activeSubCharts * subChartHeight
-
-  // Create/update main chart
+  // Create/update chart
   useEffect(() => {
-    if (!mainChartRef.current) return
+    if (!chartRef.current) return
 
     // Clean up existing chart
-    if (mainChartApiRef.current) {
+    if (chartApiRef.current) {
       try {
-        mainChartApiRef.current.remove()
+        chartApiRef.current.remove()
       } catch {
         // Chart already disposed
       }
-      mainChartApiRef.current = null
+      chartApiRef.current = null
     }
 
-    const chart = createChart(mainChartRef.current, {
-      ...getChartOptions(mainChartHeight),
-      width: mainChartRef.current.clientWidth,
-    })
-    mainChartApiRef.current = chart
-
-    // Add candlestick series
-    const candleSeries = chart.addCandlestickSeries({
-      upColor: colors.profit,
-      downColor: colors.loss,
-      borderUpColor: colors.profit,
-      borderDownColor: colors.loss,
-      wickUpColor: colors.profit,
-      wickDownColor: colors.loss,
-    })
-
-    // Add equity curve on left scale
-    const equitySeries = chart.addAreaSeries({
-      lineColor: INDICATOR_COLORS.equity,
-      topColor: `${INDICATOR_COLORS.equity}40`,
-      bottomColor: `${INDICATOR_COLORS.equity}00`,
-      lineWidth: 2,
-      priceScaleId: 'left',
-      priceFormat: {
-        type: 'custom',
-        formatter: (price: number) => '¥' + price.toLocaleString('zh-CN', { minimumFractionDigits: 0, maximumFractionDigits: 0 }),
+    const chart = createChart(chartRef.current, {
+      layout: {
+        background: { type: ColorType.Solid, color: 'transparent' },
+        textColor: isDark ? '#a1a1aa' : '#71717a',
       },
+      grid: {
+        vertLines: { color: isDark ? '#27272a' : '#e4e4e7' },
+        horzLines: { color: isDark ? '#27272a' : '#e4e4e7' },
+      },
+      crosshair: {
+        mode: 1,
+        vertLine: {
+          color: isDark ? '#52525b' : '#a1a1aa',
+          width: 1 as const,
+          style: LineStyle.Dashed,
+        },
+        horzLine: {
+          color: isDark ? '#52525b' : '#a1a1aa',
+          width: 1 as const,
+          style: LineStyle.Dashed,
+        },
+      },
+      timeScale: {
+        borderColor: isDark ? '#27272a' : '#e4e4e7',
+        timeVisible: true,
+        secondsVisible: false,
+      },
+      rightPriceScale: {
+        visible: true,
+        borderColor: isDark ? '#27272a' : '#e4e4e7',
+        scaleMargins: { top: 0.05, bottom: 0.05 },
+      },
+      leftPriceScale: {
+        visible: false,
+      },
+      height,
+      width: chartRef.current.clientWidth,
     })
+    chartApiRef.current = chart
 
-    // Configure left price scale for equity
-    chart.priceScale('left').applyOptions({
-      scaleMargins: { top: 0.1, bottom: 0.1 },
-    })
+    // Determine which price scale to use for right axis based on yAxisMode
+    const getRightScaleId = () => {
+      switch (yAxisMode) {
+        case 'price': return 'right'
+        case 'volume': return 'volume'
+        case 'macd': return 'macd'
+        case 'rsi': return 'rsi'
+        case 'equity': return 'equity'
+        default: return 'right'
+      }
+    }
 
-    // Series refs for updates
-    const seriesRefs = {
-      candle: candleSeries,
-      equity: equitySeries,
-      ma5: null as ISeriesApi<'Line'> | null,
-      ma10: null as ISeriesApi<'Line'> | null,
-      ma20: null as ISeriesApi<'Line'> | null,
-      ma60: null as ISeriesApi<'Line'> | null,
-      ema12: null as ISeriesApi<'Line'> | null,
-      ema26: null as ISeriesApi<'Line'> | null,
-      bollUpper: null as ISeriesApi<'Line'> | null,
-      bollMiddle: null as ISeriesApi<'Line'> | null,
-      bollLower: null as ISeriesApi<'Line'> | null,
+    // Series refs
+    let candleSeries: ISeriesApi<'Candlestick'> | null = null
+    let closeLineSeries: ISeriesApi<'Line'> | null = null
+    let equitySeries: ISeriesApi<'Line'> | null = null
+    let volumeSeries: ISeriesApi<'Histogram'> | null = null
+    let macdHistSeries: ISeriesApi<'Histogram'> | null = null
+    let macdDifSeries: ISeriesApi<'Line'> | null = null
+    let macdDeaSeries: ISeriesApi<'Line'> | null = null
+    let rsiSeries: ISeriesApi<'Line'> | null = null
+
+    const lineSeries: { [key: string]: ISeriesApi<'Line'> } = {}
+
+    // Add candlestick series (price scale)
+    if (indicators.candle) {
+      candleSeries = chart.addCandlestickSeries({
+        upColor: colors.profit,
+        downColor: colors.loss,
+        borderUpColor: colors.profit,
+        borderDownColor: colors.loss,
+        wickUpColor: colors.profit,
+        wickDownColor: colors.loss,
+        priceScaleId: yAxisMode === 'price' ? 'right' : 'price',
+      })
+
+      if (yAxisMode !== 'price') {
+        chart.priceScale('price').applyOptions({
+          visible: false,
+          scaleMargins: { top: 0.05, bottom: 0.25 },
+        })
+      }
+    }
+
+    // Add close line series
+    if (indicators.closeLine) {
+      closeLineSeries = chart.addLineSeries({
+        color: INDICATOR_COLORS.closeLine,
+        lineWidth: 2,
+        priceLineVisible: false,
+        lastValueVisible: true,
+        priceScaleId: yAxisMode === 'price' ? 'right' : 'price',
+      })
+
+      if (yAxisMode !== 'price') {
+        chart.priceScale('price').applyOptions({
+          visible: false,
+          scaleMargins: { top: 0.05, bottom: 0.25 },
+        })
+      }
     }
 
     // Add MA lines
-    if (indicators.ma5) {
-      seriesRefs.ma5 = chart.addLineSeries({
-        color: INDICATOR_COLORS.ma5,
-        lineWidth: 1,
-        priceLineVisible: false,
-        lastValueVisible: false,
-      })
-    }
-    if (indicators.ma10) {
-      seriesRefs.ma10 = chart.addLineSeries({
-        color: INDICATOR_COLORS.ma10,
-        lineWidth: 1,
-        priceLineVisible: false,
-        lastValueVisible: false,
-      })
-    }
-    if (indicators.ma20) {
-      seriesRefs.ma20 = chart.addLineSeries({
-        color: INDICATOR_COLORS.ma20,
-        lineWidth: 1,
-        priceLineVisible: false,
-        lastValueVisible: false,
-      })
-    }
-    if (indicators.ma60) {
-      seriesRefs.ma60 = chart.addLineSeries({
-        color: INDICATOR_COLORS.ma60,
-        lineWidth: 1,
-        priceLineVisible: false,
-        lastValueVisible: false,
-      })
-    }
+    const maKeys = ['ma5', 'ma10', 'ma20', 'ma60'] as const
+    maKeys.forEach(key => {
+      if (indicators[key]) {
+        lineSeries[key] = chart.addLineSeries({
+          color: INDICATOR_COLORS[key],
+          lineWidth: 1,
+          priceLineVisible: false,
+          lastValueVisible: false,
+          priceScaleId: yAxisMode === 'price' ? 'right' : 'price',
+        })
+      }
+    })
 
     // Add EMA lines
-    if (indicators.ema12) {
-      seriesRefs.ema12 = chart.addLineSeries({
-        color: INDICATOR_COLORS.ema12,
-        lineWidth: 1,
-        priceLineVisible: false,
-        lastValueVisible: false,
-      })
-    }
-    if (indicators.ema26) {
-      seriesRefs.ema26 = chart.addLineSeries({
-        color: INDICATOR_COLORS.ema26,
-        lineWidth: 1,
-        priceLineVisible: false,
-        lastValueVisible: false,
-      })
-    }
+    const emaKeys = ['ema12', 'ema26'] as const
+    emaKeys.forEach(key => {
+      if (indicators[key]) {
+        lineSeries[key] = chart.addLineSeries({
+          color: INDICATOR_COLORS[key],
+          lineWidth: 1,
+          priceLineVisible: false,
+          lastValueVisible: false,
+          priceScaleId: yAxisMode === 'price' ? 'right' : 'price',
+        })
+      }
+    })
 
     // Add Bollinger Bands
     if (indicators.boll) {
-      seriesRefs.bollUpper = chart.addLineSeries({
+      lineSeries.bollUpper = chart.addLineSeries({
         color: INDICATOR_COLORS.bollUpper,
         lineWidth: 1,
         lineStyle: LineStyle.Dashed,
         priceLineVisible: false,
         lastValueVisible: false,
+        priceScaleId: yAxisMode === 'price' ? 'right' : 'price',
       })
-      seriesRefs.bollMiddle = chart.addLineSeries({
+      lineSeries.bollMiddle = chart.addLineSeries({
         color: INDICATOR_COLORS.bollMiddle,
         lineWidth: 1,
         priceLineVisible: false,
         lastValueVisible: false,
+        priceScaleId: yAxisMode === 'price' ? 'right' : 'price',
       })
-      seriesRefs.bollLower = chart.addLineSeries({
+      lineSeries.bollLower = chart.addLineSeries({
         color: INDICATOR_COLORS.bollLower,
         lineWidth: 1,
         lineStyle: LineStyle.Dashed,
         priceLineVisible: false,
         lastValueVisible: false,
+        priceScaleId: yAxisMode === 'price' ? 'right' : 'price',
+      })
+    }
+
+    // Add equity curve
+    if (indicators.equity) {
+      equitySeries = chart.addLineSeries({
+        color: INDICATOR_COLORS.equity,
+        lineWidth: 2,
+        priceLineVisible: false,
+        lastValueVisible: true,
+        priceScaleId: yAxisMode === 'equity' ? 'right' : 'equity',
+        priceFormat: {
+          type: 'custom',
+          formatter: (price: number) => '¥' + price.toLocaleString('zh-CN', { minimumFractionDigits: 0, maximumFractionDigits: 0 }),
+        },
+      })
+
+      if (yAxisMode !== 'equity') {
+        chart.priceScale('equity').applyOptions({
+          visible: false,
+          scaleMargins: { top: 0.05, bottom: 0.25 },
+        })
+      }
+    }
+
+    // Add volume (overlay)
+    if (indicators.volume) {
+      volumeSeries = chart.addHistogramSeries({
+        priceFormat: { type: 'volume' },
+        priceScaleId: yAxisMode === 'volume' ? 'right' : 'volume',
+      })
+
+      chart.priceScale(yAxisMode === 'volume' ? 'right' : 'volume').applyOptions({
+        visible: yAxisMode === 'volume',
+        scaleMargins: { top: 0.7, bottom: 0 },
+      })
+    }
+
+    // Add MACD (overlay)
+    if (indicators.macd) {
+      const macdScaleId = yAxisMode === 'macd' ? 'right' : 'macd'
+
+      macdHistSeries = chart.addHistogramSeries({
+        priceScaleId: macdScaleId,
+      })
+
+      macdDifSeries = chart.addLineSeries({
+        color: INDICATOR_COLORS.macdDif,
+        lineWidth: 1,
+        priceLineVisible: false,
+        lastValueVisible: false,
+        priceScaleId: macdScaleId,
+      })
+
+      macdDeaSeries = chart.addLineSeries({
+        color: INDICATOR_COLORS.macdDea,
+        lineWidth: 1,
+        priceLineVisible: false,
+        lastValueVisible: false,
+        priceScaleId: macdScaleId,
+      })
+
+      chart.priceScale(macdScaleId).applyOptions({
+        visible: yAxisMode === 'macd',
+        scaleMargins: { top: 0.7, bottom: 0 },
+      })
+    }
+
+    // Add RSI (overlay)
+    if (indicators.rsi) {
+      const rsiScaleId = yAxisMode === 'rsi' ? 'right' : 'rsi'
+
+      rsiSeries = chart.addLineSeries({
+        color: INDICATOR_COLORS.rsi,
+        lineWidth: 1,
+        priceLineVisible: false,
+        lastValueVisible: true,
+        priceScaleId: rsiScaleId,
+      })
+
+      chart.priceScale(rsiScaleId).applyOptions({
+        visible: yAxisMode === 'rsi',
+        scaleMargins: { top: 0.7, bottom: 0 },
       })
     }
 
     // Set K-line data
     if (klineData?.data) {
-      const candleData: CandlestickData<Time>[] = klineData.data.map(d => ({
-        time: d.date as Time,
-        open: Number(d.open) || 0,
-        high: Number(d.high) || 0,
-        low: Number(d.low) || 0,
-        close: Number(d.close) || 0,
-      })).sort((a, b) => (a.time as string).localeCompare(b.time as string))
+      const sortedKline = [...klineData.data].sort((a, b) => a.date.localeCompare(b.date))
 
-      candleSeries.setData(candleData)
+      if (candleSeries) {
+        const candleData: CandlestickData<Time>[] = sortedKline.map(d => ({
+          time: d.date as Time,
+          open: Number(d.open) || 0,
+          high: Number(d.high) || 0,
+          low: Number(d.low) || 0,
+          close: Number(d.close) || 0,
+        }))
+        candleSeries.setData(candleData)
+      }
+
+      if (closeLineSeries) {
+        const closeData: LineData<Time>[] = sortedKline.map(d => ({
+          time: d.date as Time,
+          value: Number(d.close) || 0,
+        }))
+        closeLineSeries.setData(closeData)
+      }
+
+      if (volumeSeries) {
+        const volumeData: HistogramData<Time>[] = sortedKline.map(d => {
+          const change = (Number(d.close) || 0) - (Number(d.open) || 0)
+          return {
+            time: d.date as Time,
+            value: Number(d.volume) || 0,
+            color: change >= 0 ? `${colors.profit}80` : `${colors.loss}80`,
+          }
+        })
+        volumeSeries.setData(volumeData)
+      }
     }
 
     // Set equity curve data
-    if (equityCurve && equityCurve.length > 0) {
+    if (equitySeries && equityCurve && equityCurve.length > 0) {
       const equityData = equityCurve
         .map(p => ({
           time: p.date as Time,
@@ -413,7 +479,7 @@ export function EquityCurveWithIndicators({
 
       equitySeries.setData(equityData)
 
-      // Add trade markers based on markerMode
+      // Add trade markers
       if (trades && trades.length > 0 && markerMode !== 'none') {
         const markers: SeriesMarker<Time>[] = trades.flatMap((trade) => {
           const entryDate = trade.entry_date || trade.open_datetime?.split(' ')[0]
@@ -447,372 +513,84 @@ export function EquityCurveWithIndicators({
         }).sort((a, b) => (a.time as string).localeCompare(b.time as string))
 
         equitySeries.setMarkers(markers)
-      } else {
-        equitySeries.setMarkers([])
       }
     }
 
-    // Set indicator data from frontend calculation
+    // Set indicator data
     if (calculatedIndicators) {
       const mapToLineData = (dataMap: Map<string, number>): LineData<Time>[] =>
         Array.from(dataMap.entries())
           .map(([date, value]) => ({ time: date as Time, value }))
           .sort((a, b) => (a.time as string).localeCompare(b.time as string))
 
-      if (seriesRefs.ma5) seriesRefs.ma5.setData(mapToLineData(calculatedIndicators.ma5))
-      if (seriesRefs.ma10) seriesRefs.ma10.setData(mapToLineData(calculatedIndicators.ma10))
-      if (seriesRefs.ma20) seriesRefs.ma20.setData(mapToLineData(calculatedIndicators.ma20))
-      if (seriesRefs.ma60) seriesRefs.ma60.setData(mapToLineData(calculatedIndicators.ma60))
-      if (seriesRefs.ema12) seriesRefs.ema12.setData(mapToLineData(calculatedIndicators.ema12))
-      if (seriesRefs.ema26) seriesRefs.ema26.setData(mapToLineData(calculatedIndicators.ema26))
-      if (seriesRefs.bollUpper) seriesRefs.bollUpper.setData(mapToLineData(calculatedIndicators.boll.upper))
-      if (seriesRefs.bollMiddle) seriesRefs.bollMiddle.setData(mapToLineData(calculatedIndicators.boll.middle))
-      if (seriesRefs.bollLower) seriesRefs.bollLower.setData(mapToLineData(calculatedIndicators.boll.lower))
+      // MA
+      if (lineSeries.ma5) lineSeries.ma5.setData(mapToLineData(calculatedIndicators.ma5))
+      if (lineSeries.ma10) lineSeries.ma10.setData(mapToLineData(calculatedIndicators.ma10))
+      if (lineSeries.ma20) lineSeries.ma20.setData(mapToLineData(calculatedIndicators.ma20))
+      if (lineSeries.ma60) lineSeries.ma60.setData(mapToLineData(calculatedIndicators.ma60))
+
+      // EMA
+      if (lineSeries.ema12) lineSeries.ema12.setData(mapToLineData(calculatedIndicators.ema12))
+      if (lineSeries.ema26) lineSeries.ema26.setData(mapToLineData(calculatedIndicators.ema26))
+
+      // BOLL
+      if (lineSeries.bollUpper) lineSeries.bollUpper.setData(mapToLineData(calculatedIndicators.boll.upper))
+      if (lineSeries.bollMiddle) lineSeries.bollMiddle.setData(mapToLineData(calculatedIndicators.boll.middle))
+      if (lineSeries.bollLower) lineSeries.bollLower.setData(mapToLineData(calculatedIndicators.boll.lower))
+
+      // MACD
+      if (macdHistSeries && macdDifSeries && macdDeaSeries) {
+        const { macd } = calculatedIndicators
+
+        const histData: HistogramData<Time>[] = Array.from(macd.hist.entries())
+          .map(([date, value]) => ({
+            time: date as Time,
+            value,
+            color: value >= 0 ? `${colors.profit}80` : `${colors.loss}80`,
+          }))
+          .sort((a, b) => (a.time as string).localeCompare(b.time as string))
+
+        macdHistSeries.setData(histData)
+        macdDifSeries.setData(mapToLineData(macd.dif))
+        macdDeaSeries.setData(mapToLineData(macd.dea))
+      }
+
+      // RSI
+      if (rsiSeries) {
+        rsiSeries.setData(mapToLineData(calculatedIndicators.rsi))
+      }
     }
 
     chart.timeScale().fitContent()
-
-    // Trigger sync re-setup
-    setChartVersion(v => v + 1)
 
     // Resize handler
-    const handleResize = () => {
-      if (mainChartRef.current && mainChartApiRef.current) {
-        mainChartApiRef.current.applyOptions({
-          width: mainChartRef.current.clientWidth,
-        })
-      }
-    }
-
-    window.addEventListener('resize', handleResize)
-
-    return () => {
-      window.removeEventListener('resize', handleResize)
-      try {
-        chart.remove()
-      } catch {
-        // Chart already disposed
-      }
-    }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isDark, mainChartHeight, klineData, calculatedIndicators, equityCurve, trades, indicators, colors, markerMode])
-
-  // Create/update volume chart
-  useEffect(() => {
-    if (!volumeChartRef.current || !indicators.volume) {
-      if (volumeChartApiRef.current) {
-        try {
-          volumeChartApiRef.current.remove()
-        } catch {
-          // Chart already disposed
-        }
-        volumeChartApiRef.current = null
-      }
-      return
-    }
-
-    const chart = createChart(volumeChartRef.current, {
-      ...getChartOptions(subChartHeight, false), // Hide time scale on sub-chart
-      width: volumeChartRef.current.clientWidth,
-    })
-    volumeChartApiRef.current = chart
-
-    const volumeSeries = chart.addHistogramSeries({
-      priceFormat: {
-        type: 'volume',
-      },
-      priceScaleId: '',
-    })
-
-    chart.priceScale('').applyOptions({
-      scaleMargins: { top: 0.1, bottom: 0 },
-    })
-
-    if (klineData?.data) {
-      const volumeData: HistogramData<Time>[] = klineData.data.map(d => {
-        const change = (Number(d.close) || 0) - (Number(d.open) || 0)
-        return {
-          time: d.date as Time,
-          value: Number(d.volume) || 0,
-          color: change >= 0 ? colors.profit : colors.loss,
-        }
-      }).sort((a, b) => (a.time as string).localeCompare(b.time as string))
-
-      volumeSeries.setData(volumeData)
-    }
-
-    chart.timeScale().fitContent()
-
-    // Trigger sync re-setup
-    setChartVersion(v => v + 1)
-
-    const handleResize = () => {
-      if (volumeChartRef.current && volumeChartApiRef.current) {
-        volumeChartApiRef.current.applyOptions({
-          width: volumeChartRef.current.clientWidth,
-        })
-      }
-    }
-
-    window.addEventListener('resize', handleResize)
-
-    return () => {
-      window.removeEventListener('resize', handleResize)
-      try {
-        chart.remove()
-      } catch {
-        // Chart already disposed
-      }
-    }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isDark, indicators.volume, klineData, colors])
-
-  // Create/update MACD chart
-  useEffect(() => {
-    if (!macdChartRef.current || !indicators.macd) {
-      if (macdChartApiRef.current) {
-        try {
-          macdChartApiRef.current.remove()
-        } catch {
-          // Chart already disposed
-        }
-        macdChartApiRef.current = null
-      }
-      return
-    }
-
-    const chart = createChart(macdChartRef.current, {
-      ...getChartOptions(subChartHeight, false), // Hide time scale on sub-chart
-      width: macdChartRef.current.clientWidth,
-    })
-    macdChartApiRef.current = chart
-
-    const macdHistSeries = chart.addHistogramSeries({
-      priceScaleId: '',
-    })
-
-    const difSeries = chart.addLineSeries({
-      color: INDICATOR_COLORS.macdDif,
-      lineWidth: 1,
-      priceLineVisible: false,
-      lastValueVisible: false,
-      priceScaleId: '',
-    })
-
-    const deaSeries = chart.addLineSeries({
-      color: INDICATOR_COLORS.macdDea,
-      lineWidth: 1,
-      priceLineVisible: false,
-      lastValueVisible: false,
-      priceScaleId: '',
-    })
-
-    chart.priceScale('').applyOptions({
-      scaleMargins: { top: 0.1, bottom: 0.1 },
-    })
-
-    if (calculatedIndicators) {
-      const { macd } = calculatedIndicators
-
-      const histData: HistogramData<Time>[] = Array.from(macd.hist.entries())
-        .map(([date, value]) => ({
-          time: date as Time,
-          value,
-          color: value >= 0 ? colors.profit : colors.loss,
-        }))
-        .sort((a, b) => (a.time as string).localeCompare(b.time as string))
-
-      const difData: LineData<Time>[] = Array.from(macd.dif.entries())
-        .map(([date, value]) => ({ time: date as Time, value }))
-        .sort((a, b) => (a.time as string).localeCompare(b.time as string))
-
-      const deaData: LineData<Time>[] = Array.from(macd.dea.entries())
-        .map(([date, value]) => ({ time: date as Time, value }))
-        .sort((a, b) => (a.time as string).localeCompare(b.time as string))
-
-      macdHistSeries.setData(histData)
-      difSeries.setData(difData)
-      deaSeries.setData(deaData)
-    }
-
-    chart.timeScale().fitContent()
-
-    // Trigger sync re-setup
-    setChartVersion(v => v + 1)
-
-    const handleResize = () => {
-      if (macdChartRef.current && macdChartApiRef.current) {
-        macdChartApiRef.current.applyOptions({
-          width: macdChartRef.current.clientWidth,
-        })
-      }
-    }
-
-    window.addEventListener('resize', handleResize)
-
-    return () => {
-      window.removeEventListener('resize', handleResize)
-      try {
-        chart.remove()
-      } catch {
-        // Chart already disposed
-      }
-    }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isDark, indicators.macd, calculatedIndicators, colors])
-
-  // Create/update RSI chart
-  useEffect(() => {
-    if (!rsiChartRef.current || !indicators.rsi) {
-      if (rsiChartApiRef.current) {
-        try {
-          rsiChartApiRef.current.remove()
-        } catch {
-          // Chart already disposed
-        }
-        rsiChartApiRef.current = null
-      }
-      return
-    }
-
-    const chart = createChart(rsiChartRef.current, {
-      ...getChartOptions(subChartHeight, false), // Hide time scale on sub-chart
-      width: rsiChartRef.current.clientWidth,
-    })
-    rsiChartApiRef.current = chart
-
-    const rsi6Series = chart.addLineSeries({
-      color: INDICATOR_COLORS.rsi6,
-      lineWidth: 1,
-      priceLineVisible: false,
-      lastValueVisible: false,
-    })
-
-    const rsi12Series = chart.addLineSeries({
-      color: INDICATOR_COLORS.rsi12,
-      lineWidth: 1,
-      priceLineVisible: false,
-      lastValueVisible: false,
-    })
-
-    const rsi24Series = chart.addLineSeries({
-      color: INDICATOR_COLORS.rsi24,
-      lineWidth: 1,
-      priceLineVisible: false,
-      lastValueVisible: false,
-    })
-
-    chart.priceScale('right').applyOptions({
-      scaleMargins: { top: 0.1, bottom: 0.1 },
-    })
-
-    if (calculatedIndicators) {
-      const mapToLineData = (dataMap: Map<string, number>): LineData<Time>[] =>
-        Array.from(dataMap.entries())
-          .map(([date, value]) => ({ time: date as Time, value }))
-          .sort((a, b) => (a.time as string).localeCompare(b.time as string))
-
-      rsi6Series.setData(mapToLineData(calculatedIndicators.rsi6))
-      rsi12Series.setData(mapToLineData(calculatedIndicators.rsi12))
-      rsi24Series.setData(mapToLineData(calculatedIndicators.rsi24))
-    }
-
-    chart.timeScale().fitContent()
-
-    // Trigger sync re-setup
-    setChartVersion(v => v + 1)
-
-    const handleResize = () => {
-      if (rsiChartRef.current && rsiChartApiRef.current) {
-        rsiChartApiRef.current.applyOptions({
-          width: rsiChartRef.current.clientWidth,
-        })
-      }
-    }
-
-    window.addEventListener('resize', handleResize)
-
-    return () => {
-      window.removeEventListener('resize', handleResize)
-      try {
-        chart.remove()
-      } catch {
-        // Chart already disposed
-      }
-    }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isDark, indicators.rsi, calculatedIndicators])
-
-  // Centralized time scale sync across all charts
-  useEffect(() => {
-    let isDisposed = false
-    const unsubscribers: (() => void)[] = []
-
-    // Use requestAnimationFrame to ensure charts are fully initialized
-    const timeoutId = requestAnimationFrame(() => {
-      if (isDisposed) return
-
-      const charts = [
-        mainChartApiRef.current,
-        volumeChartApiRef.current,
-        macdChartApiRef.current,
-        rsiChartApiRef.current,
-      ].filter((c): c is IChartApi => c !== null)
-
-      if (charts.length < 2) return
-
-      let isSyncing = false
-
-      const syncToAll = (sourceChart: IChartApi) => {
-        if (isSyncing || isDisposed) return
-
-        try {
-          const range = sourceChart.timeScale().getVisibleLogicalRange()
-          if (!range) return
-
-          isSyncing = true
-          charts.forEach(chart => {
-            if (chart !== sourceChart && !isDisposed) {
-              try {
-                chart.timeScale().setVisibleLogicalRange(range)
-              } catch {
-                // Chart might be disposed
-              }
-            }
-          })
-        } catch {
-          // Source chart might be disposed
-        } finally {
-          isSyncing = false
-        }
-      }
-
-      charts.forEach(chart => {
-        try {
-          const handler = () => {
-            if (!isDisposed) syncToAll(chart)
+    const resizeObserver = new ResizeObserver((entries) => {
+      for (const entry of entries) {
+        const width = entry.contentRect.width
+        if (chartApiRef.current) {
+          try {
+            chartApiRef.current.applyOptions({ width })
+          } catch {
+            // Chart might be disposed
           }
-          chart.timeScale().subscribeVisibleLogicalRangeChange(handler)
-          unsubscribers.push(() => {
-            try {
-              chart.timeScale().unsubscribeVisibleLogicalRangeChange(handler)
-            } catch {
-              // Chart might already be disposed
-            }
-          })
-        } catch {
-          // Chart might be disposed
         }
-      })
+      }
     })
 
+    if (containerRef.current) {
+      resizeObserver.observe(containerRef.current)
+    }
+
     return () => {
-      isDisposed = true
-      cancelAnimationFrame(timeoutId)
-      unsubscribers.forEach(unsub => unsub())
+      resizeObserver.disconnect()
+      try {
+        chart.remove()
+      } catch {
+        // Chart already disposed
+      }
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [chartVersion]) // Re-run whenever any chart is recreated
+  }, [isDark, height, klineData, calculatedIndicators, equityCurve, trades, indicators, colors, markerMode, yAxisMode])
 
   if (!equityCurve || equityCurve.length === 0) {
     return (
@@ -825,140 +603,271 @@ export function EquityCurveWithIndicators({
     )
   }
 
+  // Y-axis mode options
+  const yAxisOptions: { value: YAxisMode; label: string }[] = [
+    { value: 'price', label: '价格' },
+    { value: 'equity', label: '权益' },
+    { value: 'volume', label: '成交量' },
+    { value: 'macd', label: 'MACD' },
+    { value: 'rsi', label: 'RSI' },
+  ]
+
   return (
-    <div className="space-y-3">
-      {/* Indicator toggles */}
-      <div className="flex flex-wrap gap-4">
-        {INDICATOR_GROUPS.map(group => (
-          <div key={group.name} className="flex items-center gap-1">
-            <span className="text-xs text-muted-foreground mr-1">{group.name}:</span>
-            {group.items.map(item => (
-              <Button
-                key={item.key}
-                variant={indicators[item.key] ? 'default' : 'outline'}
-                size="sm"
-                className="h-6 px-2 text-xs"
-                onClick={() => toggleIndicator(item.key)}
-              >
-                {item.label}
-              </Button>
-            ))}
-          </div>
-        ))}
-        {/* Marker mode toggle - single cycling button */}
-        <Button
-          variant="outline"
-          size="sm"
-          className="h-6 px-2 text-xs"
-          onClick={cycleMarkerMode}
-        >
-          {markerModeText[markerMode]}
-        </Button>
+    <div className="space-y-2">
+      {/* Indicator toggles - row 1: Price display */}
+      <div className="flex flex-wrap gap-4 items-center">
+        <div className="flex items-center gap-1">
+          <span className="text-xs text-muted-foreground mr-1">价格:</span>
+          <Button
+            variant={indicators.candle ? 'default' : 'outline'}
+            size="sm"
+            className="h-6 px-2 text-xs"
+            onClick={() => toggleIndicator('candle')}
+          >
+            蜡烛图
+          </Button>
+          <Button
+            variant={indicators.closeLine ? 'default' : 'outline'}
+            size="sm"
+            className="h-6 px-2 text-xs"
+            onClick={() => toggleIndicator('closeLine')}
+          >
+            收盘价
+          </Button>
+        </div>
+
+        <div className="flex items-center gap-1">
+          <span className="text-xs text-muted-foreground mr-1">均线:</span>
+          <Button
+            variant={indicators.ma5 ? 'default' : 'outline'}
+            size="sm"
+            className="h-6 px-2 text-xs"
+            onClick={() => toggleIndicator('ma5')}
+          >
+            MA5
+          </Button>
+          <Button
+            variant={indicators.ma10 ? 'default' : 'outline'}
+            size="sm"
+            className="h-6 px-2 text-xs"
+            onClick={() => toggleIndicator('ma10')}
+          >
+            MA10
+          </Button>
+          <Button
+            variant={indicators.ma20 ? 'default' : 'outline'}
+            size="sm"
+            className="h-6 px-2 text-xs"
+            onClick={() => toggleIndicator('ma20')}
+          >
+            MA20
+          </Button>
+          <Button
+            variant={indicators.ma60 ? 'default' : 'outline'}
+            size="sm"
+            className="h-6 px-2 text-xs"
+            onClick={() => toggleIndicator('ma60')}
+          >
+            MA60
+          </Button>
+        </div>
+
+        <div className="flex items-center gap-1">
+          <span className="text-xs text-muted-foreground mr-1">EMA:</span>
+          <Button
+            variant={indicators.ema12 ? 'default' : 'outline'}
+            size="sm"
+            className="h-6 px-2 text-xs"
+            onClick={() => toggleIndicator('ema12')}
+          >
+            EMA12
+          </Button>
+          <Button
+            variant={indicators.ema26 ? 'default' : 'outline'}
+            size="sm"
+            className="h-6 px-2 text-xs"
+            onClick={() => toggleIndicator('ema26')}
+          >
+            EMA26
+          </Button>
+        </div>
+
+        <div className="flex items-center gap-1">
+          <span className="text-xs text-muted-foreground mr-1">其他:</span>
+          <Button
+            variant={indicators.boll ? 'default' : 'outline'}
+            size="sm"
+            className="h-6 px-2 text-xs"
+            onClick={() => toggleIndicator('boll')}
+          >
+            BOLL
+          </Button>
+          <Button
+            variant={indicators.volume ? 'default' : 'outline'}
+            size="sm"
+            className="h-6 px-2 text-xs"
+            onClick={() => toggleIndicator('volume')}
+          >
+            成交量
+          </Button>
+          <Button
+            variant={indicators.macd ? 'default' : 'outline'}
+            size="sm"
+            className="h-6 px-2 text-xs"
+            onClick={() => toggleIndicator('macd')}
+          >
+            MACD
+          </Button>
+          <Button
+            variant={indicators.rsi ? 'default' : 'outline'}
+            size="sm"
+            className="h-6 px-2 text-xs"
+            onClick={() => toggleIndicator('rsi')}
+          >
+            RSI
+          </Button>
+        </div>
+
+        <div className="flex items-center gap-1">
+          <span className="text-xs text-muted-foreground mr-1">回测:</span>
+          <Button
+            variant={indicators.equity ? 'default' : 'outline'}
+            size="sm"
+            className="h-6 px-2 text-xs"
+            onClick={() => toggleIndicator('equity')}
+          >
+            权益曲线
+          </Button>
+          <Button
+            variant="outline"
+            size="sm"
+            className="h-6 px-2 text-xs"
+            onClick={cycleMarkerMode}
+          >
+            {markerModeText[markerMode]}
+          </Button>
+        </div>
+
+        {/* Y-axis selector */}
+        <div className="flex items-center gap-1 ml-auto">
+          <span className="text-xs text-muted-foreground mr-1">Y轴:</span>
+          {yAxisOptions.map(opt => (
+            <Button
+              key={opt.value}
+              variant={yAxisMode === opt.value ? 'default' : 'outline'}
+              size="sm"
+              className="h-6 px-2 text-xs"
+              onClick={() => setYAxisMode(opt.value)}
+              disabled={
+                (opt.value === 'volume' && !indicators.volume) ||
+                (opt.value === 'macd' && !indicators.macd) ||
+                (opt.value === 'rsi' && !indicators.rsi) ||
+                (opt.value === 'equity' && !indicators.equity) ||
+                (opt.value === 'price' && !indicators.candle && !indicators.closeLine)
+              }
+            >
+              {opt.label}
+            </Button>
+          ))}
+        </div>
       </div>
 
-      {/* Charts container */}
-      <div className="rounded-lg border bg-card">
+      {/* Chart container */}
+      <div ref={containerRef} className="rounded-lg border bg-card">
         {isLoading ? (
           <Skeleton className="w-full" style={{ height }} />
         ) : (
-          <>
-            {/* Main chart */}
-            <div ref={mainChartRef} style={{ height: mainChartHeight }} />
+          <div ref={chartRef} style={{ height }} />
+        )}
 
-            {/* Volume sub-chart */}
-            {indicators.volume && (
-              <div ref={volumeChartRef} className="border-t" style={{ height: subChartHeight }} />
-            )}
-
-            {/* MACD sub-chart */}
-            {indicators.macd && (
-              <div ref={macdChartRef} className="border-t" style={{ height: subChartHeight }} />
-            )}
-
-            {/* RSI sub-chart */}
-            {indicators.rsi && (
-              <div ref={rsiChartRef} className="border-t" style={{ height: subChartHeight }} />
-            )}
-          </>
-        )}
-      </div>
-
-      {/* Legend */}
-      <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs text-muted-foreground">
-        <span className="flex items-center gap-1">
-          <span className="w-3 h-0.5 rounded" style={{ backgroundColor: INDICATOR_COLORS.equity }} />
-          权益曲线
-        </span>
-        {indicators.ma5 && (
-          <span className="flex items-center gap-1">
-            <span className="w-3 h-0.5 rounded" style={{ backgroundColor: INDICATOR_COLORS.ma5 }} />
-            MA5
-          </span>
-        )}
-        {indicators.ma10 && (
-          <span className="flex items-center gap-1">
-            <span className="w-3 h-0.5 rounded" style={{ backgroundColor: INDICATOR_COLORS.ma10 }} />
-            MA10
-          </span>
-        )}
-        {indicators.ma20 && (
-          <span className="flex items-center gap-1">
-            <span className="w-3 h-0.5 rounded" style={{ backgroundColor: INDICATOR_COLORS.ma20 }} />
-            MA20
-          </span>
-        )}
-        {indicators.ma60 && (
-          <span className="flex items-center gap-1">
-            <span className="w-3 h-0.5 rounded" style={{ backgroundColor: INDICATOR_COLORS.ma60 }} />
-            MA60
-          </span>
-        )}
-        {indicators.ema12 && (
-          <span className="flex items-center gap-1">
-            <span className="w-3 h-0.5 rounded" style={{ backgroundColor: INDICATOR_COLORS.ema12 }} />
-            EMA12
-          </span>
-        )}
-        {indicators.ema26 && (
-          <span className="flex items-center gap-1">
-            <span className="w-3 h-0.5 rounded" style={{ backgroundColor: INDICATOR_COLORS.ema26 }} />
-            EMA26
-          </span>
-        )}
-        {indicators.boll && (
-          <span className="flex items-center gap-1">
-            <span className="w-3 h-0.5 rounded border border-dashed" style={{ borderColor: INDICATOR_COLORS.bollMiddle }} />
-            BOLL
-          </span>
-        )}
-        {indicators.macd && (
-          <>
+        {/* Legend */}
+        <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs text-muted-foreground px-3 py-2 border-t">
+          {indicators.candle && (
             <span className="flex items-center gap-1">
-              <span className="w-3 h-0.5 rounded" style={{ backgroundColor: INDICATOR_COLORS.macdDif }} />
-              DIF
+              <span className="w-3 h-3 rounded-sm" style={{ backgroundColor: colors.profit }} />
+              <span className="w-3 h-3 rounded-sm" style={{ backgroundColor: colors.loss }} />
+              K线
             </span>
+          )}
+          {indicators.closeLine && (
             <span className="flex items-center gap-1">
-              <span className="w-3 h-0.5 rounded" style={{ backgroundColor: INDICATOR_COLORS.macdDea }} />
-              DEA
+              <span className="w-3 h-0.5 rounded" style={{ backgroundColor: INDICATOR_COLORS.closeLine }} />
+              收盘价
             </span>
-          </>
-        )}
-        {indicators.rsi && (
-          <>
+          )}
+          {indicators.equity && (
             <span className="flex items-center gap-1">
-              <span className="w-3 h-0.5 rounded" style={{ backgroundColor: INDICATOR_COLORS.rsi6 }} />
-              RSI6
+              <span className="w-3 h-0.5 rounded" style={{ backgroundColor: INDICATOR_COLORS.equity }} />
+              权益曲线
             </span>
+          )}
+          {indicators.ma5 && (
             <span className="flex items-center gap-1">
-              <span className="w-3 h-0.5 rounded" style={{ backgroundColor: INDICATOR_COLORS.rsi12 }} />
-              RSI12
+              <span className="w-3 h-0.5 rounded" style={{ backgroundColor: INDICATOR_COLORS.ma5 }} />
+              MA5
             </span>
+          )}
+          {indicators.ma10 && (
             <span className="flex items-center gap-1">
-              <span className="w-3 h-0.5 rounded" style={{ backgroundColor: INDICATOR_COLORS.rsi24 }} />
-              RSI24
+              <span className="w-3 h-0.5 rounded" style={{ backgroundColor: INDICATOR_COLORS.ma10 }} />
+              MA10
             </span>
-          </>
-        )}
+          )}
+          {indicators.ma20 && (
+            <span className="flex items-center gap-1">
+              <span className="w-3 h-0.5 rounded" style={{ backgroundColor: INDICATOR_COLORS.ma20 }} />
+              MA20
+            </span>
+          )}
+          {indicators.ma60 && (
+            <span className="flex items-center gap-1">
+              <span className="w-3 h-0.5 rounded" style={{ backgroundColor: INDICATOR_COLORS.ma60 }} />
+              MA60
+            </span>
+          )}
+          {indicators.ema12 && (
+            <span className="flex items-center gap-1">
+              <span className="w-3 h-0.5 rounded" style={{ backgroundColor: INDICATOR_COLORS.ema12 }} />
+              EMA12
+            </span>
+          )}
+          {indicators.ema26 && (
+            <span className="flex items-center gap-1">
+              <span className="w-3 h-0.5 rounded" style={{ backgroundColor: INDICATOR_COLORS.ema26 }} />
+              EMA26
+            </span>
+          )}
+          {indicators.boll && (
+            <span className="flex items-center gap-1">
+              <span className="w-3 h-0.5 rounded border border-dashed" style={{ borderColor: INDICATOR_COLORS.bollMiddle }} />
+              BOLL
+            </span>
+          )}
+          {indicators.volume && (
+            <span className="flex items-center gap-1">
+              <span className="w-3 h-2 rounded-sm" style={{ backgroundColor: INDICATOR_COLORS.volume }} />
+              成交量
+            </span>
+          )}
+          {indicators.macd && (
+            <>
+              <span className="flex items-center gap-1">
+                <span className="w-3 h-0.5 rounded" style={{ backgroundColor: INDICATOR_COLORS.macdDif }} />
+                DIF
+              </span>
+              <span className="flex items-center gap-1">
+                <span className="w-3 h-0.5 rounded" style={{ backgroundColor: INDICATOR_COLORS.macdDea }} />
+                DEA
+              </span>
+            </>
+          )}
+          {indicators.rsi && (
+            <span className="flex items-center gap-1">
+              <span className="w-3 h-0.5 rounded" style={{ backgroundColor: INDICATOR_COLORS.rsi }} />
+              RSI(14)
+            </span>
+          )}
+        </div>
       </div>
     </div>
   )
