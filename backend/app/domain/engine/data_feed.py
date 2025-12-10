@@ -135,27 +135,28 @@ class AdjustedDataFeed(PostgreSQLDataFeed):
         df = df.copy()
         df['date'] = pd.to_datetime(df['date'])
 
-        # Merge with adjustment factors
+        # Apply adjustment factors
+        # Note: adjust_factors contains cumulative factors for dividend/split dates
+        # The correct approach is to use the LATEST cumulative factor for ALL prices
+        # (not per-date merge which causes price spikes on dividend days)
         if not adjust_factors.empty:
             adjust_factors = adjust_factors.copy()
             adjust_factors['date'] = pd.to_datetime(adjust_factors['date'])
 
-            df = df.merge(adjust_factors[['date', 'foreAdjustFactor', 'backAdjustFactor']],
-                         on='date', how='left')
-
-            # Fill missing factors with 1.0
-            df['foreAdjustFactor'] = df['foreAdjustFactor'].fillna(1.0)
-            df['backAdjustFactor'] = df['backAdjustFactor'].fillna(1.0)
-
-            # Apply adjustment
+            # Select factor column based on adjustment type
             if adjust_type == 'forward':
                 factor_col = 'foreAdjustFactor'
             else:  # backward
                 factor_col = 'backAdjustFactor'
 
+            # Use the latest cumulative factor (from the most recent dividend date)
+            latest_idx = adjust_factors['date'].idxmax()
+            latest_factor = adjust_factors.loc[latest_idx, factor_col]
+
+            # Apply uniform factor to all historical prices
             price_cols = ['open', 'high', 'low', 'close']
             for col in price_cols:
                 if col in df.columns:
-                    df[col] = df[col] * df[factor_col]
+                    df[col] = df[col] * latest_factor
 
         return cls.from_dataframe(df, stock_code, start_date, end_date)
