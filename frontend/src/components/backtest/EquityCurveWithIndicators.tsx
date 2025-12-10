@@ -639,6 +639,23 @@ export function EquityCurveWithIndicators({
         <div className="flex items-center gap-1">
           <span className="text-xs text-muted-foreground mr-1">均线:</span>
           <Button
+            variant={indicators.ma5 && indicators.ma10 && indicators.ma20 && indicators.ma60 ? 'default' : 'outline'}
+            size="sm"
+            className="h-6 px-2 text-xs"
+            onClick={() => {
+              const allOn = indicators.ma5 && indicators.ma10 && indicators.ma20 && indicators.ma60
+              setIndicators(prev => ({
+                ...prev,
+                ma5: !allOn,
+                ma10: !allOn,
+                ma20: !allOn,
+                ma60: !allOn,
+              }))
+            }}
+          >
+            全部
+          </Button>
+          <Button
             variant={indicators.ma5 ? 'default' : 'outline'}
             size="sm"
             className="h-6 px-2 text-xs"

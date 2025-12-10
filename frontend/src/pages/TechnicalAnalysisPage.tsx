@@ -175,17 +175,17 @@ export default function TechnicalAnalysisPage() {
       {isLoading ? (
         <Skeleton className="flex-1" />
       ) : (
-        <div className="flex gap-4 flex-1 min-h-0">
+        <div className="flex gap-4 flex-1 overflow-hidden">
           {/* Main Content - Charts */}
-          <div className="flex-1 flex flex-col min-w-0 gap-3">
+          <div className="flex-1 flex flex-col min-w-0 overflow-y-auto">
             {/* K-line Chart */}
-            <div className="flex-1 min-h-[400px] border rounded-lg bg-card p-3">
+            <div className="border rounded-lg bg-card p-3 mb-3">
               {result && (
                 <EquityCurveWithIndicators
                   stockCode={result.stock_code}
                   equityCurve={equityCurve}
                   trades={trades}
-                  height={500}
+                  height={450}
                 />
               )}
             </div>
@@ -201,7 +201,7 @@ export default function TechnicalAnalysisPage() {
               <CollapsibleContent>
                 <div className="grid grid-cols-2 gap-3 mt-3">
                   {/* Daily Data */}
-                  <div className="border rounded-lg p-3 max-h-[250px] overflow-auto">
+                  <div className="border rounded-lg p-3 max-h-[250px] overflow-auto bg-card">
                     <h4 className="text-sm font-medium mb-2">日线数据</h4>
                     <Table>
                       <TableHeader>
@@ -228,7 +228,7 @@ export default function TechnicalAnalysisPage() {
                   </div>
 
                   {/* Trades */}
-                  <div className="border rounded-lg p-3 max-h-[250px] overflow-auto">
+                  <div className="border rounded-lg p-3 max-h-[250px] overflow-auto bg-card">
                     <h4 className="text-sm font-medium mb-2">交易记录</h4>
                     <Table>
                       <TableHeader>
