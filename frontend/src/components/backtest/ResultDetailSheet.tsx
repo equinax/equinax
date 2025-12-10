@@ -1,3 +1,4 @@
+import { useNavigate } from 'react-router-dom'
 import {
   Sheet,
   SheetContent,
@@ -9,8 +10,9 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Card, CardContent } from '@/components/ui/card'
 import { Skeleton } from '@/components/ui/skeleton'
 import { Badge } from '@/components/ui/badge'
+import { Button } from '@/components/ui/button'
 import { formatPercent } from '@/lib/utils'
-import { LineChart, Calendar, List, BarChart3, AlertCircle } from 'lucide-react'
+import { LineChart, Calendar, List, BarChart3, AlertCircle, BarChart2 } from 'lucide-react'
 import {
   useGetBacktestResultDetailApiV1BacktestsJobIdResultsResultIdGet,
   useGetBacktestEquityCurveApiV1BacktestsJobIdResultsResultIdEquityGet,
@@ -108,6 +110,8 @@ function QuickStats({ data }: { data: BacktestResultDetailResponse }) {
 }
 
 export function ResultDetailSheet({ jobId, resultId, open, onOpenChange }: ResultDetailSheetProps) {
+  const navigate = useNavigate()
+
   // Fetch main result detail
   const { data, isLoading, error } = useGetBacktestResultDetailApiV1BacktestsJobIdResultsResultIdGet(
     jobId,
@@ -150,16 +154,28 @@ export function ResultDetailSheet({ jobId, resultId, open, onOpenChange }: Resul
     <Sheet open={open} onOpenChange={onOpenChange}>
       <SheetContent className="w-full sm:max-w-[90vw] overflow-y-auto">
         <SheetHeader>
-          <SheetTitle className="flex items-center gap-2">
-            {data ? (
-              <>
-                <Badge variant="outline">{data.stock_code}</Badge>
-                回测详情
-              </>
-            ) : (
-              '加载中...'
+          <div className="flex items-center justify-between pr-8">
+            <SheetTitle className="flex items-center gap-2">
+              {data ? (
+                <>
+                  <Badge variant="outline">{data.stock_code}</Badge>
+                  回测详情
+                </>
+              ) : (
+                '加载中...'
+              )}
+            </SheetTitle>
+            {data && resultId && (
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => navigate(`/analysis/${jobId}/${resultId}`)}
+              >
+                <BarChart2 className="h-4 w-4 mr-1" />
+                技术分析
+              </Button>
             )}
-          </SheetTitle>
+          </div>
           {data && (
             <SheetDescription>
               {data.status === 'completed' ? (

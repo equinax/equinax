@@ -8,6 +8,7 @@ import StrategyEditorPage from '@/pages/StrategyEditorPage'
 import BacktestPage from '@/pages/BacktestPage'
 import ResultsPage from '@/pages/ResultsPage'
 import ResultDetailPage from '@/pages/ResultDetailPage'
+import TechnicalAnalysisPage from '@/pages/TechnicalAnalysisPage'
 import DataExplorerPage from '@/pages/DataExplorerPage'
 
 function App() {
@@ -22,6 +23,7 @@ function App() {
           <Route path="backtest" element={<BacktestPage />} />
           <Route path="results" element={<ResultsPage />} />
           <Route path="results/:jobId" element={<ResultDetailPage />} />
+          <Route path="analysis/:jobId/:resultId" element={<TechnicalAnalysisPage />} />
           <Route path="data" element={<DataExplorerPage />} />
         </Route>
       </Routes>

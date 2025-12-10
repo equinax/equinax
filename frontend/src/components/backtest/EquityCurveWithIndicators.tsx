@@ -745,8 +745,13 @@ export function EquityCurveWithIndicators({
 
   // Centralized time scale sync across all charts
   useEffect(() => {
+    let isDisposed = false
+    const unsubscribers: (() => void)[] = []
+
     // Use requestAnimationFrame to ensure charts are fully initialized
     const timeoutId = requestAnimationFrame(() => {
+      if (isDisposed) return
+
       const charts = [
         mainChartApiRef.current,
         volumeChartApiRef.current,
@@ -759,26 +764,42 @@ export function EquityCurveWithIndicators({
       let isSyncing = false
 
       const syncToAll = (sourceChart: IChartApi) => {
-        if (isSyncing) return
-        const range = sourceChart.timeScale().getVisibleLogicalRange()
-        if (!range) return
+        if (isSyncing || isDisposed) return
 
-        isSyncing = true
-        charts.forEach(chart => {
-          if (chart !== sourceChart) {
-            try {
-              chart.timeScale().setVisibleLogicalRange(range)
-            } catch {
-              // Chart might be disposed
+        try {
+          const range = sourceChart.timeScale().getVisibleLogicalRange()
+          if (!range) return
+
+          isSyncing = true
+          charts.forEach(chart => {
+            if (chart !== sourceChart && !isDisposed) {
+              try {
+                chart.timeScale().setVisibleLogicalRange(range)
+              } catch {
+                // Chart might be disposed
+              }
             }
-          }
-        })
-        isSyncing = false
+          })
+        } catch {
+          // Source chart might be disposed
+        } finally {
+          isSyncing = false
+        }
       }
 
       charts.forEach(chart => {
         try {
-          chart.timeScale().subscribeVisibleLogicalRangeChange(() => syncToAll(chart))
+          const handler = () => {
+            if (!isDisposed) syncToAll(chart)
+          }
+          chart.timeScale().subscribeVisibleLogicalRangeChange(handler)
+          unsubscribers.push(() => {
+            try {
+              chart.timeScale().unsubscribeVisibleLogicalRangeChange(handler)
+            } catch {
+              // Chart might already be disposed
+            }
+          })
         } catch {
           // Chart might be disposed
         }
@@ -786,7 +807,9 @@ export function EquityCurveWithIndicators({
     })
 
     return () => {
+      isDisposed = true
       cancelAnimationFrame(timeoutId)
+      unsubscribers.forEach(unsub => unsub())
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [chartVersion]) // Re-run whenever any chart is recreated
