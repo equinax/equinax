@@ -44,10 +44,13 @@ setup: _ensure-env up
 [group('db')]
 db-setup: db-migrate seed-all
 
-# Run database migrations
+# Run database migrations + TimescaleDB setup
 [group('db')]
 db-migrate:
     docker compose exec api alembic upgrade head
+    @echo "Setting up TimescaleDB hypertables and continuous aggregates..."
+    docker cp backend/alembic/scripts/timescaledb_setup.sql quant_db:/tmp/timescaledb_setup.sql
+    docker compose exec db psql -U quant -d quantdb -f /tmp/timescaledb_setup.sql
 
 # Create a new migration
 [group('db')]
@@ -72,7 +75,8 @@ db-migrate-status:
 [group('db')]
 [confirm("This will DELETE ALL DATA. Continue?")]
 db-reset:
-    docker compose exec api python cmd.py db reset --force
+    docker compose exec api alembic downgrade base
+    just db-migrate
     just seed-all
 
 # Show database statistics

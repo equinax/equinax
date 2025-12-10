@@ -10,6 +10,10 @@ import { MultiMetricsTable } from './MultiMetricsTable'
 import {
   getBacktestResultDetailApiV1BacktestsJobIdResultsResultIdGet,
   getGetBacktestResultDetailApiV1BacktestsJobIdResultsResultIdGetQueryKey,
+  getBacktestEquityCurveApiV1BacktestsJobIdResultsResultIdEquityGet,
+  getGetBacktestEquityCurveApiV1BacktestsJobIdResultsResultIdEquityGetQueryKey,
+  getBacktestTradesApiV1BacktestsJobIdResultsResultIdTradesGet,
+  getGetBacktestTradesApiV1BacktestsJobIdResultsResultIdTradesGetQueryKey,
 } from '@/api/generated/backtests/backtests'
 import type { EquityCurvePoint, TradeRecord, MonthlyReturns } from '@/types/backtest'
 
@@ -45,7 +49,27 @@ export function ResultComparisonView({ jobId, results }: ResultComparisonViewPro
     })),
   })
 
-  const isLoading = resultQueries.some(q => q.isLoading)
+  // Parallel fetch all equity curves
+  const equityQueries = useQueries({
+    queries: (results ?? []).map(result => ({
+      queryKey: getGetBacktestEquityCurveApiV1BacktestsJobIdResultsResultIdEquityGetQueryKey(jobId, result.id),
+      queryFn: ({ signal }) => getBacktestEquityCurveApiV1BacktestsJobIdResultsResultIdEquityGet(jobId, result.id, undefined, signal),
+      staleTime: 5 * 60 * 1000,
+      enabled: !!jobId && !!result.id,
+    })),
+  })
+
+  // Parallel fetch all trades
+  const tradesQueries = useQueries({
+    queries: (results ?? []).map(result => ({
+      queryKey: getGetBacktestTradesApiV1BacktestsJobIdResultsResultIdTradesGetQueryKey(jobId, result.id, { page_size: 200 }),
+      queryFn: ({ signal }) => getBacktestTradesApiV1BacktestsJobIdResultsResultIdTradesGet(jobId, result.id, { page_size: 200 }, signal),
+      staleTime: 5 * 60 * 1000,
+      enabled: !!jobId && !!result.id,
+    })),
+  })
+
+  const isLoading = resultQueries.some(q => q.isLoading) || equityQueries.some(q => q.isLoading) || tradesQueries.some(q => q.isLoading)
   const hasError = resultQueries.some(q => q.isError)
 
   // Aggregate data by stock_code
@@ -53,6 +77,7 @@ export function ResultComparisonView({ jobId, results }: ResultComparisonViewPro
     const equityCurves: Record<string, EquityCurvePoint[]> = {}
     const monthlyReturns: Record<string, MonthlyReturns> = {}
     const trades: Record<string, TradeRecord[]> = {}
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const metrics: Record<string, any> = {}
 
     resultQueries.forEach((query, index) => {
@@ -63,19 +88,9 @@ export function ResultComparisonView({ jobId, results }: ResultComparisonViewPro
 
       if (!stockCode) return
 
-      // Equity curve
-      if (Array.isArray(result.equity_curve)) {
-        equityCurves[stockCode] = result.equity_curve
-      }
-
-      // Monthly returns
+      // Monthly returns (still in main response)
       if (result.monthly_returns && typeof result.monthly_returns === 'object') {
-        monthlyReturns[stockCode] = result.monthly_returns
-      }
-
-      // Trades
-      if (Array.isArray(result.trades)) {
-        trades[stockCode] = result.trades
+        monthlyReturns[stockCode] = result.monthly_returns as MonthlyReturns
       }
 
       // Metrics
@@ -97,8 +112,42 @@ export function ResultComparisonView({ jobId, results }: ResultComparisonViewPro
       }
     })
 
+    // Aggregate equity curves from separate queries
+    equityQueries.forEach((query, index) => {
+      if (!query.data) return
+      const stockCode = results?.[index]?.stock_code
+      if (!stockCode) return
+
+      equityCurves[stockCode] = query.data.map(p => ({
+        date: p.date,
+        value: Number(p.value),
+        drawdown: p.drawdown ? Number(p.drawdown) : undefined,
+      }))
+    })
+
+    // Aggregate trades from separate queries
+    tradesQueries.forEach((query, index) => {
+      if (!query.data?.items) return
+      const stockCode = results?.[index]?.stock_code
+      if (!stockCode) return
+
+      trades[stockCode] = query.data.items.map(t => ({
+        id: t.id,
+        stock_code: t.stock_code,
+        entry_date: t.entry_date,
+        exit_date: t.exit_date ?? undefined,
+        entry_price: Number(t.entry_price),
+        exit_price: t.exit_price ? Number(t.exit_price) : undefined,
+        size: t.size,
+        pnl: t.pnl ? Number(t.pnl) : 0,
+        pnl_percent: t.pnl_percent ? Number(t.pnl_percent) : 0,
+        type: t.direction as 'long' | 'short',
+        bars_held: t.bars_held ?? undefined,
+      })) as TradeRecord[]
+    })
+
     return { equityCurves, monthlyReturns, trades, metrics }
-  }, [resultQueries, results])
+  }, [resultQueries, equityQueries, tradesQueries, results])
 
   if (!results || results.length === 0) {
     return (

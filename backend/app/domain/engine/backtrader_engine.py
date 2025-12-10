@@ -10,6 +10,7 @@ import backtrader as bt
 from .data_feed import PostgreSQLDataFeed, AdjustedDataFeed
 from .strategy_loader import StrategyLoader, StrategyValidationError
 from .analyzers import CustomAnalyzers
+from .cn_stock_rules import CNStockCommission, AShareSizer
 
 
 @dataclass
@@ -132,6 +133,7 @@ class BacktraderEngine:
         try:
             # Create Cerebro instance
             cerebro = bt.Cerebro()
+            cerebro.broker.set_coc(True)  # Cheat-On-Close: 订单在当天收盘价执行
 
             # Add strategy
             cerebro.addstrategy(strategy_class)
@@ -158,17 +160,20 @@ class BacktraderEngine:
 
             # Set broker settings
             cerebro.broker.setcash(config.initial_capital)
-            cerebro.broker.setcommission(commission=config.commission)
+
+            # A股佣金模型：佣金 + 印花税 + 最低佣金
+            cn_commission = CNStockCommission(commission=config.commission)
+            cerebro.broker.addcommissioninfo(cn_commission)
 
             # Add slippage
             if config.slippage_perc > 0:
                 cerebro.broker.set_slippage_perc(config.slippage_perc)
 
-            # Set position sizer
+            # A股整手交易 Sizer (100股倍数)
             if config.stake_type == 'percent':
-                cerebro.addsizer(PercentSizer, percents=config.stake_value)
+                cerebro.addsizer(AShareSizer, percents=config.stake_value)
             else:
-                cerebro.addsizer(bt.sizers.FixedSize, stake=int(config.stake_value))
+                cerebro.addsizer(AShareSizer, percents=100)  # 固定金额模式暂用100%
 
             # Add analyzers
             CustomAnalyzers.add_all(cerebro)
@@ -265,6 +270,7 @@ class BacktraderEngine:
 
         try:
             cerebro = bt.Cerebro()
+            cerebro.broker.set_coc(True)  # Cheat-On-Close: 订单在当天收盘价执行
             cerebro.addstrategy(strategy_class)
 
             # Add all data feeds
@@ -296,17 +302,21 @@ class BacktraderEngine:
 
             # Set broker settings
             cerebro.broker.setcash(config.initial_capital)
-            cerebro.broker.setcommission(commission=config.commission)
+
+            # A股佣金模型：佣金 + 印花税 + 最低佣金
+            cn_commission = CNStockCommission(commission=config.commission)
+            cerebro.broker.addcommissioninfo(cn_commission)
 
             if config.slippage_perc > 0:
                 cerebro.broker.set_slippage_perc(config.slippage_perc)
 
+            # A股整手交易 Sizer (100股倍数)
             if config.stake_type == 'percent':
                 # Divide position across stocks
                 per_stock_percent = config.stake_value / len(data_dict)
-                cerebro.addsizer(PercentSizer, percents=per_stock_percent)
+                cerebro.addsizer(AShareSizer, percents=per_stock_percent)
             else:
-                cerebro.addsizer(bt.sizers.FixedSize, stake=int(config.stake_value))
+                cerebro.addsizer(AShareSizer, percents=100)  # 固定金额模式暂用100%
 
             CustomAnalyzers.add_all(cerebro)
 

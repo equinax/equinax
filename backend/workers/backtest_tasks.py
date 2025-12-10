@@ -14,7 +14,13 @@ from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession, async_sessionmaker
 
 from app.config import settings
-from app.db.models.backtest import BacktestJob, BacktestResult as BacktestResultModel, BacktestStatus
+from app.db.models.backtest import (
+    BacktestJob,
+    BacktestResult as BacktestResultModel,
+    BacktestEquity,
+    BacktestTrade,
+    BacktestStatus,
+)
 from app.db.models.strategy import Strategy
 from app.db.models.stock import DailyKData, AdjustFactor
 from app.domain.engine import BacktraderEngine, BacktestConfig
@@ -398,6 +404,7 @@ async def execute_single_backtest(
         # Calculate monthly returns from equity curve
         monthly_returns = calculate_monthly_returns(bt_result.equity_curve or [])
 
+        # Create main result record (without equity_curve and trades - stored in separate tables)
         result = BacktestResultModel(
             job_id=job.id,
             strategy_id=strategy_id,
@@ -414,10 +421,61 @@ async def execute_single_backtest(
             final_value=bt_result.final_value,
             execution_time_ms=bt_result.execution_time_ms,
             status=BacktestStatus.COMPLETED,
-            equity_curve=bt_result.equity_curve or [],
-            trades=bt_result.trades or [],
             monthly_returns=monthly_returns,
         )
+        db.add(result)
+        await db.flush()  # Get result.id
+
+        # Batch insert equity curve points
+        if bt_result.equity_curve:
+            equity_records = []
+            prev_value = None
+            for point in bt_result.equity_curve:
+                value = float(point.get('value', 0))
+                daily_return = None
+                if prev_value and prev_value > 0:
+                    daily_return = (value - prev_value) / prev_value
+                equity_records.append(BacktestEquity(
+                    result_id=result.id,
+                    date=datetime.strptime(point['date'], '%Y-%m-%d').date(),
+                    value=value,
+                    drawdown=point.get('drawdown'),
+                    daily_return=daily_return,
+                ))
+                prev_value = value
+            db.add_all(equity_records)
+
+        # Batch insert trade records
+        if bt_result.trades:
+            trade_records = []
+            for trade in bt_result.trades:
+                entry_date_str = trade.get('entry_date') or trade.get('open_datetime', '')
+                exit_date_str = trade.get('exit_date') or trade.get('close_datetime', '')
+
+                entry_date = None
+                if entry_date_str:
+                    entry_date = datetime.strptime(entry_date_str.split(' ')[0], '%Y-%m-%d').date()
+
+                exit_date = None
+                if exit_date_str:
+                    exit_date = datetime.strptime(exit_date_str.split(' ')[0], '%Y-%m-%d').date()
+
+                trade_records.append(BacktestTrade(
+                    result_id=result.id,
+                    stock_code=stock_code,
+                    direction=trade.get('direction', 'long'),
+                    entry_date=entry_date,
+                    entry_price=trade.get('entry_price') or trade.get('open_price', 0),
+                    exit_date=exit_date,
+                    exit_price=trade.get('exit_price') or trade.get('close_price'),
+                    size=int(trade.get('size', 0)),
+                    pnl=trade.get('pnl'),
+                    commission=trade.get('commission'),
+                    net_pnl=trade.get('net_pnl'),
+                    pnl_percent=trade.get('pnl_percent'),
+                    bars_held=trade.get('bars_held'),
+                ))
+            db.add_all(trade_records)
     else:
         result = BacktestResultModel(
             job_id=job.id,
@@ -428,8 +486,8 @@ async def execute_single_backtest(
             error_message=bt_result.error_message,
             execution_time_ms=bt_result.execution_time_ms,
         )
+        db.add(result)
 
-    db.add(result)
     await db.commit()
     await db.refresh(result)
 

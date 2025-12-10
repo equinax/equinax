@@ -26,8 +26,12 @@ import type {
   BacktestResultResponse,
   CompareStrategiesApiV1BacktestsJobIdCompareGetParams,
   ComparisonResponse,
+  EquityCurvePointResponse,
+  GetBacktestEquityCurveApiV1BacktestsJobIdResultsResultIdEquityGetParams,
+  GetBacktestTradesApiV1BacktestsJobIdResultsResultIdTradesGetParams,
   HTTPValidationError,
   ListBacktestsApiV1BacktestsGetParams,
+  PaginatedTradesResponse,
 } from ".././schemas";
 import { customInstance } from "../../mutator";
 
@@ -982,6 +986,618 @@ export const useGetBacktestResultDetailApiV1BacktestsJobIdResultsResultIdGet = <
     getGetBacktestResultDetailApiV1BacktestsJobIdResultsResultIdGetQueryOptions(
       jobId,
       resultId,
+      options,
+    );
+
+  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
+    queryKey: QueryKey;
+  };
+
+  query.queryKey = queryOptions.queryKey;
+
+  return query;
+};
+
+/**
+ * Get equity curve data for a backtest result.
+ * @summary Get Backtest Equity Curve
+ */
+export const getBacktestEquityCurveApiV1BacktestsJobIdResultsResultIdEquityGet =
+  (
+    jobId: string,
+    resultId: string,
+    params?: GetBacktestEquityCurveApiV1BacktestsJobIdResultsResultIdEquityGetParams,
+    signal?: AbortSignal,
+  ) => {
+    return customInstance<EquityCurvePointResponse[]>({
+      url: `/api/v1/backtests/${jobId}/results/${resultId}/equity`,
+      method: "GET",
+      params,
+      signal,
+    });
+  };
+
+export const getGetBacktestEquityCurveApiV1BacktestsJobIdResultsResultIdEquityGetQueryKey =
+  (
+    jobId: string,
+    resultId: string,
+    params?: GetBacktestEquityCurveApiV1BacktestsJobIdResultsResultIdEquityGetParams,
+  ) => {
+    return [
+      `/api/v1/backtests/${jobId}/results/${resultId}/equity`,
+      ...(params ? [params] : []),
+    ] as const;
+  };
+
+export const getGetBacktestEquityCurveApiV1BacktestsJobIdResultsResultIdEquityGetInfiniteQueryOptions =
+  <
+    TData = InfiniteData<
+      Awaited<
+        ReturnType<
+          typeof getBacktestEquityCurveApiV1BacktestsJobIdResultsResultIdEquityGet
+        >
+      >,
+      GetBacktestEquityCurveApiV1BacktestsJobIdResultsResultIdEquityGetParams["page"]
+    >,
+    TError = HTTPValidationError,
+  >(
+    jobId: string,
+    resultId: string,
+    params?: GetBacktestEquityCurveApiV1BacktestsJobIdResultsResultIdEquityGetParams,
+    options?: {
+      query?: Partial<
+        UseInfiniteQueryOptions<
+          Awaited<
+            ReturnType<
+              typeof getBacktestEquityCurveApiV1BacktestsJobIdResultsResultIdEquityGet
+            >
+          >,
+          TError,
+          TData,
+          Awaited<
+            ReturnType<
+              typeof getBacktestEquityCurveApiV1BacktestsJobIdResultsResultIdEquityGet
+            >
+          >,
+          QueryKey,
+          GetBacktestEquityCurveApiV1BacktestsJobIdResultsResultIdEquityGetParams["page"]
+        >
+      >;
+    },
+  ) => {
+    const { query: queryOptions } = options ?? {};
+
+    const queryKey =
+      queryOptions?.queryKey ??
+      getGetBacktestEquityCurveApiV1BacktestsJobIdResultsResultIdEquityGetQueryKey(
+        jobId,
+        resultId,
+        params,
+      );
+
+    const queryFn: QueryFunction<
+      Awaited<
+        ReturnType<
+          typeof getBacktestEquityCurveApiV1BacktestsJobIdResultsResultIdEquityGet
+        >
+      >,
+      QueryKey,
+      GetBacktestEquityCurveApiV1BacktestsJobIdResultsResultIdEquityGetParams["page"]
+    > = ({ signal, pageParam }) =>
+      getBacktestEquityCurveApiV1BacktestsJobIdResultsResultIdEquityGet(
+        jobId,
+        resultId,
+        { ...params, page: pageParam || params?.["page"] },
+        signal,
+      );
+
+    return {
+      queryKey,
+      queryFn,
+      enabled: !!(jobId && resultId),
+      ...queryOptions,
+    } as UseInfiniteQueryOptions<
+      Awaited<
+        ReturnType<
+          typeof getBacktestEquityCurveApiV1BacktestsJobIdResultsResultIdEquityGet
+        >
+      >,
+      TError,
+      TData,
+      Awaited<
+        ReturnType<
+          typeof getBacktestEquityCurveApiV1BacktestsJobIdResultsResultIdEquityGet
+        >
+      >,
+      QueryKey,
+      GetBacktestEquityCurveApiV1BacktestsJobIdResultsResultIdEquityGetParams["page"]
+    > & { queryKey: QueryKey };
+  };
+
+export type GetBacktestEquityCurveApiV1BacktestsJobIdResultsResultIdEquityGetInfiniteQueryResult =
+  NonNullable<
+    Awaited<
+      ReturnType<
+        typeof getBacktestEquityCurveApiV1BacktestsJobIdResultsResultIdEquityGet
+      >
+    >
+  >;
+export type GetBacktestEquityCurveApiV1BacktestsJobIdResultsResultIdEquityGetInfiniteQueryError =
+  HTTPValidationError;
+
+/**
+ * @summary Get Backtest Equity Curve
+ */
+export const useGetBacktestEquityCurveApiV1BacktestsJobIdResultsResultIdEquityGetInfinite =
+  <
+    TData = InfiniteData<
+      Awaited<
+        ReturnType<
+          typeof getBacktestEquityCurveApiV1BacktestsJobIdResultsResultIdEquityGet
+        >
+      >,
+      GetBacktestEquityCurveApiV1BacktestsJobIdResultsResultIdEquityGetParams["page"]
+    >,
+    TError = HTTPValidationError,
+  >(
+    jobId: string,
+    resultId: string,
+    params?: GetBacktestEquityCurveApiV1BacktestsJobIdResultsResultIdEquityGetParams,
+    options?: {
+      query?: Partial<
+        UseInfiniteQueryOptions<
+          Awaited<
+            ReturnType<
+              typeof getBacktestEquityCurveApiV1BacktestsJobIdResultsResultIdEquityGet
+            >
+          >,
+          TError,
+          TData,
+          Awaited<
+            ReturnType<
+              typeof getBacktestEquityCurveApiV1BacktestsJobIdResultsResultIdEquityGet
+            >
+          >,
+          QueryKey,
+          GetBacktestEquityCurveApiV1BacktestsJobIdResultsResultIdEquityGetParams["page"]
+        >
+      >;
+    },
+  ): UseInfiniteQueryResult<TData, TError> & { queryKey: QueryKey } => {
+    const queryOptions =
+      getGetBacktestEquityCurveApiV1BacktestsJobIdResultsResultIdEquityGetInfiniteQueryOptions(
+        jobId,
+        resultId,
+        params,
+        options,
+      );
+
+    const query = useInfiniteQuery(queryOptions) as UseInfiniteQueryResult<
+      TData,
+      TError
+    > & { queryKey: QueryKey };
+
+    query.queryKey = queryOptions.queryKey;
+
+    return query;
+  };
+
+export const getGetBacktestEquityCurveApiV1BacktestsJobIdResultsResultIdEquityGetQueryOptions =
+  <
+    TData = Awaited<
+      ReturnType<
+        typeof getBacktestEquityCurveApiV1BacktestsJobIdResultsResultIdEquityGet
+      >
+    >,
+    TError = HTTPValidationError,
+  >(
+    jobId: string,
+    resultId: string,
+    params?: GetBacktestEquityCurveApiV1BacktestsJobIdResultsResultIdEquityGetParams,
+    options?: {
+      query?: Partial<
+        UseQueryOptions<
+          Awaited<
+            ReturnType<
+              typeof getBacktestEquityCurveApiV1BacktestsJobIdResultsResultIdEquityGet
+            >
+          >,
+          TError,
+          TData
+        >
+      >;
+    },
+  ) => {
+    const { query: queryOptions } = options ?? {};
+
+    const queryKey =
+      queryOptions?.queryKey ??
+      getGetBacktestEquityCurveApiV1BacktestsJobIdResultsResultIdEquityGetQueryKey(
+        jobId,
+        resultId,
+        params,
+      );
+
+    const queryFn: QueryFunction<
+      Awaited<
+        ReturnType<
+          typeof getBacktestEquityCurveApiV1BacktestsJobIdResultsResultIdEquityGet
+        >
+      >
+    > = ({ signal }) =>
+      getBacktestEquityCurveApiV1BacktestsJobIdResultsResultIdEquityGet(
+        jobId,
+        resultId,
+        params,
+        signal,
+      );
+
+    return {
+      queryKey,
+      queryFn,
+      enabled: !!(jobId && resultId),
+      ...queryOptions,
+    } as UseQueryOptions<
+      Awaited<
+        ReturnType<
+          typeof getBacktestEquityCurveApiV1BacktestsJobIdResultsResultIdEquityGet
+        >
+      >,
+      TError,
+      TData
+    > & { queryKey: QueryKey };
+  };
+
+export type GetBacktestEquityCurveApiV1BacktestsJobIdResultsResultIdEquityGetQueryResult =
+  NonNullable<
+    Awaited<
+      ReturnType<
+        typeof getBacktestEquityCurveApiV1BacktestsJobIdResultsResultIdEquityGet
+      >
+    >
+  >;
+export type GetBacktestEquityCurveApiV1BacktestsJobIdResultsResultIdEquityGetQueryError =
+  HTTPValidationError;
+
+/**
+ * @summary Get Backtest Equity Curve
+ */
+export const useGetBacktestEquityCurveApiV1BacktestsJobIdResultsResultIdEquityGet =
+  <
+    TData = Awaited<
+      ReturnType<
+        typeof getBacktestEquityCurveApiV1BacktestsJobIdResultsResultIdEquityGet
+      >
+    >,
+    TError = HTTPValidationError,
+  >(
+    jobId: string,
+    resultId: string,
+    params?: GetBacktestEquityCurveApiV1BacktestsJobIdResultsResultIdEquityGetParams,
+    options?: {
+      query?: Partial<
+        UseQueryOptions<
+          Awaited<
+            ReturnType<
+              typeof getBacktestEquityCurveApiV1BacktestsJobIdResultsResultIdEquityGet
+            >
+          >,
+          TError,
+          TData
+        >
+      >;
+    },
+  ): UseQueryResult<TData, TError> & { queryKey: QueryKey } => {
+    const queryOptions =
+      getGetBacktestEquityCurveApiV1BacktestsJobIdResultsResultIdEquityGetQueryOptions(
+        jobId,
+        resultId,
+        params,
+        options,
+      );
+
+    const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
+      queryKey: QueryKey;
+    };
+
+    query.queryKey = queryOptions.queryKey;
+
+    return query;
+  };
+
+/**
+ * Get trade records for a backtest result with pagination.
+ * @summary Get Backtest Trades
+ */
+export const getBacktestTradesApiV1BacktestsJobIdResultsResultIdTradesGet = (
+  jobId: string,
+  resultId: string,
+  params?: GetBacktestTradesApiV1BacktestsJobIdResultsResultIdTradesGetParams,
+  signal?: AbortSignal,
+) => {
+  return customInstance<PaginatedTradesResponse>({
+    url: `/api/v1/backtests/${jobId}/results/${resultId}/trades`,
+    method: "GET",
+    params,
+    signal,
+  });
+};
+
+export const getGetBacktestTradesApiV1BacktestsJobIdResultsResultIdTradesGetQueryKey =
+  (
+    jobId: string,
+    resultId: string,
+    params?: GetBacktestTradesApiV1BacktestsJobIdResultsResultIdTradesGetParams,
+  ) => {
+    return [
+      `/api/v1/backtests/${jobId}/results/${resultId}/trades`,
+      ...(params ? [params] : []),
+    ] as const;
+  };
+
+export const getGetBacktestTradesApiV1BacktestsJobIdResultsResultIdTradesGetInfiniteQueryOptions =
+  <
+    TData = InfiniteData<
+      Awaited<
+        ReturnType<
+          typeof getBacktestTradesApiV1BacktestsJobIdResultsResultIdTradesGet
+        >
+      >,
+      GetBacktestTradesApiV1BacktestsJobIdResultsResultIdTradesGetParams["page"]
+    >,
+    TError = HTTPValidationError,
+  >(
+    jobId: string,
+    resultId: string,
+    params?: GetBacktestTradesApiV1BacktestsJobIdResultsResultIdTradesGetParams,
+    options?: {
+      query?: Partial<
+        UseInfiniteQueryOptions<
+          Awaited<
+            ReturnType<
+              typeof getBacktestTradesApiV1BacktestsJobIdResultsResultIdTradesGet
+            >
+          >,
+          TError,
+          TData,
+          Awaited<
+            ReturnType<
+              typeof getBacktestTradesApiV1BacktestsJobIdResultsResultIdTradesGet
+            >
+          >,
+          QueryKey,
+          GetBacktestTradesApiV1BacktestsJobIdResultsResultIdTradesGetParams["page"]
+        >
+      >;
+    },
+  ) => {
+    const { query: queryOptions } = options ?? {};
+
+    const queryKey =
+      queryOptions?.queryKey ??
+      getGetBacktestTradesApiV1BacktestsJobIdResultsResultIdTradesGetQueryKey(
+        jobId,
+        resultId,
+        params,
+      );
+
+    const queryFn: QueryFunction<
+      Awaited<
+        ReturnType<
+          typeof getBacktestTradesApiV1BacktestsJobIdResultsResultIdTradesGet
+        >
+      >,
+      QueryKey,
+      GetBacktestTradesApiV1BacktestsJobIdResultsResultIdTradesGetParams["page"]
+    > = ({ signal, pageParam }) =>
+      getBacktestTradesApiV1BacktestsJobIdResultsResultIdTradesGet(
+        jobId,
+        resultId,
+        { ...params, page: pageParam || params?.["page"] },
+        signal,
+      );
+
+    return {
+      queryKey,
+      queryFn,
+      enabled: !!(jobId && resultId),
+      ...queryOptions,
+    } as UseInfiniteQueryOptions<
+      Awaited<
+        ReturnType<
+          typeof getBacktestTradesApiV1BacktestsJobIdResultsResultIdTradesGet
+        >
+      >,
+      TError,
+      TData,
+      Awaited<
+        ReturnType<
+          typeof getBacktestTradesApiV1BacktestsJobIdResultsResultIdTradesGet
+        >
+      >,
+      QueryKey,
+      GetBacktestTradesApiV1BacktestsJobIdResultsResultIdTradesGetParams["page"]
+    > & { queryKey: QueryKey };
+  };
+
+export type GetBacktestTradesApiV1BacktestsJobIdResultsResultIdTradesGetInfiniteQueryResult =
+  NonNullable<
+    Awaited<
+      ReturnType<
+        typeof getBacktestTradesApiV1BacktestsJobIdResultsResultIdTradesGet
+      >
+    >
+  >;
+export type GetBacktestTradesApiV1BacktestsJobIdResultsResultIdTradesGetInfiniteQueryError =
+  HTTPValidationError;
+
+/**
+ * @summary Get Backtest Trades
+ */
+export const useGetBacktestTradesApiV1BacktestsJobIdResultsResultIdTradesGetInfinite =
+  <
+    TData = InfiniteData<
+      Awaited<
+        ReturnType<
+          typeof getBacktestTradesApiV1BacktestsJobIdResultsResultIdTradesGet
+        >
+      >,
+      GetBacktestTradesApiV1BacktestsJobIdResultsResultIdTradesGetParams["page"]
+    >,
+    TError = HTTPValidationError,
+  >(
+    jobId: string,
+    resultId: string,
+    params?: GetBacktestTradesApiV1BacktestsJobIdResultsResultIdTradesGetParams,
+    options?: {
+      query?: Partial<
+        UseInfiniteQueryOptions<
+          Awaited<
+            ReturnType<
+              typeof getBacktestTradesApiV1BacktestsJobIdResultsResultIdTradesGet
+            >
+          >,
+          TError,
+          TData,
+          Awaited<
+            ReturnType<
+              typeof getBacktestTradesApiV1BacktestsJobIdResultsResultIdTradesGet
+            >
+          >,
+          QueryKey,
+          GetBacktestTradesApiV1BacktestsJobIdResultsResultIdTradesGetParams["page"]
+        >
+      >;
+    },
+  ): UseInfiniteQueryResult<TData, TError> & { queryKey: QueryKey } => {
+    const queryOptions =
+      getGetBacktestTradesApiV1BacktestsJobIdResultsResultIdTradesGetInfiniteQueryOptions(
+        jobId,
+        resultId,
+        params,
+        options,
+      );
+
+    const query = useInfiniteQuery(queryOptions) as UseInfiniteQueryResult<
+      TData,
+      TError
+    > & { queryKey: QueryKey };
+
+    query.queryKey = queryOptions.queryKey;
+
+    return query;
+  };
+
+export const getGetBacktestTradesApiV1BacktestsJobIdResultsResultIdTradesGetQueryOptions =
+  <
+    TData = Awaited<
+      ReturnType<
+        typeof getBacktestTradesApiV1BacktestsJobIdResultsResultIdTradesGet
+      >
+    >,
+    TError = HTTPValidationError,
+  >(
+    jobId: string,
+    resultId: string,
+    params?: GetBacktestTradesApiV1BacktestsJobIdResultsResultIdTradesGetParams,
+    options?: {
+      query?: Partial<
+        UseQueryOptions<
+          Awaited<
+            ReturnType<
+              typeof getBacktestTradesApiV1BacktestsJobIdResultsResultIdTradesGet
+            >
+          >,
+          TError,
+          TData
+        >
+      >;
+    },
+  ) => {
+    const { query: queryOptions } = options ?? {};
+
+    const queryKey =
+      queryOptions?.queryKey ??
+      getGetBacktestTradesApiV1BacktestsJobIdResultsResultIdTradesGetQueryKey(
+        jobId,
+        resultId,
+        params,
+      );
+
+    const queryFn: QueryFunction<
+      Awaited<
+        ReturnType<
+          typeof getBacktestTradesApiV1BacktestsJobIdResultsResultIdTradesGet
+        >
+      >
+    > = ({ signal }) =>
+      getBacktestTradesApiV1BacktestsJobIdResultsResultIdTradesGet(
+        jobId,
+        resultId,
+        params,
+        signal,
+      );
+
+    return {
+      queryKey,
+      queryFn,
+      enabled: !!(jobId && resultId),
+      ...queryOptions,
+    } as UseQueryOptions<
+      Awaited<
+        ReturnType<
+          typeof getBacktestTradesApiV1BacktestsJobIdResultsResultIdTradesGet
+        >
+      >,
+      TError,
+      TData
+    > & { queryKey: QueryKey };
+  };
+
+export type GetBacktestTradesApiV1BacktestsJobIdResultsResultIdTradesGetQueryResult =
+  NonNullable<
+    Awaited<
+      ReturnType<
+        typeof getBacktestTradesApiV1BacktestsJobIdResultsResultIdTradesGet
+      >
+    >
+  >;
+export type GetBacktestTradesApiV1BacktestsJobIdResultsResultIdTradesGetQueryError =
+  HTTPValidationError;
+
+/**
+ * @summary Get Backtest Trades
+ */
+export const useGetBacktestTradesApiV1BacktestsJobIdResultsResultIdTradesGet = <
+  TData = Awaited<
+    ReturnType<
+      typeof getBacktestTradesApiV1BacktestsJobIdResultsResultIdTradesGet
+    >
+  >,
+  TError = HTTPValidationError,
+>(
+  jobId: string,
+  resultId: string,
+  params?: GetBacktestTradesApiV1BacktestsJobIdResultsResultIdTradesGetParams,
+  options?: {
+    query?: Partial<
+      UseQueryOptions<
+        Awaited<
+          ReturnType<
+            typeof getBacktestTradesApiV1BacktestsJobIdResultsResultIdTradesGet
+          >
+        >,
+        TError,
+        TData
+      >
+    >;
+  },
+): UseQueryResult<TData, TError> & { queryKey: QueryKey } => {
+  const queryOptions =
+    getGetBacktestTradesApiV1BacktestsJobIdResultsResultIdTradesGetQueryOptions(
+      jobId,
+      resultId,
+      params,
       options,
     );
 

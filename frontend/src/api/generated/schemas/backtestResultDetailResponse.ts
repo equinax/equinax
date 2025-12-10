@@ -7,7 +7,6 @@
  */
 import type { BacktestResultDetailResponseAnnualReturn } from "./backtestResultDetailResponseAnnualReturn";
 import type { BacktestResultDetailResponseCalmarRatio } from "./backtestResultDetailResponseCalmarRatio";
-import type { BacktestResultDetailResponseEquityCurve } from "./backtestResultDetailResponseEquityCurve";
 import type { BacktestResultDetailResponseErrorMessage } from "./backtestResultDetailResponseErrorMessage";
 import type { BacktestResultDetailResponseExecutionTimeMs } from "./backtestResultDetailResponseExecutionTimeMs";
 import type { BacktestResultDetailResponseFinalValue } from "./backtestResultDetailResponseFinalValue";
@@ -21,19 +20,17 @@ import type { BacktestResultDetailResponseSharpeRatio } from "./backtestResultDe
 import type { BacktestResultDetailResponseSortinoRatio } from "./backtestResultDetailResponseSortinoRatio";
 import type { BacktestResultDetailResponseTotalReturn } from "./backtestResultDetailResponseTotalReturn";
 import type { BacktestResultDetailResponseTotalTrades } from "./backtestResultDetailResponseTotalTrades";
-import type { BacktestResultDetailResponseTrades } from "./backtestResultDetailResponseTrades";
 import type { BacktestResultDetailResponseVolatility } from "./backtestResultDetailResponseVolatility";
 import type { BacktestResultDetailResponseWinRate } from "./backtestResultDetailResponseWinRate";
 import type { BacktestResultDetailResponseWinningTrades } from "./backtestResultDetailResponseWinningTrades";
 
 /**
- * Detailed backtest result with equity curve and trades.
+ * Detailed backtest result with monthly returns (equity_curve and trades moved to separate endpoints).
  */
 export interface BacktestResultDetailResponse {
   annual_return: BacktestResultDetailResponseAnnualReturn;
   calmar_ratio: BacktestResultDetailResponseCalmarRatio;
   created_at: string;
-  equity_curve: BacktestResultDetailResponseEquityCurve;
   error_message: BacktestResultDetailResponseErrorMessage;
   execution_time_ms: BacktestResultDetailResponseExecutionTimeMs;
   final_value: BacktestResultDetailResponseFinalValue;
@@ -52,7 +49,6 @@ export interface BacktestResultDetailResponse {
   strategy_id: string;
   total_return: BacktestResultDetailResponseTotalReturn;
   total_trades: BacktestResultDetailResponseTotalTrades;
-  trades: BacktestResultDetailResponseTrades;
   volatility: BacktestResultDetailResponseVolatility;
   win_rate: BacktestResultDetailResponseWinRate;
   winning_trades: BacktestResultDetailResponseWinningTrades;

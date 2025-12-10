@@ -8,10 +8,10 @@ from enum import Enum
 
 from sqlalchemy import (
     String, Text, Integer, Date, DateTime, Numeric,
-    ForeignKey, Index, func, Enum as SQLEnum
+    ForeignKey, Index, PrimaryKeyConstraint, func, Enum as SQLEnum
 )
 from sqlalchemy.dialects.postgresql import UUID, JSONB, ARRAY
-from sqlalchemy.orm import Mapped, mapped_column, relationship
+from sqlalchemy.orm import Mapped, mapped_column, relationship, WriteOnlyMapped
 
 from app.db.base import Base
 
@@ -176,9 +176,7 @@ class BacktestResult(Base):
     final_value: Mapped[Optional[Decimal]] = mapped_column(Numeric(18, 2), nullable=True)
     peak_value: Mapped[Optional[Decimal]] = mapped_column(Numeric(18, 2), nullable=True)
 
-    # Detailed data (stored as JSONB)
-    equity_curve: Mapped[Optional[List[Dict[str, Any]]]] = mapped_column(JSONB, nullable=True)
-    trades: Mapped[Optional[List[Dict[str, Any]]]] = mapped_column(JSONB, nullable=True)
+    # Monthly returns (kept as JSONB - small data)
     monthly_returns: Mapped[Optional[Dict[str, Any]]] = mapped_column(JSONB, nullable=True)
 
     # Execution info
@@ -197,6 +195,18 @@ class BacktestResult(Base):
     # Relationships
     job: Mapped["BacktestJob"] = relationship("BacktestJob", back_populates="results")
 
+    # Relationships to new tables (lazy load for performance)
+    equity_points: WriteOnlyMapped[List["BacktestEquity"]] = relationship(
+        "BacktestEquity",
+        back_populates="result",
+        cascade="all, delete-orphan",
+    )
+    trade_records: WriteOnlyMapped[List["BacktestTrade"]] = relationship(
+        "BacktestTrade",
+        back_populates="result",
+        cascade="all, delete-orphan",
+    )
+
     __table_args__ = (
         Index("idx_backtest_results_job", "job_id"),
         Index("idx_backtest_results_strategy", "strategy_id"),
@@ -211,3 +221,107 @@ class BacktestResult(Base):
 
     def __repr__(self) -> str:
         return f"<BacktestResult(job_id={self.job_id}, strategy_id={self.strategy_id}, stock={self.stock_code})>"
+
+
+class BacktestEquity(Base):
+    """
+    资金曲线时序数据表
+
+    存储每个交易日的账户价值，用于绘制权益曲线图表。
+    使用 TimescaleDB hypertable 进行时序优化。
+    """
+
+    __tablename__ = "backtest_equity"
+
+    result_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("backtest_results.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    date: Mapped[date] = mapped_column(Date, nullable=False)
+
+    # 核心数据
+    value: Mapped[Decimal] = mapped_column(Numeric(18, 2), nullable=False)
+    cash: Mapped[Optional[Decimal]] = mapped_column(Numeric(18, 2), nullable=True)
+    position_value: Mapped[Optional[Decimal]] = mapped_column(Numeric(18, 2), nullable=True)
+
+    # 风险指标
+    drawdown: Mapped[Optional[Decimal]] = mapped_column(Numeric(8, 6), nullable=True)
+    daily_return: Mapped[Optional[Decimal]] = mapped_column(Numeric(8, 6), nullable=True)
+
+    # Relationship
+    result: Mapped["BacktestResult"] = relationship("BacktestResult", back_populates="equity_points")
+
+    __table_args__ = (
+        PrimaryKeyConstraint("result_id", "date"),
+        Index("idx_backtest_equity_result", "result_id"),
+        Index("idx_backtest_equity_date", "date"),
+    )
+
+    def __repr__(self) -> str:
+        return f"<BacktestEquity(result_id={self.result_id}, date={self.date}, value={self.value})>"
+
+
+class BacktestTrade(Base):
+    """
+    回测交易记录详情表
+
+    记录每笔完整的买卖操作，包括入场、出场、盈亏等信息。
+    """
+
+    __tablename__ = "backtest_trades"
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        primary_key=True,
+        default=uuid.uuid4,
+    )
+    result_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("backtest_results.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+
+    # 交易标的
+    stock_code: Mapped[str] = mapped_column(String(20), nullable=False)
+
+    # 交易方向
+    direction: Mapped[str] = mapped_column(String(10), nullable=False)  # 'long' or 'short'
+
+    # 开仓信息
+    entry_date: Mapped[date] = mapped_column(Date, nullable=False)
+    entry_price: Mapped[Decimal] = mapped_column(Numeric(12, 4), nullable=False)
+
+    # 平仓信息 (可能尚未平仓)
+    exit_date: Mapped[Optional[date]] = mapped_column(Date, nullable=True)
+    exit_price: Mapped[Optional[Decimal]] = mapped_column(Numeric(12, 4), nullable=True)
+
+    # 交易规模
+    size: Mapped[int] = mapped_column(Integer, nullable=False)  # 股数
+
+    # 盈亏
+    pnl: Mapped[Optional[Decimal]] = mapped_column(Numeric(18, 2), nullable=True)  # 毛利
+    commission: Mapped[Optional[Decimal]] = mapped_column(Numeric(12, 4), nullable=True)
+    net_pnl: Mapped[Optional[Decimal]] = mapped_column(Numeric(18, 2), nullable=True)  # 净利
+    pnl_percent: Mapped[Optional[Decimal]] = mapped_column(Numeric(8, 6), nullable=True)
+
+    # 持仓统计
+    bars_held: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+
+    # 时间戳
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        server_default=func.now(),
+    )
+
+    # Relationship
+    result: Mapped["BacktestResult"] = relationship("BacktestResult", back_populates="trade_records")
+
+    __table_args__ = (
+        Index("idx_backtest_trades_result", "result_id"),
+        Index("idx_backtest_trades_stock", "stock_code"),
+        Index("idx_backtest_trades_entry_date", "entry_date"),
+    )
+
+    def __repr__(self) -> str:
+        return f"<BacktestTrade(id={self.id}, stock={self.stock_code}, direction={self.direction})>"

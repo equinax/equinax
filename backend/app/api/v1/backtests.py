@@ -12,7 +12,13 @@ from sqlalchemy import select, func
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.session import get_db
-from app.db.models.backtest import BacktestJob, BacktestResult, BacktestStatus
+from app.db.models.backtest import (
+    BacktestJob,
+    BacktestResult,
+    BacktestEquity,
+    BacktestTrade,
+    BacktestStatus,
+)
 from app.core.arq import get_arq_pool
 from app.core.redis_pubsub import subscribe_events
 
@@ -114,10 +120,54 @@ class BacktestResultResponse(BaseModel):
 
 
 class BacktestResultDetailResponse(BacktestResultResponse):
-    """Detailed backtest result with equity curve and trades."""
-    equity_curve: Optional[List[dict]]
-    trades: Optional[List[dict]]
+    """Detailed backtest result with monthly returns (equity_curve and trades moved to separate endpoints)."""
     monthly_returns: Optional[dict]
+
+
+# ============================================
+# New Schemas for Equity Curve and Trades
+# ============================================
+
+class EquityCurvePointResponse(BaseModel):
+    """Schema for a single equity curve point."""
+    date: date
+    value: Decimal
+    cash: Optional[Decimal] = None
+    position_value: Optional[Decimal] = None
+    drawdown: Optional[Decimal] = None
+    daily_return: Optional[Decimal] = None
+
+    class Config:
+        from_attributes = True
+
+
+class TradeRecordResponse(BaseModel):
+    """Schema for a single trade record."""
+    id: UUID
+    stock_code: str
+    direction: str
+    entry_date: date
+    entry_price: Decimal
+    exit_date: Optional[date] = None
+    exit_price: Optional[Decimal] = None
+    size: int
+    pnl: Optional[Decimal] = None
+    commission: Optional[Decimal] = None
+    net_pnl: Optional[Decimal] = None
+    pnl_percent: Optional[Decimal] = None
+    bars_held: Optional[int] = None
+
+    class Config:
+        from_attributes = True
+
+
+class PaginatedTradesResponse(BaseModel):
+    """Schema for paginated trades list."""
+    items: List[TradeRecordResponse]
+    total: int
+    page: int
+    page_size: int
+    pages: int
 
 
 class BacktestListResponse(BaseModel):
@@ -375,6 +425,92 @@ async def get_backtest_result_detail(
         )
 
     return BacktestResultDetailResponse.model_validate(backtest_result)
+
+
+@router.get("/{job_id}/results/{result_id}/equity", response_model=List[EquityCurvePointResponse])
+async def get_backtest_equity_curve(
+    job_id: UUID,
+    result_id: UUID,
+    start_date: Optional[date] = Query(default=None, description="Filter by start date"),
+    end_date: Optional[date] = Query(default=None, description="Filter by end date"),
+    db: AsyncSession = Depends(get_db),
+):
+    """Get equity curve data for a backtest result."""
+    # Verify result exists and belongs to job
+    result = await db.execute(
+        select(BacktestResult).where(
+            BacktestResult.id == result_id,
+            BacktestResult.job_id == job_id,
+        )
+    )
+    if not result.scalar_one_or_none():
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Backtest result not found",
+        )
+
+    # Query equity curve data
+    query = select(BacktestEquity).where(BacktestEquity.result_id == result_id)
+
+    if start_date:
+        query = query.where(BacktestEquity.date >= start_date)
+    if end_date:
+        query = query.where(BacktestEquity.date <= end_date)
+
+    query = query.order_by(BacktestEquity.date.asc())
+
+    equity_result = await db.execute(query)
+    equity_points = equity_result.scalars().all()
+
+    return [EquityCurvePointResponse.model_validate(p) for p in equity_points]
+
+
+@router.get("/{job_id}/results/{result_id}/trades", response_model=PaginatedTradesResponse)
+async def get_backtest_trades(
+    job_id: UUID,
+    result_id: UUID,
+    page: int = Query(default=1, ge=1),
+    page_size: int = Query(default=50, ge=1, le=200),
+    db: AsyncSession = Depends(get_db),
+):
+    """Get trade records for a backtest result with pagination."""
+    # Verify result exists and belongs to job
+    result = await db.execute(
+        select(BacktestResult).where(
+            BacktestResult.id == result_id,
+            BacktestResult.job_id == job_id,
+        )
+    )
+    if not result.scalar_one_or_none():
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Backtest result not found",
+        )
+
+    # Get total count
+    count_query = select(func.count()).where(BacktestTrade.result_id == result_id)
+    total_result = await db.execute(count_query)
+    total = total_result.scalar() or 0
+
+    # Query trades with pagination
+    query = (
+        select(BacktestTrade)
+        .where(BacktestTrade.result_id == result_id)
+        .order_by(BacktestTrade.entry_date.asc())
+        .offset((page - 1) * page_size)
+        .limit(page_size)
+    )
+
+    trades_result = await db.execute(query)
+    trades = trades_result.scalars().all()
+
+    return PaginatedTradesResponse(
+        items=[TradeRecordResponse.model_validate(t) for t in trades],
+        total=total,
+        page=page,
+        page_size=page_size,
+        pages=(total + page_size - 1) // page_size if total > 0 else 0,
+    )
 
 
 @router.get("/{job_id}/compare", response_model=ComparisonResponse)

@@ -11,12 +11,17 @@ import { Skeleton } from '@/components/ui/skeleton'
 import { Badge } from '@/components/ui/badge'
 import { formatPercent } from '@/lib/utils'
 import { LineChart, Calendar, List, BarChart3, AlertCircle } from 'lucide-react'
-import { useGetBacktestResultDetailApiV1BacktestsJobIdResultsResultIdGet } from '@/api/generated/backtests/backtests'
+import {
+  useGetBacktestResultDetailApiV1BacktestsJobIdResultsResultIdGet,
+  useGetBacktestEquityCurveApiV1BacktestsJobIdResultsResultIdEquityGet,
+  useGetBacktestTradesApiV1BacktestsJobIdResultsResultIdTradesGet,
+} from '@/api/generated/backtests/backtests'
 import { EquityCurveWithIndicators } from './EquityCurveWithIndicators'
 import { MonthlyReturnsChart } from './MonthlyReturnsChart'
 import { TradesTable } from './TradesTable'
 import { MetricsCards } from './MetricsCards'
 import type { EquityCurvePoint, TradeRecord, MonthlyReturns } from '@/types/backtest'
+import type { BacktestResultDetailResponse } from '@/api/generated/schemas'
 
 interface ResultDetailSheetProps {
   jobId: string
@@ -43,7 +48,7 @@ function LoadingSkeleton() {
   )
 }
 
-function QuickStats({ data }: { data: NonNullable<ReturnType<typeof useGetBacktestResultDetailApiV1BacktestsJobIdResultsResultIdGet>['data']> }) {
+function QuickStats({ data }: { data: BacktestResultDetailResponse }) {
   const stats = [
     {
       label: '总收益',
@@ -103,6 +108,7 @@ function QuickStats({ data }: { data: NonNullable<ReturnType<typeof useGetBackte
 }
 
 export function ResultDetailSheet({ jobId, resultId, open, onOpenChange }: ResultDetailSheetProps) {
+  // Fetch main result detail
   const { data, isLoading, error } = useGetBacktestResultDetailApiV1BacktestsJobIdResultsResultIdGet(
     jobId,
     resultId || '',
@@ -110,6 +116,32 @@ export function ResultDetailSheet({ jobId, resultId, open, onOpenChange }: Resul
       query: {
         enabled: !!resultId && open,
         staleTime: 5 * 60 * 1000, // 5 minutes
+      },
+    }
+  )
+
+  // Fetch equity curve data separately
+  const { data: equityData } = useGetBacktestEquityCurveApiV1BacktestsJobIdResultsResultIdEquityGet(
+    jobId,
+    resultId || '',
+    undefined, // no date filter
+    {
+      query: {
+        enabled: !!resultId && open,
+        staleTime: 5 * 60 * 1000,
+      },
+    }
+  )
+
+  // Fetch trades data separately
+  const { data: tradesData } = useGetBacktestTradesApiV1BacktestsJobIdResultsResultIdTradesGet(
+    jobId,
+    resultId || '',
+    { page_size: 200 }, // fetch more trades for display
+    {
+      query: {
+        enabled: !!resultId && open,
+        staleTime: 5 * 60 * 1000,
       },
     }
   )
@@ -181,8 +213,19 @@ export function ResultDetailSheet({ jobId, resultId, open, onOpenChange }: Resul
                 <TabsContent value="equity" className="mt-4">
                   <EquityCurveWithIndicators
                     stockCode={data.stock_code}
-                    equityCurve={data.equity_curve as EquityCurvePoint[] | undefined}
-                    trades={data.trades as TradeRecord[] | undefined}
+                    equityCurve={equityData?.map(p => ({
+                      date: p.date,
+                      value: Number(p.value),
+                      drawdown: p.drawdown ? Number(p.drawdown) : undefined,
+                    })) as EquityCurvePoint[] | undefined}
+                    trades={tradesData?.items?.map(t => ({
+                      ...t,
+                      entry_price: Number(t.entry_price),
+                      exit_price: t.exit_price ? Number(t.exit_price) : undefined,
+                      pnl: t.pnl ? Number(t.pnl) : 0,
+                      pnl_percent: t.pnl_percent ? Number(t.pnl_percent) : 0,
+                      type: t.direction as 'long' | 'short',
+                    })) as TradeRecord[] | undefined}
                     height={500}
                   />
                 </TabsContent>
@@ -195,7 +238,14 @@ export function ResultDetailSheet({ jobId, resultId, open, onOpenChange }: Resul
                 </TabsContent>
 
                 <TabsContent value="trades" className="mt-4">
-                  <TradesTable trades={data.trades as TradeRecord[] | undefined} />
+                  <TradesTable trades={tradesData?.items?.map(t => ({
+                    ...t,
+                    entry_price: Number(t.entry_price),
+                    exit_price: t.exit_price ? Number(t.exit_price) : undefined,
+                    pnl: t.pnl ? Number(t.pnl) : 0,
+                    pnl_percent: t.pnl_percent ? Number(t.pnl_percent) : 0,
+                    type: t.direction as 'long' | 'short',
+                  })) as TradeRecord[] | undefined} />
                 </TabsContent>
 
                 <TabsContent value="metrics" className="mt-4">
