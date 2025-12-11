@@ -12,6 +12,7 @@ import {
   CheckCircle,
   XCircle,
   Copy,
+  Check,
 } from 'lucide-react'
 import {
   useGetStrategyApiV1StrategiesStrategyIdGet,
@@ -30,9 +31,7 @@ const strategyTypes = [
   { value: 'other', label: '其他' },
 ]
 
-const defaultCode = `import backtrader as bt
-
-class MyStrategy(bt.Strategy):
+const defaultCode = `class MyStrategy(bt.Strategy):
     """
     自定义策略模板
 
@@ -54,6 +53,15 @@ class MyStrategy(bt.Strategy):
             self.close()
 `
 
+// Field error type
+interface FieldErrors {
+  name?: string
+  code?: string
+}
+
+// Save status type
+type SaveStatus = 'idle' | 'saving' | 'success' | 'error'
+
 export default function StrategyEditorPage() {
   const { strategyId } = useParams<{ strategyId: string }>()
   const navigate = useNavigate()
@@ -72,7 +80,15 @@ export default function StrategyEditorPage() {
   const [validationResult, setValidationResult] = useState<{
     is_valid: boolean
     error_message?: string | null
+    errors?: string[]
   } | null>(null)
+
+  // Field-level errors (from form validation or API)
+  const [fieldErrors, setFieldErrors] = useState<FieldErrors>({})
+
+  // Save status
+  const [saveStatus, setSaveStatus] = useState<SaveStatus>('idle')
+  const [apiError, setApiError] = useState<string | null>(null)
 
   // Fetch existing strategy if editing
   const { data: strategy, isLoading: isLoadingStrategy } =
@@ -88,7 +104,18 @@ export default function StrategyEditorPage() {
     mutation: {
       onSuccess: (data) => {
         queryClient.invalidateQueries({ queryKey: ['/api/v1/strategies'] })
-        navigate(`/strategies/${data.id}`)
+        setSaveStatus('success')
+        setApiError(null)
+        setFieldErrors({})
+        setValidationResult(null) // Clear validation result on save success
+        // Navigate after showing success briefly
+        setTimeout(() => {
+          navigate(`/strategies/${data.id}`)
+        }, 800)
+      },
+      onError: (error: any) => {
+        setSaveStatus('error')
+        handleApiError(error)
       },
     },
   })
@@ -100,6 +127,18 @@ export default function StrategyEditorPage() {
         queryClient.invalidateQueries({
           queryKey: [`/api/v1/strategies/${strategyId}`],
         })
+        setSaveStatus('success')
+        setApiError(null)
+        setFieldErrors({})
+        setValidationResult(null) // Clear validation result on save success
+        // Reset to idle after showing success
+        setTimeout(() => {
+          setSaveStatus('idle')
+        }, 2000)
+      },
+      onError: (error: any) => {
+        setSaveStatus('error')
+        handleApiError(error)
       },
     },
   })
@@ -108,33 +147,101 @@ export default function StrategyEditorPage() {
     mutation: {
       onSuccess: (data) => {
         setValidationResult(data)
+        // Clear save success status when re-validating
+        if (saveStatus === 'success') {
+          setSaveStatus('idle')
+        }
       },
     },
   })
 
-  // Load strategy data when editing
+  // Handle API errors - extract field-level errors
+  const handleApiError = (error: any) => {
+    const newFieldErrors: FieldErrors = {}
+    let generalError = '保存失败，请稍后重试'
+
+    try {
+      // Handle FastAPI validation errors (422)
+      if (error?.response?.data?.detail) {
+        const detail = error.response.data.detail
+        if (Array.isArray(detail)) {
+          detail.forEach((err: any) => {
+            const field = err.loc?.[err.loc.length - 1]
+            const msg = err.msg
+            if (field === 'name') {
+              newFieldErrors.name = msg
+            } else if (field === 'code') {
+              newFieldErrors.code = msg
+            }
+          })
+          if (Object.keys(newFieldErrors).length === 0) {
+            generalError = detail.map((e: any) => e.msg).join('; ')
+          }
+        } else if (typeof detail === 'string') {
+          generalError = detail
+        }
+      } else if (error?.message) {
+        generalError = error.message
+      }
+    } catch {
+      // Keep default error message
+    }
+
+    setFieldErrors(newFieldErrors)
+    if (Object.keys(newFieldErrors).length === 0) {
+      setApiError(generalError)
+    } else {
+      setApiError(null)
+    }
+  }
+
+  // Track if initial load has happened
+  const [initialLoaded, setInitialLoaded] = useState(false)
+
+  // Load strategy data when editing (only on initial load)
   useEffect(() => {
-    if (strategy) {
+    if (strategy && !initialLoaded) {
       setName(strategy.name)
       setDescription(strategy.description || '')
       setStrategyType(strategy.strategy_type || 'other')
       setCode(strategy.code)
       setIndicatorsUsed(strategy.indicators_used || [])
-      setValidationResult({
-        is_valid: strategy.is_validated,
-        error_message: strategy.validation_error,
-      })
+      // Don't show validation result on load - only show when user clicks validate
+      setInitialLoaded(true)
     }
-  }, [strategy])
+  }, [strategy, initialLoaded])
+
+  // Reset save status when form changes
+  useEffect(() => {
+    if (saveStatus === 'success') {
+      setSaveStatus('idle')
+    }
+    if (saveStatus === 'error') {
+      setSaveStatus('idle')
+      setApiError(null)
+    }
+  }, [name, description, strategyType, code])
 
   const handleValidate = () => {
     validateMutation.mutate({ data: { code } })
   }
 
+  // No frontend validation - rely on API validation only
+  const validateForm = (): boolean => {
+    setFieldErrors({})
+    return true
+  }
+
   const handleSave = () => {
-    if (!name.trim() || code.length < 50) {
+    // Clear previous states
+    setApiError(null)
+
+    // Validate form
+    if (!validateForm()) {
       return
     }
+
+    setSaveStatus('saving')
 
     const payload = {
       name,
@@ -168,9 +275,25 @@ export default function StrategyEditorPage() {
   const handleUseTemplate = (templateCode: string) => {
     setCode(templateCode)
     setValidationResult(null)
+    setFieldErrors((prev) => ({ ...prev, code: undefined }))
   }
 
-  const isSaving = createMutation.isPending || updateMutation.isPending
+  const handleNameChange = (value: string) => {
+    setName(value)
+    if (fieldErrors.name) {
+      setFieldErrors((prev) => ({ ...prev, name: undefined }))
+    }
+  }
+
+  const handleCodeChange = (value: string) => {
+    setCode(value)
+    setValidationResult(null)
+    if (fieldErrors.code) {
+      setFieldErrors((prev) => ({ ...prev, code: undefined }))
+    }
+  }
+
+  const isSaving = saveStatus === 'saving'
 
   if (isEditing && isLoadingStrategy) {
     return (
@@ -210,13 +333,23 @@ export default function StrategyEditorPage() {
             )}
             验证代码
           </Button>
-          <Button onClick={handleSave} disabled={isSaving}>
+          <Button
+            onClick={handleSave}
+            disabled={isSaving}
+            className={
+              saveStatus === 'success'
+                ? 'bg-green-500 hover:bg-green-500/90'
+                : undefined
+            }
+          >
             {isSaving ? (
               <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+            ) : saveStatus === 'success' ? (
+              <Check className="mr-2 h-4 w-4" />
             ) : (
               <Save className="mr-2 h-4 w-4" />
             )}
-            保存策略
+            {saveStatus === 'success' ? '已保存' : '保存策略'}
           </Button>
         </div>
       </div>
@@ -224,24 +357,54 @@ export default function StrategyEditorPage() {
       <div className="grid gap-6 lg:grid-cols-3">
         {/* Left: Code editor */}
         <div className="lg:col-span-2 space-y-4">
-          {/* Validation result */}
-          {validationResult && (
+          {/* Save status feedback */}
+          {saveStatus === 'success' && (
+            <div className="flex items-center gap-2 rounded-lg border border-green-500/50 bg-green-500/10 text-green-500 p-3">
+              <CheckCircle className="h-5 w-5" />
+              <span>策略保存成功</span>
+            </div>
+          )}
+
+          {/* API error feedback */}
+          {apiError && (
+            <div className="flex items-center gap-2 rounded-lg border border-red-500/50 bg-red-500/10 text-red-500 p-3">
+              <XCircle className="h-5 w-5" />
+              <span>{apiError}</span>
+            </div>
+          )}
+
+          {/* Validation result - only show when not just saved successfully */}
+          {validationResult && saveStatus !== 'success' && (
             <div
-              className={`flex items-center gap-2 rounded-lg border p-3 ${
+              className={`flex items-start gap-2 rounded-lg border p-3 ${
                 validationResult.is_valid
-                  ? 'border-profit/50 bg-profit/10 text-profit'
-                  : 'border-loss/50 bg-loss/10 text-loss'
+                  ? 'border-green-500/50 bg-green-500/10 text-green-500'
+                  : 'border-red-500/50 bg-red-500/10 text-red-500'
               }`}
             >
               {validationResult.is_valid ? (
                 <>
-                  <CheckCircle className="h-5 w-5" />
+                  <CheckCircle className="h-5 w-5 flex-shrink-0 mt-0.5" />
                   <span>代码验证通过</span>
                 </>
               ) : (
                 <>
-                  <XCircle className="h-5 w-5" />
-                  <span>验证失败: {validationResult.error_message}</span>
+                  <XCircle className="h-5 w-5 flex-shrink-0 mt-0.5" />
+                  <div className="flex-1">
+                    <div className="font-medium">验证失败</div>
+                    {validationResult.error_message && (
+                      <div className="mt-1 text-sm opacity-90">
+                        {validationResult.error_message}
+                      </div>
+                    )}
+                    {validationResult.errors && validationResult.errors.length > 0 && (
+                      <ul className="mt-1 text-sm opacity-90 list-disc list-inside">
+                        {validationResult.errors.map((err, i) => (
+                          <li key={i}>{err}</li>
+                        ))}
+                      </ul>
+                    )}
+                  </div>
                 </>
               )}
             </div>
@@ -252,16 +415,18 @@ export default function StrategyEditorPage() {
             <CardHeader>
               <CardTitle>策略代码</CardTitle>
             </CardHeader>
-            <CardContent>
+            <CardContent className="space-y-2">
               <Textarea
                 value={code}
-                onChange={(e) => {
-                  setCode(e.target.value)
-                  setValidationResult(null)
-                }}
-                className="font-mono text-sm min-h-[500px] resize-y"
+                onChange={(e) => handleCodeChange(e.target.value)}
+                className={`font-mono text-sm min-h-[500px] resize-y ${
+                  fieldErrors.code ? 'border-red-500 focus-visible:ring-red-500' : ''
+                }`}
                 placeholder="编写 Backtrader 策略代码..."
               />
+              {fieldErrors.code && (
+                <p className="text-sm text-red-500">{fieldErrors.code}</p>
+              )}
             </CardContent>
           </Card>
         </div>
@@ -278,9 +443,13 @@ export default function StrategyEditorPage() {
                 <label className="text-sm font-medium">策略名称 *</label>
                 <Input
                   value={name}
-                  onChange={(e) => setName(e.target.value)}
+                  onChange={(e) => handleNameChange(e.target.value)}
                   placeholder="输入策略名称"
+                  className={fieldErrors.name ? 'border-red-500 focus-visible:ring-red-500' : ''}
                 />
+                {fieldErrors.name && (
+                  <p className="text-sm text-red-500">{fieldErrors.name}</p>
+                )}
               </div>
 
               <div className="space-y-2">
