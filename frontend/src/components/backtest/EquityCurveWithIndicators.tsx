@@ -88,18 +88,18 @@ export function EquityCurveWithIndicators({
   const isDark = theme === 'dark' || (theme === 'system' && window.matchMedia('(prefers-color-scheme: dark)').matches)
   const colors = getMarketColors()
 
-  // Indicator toggle state
+  // Indicator toggle state - 默认只显示收盘价和权益曲线
   const [indicators, setIndicators] = useState<IndicatorState>({
-    candle: true,
-    closeLine: false,
-    ma5: true,
-    ma10: true,
-    ma20: true,
+    candle: false,
+    closeLine: true,
+    ma5: false,
+    ma10: false,
+    ma20: false,
     ma60: false,
     ema12: false,
     ema26: false,
     boll: false,
-    volume: true,
+    volume: false,
     macd: false,
     rsi: false,
     equity: true,
