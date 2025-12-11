@@ -2,8 +2,16 @@ import { useState } from 'react'
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
-import { useToast } from '@/components/ui/use-toast'
-import { ToastAction } from '@/components/ui/toast'
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog'
 import { Plus, Search, Play, Edit, Trash2, Code2, CheckCircle, XCircle, Loader2 } from 'lucide-react'
 import {
   useListStrategiesApiV1StrategiesGet,
@@ -22,9 +30,9 @@ const strategyTypes: Record<string, string> = {
 
 export default function StrategiesPage() {
   const [searchQuery, setSearchQuery] = useState('')
+  const [deleteTarget, setDeleteTarget] = useState<{ id: string; name: string } | null>(null)
   const navigate = useNavigate()
   const queryClient = useQueryClient()
-  const { toast } = useToast()
 
   // Fetch strategies
   const { data: strategiesData, isLoading } = useListStrategiesApiV1StrategiesGet({
@@ -38,17 +46,7 @@ export default function StrategiesPage() {
     mutation: {
       onSuccess: () => {
         queryClient.invalidateQueries({ queryKey: ['/api/v1/strategies'] })
-        toast({
-          title: '策略已删除',
-          description: '删除成功',
-        })
-      },
-      onError: (error) => {
-        toast({
-          variant: 'destructive',
-          title: '删除失败',
-          description: error.message || '请稍后重试',
-        })
+        setDeleteTarget(null)
       },
     },
   })
@@ -56,21 +54,13 @@ export default function StrategiesPage() {
   const strategies = strategiesData?.items || []
 
   const handleDelete = (id: string, name: string) => {
-    // Show toast with action to confirm deletion
-    toast({
-      title: '确认删除',
-      description: `确定要删除策略 "${name}" 吗？`,
-      action: (
-        <ToastAction
-          altText="确认删除"
-          onClick={() => {
-            deleteMutation.mutate({ strategyId: id })
-          }}
-        >
-          删除
-        </ToastAction>
-      ),
-    })
+    setDeleteTarget({ id, name })
+  }
+
+  const handleConfirmDelete = () => {
+    if (deleteTarget) {
+      deleteMutation.mutate({ strategyId: deleteTarget.id })
+    }
   }
 
   return (
@@ -215,6 +205,22 @@ export default function StrategiesPage() {
           共 {strategiesData.total} 个策略，第 {strategiesData.page}/{strategiesData.pages} 页
         </div>
       )}
+
+      {/* Delete confirmation dialog */}
+      <AlertDialog open={!!deleteTarget} onOpenChange={(open) => !open && setDeleteTarget(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>确认删除</AlertDialogTitle>
+            <AlertDialogDescription>
+              确定要删除策略 "{deleteTarget?.name}" 吗？此操作不可撤销。
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>取消</AlertDialogCancel>
+            <AlertDialogAction onClick={handleConfirmDelete}>删除</AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   )
 }

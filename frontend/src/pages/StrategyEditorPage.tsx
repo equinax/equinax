@@ -4,7 +4,6 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Textarea } from '@/components/ui/textarea'
-import { useToast } from '@/components/ui/use-toast'
 import {
   Save,
   Play,
@@ -59,7 +58,6 @@ export default function StrategyEditorPage() {
   const { strategyId } = useParams<{ strategyId: string }>()
   const navigate = useNavigate()
   const queryClient = useQueryClient()
-  const { toast } = useToast()
   const isEditing = strategyId && strategyId !== 'new'
 
   // Form state
@@ -90,18 +88,7 @@ export default function StrategyEditorPage() {
     mutation: {
       onSuccess: (data) => {
         queryClient.invalidateQueries({ queryKey: ['/api/v1/strategies'] })
-        toast({
-          title: '策略已创建',
-          description: `${data.name} 创建成功`,
-        })
         navigate(`/strategies/${data.id}`)
-      },
-      onError: (error) => {
-        toast({
-          variant: 'destructive',
-          title: '创建失败',
-          description: error.message || '请稍后重试',
-        })
       },
     },
   })
@@ -113,17 +100,6 @@ export default function StrategyEditorPage() {
         queryClient.invalidateQueries({
           queryKey: [`/api/v1/strategies/${strategyId}`],
         })
-        toast({
-          title: '策略已更新',
-          description: '保存成功',
-        })
-      },
-      onError: (error) => {
-        toast({
-          variant: 'destructive',
-          title: '更新失败',
-          description: error.message || '请稍后重试',
-        })
       },
     },
   })
@@ -132,18 +108,6 @@ export default function StrategyEditorPage() {
     mutation: {
       onSuccess: (data) => {
         setValidationResult(data)
-        toast({
-          title: data.is_valid ? '验证通过' : '验证失败',
-          description: data.is_valid ? '代码格式正确' : '请检查错误信息',
-          variant: data.is_valid ? 'default' : 'destructive',
-        })
-      },
-      onError: (error) => {
-        toast({
-          variant: 'destructive',
-          title: '验证请求失败',
-          description: error.message || '请稍后重试',
-        })
       },
     },
   })
@@ -168,20 +132,7 @@ export default function StrategyEditorPage() {
   }
 
   const handleSave = () => {
-    if (!name.trim()) {
-      toast({
-        variant: 'destructive',
-        title: '验证失败',
-        description: '请输入策略名称',
-      })
-      return
-    }
-    if (code.length < 50) {
-      toast({
-        variant: 'destructive',
-        title: '验证失败',
-        description: '策略代码太短（至少50个字符）',
-      })
+    if (!name.trim() || code.length < 50) {
       return
     }
 

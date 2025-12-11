@@ -2,7 +2,6 @@ import { useState } from 'react'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
-import { useToast } from '@/components/ui/use-toast'
 import { PlayCircle, Loader2, X, ListFilter, Plus, Trash2 } from 'lucide-react'
 import { useListStrategiesApiV1StrategiesGet } from '@/api/generated/strategies/strategies'
 import { useListStocksApiV1StocksGet, useSearchStocksApiV1StocksSearchGet } from '@/api/generated/stocks/stocks'
@@ -13,7 +12,6 @@ import { useNavigate } from 'react-router-dom'
 export default function BacktestPage() {
   const navigate = useNavigate()
   const queryClient = useQueryClient()
-  const { toast } = useToast()
 
   // Form state
   const [selectedStrategies, setSelectedStrategies] = useState<string[]>([])
@@ -60,18 +58,7 @@ export default function BacktestPage() {
     mutation: {
       onSuccess: (data) => {
         queryClient.invalidateQueries({ queryKey: ['/api/v1/backtests'] })
-        toast({
-          title: '回测已创建',
-          description: '任务已添加到队列',
-        })
         navigate(`/results/${data.id}`)
-      },
-      onError: (error) => {
-        toast({
-          variant: 'destructive',
-          title: '创建回测失败',
-          description: error.message || '请稍后重试',
-        })
       },
     },
   })
@@ -101,40 +88,15 @@ export default function BacktestPage() {
 
     if (newStocks.length > 0) {
       setSelectedStocks([...selectedStocks, ...newStocks])
-      toast({
-        title: '批量添加成功',
-        description: `已添加 ${newStocks.length} 只股票`,
-      })
-    } else {
-      toast({
-        title: '无新股票可添加',
-        description: '当前页所有股票已在列表中',
-      })
     }
   }
 
   const handleClearAllStocks = () => {
     setSelectedStocks([])
-    toast({
-      title: '已清空股票池',
-    })
   }
 
   const handleSubmit = () => {
-    if (selectedStrategies.length === 0) {
-      toast({
-        variant: 'destructive',
-        title: '验证失败',
-        description: '请选择至少一个策略',
-      })
-      return
-    }
-    if (selectedStocks.length === 0) {
-      toast({
-        variant: 'destructive',
-        title: '验证失败',
-        description: '请选择至少一只股票',
-      })
+    if (selectedStrategies.length === 0 || selectedStocks.length === 0) {
       return
     }
 
