@@ -25,6 +25,7 @@ import {
   useGetBacktestResultDetailApiV1BacktestsJobIdResultsResultIdGet,
   useGetBacktestEquityCurveApiV1BacktestsJobIdResultsResultIdEquityGet,
   useGetBacktestTradesApiV1BacktestsJobIdResultsResultIdTradesGet,
+  useGetBacktestApiV1BacktestsJobIdGet,
 } from '@/api/generated/backtests/backtests'
 import { useGetStrategyApiV1StrategiesStrategyIdGet } from '@/api/generated/strategies/strategies'
 import { useGetStockApiV1StocksCodeGet, useGetAdjustFactorsApiV1StocksCodeAdjustFactorsGet } from '@/api/generated/stocks/stocks'
@@ -40,6 +41,17 @@ export default function TechnicalAnalysisPage() {
   const [rightPanelOpen, setRightPanelOpen] = useState(true)
   const [dataTableOpen, setDataTableOpen] = useState(false)
   const [adjustFactorOpen, setAdjustFactorOpen] = useState(false)
+
+  // Fetch backtest job (for start_date/end_date)
+  const { data: job } = useGetBacktestApiV1BacktestsJobIdGet(
+    jobId || '',
+    {
+      query: {
+        enabled: !!jobId,
+        staleTime: 5 * 60 * 1000,
+      },
+    }
+  )
 
   // Fetch backtest result detail
   const { data: result, isLoading: resultLoading } = useGetBacktestResultDetailApiV1BacktestsJobIdResultsResultIdGet(
@@ -148,27 +160,29 @@ export default function TechnicalAnalysisPage() {
   // Build header info
   const totalReturn = result ? Number(result.total_return) : 0
   const stockName = stockInfo?.code_name || ''
+  const dateRange = job ? `${job.start_date.replace(/-/g, '/')} - ${job.end_date.replace(/-/g, '/')}` : ''
   const headerInfo = result && strategy ? (
-    <div className="flex items-center gap-4 text-sm">
-      <div className="flex items-center gap-2">
-        <Badge variant="outline" className="font-mono">{result.stock_code}</Badge>
-        {stockName && <span className="font-medium">{stockName}</span>}
-      </div>
+    <div className="flex items-center gap-3 text-sm">
+      <Badge variant="outline" className="font-mono">{result.stock_code}</Badge>
+      {stockName && <span className="font-medium">{stockName}</span>}
+      <span className="text-muted-foreground">|</span>
       <span className="text-muted-foreground">{strategy.name}</span>
       <span className="text-muted-foreground">|</span>
+      {dateRange && <span className="text-muted-foreground">{dateRange}</span>}
+      {dateRange && <span className="text-muted-foreground">|</span>}
       <span className={totalReturn >= 0 ? 'text-profit' : 'text-loss'}>
         {formatPercent(totalReturn)}
       </span>
-      <span className="text-muted-foreground">Sharpe {Number(result.sharpe_ratio).toFixed(2)}</span>
       <span className="text-muted-foreground">回撤 {formatPercent(Number(result.max_drawdown))}</span>
+      <span className="text-muted-foreground">Sharpe {Number(result.sharpe_ratio).toFixed(2)}</span>
       <span className="text-muted-foreground">胜率 {formatPercent(Number(result.win_rate))}</span>
     </div>
   ) : null
 
   return (
-    <div className="flex flex-col h-[calc(100vh-7rem)]">
+    <div className="flex flex-col min-h-0">
       {/* Compact Header */}
-      <div className="flex items-center justify-between pb-3 border-b mb-3">
+      <div className="flex items-center justify-between pb-3 mb-3">
         <div className="flex items-center gap-3">
           <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => navigate(-1)}>
             <ArrowLeft className="h-4 w-4" />
@@ -189,11 +203,11 @@ export default function TechnicalAnalysisPage() {
       </div>
 
       {isLoading ? (
-        <Skeleton className="flex-1" />
+        <Skeleton className="h-96" />
       ) : (
-        <div className="flex gap-4 flex-1 overflow-hidden">
+        <div className="flex gap-4">
           {/* Main Content - Charts */}
-          <div className="flex-1 flex flex-col min-w-0 overflow-y-auto">
+          <div className="flex-1 flex flex-col min-w-0">
             {/* K-line Chart */}
             <div className="border rounded-lg bg-card p-3 mb-3">
               {result && (
@@ -301,7 +315,7 @@ export default function TechnicalAnalysisPage() {
 
           {/* Right Panel - Strategy Code */}
           {rightPanelOpen && (
-            <div className="w-[400px] flex-shrink-0 border rounded-lg bg-card flex flex-col">
+            <div className="w-[400px] flex-shrink-0 border rounded-lg bg-card">
               <div className="flex items-center justify-between p-3 border-b">
                 <div className="flex items-center gap-2">
                   <Code2 className="h-4 w-4" />
@@ -309,10 +323,10 @@ export default function TechnicalAnalysisPage() {
                 </div>
                 <Badge variant="secondary" className="text-xs">{strategy?.strategy_type || '未分类'}</Badge>
               </div>
-              <div className="flex-1 min-h-0">
+              <div>
                 {strategy?.code ? (
                   <Editor
-                    height="100%"
+                    height="500px"
                     language="python"
                     value={strategy.code}
                     theme={isDark ? 'vs-dark' : 'light'}
@@ -327,7 +341,7 @@ export default function TechnicalAnalysisPage() {
                     }}
                   />
                 ) : (
-                  <div className="h-full flex items-center justify-center text-muted-foreground">
+                  <div className="h-[500px] flex items-center justify-center text-muted-foreground">
                     加载中...
                   </div>
                 )}
