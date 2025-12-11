@@ -38,7 +38,7 @@ export default function TechnicalAnalysisPage() {
   const { theme } = useTheme()
   const isDark = theme === 'dark' || (theme === 'system' && window.matchMedia('(prefers-color-scheme: dark)').matches)
 
-  const [rightPanelOpen, setRightPanelOpen] = useState(true)
+  const [rightPanelOpen, setRightPanelOpen] = useState(false)
   const [dataTableOpen, setDataTableOpen] = useState(false)
   const [adjustFactorOpen, setAdjustFactorOpen] = useState(false)
   const [rightPanelWidth, setRightPanelWidth] = useState(450)

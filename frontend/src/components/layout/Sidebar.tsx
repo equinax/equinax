@@ -29,6 +29,7 @@ const navigation = [
 
 export default function Sidebar() {
   const location = useLocation()
+  // 默认展开侧边栏
   const [collapsed, setCollapsed] = useState(false)
 
   return (
