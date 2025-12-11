@@ -10,7 +10,7 @@ from sqlalchemy import select, func, and_
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.session import get_db
-from app.db.models.stock import StockBasic, DailyKData
+from app.db.models.stock import StockBasic, DailyKData, AdjustFactor
 from app.db.models.indicator import TechnicalIndicator
 
 router = APIRouter()
@@ -100,6 +100,17 @@ class StockSearchResult(BaseModel):
     code: str
     code_name: Optional[str]
     exchange: Optional[str]
+
+
+class AdjustFactorResponse(BaseModel):
+    """Schema for adjust factor response."""
+    divid_operate_date: date
+    fore_adjust_factor: Optional[Decimal]
+    back_adjust_factor: Optional[Decimal]
+    adjust_factor: Optional[Decimal]
+
+    class Config:
+        from_attributes = True
 
 
 # ============================================
@@ -315,3 +326,41 @@ async def get_fundamentals(
         "pcf_ncf_ttm": latest.pcf_ncf_ttm,
         "is_st": latest.is_st,
     }
+
+
+@router.get("/{code}/adjust-factors", response_model=List[AdjustFactorResponse])
+async def get_adjust_factors(
+    code: str,
+    start_date: Optional[date] = Query(default=None),
+    end_date: Optional[date] = Query(default=None),
+    limit: int = Query(default=100, ge=1, le=500),
+    db: AsyncSession = Depends(get_db),
+):
+    """Get adjustment factors for a stock."""
+    # Check stock exists
+    stock_result = await db.execute(
+        select(StockBasic).where(StockBasic.code == code)
+    )
+    if not stock_result.scalar_one_or_none():
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Stock not found",
+        )
+
+    # Build query
+    query = select(AdjustFactor).where(AdjustFactor.code == code)
+
+    if start_date:
+        query = query.where(AdjustFactor.divid_operate_date >= start_date)
+    if end_date:
+        query = query.where(AdjustFactor.divid_operate_date <= end_date)
+
+    query = query.order_by(AdjustFactor.divid_operate_date.desc()).limit(limit)
+
+    result = await db.execute(query)
+    factors = result.scalars().all()
+
+    # Reverse to get chronological order
+    factors = list(reversed(factors))
+
+    return [AdjustFactorResponse.model_validate(f) for f in factors]

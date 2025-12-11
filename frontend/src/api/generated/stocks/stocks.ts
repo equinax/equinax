@@ -16,6 +16,8 @@ import type {
   UseQueryResult,
 } from "@tanstack/react-query";
 import type {
+  AdjustFactorResponse,
+  GetAdjustFactorsApiV1StocksCodeAdjustFactorsGetParams,
   GetIndicatorsApiV1StocksCodeIndicatorsGetParams,
   GetKlineApiV1StocksCodeKlineGetParams,
   HTTPValidationError,
@@ -1146,6 +1148,242 @@ export const useGetFundamentalsApiV1StocksCodeFundamentalsGet = <
 ): UseQueryResult<TData, TError> & { queryKey: QueryKey } => {
   const queryOptions =
     getGetFundamentalsApiV1StocksCodeFundamentalsGetQueryOptions(code, options);
+
+  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
+    queryKey: QueryKey;
+  };
+
+  query.queryKey = queryOptions.queryKey;
+
+  return query;
+};
+
+/**
+ * Get adjustment factors for a stock.
+ * @summary Get Adjust Factors
+ */
+export const getAdjustFactorsApiV1StocksCodeAdjustFactorsGet = (
+  code: string,
+  params?: GetAdjustFactorsApiV1StocksCodeAdjustFactorsGetParams,
+  signal?: AbortSignal,
+) => {
+  return customInstance<AdjustFactorResponse[]>({
+    url: `/api/v1/stocks/${code}/adjust-factors`,
+    method: "GET",
+    params,
+    signal,
+  });
+};
+
+export const getGetAdjustFactorsApiV1StocksCodeAdjustFactorsGetQueryKey = (
+  code: string,
+  params?: GetAdjustFactorsApiV1StocksCodeAdjustFactorsGetParams,
+) => {
+  return [
+    `/api/v1/stocks/${code}/adjust-factors`,
+    ...(params ? [params] : []),
+  ] as const;
+};
+
+export const getGetAdjustFactorsApiV1StocksCodeAdjustFactorsGetInfiniteQueryOptions =
+  <
+    TData = InfiniteData<
+      Awaited<
+        ReturnType<typeof getAdjustFactorsApiV1StocksCodeAdjustFactorsGet>
+      >,
+      GetAdjustFactorsApiV1StocksCodeAdjustFactorsGetParams["page"]
+    >,
+    TError = HTTPValidationError,
+  >(
+    code: string,
+    params?: GetAdjustFactorsApiV1StocksCodeAdjustFactorsGetParams,
+    options?: {
+      query?: Partial<
+        UseInfiniteQueryOptions<
+          Awaited<
+            ReturnType<typeof getAdjustFactorsApiV1StocksCodeAdjustFactorsGet>
+          >,
+          TError,
+          TData,
+          Awaited<
+            ReturnType<typeof getAdjustFactorsApiV1StocksCodeAdjustFactorsGet>
+          >,
+          QueryKey,
+          GetAdjustFactorsApiV1StocksCodeAdjustFactorsGetParams["page"]
+        >
+      >;
+    },
+  ) => {
+    const { query: queryOptions } = options ?? {};
+
+    const queryKey =
+      queryOptions?.queryKey ??
+      getGetAdjustFactorsApiV1StocksCodeAdjustFactorsGetQueryKey(code, params);
+
+    const queryFn: QueryFunction<
+      Awaited<
+        ReturnType<typeof getAdjustFactorsApiV1StocksCodeAdjustFactorsGet>
+      >,
+      QueryKey,
+      GetAdjustFactorsApiV1StocksCodeAdjustFactorsGetParams["page"]
+    > = ({ signal, pageParam }) =>
+      getAdjustFactorsApiV1StocksCodeAdjustFactorsGet(
+        code,
+        { ...params, page: pageParam || params?.["page"] },
+        signal,
+      );
+
+    return {
+      queryKey,
+      queryFn,
+      enabled: !!code,
+      ...queryOptions,
+    } as UseInfiniteQueryOptions<
+      Awaited<
+        ReturnType<typeof getAdjustFactorsApiV1StocksCodeAdjustFactorsGet>
+      >,
+      TError,
+      TData,
+      Awaited<
+        ReturnType<typeof getAdjustFactorsApiV1StocksCodeAdjustFactorsGet>
+      >,
+      QueryKey,
+      GetAdjustFactorsApiV1StocksCodeAdjustFactorsGetParams["page"]
+    > & { queryKey: QueryKey };
+  };
+
+export type GetAdjustFactorsApiV1StocksCodeAdjustFactorsGetInfiniteQueryResult =
+  NonNullable<
+    Awaited<ReturnType<typeof getAdjustFactorsApiV1StocksCodeAdjustFactorsGet>>
+  >;
+export type GetAdjustFactorsApiV1StocksCodeAdjustFactorsGetInfiniteQueryError =
+  HTTPValidationError;
+
+/**
+ * @summary Get Adjust Factors
+ */
+export const useGetAdjustFactorsApiV1StocksCodeAdjustFactorsGetInfinite = <
+  TData = InfiniteData<
+    Awaited<ReturnType<typeof getAdjustFactorsApiV1StocksCodeAdjustFactorsGet>>,
+    GetAdjustFactorsApiV1StocksCodeAdjustFactorsGetParams["page"]
+  >,
+  TError = HTTPValidationError,
+>(
+  code: string,
+  params?: GetAdjustFactorsApiV1StocksCodeAdjustFactorsGetParams,
+  options?: {
+    query?: Partial<
+      UseInfiniteQueryOptions<
+        Awaited<
+          ReturnType<typeof getAdjustFactorsApiV1StocksCodeAdjustFactorsGet>
+        >,
+        TError,
+        TData,
+        Awaited<
+          ReturnType<typeof getAdjustFactorsApiV1StocksCodeAdjustFactorsGet>
+        >,
+        QueryKey,
+        GetAdjustFactorsApiV1StocksCodeAdjustFactorsGetParams["page"]
+      >
+    >;
+  },
+): UseInfiniteQueryResult<TData, TError> & { queryKey: QueryKey } => {
+  const queryOptions =
+    getGetAdjustFactorsApiV1StocksCodeAdjustFactorsGetInfiniteQueryOptions(
+      code,
+      params,
+      options,
+    );
+
+  const query = useInfiniteQuery(queryOptions) as UseInfiniteQueryResult<
+    TData,
+    TError
+  > & { queryKey: QueryKey };
+
+  query.queryKey = queryOptions.queryKey;
+
+  return query;
+};
+
+export const getGetAdjustFactorsApiV1StocksCodeAdjustFactorsGetQueryOptions = <
+  TData = Awaited<
+    ReturnType<typeof getAdjustFactorsApiV1StocksCodeAdjustFactorsGet>
+  >,
+  TError = HTTPValidationError,
+>(
+  code: string,
+  params?: GetAdjustFactorsApiV1StocksCodeAdjustFactorsGetParams,
+  options?: {
+    query?: Partial<
+      UseQueryOptions<
+        Awaited<
+          ReturnType<typeof getAdjustFactorsApiV1StocksCodeAdjustFactorsGet>
+        >,
+        TError,
+        TData
+      >
+    >;
+  },
+) => {
+  const { query: queryOptions } = options ?? {};
+
+  const queryKey =
+    queryOptions?.queryKey ??
+    getGetAdjustFactorsApiV1StocksCodeAdjustFactorsGetQueryKey(code, params);
+
+  const queryFn: QueryFunction<
+    Awaited<ReturnType<typeof getAdjustFactorsApiV1StocksCodeAdjustFactorsGet>>
+  > = ({ signal }) =>
+    getAdjustFactorsApiV1StocksCodeAdjustFactorsGet(code, params, signal);
+
+  return {
+    queryKey,
+    queryFn,
+    enabled: !!code,
+    ...queryOptions,
+  } as UseQueryOptions<
+    Awaited<ReturnType<typeof getAdjustFactorsApiV1StocksCodeAdjustFactorsGet>>,
+    TError,
+    TData
+  > & { queryKey: QueryKey };
+};
+
+export type GetAdjustFactorsApiV1StocksCodeAdjustFactorsGetQueryResult =
+  NonNullable<
+    Awaited<ReturnType<typeof getAdjustFactorsApiV1StocksCodeAdjustFactorsGet>>
+  >;
+export type GetAdjustFactorsApiV1StocksCodeAdjustFactorsGetQueryError =
+  HTTPValidationError;
+
+/**
+ * @summary Get Adjust Factors
+ */
+export const useGetAdjustFactorsApiV1StocksCodeAdjustFactorsGet = <
+  TData = Awaited<
+    ReturnType<typeof getAdjustFactorsApiV1StocksCodeAdjustFactorsGet>
+  >,
+  TError = HTTPValidationError,
+>(
+  code: string,
+  params?: GetAdjustFactorsApiV1StocksCodeAdjustFactorsGetParams,
+  options?: {
+    query?: Partial<
+      UseQueryOptions<
+        Awaited<
+          ReturnType<typeof getAdjustFactorsApiV1StocksCodeAdjustFactorsGet>
+        >,
+        TError,
+        TData
+      >
+    >;
+  },
+): UseQueryResult<TData, TError> & { queryKey: QueryKey } => {
+  const queryOptions =
+    getGetAdjustFactorsApiV1StocksCodeAdjustFactorsGetQueryOptions(
+      code,
+      params,
+      options,
+    );
 
   const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
     queryKey: QueryKey;

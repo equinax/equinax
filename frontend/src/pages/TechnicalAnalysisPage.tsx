@@ -27,7 +27,7 @@ import {
   useGetBacktestTradesApiV1BacktestsJobIdResultsResultIdTradesGet,
 } from '@/api/generated/backtests/backtests'
 import { useGetStrategyApiV1StrategiesStrategyIdGet } from '@/api/generated/strategies/strategies'
-import { useGetKlineApiV1StocksCodeKlineGet } from '@/api/generated/stocks/stocks'
+import { useGetStockApiV1StocksCodeGet, useGetAdjustFactorsApiV1StocksCodeAdjustFactorsGet } from '@/api/generated/stocks/stocks'
 import { EquityCurveWithIndicators } from '@/components/backtest/EquityCurveWithIndicators'
 import type { EquityCurvePoint, TradeRecord } from '@/types/backtest'
 
@@ -39,6 +39,7 @@ export default function TechnicalAnalysisPage() {
 
   const [rightPanelOpen, setRightPanelOpen] = useState(true)
   const [dataTableOpen, setDataTableOpen] = useState(false)
+  const [adjustFactorOpen, setAdjustFactorOpen] = useState(false)
 
   // Fetch backtest result detail
   const { data: result, isLoading: resultLoading } = useGetBacktestResultDetailApiV1BacktestsJobIdResultsResultIdGet(
@@ -76,10 +77,21 @@ export default function TechnicalAnalysisPage() {
     }
   )
 
-  // Fetch K-line data
-  const { data: klineData, isLoading: klineLoading } = useGetKlineApiV1StocksCodeKlineGet(
+  // Fetch stock info (for stock name)
+  const { data: stockInfo } = useGetStockApiV1StocksCodeGet(
     result?.stock_code || '',
-    undefined,
+    {
+      query: {
+        enabled: !!result?.stock_code,
+        staleTime: 5 * 60 * 1000,
+      },
+    }
+  )
+
+  // Fetch adjust factors
+  const { data: adjustFactors } = useGetAdjustFactorsApiV1StocksCodeAdjustFactorsGet(
+    result?.stock_code || '',
+    { limit: 100 },
     {
       query: {
         enabled: !!result?.stock_code,
@@ -135,9 +147,13 @@ export default function TechnicalAnalysisPage() {
 
   // Build header info
   const totalReturn = result ? Number(result.total_return) : 0
+  const stockName = stockInfo?.code_name || ''
   const headerInfo = result && strategy ? (
     <div className="flex items-center gap-4 text-sm">
-      <Badge variant="outline" className="font-mono">{result.stock_code}</Badge>
+      <div className="flex items-center gap-2">
+        <Badge variant="outline" className="font-mono">{result.stock_code}</Badge>
+        {stockName && <span className="font-medium">{stockName}</span>}
+      </div>
       <span className="text-muted-foreground">{strategy.name}</span>
       <span className="text-muted-foreground">|</span>
       <span className={totalReturn >= 0 ? 'text-profit' : 'text-loss'}>
@@ -190,67 +206,94 @@ export default function TechnicalAnalysisPage() {
               )}
             </div>
 
-            {/* Collapsible Data Table */}
-            <Collapsible open={dataTableOpen} onOpenChange={setDataTableOpen}>
+            {/* Collapsible Adjust Factors */}
+            <Collapsible open={adjustFactorOpen} onOpenChange={setAdjustFactorOpen} className="border rounded-lg bg-card mb-2">
               <CollapsibleTrigger asChild>
-                <Button variant="ghost" size="sm" className="w-full justify-between border rounded-lg">
-                  <span>日线数据 & 交易记录</span>
+                <Button variant="ghost" size="sm" className="w-full justify-between rounded-lg rounded-b-none border-b-0">
+                  <span className="text-sm font-medium">复权因子 ({adjustFactors?.length || 0} 条)</span>
+                  {adjustFactorOpen ? <ChevronLeft className="h-4 w-4 rotate-90" /> : <ChevronRight className="h-4 w-4 rotate-90" />}
+                </Button>
+              </CollapsibleTrigger>
+              <CollapsibleContent>
+                <div className="px-3 pb-3">
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead className="text-xs">除权日期</TableHead>
+                        <TableHead className="text-xs text-right">前复权因子</TableHead>
+                        <TableHead className="text-xs text-right">后复权因子</TableHead>
+                        <TableHead className="text-xs text-right">复权因子</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {adjustFactors?.map((factor) => (
+                        <TableRow key={factor.divid_operate_date}>
+                          <TableCell className="text-xs py-1">{factor.divid_operate_date}</TableCell>
+                          <TableCell className="text-xs py-1 text-right">{factor.fore_adjust_factor ?? '-'}</TableCell>
+                          <TableCell className="text-xs py-1 text-right">{factor.back_adjust_factor ?? '-'}</TableCell>
+                          <TableCell className="text-xs py-1 text-right">{factor.adjust_factor ?? '-'}</TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                  {(!adjustFactors || adjustFactors.length === 0) && (
+                    <div className="text-center text-muted-foreground py-4 text-sm">暂无复权因子数据</div>
+                  )}
+                </div>
+              </CollapsibleContent>
+            </Collapsible>
+
+            {/* Collapsible Trade Records */}
+            <Collapsible open={dataTableOpen} onOpenChange={setDataTableOpen} className="border rounded-lg bg-card">
+              <CollapsibleTrigger asChild>
+                <Button variant="ghost" size="sm" className="w-full justify-between rounded-lg rounded-b-none border-b-0">
+                  <span className="text-sm font-medium">交易记录 ({trades?.length || 0} 笔)</span>
                   {dataTableOpen ? <ChevronLeft className="h-4 w-4 rotate-90" /> : <ChevronRight className="h-4 w-4 rotate-90" />}
                 </Button>
               </CollapsibleTrigger>
               <CollapsibleContent>
-                <div className="grid grid-cols-2 gap-3 mt-3">
-                  {/* Daily Data */}
-                  <div className="border rounded-lg p-3 max-h-[250px] overflow-auto bg-card">
-                    <h4 className="text-sm font-medium mb-2">日线数据</h4>
-                    <Table>
-                      <TableHeader>
-                        <TableRow>
-                          <TableHead className="text-xs">日期</TableHead>
-                          <TableHead className="text-xs text-right">收盘</TableHead>
-                          <TableHead className="text-xs text-right">成交量</TableHead>
-                          <TableHead className="text-xs text-right">涨跌</TableHead>
+                <div className="px-3 pb-3">
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead className="text-xs">方向</TableHead>
+                        <TableHead className="text-xs">入场日期</TableHead>
+                        <TableHead className="text-xs text-right">入场价</TableHead>
+                        <TableHead className="text-xs">出场日期</TableHead>
+                        <TableHead className="text-xs text-right">出场价</TableHead>
+                        <TableHead className="text-xs text-right">数量</TableHead>
+                        <TableHead className="text-xs text-right">持仓天数</TableHead>
+                        <TableHead className="text-xs text-right">盈亏</TableHead>
+                        <TableHead className="text-xs text-right">盈亏%</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {trades?.map((trade) => (
+                        <TableRow key={trade.id}>
+                          <TableCell className="text-xs py-1">
+                            <Badge variant={trade.type === 'long' ? 'default' : 'secondary'} className="text-xs">
+                              {trade.type === 'long' ? '做多' : '做空'}
+                            </Badge>
+                          </TableCell>
+                          <TableCell className="text-xs py-1">{trade.entry_date}</TableCell>
+                          <TableCell className="text-xs py-1 text-right">¥{trade.entry_price?.toFixed(2) || '-'}</TableCell>
+                          <TableCell className="text-xs py-1">{trade.exit_date || '-'}</TableCell>
+                          <TableCell className="text-xs py-1 text-right">{trade.exit_price ? `¥${trade.exit_price.toFixed(2)}` : '-'}</TableCell>
+                          <TableCell className="text-xs py-1 text-right">{trade.size?.toLocaleString() || '-'}</TableCell>
+                          <TableCell className="text-xs py-1 text-right">{trade.bars_held || '-'}</TableCell>
+                          <TableCell className={cn('text-xs py-1 text-right', trade.pnl > 0 ? 'text-profit' : trade.pnl < 0 ? 'text-loss' : '')}>
+                            {trade.pnl ? (trade.pnl > 0 ? '+' : '') + `¥${trade.pnl.toLocaleString('zh-CN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` : '-'}
+                          </TableCell>
+                          <TableCell className={cn('text-xs py-1 text-right font-medium', trade.pnl_percent > 0 ? 'text-profit' : trade.pnl_percent < 0 ? 'text-loss' : '')}>
+                            {formatPercent(trade.pnl_percent)}
+                          </TableCell>
                         </TableRow>
-                      </TableHeader>
-                      <TableBody>
-                        {klineData?.data?.slice(0, 20).map((row) => (
-                          <TableRow key={row.date}>
-                            <TableCell className="text-xs py-1">{row.date}</TableCell>
-                            <TableCell className="text-xs py-1 text-right">{Number(row.close).toFixed(2)}</TableCell>
-                            <TableCell className="text-xs py-1 text-right">{(Number(row.volume) / 10000).toFixed(0)}万</TableCell>
-                            <TableCell className={cn('text-xs py-1 text-right', Number(row.pct_chg) > 0 ? 'text-profit' : 'text-loss')}>
-                              {formatPercent(Number(row.pct_chg) / 100)}
-                            </TableCell>
-                          </TableRow>
-                        ))}
-                      </TableBody>
-                    </Table>
-                  </div>
-
-                  {/* Trades */}
-                  <div className="border rounded-lg p-3 max-h-[250px] overflow-auto bg-card">
-                    <h4 className="text-sm font-medium mb-2">交易记录</h4>
-                    <Table>
-                      <TableHeader>
-                        <TableRow>
-                          <TableHead className="text-xs">入场</TableHead>
-                          <TableHead className="text-xs">出场</TableHead>
-                          <TableHead className="text-xs text-right">盈亏</TableHead>
-                        </TableRow>
-                      </TableHeader>
-                      <TableBody>
-                        {trades?.map((trade) => (
-                          <TableRow key={trade.id}>
-                            <TableCell className="text-xs py-1">{trade.entry_date}</TableCell>
-                            <TableCell className="text-xs py-1">{trade.exit_date || '-'}</TableCell>
-                            <TableCell className={cn('text-xs py-1 text-right', trade.pnl_percent > 0 ? 'text-profit' : 'text-loss')}>
-                              {formatPercent(trade.pnl_percent)}
-                            </TableCell>
-                          </TableRow>
-                        ))}
-                      </TableBody>
-                    </Table>
-                  </div>
+                      ))}
+                    </TableBody>
+                  </Table>
+                  {(!trades || trades.length === 0) && (
+                    <div className="text-center text-muted-foreground py-4 text-sm">暂无交易记录</div>
+                  )}
                 </div>
               </CollapsibleContent>
             </Collapsible>
