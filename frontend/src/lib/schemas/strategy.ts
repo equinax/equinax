@@ -11,12 +11,12 @@ export const strategyTypeEnum = z.enum([
 
 export type StrategyType = z.infer<typeof strategyTypeEnum>
 
-// 策略表单 Schema - 前端不做严格验证，依赖后端 API
+// 策略表单 Schema - 与后端验证规则保持一致
 export const strategyFormSchema = z.object({
-  name: z.string(),
+  name: z.string().min(3, '策略名称至少需要3个字符'),
   description: z.string().optional().nullable(),
   strategyType: strategyTypeEnum.default('trend_following'),
-  code: z.string(),
+  code: z.string().min(1, '策略代码不能为空'),
   indicatorsUsed: z.array(z.string()).default([]),
 })
 

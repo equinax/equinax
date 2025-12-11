@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import React, { useState } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { useForm } from '@tanstack/react-form'
 import { useQueryClient } from '@tanstack/react-query'
@@ -26,18 +26,40 @@ import {
 import {
   defaultStrategyValues,
   strategyTypeOptions,
+  strategyFormSchema,
   type StrategyFormValues,
 } from '@/lib/schemas/strategy'
 import { parseAPIError } from '@/lib/form-errors'
 import { cn } from '@/lib/utils'
+import type { StrategyRead } from '@/api/generated/model'
 
 type SaveStatus = 'idle' | 'saving' | 'success' | 'error'
 
-export default function StrategyEditorPage() {
-  const { strategyId } = useParams<{ strategyId: string }>()
+// 从 TanStack Form 错误数组中提取错误消息
+function getErrorMessage(errors: unknown[]): string {
+  return errors
+    .map((err) => {
+      if (typeof err === 'string') return err
+      if (err && typeof err === 'object' && 'message' in err) {
+        return (err as { message: string }).message
+      }
+      return ''
+    })
+    .filter(Boolean)
+    .join(', ')
+}
+
+// 内部表单组件 - 只有数据准备好后才渲染
+function StrategyEditorForm({
+  strategy,
+  isEditing,
+}: {
+  strategy: StrategyRead | undefined
+  isEditing: boolean
+}) {
   const navigate = useNavigate()
   const queryClient = useQueryClient()
-  const isEditing = strategyId && strategyId !== 'new'
+  const strategyId = strategy?.id
 
   // 非表单状态
   const [saveStatus, setSaveStatus] = useState<SaveStatus>('idle')
@@ -49,17 +71,23 @@ export default function StrategyEditorPage() {
   } | null>(null)
   const [indicatorInput, setIndicatorInput] = useState('')
 
-  // 表单初始化
+  // 表单初始化 - 直接使用 strategy 数据作为默认值
   const form = useForm({
-    defaultValues: defaultStrategyValues,
+    defaultValues: strategy
+      ? {
+          name: strategy.name,
+          description: strategy.description || '',
+          strategyType: (strategy.strategy_type as StrategyFormValues['strategyType']) || 'other',
+          code: strategy.code,
+          indicatorsUsed: strategy.indicators_used || [],
+        }
+      : defaultStrategyValues,
+    validators: {
+      onChange: strategyFormSchema,
+    },
   })
 
-  // 数据获取
-  const { data: strategy, isLoading: isLoadingStrategy } =
-    useGetStrategyApiV1StrategiesStrategyIdGet(strategyId || '', {
-      query: { enabled: !!isEditing },
-    })
-
+  // 获取模板
   const { data: templates } = useListStrategyTemplatesApiV1StrategiesTemplatesListGet()
 
   // Mutations
@@ -67,34 +95,31 @@ export default function StrategyEditorPage() {
   const updateMutation = useUpdateStrategyApiV1StrategiesStrategyIdPut()
   const validateMutation = useValidateCodeInlineApiV1StrategiesValidateCodePost()
 
-  // 加载编辑数据
-  useEffect(() => {
-    if (strategy) {
-      form.reset({
-        name: strategy.name,
-        description: strategy.description || '',
-        strategyType: (strategy.strategy_type as StrategyFormValues['strategyType']) || 'other',
-        code: strategy.code,
-        indicatorsUsed: strategy.indicators_used || [],
-      })
-    }
-  }, [strategy])
-
-  // 监听表单变化，重置状态
-  useEffect(() => {
-    const unsubscribe = form.store.subscribe(() => {
-      if (saveStatus === 'success' || saveStatus === 'error') {
-        setSaveStatus('idle')
-        setApiError(null)
-      }
+  // 清除所有字段的服务端错误
+  const clearServerErrors = () => {
+    const fieldNames: (keyof StrategyFormValues)[] = ['name', 'description', 'strategyType', 'code', 'indicatorsUsed']
+    fieldNames.forEach((fieldName) => {
+      form.setFieldMeta(fieldName, (prev) => ({
+        ...prev,
+        errorMap: {
+          ...prev.errorMap,
+          onServer: undefined,
+        },
+      }))
     })
-    return unsubscribe
-  }, [saveStatus])
+  }
 
   // 处理保存
   const handleSave = async () => {
+    // 先验证表单
+    await form.validate('change')
+    if (!form.state.isValid) {
+      return
+    }
+
     const values = form.state.values
     setApiError(null)
+    clearServerErrors()
     setSaveStatus('saving')
 
     const payload = {
@@ -106,9 +131,9 @@ export default function StrategyEditorPage() {
     }
 
     try {
-      if (isEditing) {
+      if (isEditing && strategyId) {
         await updateMutation.mutateAsync({
-          strategyId: strategyId!,
+          strategyId: strategyId,
           data: payload,
         })
         queryClient.invalidateQueries({ queryKey: ['/api/v1/strategies'] })
@@ -190,16 +215,25 @@ export default function StrategyEditorPage() {
     setValidationResult(null)
   }
 
-  const isSaving = saveStatus === 'saving'
-
-  // 加载状态
-  if (isEditing && isLoadingStrategy) {
-    return (
-      <div className="flex items-center justify-center p-12">
-        <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
-      </div>
-    )
+  // 处理用户编辑时重置状态
+  const handleFieldChange = (fieldName?: keyof StrategyFormValues) => {
+    if (saveStatus === 'success' || saveStatus === 'error') {
+      setSaveStatus('idle')
+      setApiError(null)
+    }
+    // 清除该字段的服务端错误
+    if (fieldName) {
+      form.setFieldMeta(fieldName, (prev) => ({
+        ...prev,
+        errorMap: {
+          ...prev.errorMap,
+          onServer: undefined,
+        },
+      }))
+    }
   }
+
+  const isSaving = saveStatus === 'saving'
 
   return (
     <div className="space-y-6">
@@ -322,7 +356,7 @@ export default function StrategyEditorPage() {
                   const errors = field.state.meta.errors
                   const serverError = field.state.meta.errorMap?.onServer as string | undefined
                   const hasError = errors.length > 0 || !!serverError
-                  const errorMessage = serverError || errors.join(', ')
+                  const errorMessage = serverError || getErrorMessage(errors)
 
                   return (
                     <>
@@ -331,6 +365,7 @@ export default function StrategyEditorPage() {
                         onChange={(e) => {
                           field.handleChange(e.target.value)
                           setValidationResult(null)
+                          handleFieldChange('code')
                         }}
                         onBlur={field.handleBlur}
                         className={cn(
@@ -363,14 +398,17 @@ export default function StrategyEditorPage() {
                   const errors = field.state.meta.errors
                   const serverError = field.state.meta.errorMap?.onServer as string | undefined
                   const hasError = errors.length > 0 || !!serverError
-                  const errorMessage = serverError || errors.join(', ')
+                  const errorMessage = serverError || getErrorMessage(errors)
 
                   return (
                     <div className="space-y-2">
                       <label className="text-sm font-medium">策略名称 *</label>
                       <Input
                         value={field.state.value}
-                        onChange={(e) => field.handleChange(e.target.value)}
+                        onChange={(e) => {
+                          field.handleChange(e.target.value)
+                          handleFieldChange('name')
+                        }}
                         onBlur={field.handleBlur}
                         placeholder="输入策略名称"
                         className={cn(
@@ -392,7 +430,10 @@ export default function StrategyEditorPage() {
                     <label className="text-sm font-medium">策略描述</label>
                     <Textarea
                       value={field.state.value ?? ''}
-                      onChange={(e) => field.handleChange(e.target.value)}
+                      onChange={(e) => {
+                        field.handleChange(e.target.value)
+                        handleFieldChange('description')
+                      }}
                       onBlur={field.handleBlur}
                       placeholder="描述策略的逻辑和特点"
                       rows={3}
@@ -409,9 +450,10 @@ export default function StrategyEditorPage() {
                     <select
                       className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
                       value={field.state.value}
-                      onChange={(e) =>
+                      onChange={(e) => {
                         field.handleChange(e.target.value as StrategyFormValues['strategyType'])
-                      }
+                        handleFieldChange('strategyType')
+                      }}
                       onBlur={field.handleBlur}
                     >
                       {strategyTypeOptions.map((type) => (
@@ -510,5 +552,36 @@ export default function StrategyEditorPage() {
         </div>
       </div>
     </div>
+  )
+}
+
+// 主页面组件 - 处理数据加载
+export default function StrategyEditorPage() {
+  const { strategyId } = useParams<{ strategyId: string }>()
+  const navigate = useNavigate()
+  const isEditing = strategyId && strategyId !== 'new'
+
+  // 数据获取
+  const { data: strategy, isLoading: isLoadingStrategy } =
+    useGetStrategyApiV1StrategiesStrategyIdGet(strategyId || '', {
+      query: { enabled: !!isEditing },
+    })
+
+  // 编辑模式下等待数据加载完成
+  if (isEditing && isLoadingStrategy) {
+    return (
+      <div className="flex items-center justify-center p-12">
+        <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+      </div>
+    )
+  }
+
+  // 数据加载完成后渲染表单，使用 key 确保编辑不同策略时组件重新挂载
+  return (
+    <StrategyEditorForm
+      key={strategyId || 'new'}
+      strategy={strategy}
+      isEditing={!!isEditing}
+    />
   )
 }
