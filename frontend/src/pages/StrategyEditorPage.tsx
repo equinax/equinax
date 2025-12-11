@@ -1,4 +1,4 @@
-import React, { useState } from 'react'
+import { useState } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { useForm } from '@tanstack/react-form'
 import { useQueryClient } from '@tanstack/react-query'
@@ -26,12 +26,11 @@ import {
 import {
   defaultStrategyValues,
   strategyTypeOptions,
-  strategyFormSchema,
   type StrategyFormValues,
 } from '@/lib/schemas/strategy'
 import { parseAPIError } from '@/lib/form-errors'
 import { cn } from '@/lib/utils'
-import type { StrategyRead } from '@/api/generated/model'
+import type { StrategyResponse } from '@/api/generated/schemas/strategyResponse'
 
 type SaveStatus = 'idle' | 'saving' | 'success' | 'error'
 
@@ -54,7 +53,7 @@ function StrategyEditorForm({
   strategy,
   isEditing,
 }: {
-  strategy: StrategyRead | undefined
+  strategy: StrategyResponse | undefined
   isEditing: boolean
 }) {
   const navigate = useNavigate()
@@ -82,9 +81,6 @@ function StrategyEditorForm({
           indicatorsUsed: strategy.indicators_used || [],
         }
       : defaultStrategyValues,
-    validators: {
-      onChange: strategyFormSchema,
-    },
   })
 
   // 获取模板
@@ -111,9 +107,29 @@ function StrategyEditorForm({
 
   // 处理保存
   const handleSave = async () => {
-    // 先验证表单
-    await form.validate('change')
-    if (!form.state.isValid) {
+    // 手动验证所有字段
+    const nameValue = form.state.values.name
+    const codeValue = form.state.values.code
+
+    let hasErrors = false
+
+    if (nameValue.length < 3) {
+      form.setFieldMeta('name', (prev) => ({
+        ...prev,
+        errors: ['策略名称至少需要3个字符'],
+      }))
+      hasErrors = true
+    }
+
+    if (!codeValue || codeValue.length === 0) {
+      form.setFieldMeta('code', (prev) => ({
+        ...prev,
+        errors: ['策略代码不能为空'],
+      }))
+      hasErrors = true
+    }
+
+    if (hasErrors) {
       return
     }
 
@@ -351,7 +367,13 @@ function StrategyEditorForm({
               <CardTitle>策略代码</CardTitle>
             </CardHeader>
             <CardContent className="space-y-2">
-              <form.Field name="code">
+              <form.Field
+                name="code"
+                validators={{
+                  onChange: ({ value }) =>
+                    !value || value.length === 0 ? '策略代码不能为空' : undefined,
+                }}
+              >
                 {(field) => {
                   const errors = field.state.meta.errors
                   const serverError = field.state.meta.errorMap?.onServer as string | undefined
@@ -393,7 +415,13 @@ function StrategyEditorForm({
             </CardHeader>
             <CardContent className="space-y-4">
               {/* 策略名称 */}
-              <form.Field name="name">
+              <form.Field
+                name="name"
+                validators={{
+                  onChange: ({ value }) =>
+                    value.length < 3 ? '策略名称至少需要3个字符' : undefined,
+                }}
+              >
                 {(field) => {
                   const errors = field.state.meta.errors
                   const serverError = field.state.meta.errorMap?.onServer as string | undefined
@@ -558,7 +586,6 @@ function StrategyEditorForm({
 // 主页面组件 - 处理数据加载
 export default function StrategyEditorPage() {
   const { strategyId } = useParams<{ strategyId: string }>()
-  const navigate = useNavigate()
   const isEditing = strategyId && strategyId !== 'new'
 
   // 数据获取
