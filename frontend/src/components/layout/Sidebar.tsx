@@ -8,7 +8,6 @@ import {
   BarChart3,
   Database,
   Settings,
-  TrendingUp,
   ChevronLeft,
   ChevronRight,
 } from 'lucide-react'
@@ -41,10 +40,16 @@ export default function Sidebar() {
         )}
       >
         {/* Logo */}
-        <div className="flex h-16 items-center justify-between border-b border-border px-3">
-          <div className={cn('flex items-center gap-2', collapsed && 'justify-center w-full')}>
-            <TrendingUp className="h-8 w-8 text-primary flex-shrink-0" />
-            {!collapsed && <span className="text-lg font-bold">Quant Backtest</span>}
+        <div className="flex h-16 items-center border-b border-border px-4">
+          <div className={cn('flex items-center', collapsed && 'justify-center w-full')}>
+            {collapsed ? (
+              <span className="text-lg font-bold tracking-tight text-primary">Eqx</span>
+            ) : (
+              <span className="text-[2rem] tracking-[0.02em] select-none">
+                <span className="font-extrabold text-foreground/90">Equi</span>
+                <span className="font-semibold text-primary">nax</span>
+              </span>
+            )}
           </div>
         </div>
 
