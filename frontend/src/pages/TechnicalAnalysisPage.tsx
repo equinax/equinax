@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useRef, useCallback } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { ArrowLeft, Code2, ChevronRight, ChevronLeft, PanelRightClose, PanelRight } from 'lucide-react'
 import Editor from '@monaco-editor/react'
@@ -41,6 +41,37 @@ export default function TechnicalAnalysisPage() {
   const [rightPanelOpen, setRightPanelOpen] = useState(true)
   const [dataTableOpen, setDataTableOpen] = useState(false)
   const [adjustFactorOpen, setAdjustFactorOpen] = useState(false)
+  const [rightPanelWidth, setRightPanelWidth] = useState(450)
+  const isDragging = useRef(false)
+  const containerRef = useRef<HTMLDivElement>(null)
+
+  // Handle drag to resize
+  const handleMouseDown = useCallback((e: React.MouseEvent) => {
+    e.preventDefault()
+    isDragging.current = true
+    document.body.style.cursor = 'col-resize'
+    document.body.style.userSelect = 'none'
+
+    const handleMouseMove = (e: MouseEvent) => {
+      if (!isDragging.current || !containerRef.current) return
+      const containerRect = containerRef.current.getBoundingClientRect()
+      const newWidth = containerRect.right - e.clientX
+      const maxWidth = containerRect.width * 0.7 // Allow up to 70% of container
+      // Clamp between 250 and 70% of container
+      setRightPanelWidth(Math.max(250, Math.min(maxWidth, newWidth)))
+    }
+
+    const handleMouseUp = () => {
+      isDragging.current = false
+      document.body.style.cursor = ''
+      document.body.style.userSelect = ''
+      document.removeEventListener('mousemove', handleMouseMove)
+      document.removeEventListener('mouseup', handleMouseUp)
+    }
+
+    document.addEventListener('mousemove', handleMouseMove)
+    document.addEventListener('mouseup', handleMouseUp)
+  }, [])
 
   // Fetch backtest job (for start_date/end_date)
   const { data: job } = useGetBacktestApiV1BacktestsJobIdGet(
@@ -205,7 +236,7 @@ export default function TechnicalAnalysisPage() {
       {isLoading ? (
         <Skeleton className="h-96" />
       ) : (
-        <div className="flex gap-4">
+        <div className="flex" ref={containerRef}>
           {/* Main Content - Charts */}
           <div className="flex-1 flex flex-col min-w-0">
             {/* K-line Chart */}
@@ -315,38 +346,56 @@ export default function TechnicalAnalysisPage() {
 
           {/* Right Panel - Strategy Code */}
           {rightPanelOpen && (
-            <div className="w-[400px] flex-shrink-0 border rounded-lg bg-card">
-              <div className="flex items-center justify-between p-3 border-b">
-                <div className="flex items-center gap-2">
-                  <Code2 className="h-4 w-4" />
-                  <span className="font-medium text-sm">{strategy?.name || '策略代码'}</span>
-                </div>
-                <Badge variant="secondary" className="text-xs">{strategy?.strategy_type || '未分类'}</Badge>
-              </div>
-              <div>
-                {strategy?.code ? (
-                  <Editor
-                    height="500px"
-                    language="python"
-                    value={strategy.code}
-                    theme={isDark ? 'vs-dark' : 'light'}
-                    options={{
-                      readOnly: true,
-                      minimap: { enabled: false },
-                      scrollBeyondLastLine: false,
-                      fontSize: 12,
-                      lineNumbers: 'on',
-                      folding: true,
-                      wordWrap: 'on',
-                    }}
+            <>
+              {/* Resize handle - elegant dotted design */}
+              <div
+                className="group relative w-4 flex-shrink-0 cursor-col-resize flex flex-col items-center justify-center gap-1.5"
+                onMouseDown={handleMouseDown}
+              >
+                {/* Custom dots - smaller at ends, larger in middle */}
+                {[3, 4, 5, 5, 5, 5, 4, 3].map((size, i) => (
+                  <div
+                    key={i}
+                    style={{ width: size, height: size }}
+                    className="rounded-full bg-border group-hover:bg-primary/50 group-active:bg-primary transition-colors"
                   />
-                ) : (
-                  <div className="h-[500px] flex items-center justify-center text-muted-foreground">
-                    加载中...
-                  </div>
-                )}
+                ))}
+                {/* Wider invisible hit area */}
+                <div className="absolute inset-0" />
               </div>
-            </div>
+              <div className="flex-shrink-0 border rounded-lg bg-card" style={{ width: rightPanelWidth }}>
+                <div className="flex items-center justify-between p-3 border-b">
+                  <div className="flex items-center gap-2">
+                    <Code2 className="h-4 w-4" />
+                    <span className="font-medium text-sm">{strategy?.name || '策略代码'}</span>
+                  </div>
+                  <Badge variant="secondary" className="text-xs">{strategy?.strategy_type || '未分类'}</Badge>
+                </div>
+                <div>
+                  {strategy?.code ? (
+                    <Editor
+                      height="500px"
+                      language="python"
+                      value={strategy.code}
+                      theme={isDark ? 'vs-dark' : 'light'}
+                      options={{
+                        readOnly: true,
+                        minimap: { enabled: false },
+                        scrollBeyondLastLine: false,
+                        fontSize: 12,
+                        lineNumbers: 'on',
+                        folding: true,
+                        wordWrap: 'on',
+                      }}
+                    />
+                  ) : (
+                    <div className="h-[500px] flex items-center justify-center text-muted-foreground">
+                      加载中...
+                    </div>
+                  )}
+                </div>
+              </div>
+            </>
           )}
         </div>
       )}
