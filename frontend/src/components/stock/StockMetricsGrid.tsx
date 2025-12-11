@@ -1,37 +1,28 @@
 import { cn } from '@/lib/utils'
-import { formatPercent } from '@/lib/utils'
 
-interface KLineData {
-  date: string
-  open?: number
-  high?: number
-  low?: number
-  close?: number
-  volume?: number
-  amount?: number
-  pct_chg?: number
-  turn?: number
-}
-
-interface FundamentalsData {
-  pe_ttm?: number
-  pb_mrq?: number
-  ps_ttm?: number
-  is_st?: boolean
-}
-
+// Accept any API response type - we'll handle conversion internally
 interface StockMetricsGridProps {
-  kline?: KLineData
-  fundamentals?: FundamentalsData
+  kline?: {
+    date?: unknown
+    open?: unknown
+    high?: unknown
+    low?: unknown
+    close?: unknown
+    volume?: unknown
+    amount?: unknown
+    pct_chg?: unknown
+    turn?: unknown
+  }
+  fundamentals?: unknown
   className?: string
 }
 
-function formatPrice(value: number | string | undefined | null): string {
+function formatPrice(value: unknown): string {
   if (value == null) return '-'
   return Number(value).toFixed(2)
 }
 
-function formatVolume(value: number | string | undefined | null): string {
+function formatVolume(value: unknown): string {
   if (value == null) return '-'
   const num = Number(value)
   if (num >= 100000000) {
@@ -43,7 +34,7 @@ function formatVolume(value: number | string | undefined | null): string {
   return num.toLocaleString()
 }
 
-function formatAmount(value: number | string | undefined | null): string {
+function formatAmount(value: unknown): string {
   if (value == null) return '-'
   const num = Number(value)
   if (num >= 100000000) {
@@ -55,12 +46,15 @@ function formatAmount(value: number | string | undefined | null): string {
   return `${num.toFixed(2)}`
 }
 
-function formatRatio(value: number | string | undefined | null): string {
+function formatRatio(value: unknown): string {
   if (value == null) return '-'
   return Number(value).toFixed(2)
 }
 
 export function StockMetricsGrid({ kline, fundamentals, className }: StockMetricsGridProps) {
+  // Extract fundamentals data safely
+  const fund = (fundamentals && typeof fundamentals === 'object') ? fundamentals as Record<string, unknown> : {}
+
   // Calculate amplitude (振幅)
   const high = Number(kline?.high)
   const low = Number(kline?.low)
@@ -85,8 +79,8 @@ export function StockMetricsGrid({ kline, fundamentals, className }: StockMetric
     { label: '成交量', value: formatVolume(kline?.volume) },
     { label: '成交额', value: formatAmount(kline?.amount) },
     { label: '换手率', value: kline?.turn != null ? `${Number(kline.turn).toFixed(2)}%` : '-' },
-    { label: 'PE(TTM)', value: formatRatio(fundamentals?.pe_ttm) },
-    { label: 'PB(MRQ)', value: formatRatio(fundamentals?.pb_mrq) },
+    { label: 'PE(TTM)', value: formatRatio(fund.pe_ttm) },
+    { label: 'PB(MRQ)', value: formatRatio(fund.pb_mrq) },
   ]
 
   return (

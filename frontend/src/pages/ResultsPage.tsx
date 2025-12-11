@@ -34,9 +34,10 @@ export default function ResultsPage() {
   }, {
     query: {
       // Auto-refresh every 5 seconds if there are running jobs
-      refetchInterval: (data) => {
-        const hasRunning = data?.items?.some(
-          item => item.status === 'RUNNING' || item.status === 'QUEUED' || item.status === 'PENDING'
+      refetchInterval: (query) => {
+        const items = query.state.data?.items
+        const hasRunning = items?.some(
+          (item: { status: string }) => item.status === 'RUNNING' || item.status === 'QUEUED' || item.status === 'PENDING'
         )
         return hasRunning ? 5000 : false
       }

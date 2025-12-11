@@ -5,12 +5,12 @@ import { cn } from '@/lib/utils'
 import { getMarketColors } from '@/lib/market-colors'
 
 interface KLineDataPoint {
-  date: string
-  open?: number | string
-  high?: number | string
-  low?: number | string
-  close?: number | string
-  volume?: number | string
+  date?: unknown
+  open?: unknown
+  high?: unknown
+  low?: unknown
+  close?: unknown
+  volume?: unknown
 }
 
 interface StockKlineChartProps {
@@ -48,14 +48,15 @@ export function StockKlineChart({ data, className }: StockKlineChartProps) {
     if (!range || range.days === -1) return data
 
     // Find the latest date in data (not current date, since data may be historical)
-    const sortedDates = data.map(d => d.date).sort((a, b) => b.localeCompare(a))
+    const sortedDates = data.map(d => String(d.date || '')).filter(Boolean).sort((a, b) => b.localeCompare(a))
+    if (sortedDates.length === 0) return data
     const latestDate = new Date(sortedDates[0])
 
     const cutoffDate = new Date(latestDate)
     cutoffDate.setDate(cutoffDate.getDate() - range.days)
     const cutoffStr = cutoffDate.toISOString().split('T')[0]
 
-    return data.filter(d => d.date >= cutoffStr)
+    return data.filter(d => String(d.date || '') >= cutoffStr)
   })()
 
   useEffect(() => {
@@ -111,9 +112,9 @@ export function StockKlineChart({ data, className }: StockKlineChartProps) {
 
     // Convert data to chart format
     const chartData: CandlestickData<Time>[] = filteredData
-      .filter(d => d.open != null && d.high != null && d.low != null && d.close != null)
+      .filter(d => d.open != null && d.high != null && d.low != null && d.close != null && d.date != null)
       .map(d => ({
-        time: d.date as Time,
+        time: String(d.date) as Time,
         open: Number(d.open),
         high: Number(d.high),
         low: Number(d.low),
@@ -140,9 +141,9 @@ export function StockKlineChart({ data, className }: StockKlineChartProps) {
     })
 
     const volumeData = filteredData
-      .filter(d => d.volume != null && d.close != null && d.open != null)
+      .filter(d => d.volume != null && d.close != null && d.open != null && d.date != null)
       .map(d => ({
-        time: d.date as Time,
+        time: String(d.date) as Time,
         value: Number(d.volume),
         color: Number(d.close) >= Number(d.open)
           ? profitColor + '80'  // 50% opacity

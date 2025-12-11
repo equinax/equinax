@@ -75,7 +75,7 @@ export function MultiTradesTable({ data }: MultiTradesTableProps) {
     })
 
     // Sort by entry_date descending by default
-    allTrades.sort((a, b) => b.entry_date.localeCompare(a.entry_date))
+    allTrades.sort((a, b) => (b.entry_date || '').localeCompare(a.entry_date || ''))
 
     return { normalizedTrades: allTrades, stockCodes: codes }
   }, [data])

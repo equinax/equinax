@@ -1,5 +1,5 @@
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
-import { formatPercent, formatDate, formatCurrency } from '@/lib/utils'
+import { formatPercent } from '@/lib/utils'
 import {
   TrendingUp,
   Code2,

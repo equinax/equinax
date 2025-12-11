@@ -77,7 +77,6 @@ export function ResultComparisonView({ jobId, results }: ResultComparisonViewPro
     const equityCurves: Record<string, EquityCurvePoint[]> = {}
     const monthlyReturns: Record<string, MonthlyReturns> = {}
     const trades: Record<string, TradeRecord[]> = {}
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const metrics: Record<string, any> = {}
 
     resultQueries.forEach((query, index) => {

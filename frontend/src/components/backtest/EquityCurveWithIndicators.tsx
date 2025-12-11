@@ -18,7 +18,6 @@ import { Skeleton } from '@/components/ui/skeleton'
 import { useGetKlineApiV1StocksCodeKlineGet } from '@/api/generated/stocks/stocks'
 import { calcMA, calcEMA, calcBOLL, calcMACD, calcRSI } from '@/lib/indicators'
 import type { EquityCurvePoint, TradeRecord } from '@/types/backtest'
-import { cn } from '@/lib/utils'
 
 interface EquityCurveWithIndicatorsProps {
   stockCode: string
@@ -231,18 +230,6 @@ export function EquityCurveWithIndicators({
       width: chartRef.current.clientWidth,
     })
     chartApiRef.current = chart
-
-    // Determine which price scale to use for right axis based on yAxisMode
-    const getRightScaleId = () => {
-      switch (yAxisMode) {
-        case 'price': return 'right'
-        case 'volume': return 'volume'
-        case 'macd': return 'macd'
-        case 'rsi': return 'rsi'
-        case 'equity': return 'equity'
-        default: return 'right'
-      }
-    }
 
     // Series refs
     let candleSeries: ISeriesApi<'Candlestick'> | null = null
@@ -589,7 +576,6 @@ export function EquityCurveWithIndicators({
         // Chart already disposed
       }
     }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isDark, height, klineData, calculatedIndicators, equityCurve, trades, indicators, colors, markerMode, yAxisMode])
 
   if (!equityCurve || equityCurve.length === 0) {

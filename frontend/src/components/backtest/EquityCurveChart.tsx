@@ -125,7 +125,6 @@ export function EquityCurveChart({ data, trades, height = 400 }: EquityCurveChar
 
     const markers: SeriesMarker<Time>[] = trades.flatMap((trade) => {
       // Support both frontend and backend field names
-      const isBuy = trade.type === 'LONG' || trade.type === 'long' || trade.direction === 'long'
       const entryDate = trade.entry_date || trade.open_datetime?.split(' ')[0]
       const exitDate = trade.exit_date || trade.close_datetime?.split(' ')[0]
       const entryPrice = trade.entry_price ?? trade.open_price

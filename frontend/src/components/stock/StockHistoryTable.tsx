@@ -4,15 +4,15 @@ import { cn } from '@/lib/utils'
 import { ChevronLeft, ChevronRight, Download } from 'lucide-react'
 
 interface KLineData {
-  date: string
-  open?: number | string
-  high?: number | string
-  low?: number | string
-  close?: number | string
-  volume?: number | string
-  amount?: number | string
-  pct_chg?: number | string
-  turn?: number | string
+  date?: unknown
+  open?: unknown
+  high?: unknown
+  low?: unknown
+  close?: unknown
+  volume?: unknown
+  amount?: unknown
+  pct_chg?: unknown
+  turn?: unknown
 }
 
 interface StockHistoryTableProps {
@@ -23,12 +23,12 @@ interface StockHistoryTableProps {
 
 const PAGE_SIZE = 20
 
-function formatPrice(value: number | string | undefined | null): string {
+function formatPrice(value: unknown): string {
   if (value == null) return '-'
   return Number(value).toFixed(2)
 }
 
-function formatVolume(value: number | string | undefined | null): string {
+function formatVolume(value: unknown): string {
   if (value == null) return '-'
   const num = Number(value)
   if (num >= 100000000) {
@@ -40,7 +40,7 @@ function formatVolume(value: number | string | undefined | null): string {
   return num.toLocaleString()
 }
 
-function formatAmount(value: number | string | undefined | null): string {
+function formatAmount(value: unknown): string {
   if (value == null) return '-'
   const num = Number(value)
   if (num >= 100000000) {
@@ -56,7 +56,7 @@ export function StockHistoryTable({ data, stockCode, className }: StockHistoryTa
   const [page, setPage] = useState(1)
 
   // Sort by date descending (newest first)
-  const sortedData = [...data].sort((a, b) => b.date.localeCompare(a.date))
+  const sortedData = [...data].sort((a, b) => String(b.date || '').localeCompare(String(a.date || '')))
 
   const totalPages = Math.ceil(sortedData.length / PAGE_SIZE)
   const startIndex = (page - 1) * PAGE_SIZE
@@ -133,13 +133,13 @@ export function StockHistoryTable({ data, stockCode, className }: StockHistoryTa
             <tbody>
               {pageData.map((row, index) => (
                 <tr
-                  key={row.date}
+                  key={String(row.date || index)}
                   className={cn(
                     'border-b last:border-0 hover:bg-muted/50 transition-colors',
                     index % 2 === 0 && 'bg-muted/20'
                   )}
                 >
-                  <td className="py-2 px-4 font-mono">{row.date}</td>
+                  <td className="py-2 px-4 font-mono">{String(row.date || '')}</td>
                   <td className="py-2 px-4 text-right font-mono">{formatPrice(row.open)}</td>
                   <td className="py-2 px-4 text-right font-mono text-profit">{formatPrice(row.high)}</td>
                   <td className="py-2 px-4 text-right font-mono text-loss">{formatPrice(row.low)}</td>
