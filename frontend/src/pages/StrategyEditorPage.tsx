@@ -1,5 +1,7 @@
 import { useState, useEffect } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
+import { useForm } from '@tanstack/react-form'
+import { useQueryClient } from '@tanstack/react-query'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -21,45 +23,14 @@ import {
   useValidateCodeInlineApiV1StrategiesValidateCodePost,
   useListStrategyTemplatesApiV1StrategiesTemplatesListGet,
 } from '@/api/generated/strategies/strategies'
-import { useQueryClient } from '@tanstack/react-query'
+import {
+  defaultStrategyValues,
+  strategyTypeOptions,
+  type StrategyFormValues,
+} from '@/lib/schemas/strategy'
+import { parseAPIError } from '@/lib/form-errors'
+import { cn } from '@/lib/utils'
 
-const strategyTypes = [
-  { value: 'trend_following', label: '趋势跟踪' },
-  { value: 'momentum', label: '动量策略' },
-  { value: 'mean_reversion', label: '均值回归' },
-  { value: 'arbitrage', label: '套利策略' },
-  { value: 'other', label: '其他' },
-]
-
-const defaultCode = `class MyStrategy(bt.Strategy):
-    """
-    自定义策略模板
-
-    参数:
-        period: 均线周期
-    """
-    params = (
-        ('period', 20),
-    )
-
-    def __init__(self):
-        self.sma = bt.indicators.SMA(self.data.close, period=self.p.period)
-
-    def next(self):
-        if not self.position:
-            if self.data.close[0] > self.sma[0]:
-                self.buy()
-        elif self.data.close[0] < self.sma[0]:
-            self.close()
-`
-
-// Field error type
-interface FieldErrors {
-  name?: string
-  code?: string
-}
-
-// Save status type
 type SaveStatus = 'idle' | 'saving' | 'success' | 'error'
 
 export default function StrategyEditorPage() {
@@ -68,233 +39,160 @@ export default function StrategyEditorPage() {
   const queryClient = useQueryClient()
   const isEditing = strategyId && strategyId !== 'new'
 
-  // Form state
-  const [name, setName] = useState('')
-  const [description, setDescription] = useState('')
-  const [strategyType, setStrategyType] = useState('trend_following')
-  const [code, setCode] = useState(defaultCode)
-  const [indicatorsUsed, setIndicatorsUsed] = useState<string[]>([])
-  const [indicatorInput, setIndicatorInput] = useState('')
-
-  // Validation state
+  // 非表单状态
+  const [saveStatus, setSaveStatus] = useState<SaveStatus>('idle')
+  const [apiError, setApiError] = useState<string | null>(null)
   const [validationResult, setValidationResult] = useState<{
     is_valid: boolean
     error_message?: string | null
     errors?: string[]
   } | null>(null)
+  const [indicatorInput, setIndicatorInput] = useState('')
 
-  // Field-level errors (from form validation or API)
-  const [fieldErrors, setFieldErrors] = useState<FieldErrors>({})
+  // 表单初始化
+  const form = useForm({
+    defaultValues: defaultStrategyValues,
+  })
 
-  // Save status
-  const [saveStatus, setSaveStatus] = useState<SaveStatus>('idle')
-  const [apiError, setApiError] = useState<string | null>(null)
-
-  // Fetch existing strategy if editing
+  // 数据获取
   const { data: strategy, isLoading: isLoadingStrategy } =
     useGetStrategyApiV1StrategiesStrategyIdGet(strategyId || '', {
       query: { enabled: !!isEditing },
     })
 
-  // Fetch templates
   const { data: templates } = useListStrategyTemplatesApiV1StrategiesTemplatesListGet()
 
   // Mutations
-  const createMutation = useCreateStrategyApiV1StrategiesPost({
-    mutation: {
-      onSuccess: (data) => {
-        queryClient.invalidateQueries({ queryKey: ['/api/v1/strategies'] })
-        setSaveStatus('success')
-        setApiError(null)
-        setFieldErrors({})
-        setValidationResult(null) // Clear validation result on save success
-        // Navigate after showing success briefly
-        setTimeout(() => {
-          navigate(`/strategies/${data.id}`)
-        }, 800)
-      },
-      onError: (error: any) => {
-        setSaveStatus('error')
-        handleApiError(error)
-      },
-    },
-  })
+  const createMutation = useCreateStrategyApiV1StrategiesPost()
+  const updateMutation = useUpdateStrategyApiV1StrategiesStrategyIdPut()
+  const validateMutation = useValidateCodeInlineApiV1StrategiesValidateCodePost()
 
-  const updateMutation = useUpdateStrategyApiV1StrategiesStrategyIdPut({
-    mutation: {
-      onSuccess: () => {
+  // 加载编辑数据
+  useEffect(() => {
+    if (strategy) {
+      form.reset({
+        name: strategy.name,
+        description: strategy.description || '',
+        strategyType: (strategy.strategy_type as StrategyFormValues['strategyType']) || 'other',
+        code: strategy.code,
+        indicatorsUsed: strategy.indicators_used || [],
+      })
+    }
+  }, [strategy])
+
+  // 监听表单变化，重置状态
+  useEffect(() => {
+    const unsubscribe = form.store.subscribe(() => {
+      if (saveStatus === 'success' || saveStatus === 'error') {
+        setSaveStatus('idle')
+        setApiError(null)
+      }
+    })
+    return unsubscribe
+  }, [saveStatus])
+
+  // 处理保存
+  const handleSave = async () => {
+    const values = form.state.values
+    setApiError(null)
+    setSaveStatus('saving')
+
+    const payload = {
+      name: values.name,
+      description: values.description || null,
+      strategy_type: values.strategyType,
+      code: values.code,
+      indicators_used: values.indicatorsUsed,
+    }
+
+    try {
+      if (isEditing) {
+        await updateMutation.mutateAsync({
+          strategyId: strategyId!,
+          data: payload,
+        })
         queryClient.invalidateQueries({ queryKey: ['/api/v1/strategies'] })
         queryClient.invalidateQueries({
           queryKey: [`/api/v1/strategies/${strategyId}`],
         })
         setSaveStatus('success')
-        setApiError(null)
-        setFieldErrors({})
-        setValidationResult(null) // Clear validation result on save success
-        // Reset to idle after showing success
-        setTimeout(() => {
-          setSaveStatus('idle')
-        }, 2000)
-      },
-      onError: (error: any) => {
-        setSaveStatus('error')
-        handleApiError(error)
-      },
-    },
-  })
-
-  const validateMutation = useValidateCodeInlineApiV1StrategiesValidateCodePost({
-    mutation: {
-      onSuccess: (data) => {
-        setValidationResult(data)
-        // Clear save success status when re-validating
-        if (saveStatus === 'success') {
-          setSaveStatus('idle')
-        }
-      },
-    },
-  })
-
-  // Handle API errors - extract field-level errors
-  const handleApiError = (error: any) => {
-    const newFieldErrors: FieldErrors = {}
-    let generalError = '保存失败，请稍后重试'
-
-    try {
-      // Handle FastAPI validation errors (422)
-      if (error?.response?.data?.detail) {
-        const detail = error.response.data.detail
-        if (Array.isArray(detail)) {
-          detail.forEach((err: any) => {
-            const field = err.loc?.[err.loc.length - 1]
-            const msg = err.msg
-            if (field === 'name') {
-              newFieldErrors.name = msg
-            } else if (field === 'code') {
-              newFieldErrors.code = msg
-            }
-          })
-          if (Object.keys(newFieldErrors).length === 0) {
-            generalError = detail.map((e: any) => e.msg).join('; ')
-          }
-        } else if (typeof detail === 'string') {
-          generalError = detail
-        }
-      } else if (error?.message) {
-        generalError = error.message
+        setValidationResult(null)
+        setTimeout(() => setSaveStatus('idle'), 2000)
+      } else {
+        const data = await createMutation.mutateAsync({ data: payload })
+        queryClient.invalidateQueries({ queryKey: ['/api/v1/strategies'] })
+        setSaveStatus('success')
+        setValidationResult(null)
+        setTimeout(() => navigate(`/strategies/${data.id}`), 800)
       }
-    } catch {
-      // Keep default error message
-    }
+    } catch (error) {
+      setSaveStatus('error')
+      const { fieldErrors, generalError } = parseAPIError(error)
 
-    setFieldErrors(newFieldErrors)
-    if (Object.keys(newFieldErrors).length === 0) {
-      setApiError(generalError)
-    } else {
-      setApiError(null)
+      if (Object.keys(fieldErrors).length > 0) {
+        // 设置字段级错误
+        Object.entries(fieldErrors).forEach(([fieldName, errorMessage]) => {
+          form.setFieldMeta(fieldName as keyof StrategyFormValues, (prev) => ({
+            ...prev,
+            errorMap: {
+              ...prev.errorMap,
+              onServer: errorMessage,
+            },
+          }))
+        })
+        setApiError(null)
+      } else {
+        setApiError(generalError)
+      }
     }
   }
 
-  // Track if initial load has happened
-  const [initialLoaded, setInitialLoaded] = useState(false)
-
-  // Load strategy data when editing (only on initial load)
-  useEffect(() => {
-    if (strategy && !initialLoaded) {
-      setName(strategy.name)
-      setDescription(strategy.description || '')
-      setStrategyType(strategy.strategy_type || 'other')
-      setCode(strategy.code)
-      setIndicatorsUsed(strategy.indicators_used || [])
-      // Don't show validation result on load - only show when user clicks validate
-      setInitialLoaded(true)
-    }
-  }, [strategy, initialLoaded])
-
-  // Reset save status when form changes
-  useEffect(() => {
-    if (saveStatus === 'success') {
-      setSaveStatus('idle')
-    }
-    if (saveStatus === 'error') {
-      setSaveStatus('idle')
-      setApiError(null)
-    }
-  }, [name, description, strategyType, code])
-
+  // 处理代码验证
   const handleValidate = () => {
-    validateMutation.mutate({ data: { code } })
+    const code = form.state.values.code
+    validateMutation.mutate(
+      { data: { code } },
+      {
+        onSuccess: (data) => {
+          setValidationResult(data)
+          if (saveStatus === 'success') {
+            setSaveStatus('idle')
+          }
+        },
+      }
+    )
   }
 
-  // No frontend validation - rely on API validation only
-  const validateForm = (): boolean => {
-    setFieldErrors({})
-    return true
-  }
-
-  const handleSave = () => {
-    // Clear previous states
-    setApiError(null)
-
-    // Validate form
-    if (!validateForm()) {
-      return
-    }
-
-    setSaveStatus('saving')
-
-    const payload = {
-      name,
-      description: description || null,
-      strategy_type: strategyType,
-      code,
-      indicators_used: indicatorsUsed,
-    }
-
-    if (isEditing) {
-      updateMutation.mutate({
-        strategyId: strategyId!,
-        data: payload,
-      })
-    } else {
-      createMutation.mutate({ data: payload })
-    }
-  }
-
+  // 处理指标添加
   const handleAddIndicator = () => {
-    if (indicatorInput.trim() && !indicatorsUsed.includes(indicatorInput.trim())) {
-      setIndicatorsUsed([...indicatorsUsed, indicatorInput.trim()])
+    const trimmed = indicatorInput.trim()
+    if (trimmed) {
+      const current = form.state.values.indicatorsUsed
+      if (!current.includes(trimmed)) {
+        form.setFieldValue('indicatorsUsed', [...current, trimmed])
+      }
       setIndicatorInput('')
     }
   }
 
+  // 处理指标移除
   const handleRemoveIndicator = (indicator: string) => {
-    setIndicatorsUsed(indicatorsUsed.filter((i) => i !== indicator))
+    const current = form.state.values.indicatorsUsed
+    form.setFieldValue(
+      'indicatorsUsed',
+      current.filter((i) => i !== indicator)
+    )
   }
 
+  // 使用模板
   const handleUseTemplate = (templateCode: string) => {
-    setCode(templateCode)
+    form.setFieldValue('code', templateCode)
     setValidationResult(null)
-    setFieldErrors((prev) => ({ ...prev, code: undefined }))
-  }
-
-  const handleNameChange = (value: string) => {
-    setName(value)
-    if (fieldErrors.name) {
-      setFieldErrors((prev) => ({ ...prev, name: undefined }))
-    }
-  }
-
-  const handleCodeChange = (value: string) => {
-    setCode(value)
-    setValidationResult(null)
-    if (fieldErrors.code) {
-      setFieldErrors((prev) => ({ ...prev, code: undefined }))
-    }
   }
 
   const isSaving = saveStatus === 'saving'
 
+  // 加载状态
   if (isEditing && isLoadingStrategy) {
     return (
       <div className="flex items-center justify-center p-12">
@@ -322,6 +220,7 @@ export default function StrategyEditorPage() {
         </div>
         <div className="flex gap-2">
           <Button
+            type="button"
             variant="outline"
             onClick={handleValidate}
             disabled={validateMutation.isPending}
@@ -334,6 +233,7 @@ export default function StrategyEditorPage() {
             验证代码
           </Button>
           <Button
+            type="button"
             onClick={handleSave}
             disabled={isSaving}
             className={
@@ -355,9 +255,9 @@ export default function StrategyEditorPage() {
       </div>
 
       <div className="grid gap-6 lg:grid-cols-3">
-        {/* Left: Code editor */}
+        {/* 左侧：代码编辑器 */}
         <div className="lg:col-span-2 space-y-4">
-          {/* Save status feedback */}
+          {/* 保存成功反馈 */}
           {saveStatus === 'success' && (
             <div className="flex items-center gap-2 rounded-lg border border-green-500/50 bg-green-500/10 text-green-500 p-3">
               <CheckCircle className="h-5 w-5" />
@@ -365,7 +265,7 @@ export default function StrategyEditorPage() {
             </div>
           )}
 
-          {/* API error feedback */}
+          {/* API 错误反馈 */}
           {apiError && (
             <div className="flex items-center gap-2 rounded-lg border border-red-500/50 bg-red-500/10 text-red-500 p-3">
               <XCircle className="h-5 w-5" />
@@ -373,14 +273,15 @@ export default function StrategyEditorPage() {
             </div>
           )}
 
-          {/* Validation result - only show when not just saved successfully */}
+          {/* 验证结果 */}
           {validationResult && saveStatus !== 'success' && (
             <div
-              className={`flex items-start gap-2 rounded-lg border p-3 ${
+              className={cn(
+                'flex items-start gap-2 rounded-lg border p-3',
                 validationResult.is_valid
                   ? 'border-green-500/50 bg-green-500/10 text-green-500'
                   : 'border-red-500/50 bg-red-500/10 text-red-500'
-              }`}
+              )}
             >
               {validationResult.is_valid ? (
                 <>
@@ -410,115 +311,166 @@ export default function StrategyEditorPage() {
             </div>
           )}
 
-          {/* Code editor */}
+          {/* 代码编辑器 */}
           <Card>
             <CardHeader>
               <CardTitle>策略代码</CardTitle>
             </CardHeader>
             <CardContent className="space-y-2">
-              <Textarea
-                value={code}
-                onChange={(e) => handleCodeChange(e.target.value)}
-                className={`font-mono text-sm min-h-[500px] resize-y ${
-                  fieldErrors.code ? 'border-red-500 focus-visible:ring-red-500' : ''
-                }`}
-                placeholder="编写 Backtrader 策略代码..."
-              />
-              {fieldErrors.code && (
-                <p className="text-sm text-red-500">{fieldErrors.code}</p>
-              )}
+              <form.Field name="code">
+                {(field) => {
+                  const errors = field.state.meta.errors
+                  const serverError = field.state.meta.errorMap?.onServer as string | undefined
+                  const hasError = errors.length > 0 || !!serverError
+                  const errorMessage = serverError || errors.join(', ')
+
+                  return (
+                    <>
+                      <Textarea
+                        value={field.state.value}
+                        onChange={(e) => {
+                          field.handleChange(e.target.value)
+                          setValidationResult(null)
+                        }}
+                        onBlur={field.handleBlur}
+                        className={cn(
+                          'font-mono text-sm min-h-[500px] resize-y',
+                          hasError && 'border-red-500 focus-visible:ring-red-500'
+                        )}
+                        placeholder="编写 Backtrader 策略代码..."
+                      />
+                      {hasError ? (
+                        <p className="text-sm text-red-500">{errorMessage}</p>
+                      ) : null}
+                    </>
+                  )
+                }}
+              </form.Field>
             </CardContent>
           </Card>
         </div>
 
-        {/* Right: Settings & Templates */}
+        {/* 右侧：设置 */}
         <div className="space-y-4">
-          {/* Basic info */}
           <Card>
             <CardHeader>
               <CardTitle>基本信息</CardTitle>
             </CardHeader>
             <CardContent className="space-y-4">
-              <div className="space-y-2">
-                <label className="text-sm font-medium">策略名称 *</label>
-                <Input
-                  value={name}
-                  onChange={(e) => handleNameChange(e.target.value)}
-                  placeholder="输入策略名称"
-                  className={fieldErrors.name ? 'border-red-500 focus-visible:ring-red-500' : ''}
-                />
-                {fieldErrors.name && (
-                  <p className="text-sm text-red-500">{fieldErrors.name}</p>
-                )}
-              </div>
+              {/* 策略名称 */}
+              <form.Field name="name">
+                {(field) => {
+                  const errors = field.state.meta.errors
+                  const serverError = field.state.meta.errorMap?.onServer as string | undefined
+                  const hasError = errors.length > 0 || !!serverError
+                  const errorMessage = serverError || errors.join(', ')
 
-              <div className="space-y-2">
-                <label className="text-sm font-medium">策略描述</label>
-                <Textarea
-                  value={description}
-                  onChange={(e) => setDescription(e.target.value)}
-                  placeholder="描述策略的逻辑和特点"
-                  rows={3}
-                />
-              </div>
+                  return (
+                    <div className="space-y-2">
+                      <label className="text-sm font-medium">策略名称 *</label>
+                      <Input
+                        value={field.state.value}
+                        onChange={(e) => field.handleChange(e.target.value)}
+                        onBlur={field.handleBlur}
+                        placeholder="输入策略名称"
+                        className={cn(
+                          hasError && 'border-red-500 focus-visible:ring-red-500'
+                        )}
+                      />
+                      {hasError ? (
+                        <p className="text-sm text-red-500">{errorMessage}</p>
+                      ) : null}
+                    </div>
+                  )
+                }}
+              </form.Field>
 
-              <div className="space-y-2">
-                <label className="text-sm font-medium">策略类型</label>
-                <select
-                  className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
-                  value={strategyType}
-                  onChange={(e) => setStrategyType(e.target.value)}
-                >
-                  {strategyTypes.map((type) => (
-                    <option key={type.value} value={type.value}>
-                      {type.label}
-                    </option>
-                  ))}
-                </select>
-              </div>
-
-              {/* Indicators */}
-              <div className="space-y-2">
-                <label className="text-sm font-medium">使用的指标</label>
-                <div className="flex gap-2">
-                  <Input
-                    value={indicatorInput}
-                    onChange={(e) => setIndicatorInput(e.target.value)}
-                    placeholder="如: SMA, RSI, MACD"
-                    onKeyDown={(e) => {
-                      if (e.key === 'Enter') {
-                        e.preventDefault()
-                        handleAddIndicator()
-                      }
-                    }}
-                  />
-                  <Button variant="outline" onClick={handleAddIndicator}>
-                    添加
-                  </Button>
-                </div>
-                {indicatorsUsed.length > 0 && (
-                  <div className="flex flex-wrap gap-2 mt-2">
-                    {indicatorsUsed.map((indicator) => (
-                      <span
-                        key={indicator}
-                        className="flex items-center gap-1 rounded-full bg-secondary px-3 py-1 text-sm"
-                      >
-                        {indicator}
-                        <button
-                          onClick={() => handleRemoveIndicator(indicator)}
-                          className="ml-1 hover:text-destructive"
-                        >
-                          &times;
-                        </button>
-                      </span>
-                    ))}
+              {/* 策略描述 */}
+              <form.Field name="description">
+                {(field) => (
+                  <div className="space-y-2">
+                    <label className="text-sm font-medium">策略描述</label>
+                    <Textarea
+                      value={field.state.value ?? ''}
+                      onChange={(e) => field.handleChange(e.target.value)}
+                      onBlur={field.handleBlur}
+                      placeholder="描述策略的逻辑和特点"
+                      rows={3}
+                    />
                   </div>
                 )}
-              </div>
+              </form.Field>
+
+              {/* 策略类型 */}
+              <form.Field name="strategyType">
+                {(field) => (
+                  <div className="space-y-2">
+                    <label className="text-sm font-medium">策略类型</label>
+                    <select
+                      className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+                      value={field.state.value}
+                      onChange={(e) =>
+                        field.handleChange(e.target.value as StrategyFormValues['strategyType'])
+                      }
+                      onBlur={field.handleBlur}
+                    >
+                      {strategyTypeOptions.map((type) => (
+                        <option key={type.value} value={type.value}>
+                          {type.label}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                )}
+              </form.Field>
+
+              {/* 指标 */}
+              <form.Field name="indicatorsUsed">
+                {(field) => (
+                  <div className="space-y-2">
+                    <label className="text-sm font-medium">使用的指标</label>
+                    <div className="flex gap-2">
+                      <Input
+                        value={indicatorInput}
+                        onChange={(e) => setIndicatorInput(e.target.value)}
+                        placeholder="如: SMA, RSI, MACD"
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter') {
+                            e.preventDefault()
+                            handleAddIndicator()
+                          }
+                        }}
+                      />
+                      <Button type="button" variant="outline" onClick={handleAddIndicator}>
+                        添加
+                      </Button>
+                    </div>
+                    {field.state.value.length > 0 ? (
+                      <div className="flex flex-wrap gap-2 mt-2">
+                        {field.state.value.map((indicator) => (
+                          <span
+                            key={indicator}
+                            className="flex items-center gap-1 rounded-full bg-secondary px-3 py-1 text-sm"
+                          >
+                            {indicator}
+                            <button
+                              type="button"
+                              onClick={() => handleRemoveIndicator(indicator)}
+                              className="ml-1 hover:text-destructive"
+                            >
+                              &times;
+                            </button>
+                          </span>
+                        ))}
+                      </div>
+                    ) : null}
+                  </div>
+                )}
+              </form.Field>
             </CardContent>
           </Card>
 
-          {/* Templates */}
+          {/* 模板卡片 */}
           <Card>
             <CardHeader>
               <CardTitle>策略模板</CardTitle>
@@ -537,6 +489,7 @@ export default function StrategyEditorPage() {
                       </p>
                     </div>
                     <Button
+                      type="button"
                       variant="ghost"
                       size="icon"
                       onClick={() => handleUseTemplate(template.code)}
