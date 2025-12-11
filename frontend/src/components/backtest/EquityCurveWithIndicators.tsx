@@ -613,9 +613,9 @@ export function EquityCurveWithIndicators({
   ]
 
   return (
-    <div className="space-y-2">
+    <div className="space-y-2 rounded-lg" ref={containerRef}>
       {/* Indicator toggles - row 1: Price display */}
-      <div className="flex flex-wrap gap-4 items-center">
+      <div className="flex flex-wrap gap-4 items-center px-2">
         <div className="flex items-center gap-1">
           <span className="text-xs text-muted-foreground mr-1">价格:</span>
           <Button
@@ -790,7 +790,7 @@ export function EquityCurveWithIndicators({
       </div>
 
       {/* Chart container */}
-      <div ref={containerRef} className="rounded-lg border bg-card">
+      <div ref={containerRef} className="border-t bg-card rounded-b-lg">
         {isLoading ? (
           <Skeleton className="w-full" style={{ height }} />
         ) : (

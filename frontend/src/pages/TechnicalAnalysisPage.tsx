@@ -209,7 +209,7 @@ export default function TechnicalAnalysisPage() {
           {/* Main Content - Charts */}
           <div className="flex-1 flex flex-col min-w-0">
             {/* K-line Chart */}
-            <div className="border rounded-lg bg-card p-3 mb-3">
+            <div className="border rounded-lg bg-card pt-3 mb-3">
               {result && (
                 <EquityCurveWithIndicators
                   stockCode={result.stock_code}
