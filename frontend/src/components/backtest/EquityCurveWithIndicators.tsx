@@ -13,6 +13,7 @@ import {
 } from 'lightweight-charts'
 import { useTheme } from '@/components/theme-provider'
 import { getMarketColors } from '@/lib/market-colors'
+import { getChartThemeColors, INDICATOR_COLORS } from '@/lib/chart-theme'
 import { Button } from '@/components/ui/button'
 import { Skeleton } from '@/components/ui/skeleton'
 import { useGetKlineApiV1StocksCodeKlineGet } from '@/api/generated/stocks/stocks'
@@ -55,23 +56,10 @@ type YAxisMode = 'price' | 'volume' | 'macd' | 'rsi' | 'equity'
 // Marker display mode
 type MarkerMode = 'none' | 'arrow' | 'arrow_price'
 
-// Indicator color configuration
-const INDICATOR_COLORS = {
-  ma5: '#f59e0b',     // amber
-  ma10: '#3b82f6',    // blue
-  ma20: '#a855f7',    // purple
-  ma60: '#22c55e',    // green
-  ema12: '#06b6d4',   // cyan
-  ema26: '#f97316',   // orange
-  bollUpper: '#94a3b8', // slate (dashed)
-  bollMiddle: '#64748b', // slate
-  bollLower: '#94a3b8', // slate (dashed)
-  equity: '#ec4899',  // pink
-  closeLine: '#6366f1', // indigo
-  rsi: '#8b5cf6',     // violet
-  macdDif: '#3b82f6', // blue
-  macdDea: '#f97316', // orange
-  volume: '#64748b',  // slate
+// 权益曲线专用颜色（主题感知）
+const EQUITY_COLOR = {
+  light: '#ec4899',   // 玫瑰红
+  dark: '#f472b6',    // 亮玫瑰
 }
 
 export function EquityCurveWithIndicators({
@@ -191,36 +179,39 @@ export function EquityCurveWithIndicators({
       chartApiRef.current = null
     }
 
+    // 获取主题颜色
+    const chartColors = getChartThemeColors(isDark)
+
     const chart = createChart(chartRef.current, {
       layout: {
         background: { type: ColorType.Solid, color: 'transparent' },
-        textColor: isDark ? '#a1a1aa' : '#71717a',
+        textColor: chartColors.text,
       },
       grid: {
-        vertLines: { color: isDark ? '#27272a' : '#e4e4e7' },
-        horzLines: { color: isDark ? '#27272a' : '#e4e4e7' },
+        vertLines: { color: chartColors.grid },
+        horzLines: { color: chartColors.grid },
       },
       crosshair: {
         mode: 1,
         vertLine: {
-          color: isDark ? '#52525b' : '#a1a1aa',
+          color: chartColors.crosshair,
           width: 1 as const,
           style: LineStyle.Dashed,
         },
         horzLine: {
-          color: isDark ? '#52525b' : '#a1a1aa',
+          color: chartColors.crosshair,
           width: 1 as const,
           style: LineStyle.Dashed,
         },
       },
       timeScale: {
-        borderColor: isDark ? '#27272a' : '#e4e4e7',
+        borderColor: chartColors.border,
         timeVisible: true,
         secondsVisible: false,
       },
       rightPriceScale: {
         visible: true,
-        borderColor: isDark ? '#27272a' : '#e4e4e7',
+        borderColor: chartColors.border,
         scaleMargins: { top: 0.05, bottom: 0.05 },
       },
       leftPriceScale: {
@@ -266,7 +257,7 @@ export function EquityCurveWithIndicators({
     // Add close line series
     if (indicators.closeLine) {
       closeLineSeries = chart.addLineSeries({
-        color: INDICATOR_COLORS.closeLine,
+        color: chartColors.closeLine,
         lineWidth: 2,
         priceLineVisible: false,
         lastValueVisible: true,
@@ -336,10 +327,11 @@ export function EquityCurveWithIndicators({
       })
     }
 
-    // Add equity curve
+    // Add equity curve - 使用主题感知的颜色
+    const equityColor = isDark ? EQUITY_COLOR.dark : EQUITY_COLOR.light
     if (indicators.equity) {
       equitySeries = chart.addLineSeries({
-        color: INDICATOR_COLORS.equity,
+        color: equityColor,
         lineWidth: 2,
         priceLineVisible: false,
         lastValueVisible: true,

@@ -14,6 +14,40 @@ export default {
   		}
   	},
   	extend: {
+  		/*
+  		 * ═══════════════════════════════════════════════════════════════
+  		 * 字体系统 - Typography System
+  		 * ═══════════════════════════════════════════════════════════════
+  		 * 核心理念：
+  		 * - 标题用无衬线字体，现代感强
+  		 * - 正文用系统字体栈，保证可读性
+  		 * - 数字用等宽字体，对齐整齐
+  		 */
+  		fontFamily: {
+  			sans: [
+  				'Inter',
+  				'SF Pro Display',
+  				'-apple-system',
+  				'BlinkMacSystemFont',
+  				'PingFang SC',
+  				'Microsoft YaHei',
+  				'sans-serif'
+  			],
+  			mono: [
+  				'JetBrains Mono',
+  				'SF Mono',
+  				'Menlo',
+  				'Monaco',
+  				'Consolas',
+  				'monospace'
+  			],
+  			display: [
+  				'Inter',
+  				'SF Pro Display',
+  				'-apple-system',
+  				'sans-serif'
+  			],
+  		},
   		colors: {
   			border: 'hsl(var(--border))',
   			input: 'hsl(var(--input))',

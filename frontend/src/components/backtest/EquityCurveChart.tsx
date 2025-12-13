@@ -2,6 +2,7 @@ import { useEffect, useRef } from 'react'
 import { createChart, IChartApi, ISeriesApi, LineStyle, ColorType, AreaData, Time, SeriesMarker } from 'lightweight-charts'
 import { useTheme } from '@/components/theme-provider'
 import { getMarketColors } from '@/lib/market-colors'
+import { getChartThemeColors } from '@/lib/chart-theme'
 import type { EquityCurvePoint, TradeRecord } from '@/types/backtest'
 
 interface EquityCurveChartProps {
@@ -21,36 +22,39 @@ export function EquityCurveChart({ data, trades, height = 400 }: EquityCurveChar
   useEffect(() => {
     if (!chartContainerRef.current) return
 
+    // 获取主题颜色
+    const chartColors = getChartThemeColors(isDark)
+
     // Create chart
     const chart = createChart(chartContainerRef.current, {
       layout: {
         background: { type: ColorType.Solid, color: 'transparent' },
-        textColor: isDark ? '#a1a1aa' : '#71717a',
+        textColor: chartColors.text,
       },
       grid: {
-        vertLines: { color: isDark ? '#27272a' : '#e4e4e7' },
-        horzLines: { color: isDark ? '#27272a' : '#e4e4e7' },
+        vertLines: { color: chartColors.grid },
+        horzLines: { color: chartColors.grid },
       },
       crosshair: {
         mode: 1,
         vertLine: {
-          color: isDark ? '#52525b' : '#a1a1aa',
+          color: chartColors.crosshair,
           width: 1,
           style: LineStyle.Dashed,
         },
         horzLine: {
-          color: isDark ? '#52525b' : '#a1a1aa',
+          color: chartColors.crosshair,
           width: 1,
           style: LineStyle.Dashed,
         },
       },
       timeScale: {
-        borderColor: isDark ? '#27272a' : '#e4e4e7',
+        borderColor: chartColors.border,
         timeVisible: true,
         secondsVisible: false,
       },
       rightPriceScale: {
-        borderColor: isDark ? '#27272a' : '#e4e4e7',
+        borderColor: chartColors.border,
         scaleMargins: { top: 0.1, bottom: 0.1 },
       },
       width: chartContainerRef.current.clientWidth,
@@ -59,11 +63,11 @@ export function EquityCurveChart({ data, trades, height = 400 }: EquityCurveChar
 
     chartRef.current = chart
 
-    // Add area series
+    // Add area series - 使用主题色
     const series = chart.addAreaSeries({
-      lineColor: '#3b82f6',
-      topColor: 'rgba(59, 130, 246, 0.4)',
-      bottomColor: 'rgba(59, 130, 246, 0.0)',
+      lineColor: chartColors.equity,
+      topColor: chartColors.equityFill,
+      bottomColor: 'transparent',
       lineWidth: 2,
       priceFormat: {
         type: 'custom',

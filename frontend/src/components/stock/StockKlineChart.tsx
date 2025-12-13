@@ -3,6 +3,8 @@ import { createChart, ColorType, IChartApi, CandlestickData, Time } from 'lightw
 import { Button } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
 import { getMarketColors } from '@/lib/market-colors'
+import { getChartThemeColors } from '@/lib/chart-theme'
+import { useTheme } from '@/components/theme-provider'
 
 interface KLineDataPoint {
   date?: unknown
@@ -29,16 +31,12 @@ const timeRanges: { value: TimeRange; label: string; days: number }[] = [
   { value: 'all', label: '全部', days: -1 },
 ]
 
-// Chart colors - using direct hex values since lightweight-charts doesn't support CSS variables
-const CHART_COLORS = {
-  text: '#71717a',
-  border: '#27272a',
-}
-
 export function StockKlineChart({ data, className }: StockKlineChartProps) {
   const chartContainerRef = useRef<HTMLDivElement>(null)
   const chartRef = useRef<IChartApi | null>(null)
   const [timeRange, setTimeRange] = useState<TimeRange>('3m')
+  const { theme } = useTheme()
+  const isDark = theme === 'dark' || (theme === 'system' && window.matchMedia('(prefers-color-scheme: dark)').matches)
 
   // Filter data based on time range
   const filteredData = (() => {
@@ -68,8 +66,8 @@ export function StockKlineChart({ data, className }: StockKlineChartProps) {
       chartRef.current = null
     }
 
-    // Use fixed colors since lightweight-charts doesn't support CSS variables
-    const { text: textColor, border: borderColor } = CHART_COLORS
+    // 获取主题颜色
+    const chartColors = getChartThemeColors(isDark)
     const marketColors = getMarketColors()
     const profitColor = marketColors.profit
     const lossColor = marketColors.loss
@@ -77,19 +75,19 @@ export function StockKlineChart({ data, className }: StockKlineChartProps) {
     const chart = createChart(chartContainerRef.current, {
       layout: {
         background: { type: ColorType.Solid, color: 'transparent' },
-        textColor,
+        textColor: chartColors.text,
       },
       grid: {
-        vertLines: { color: borderColor },
-        horzLines: { color: borderColor },
+        vertLines: { color: chartColors.grid },
+        horzLines: { color: chartColors.grid },
       },
       width: chartContainerRef.current.clientWidth,
       height: 400,
       rightPriceScale: {
-        borderColor,
+        borderColor: chartColors.border,
       },
       timeScale: {
-        borderColor,
+        borderColor: chartColors.border,
         timeVisible: true,
         secondsVisible: false,
       },
@@ -174,7 +172,7 @@ export function StockKlineChart({ data, className }: StockKlineChartProps) {
         chartRef.current = null
       }
     }
-  }, [filteredData])
+  }, [filteredData, isDark])
 
   if (!data || data.length === 0) {
     return (
