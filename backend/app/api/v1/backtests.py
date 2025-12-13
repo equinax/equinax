@@ -19,6 +19,7 @@ from app.db.models.backtest import (
     BacktestTrade,
     BacktestStatus,
 )
+from app.db.models.strategy import Strategy
 from app.core.arq import get_arq_pool
 from app.core.redis_pubsub import subscribe_events
 
@@ -60,6 +61,17 @@ class BacktestJobSummaryMetrics(BaseModel):
     profitable_count: int = Field(default=0, description="Number of profitable backtests")
 
 
+class StrategySnapshotResponse(BaseModel):
+    """Schema for strategy snapshot within a backtest job."""
+    id: str
+    name: str
+    version: int
+    code: str
+    code_hash: Optional[str]
+    strategy_type: Optional[str]
+    parameters: Optional[dict]
+
+
 class BacktestJobResponse(BaseModel):
     """Schema for backtest job response."""
     id: UUID
@@ -82,6 +94,8 @@ class BacktestJobResponse(BaseModel):
     created_at: datetime
     started_at: Optional[datetime]
     completed_at: Optional[datetime]
+    # Strategy code snapshots at execution time
+    strategy_snapshots: Optional[dict[str, StrategySnapshotResponse]] = None
     # Summary metrics for completed jobs
     summary: Optional[BacktestJobSummaryMetrics] = None
 
@@ -286,6 +300,26 @@ async def create_backtest(
     # Calculate total backtests
     total_backtests = len(backtest_in.strategy_ids) * len(backtest_in.stock_codes)
 
+    # Fetch all strategies and create snapshots
+    strategy_snapshots = {}
+    for sid in backtest_in.strategy_ids:
+        result = await db.execute(select(Strategy).where(Strategy.id == sid))
+        strategy = result.scalar_one_or_none()
+        if not strategy:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"Strategy {sid} not found",
+            )
+        strategy_snapshots[str(sid)] = {
+            "id": str(strategy.id),
+            "name": strategy.name,
+            "version": strategy.version,
+            "code": strategy.code,
+            "code_hash": strategy.code_hash,
+            "strategy_type": strategy.strategy_type,
+            "parameters": strategy.parameters,
+        }
+
     # Create job
     job = BacktestJob(
         user_id=MOCK_USER_ID,
@@ -301,6 +335,7 @@ async def create_backtest(
         position_sizing=backtest_in.position_sizing.model_dump(),
         total_backtests=total_backtests,
         status=BacktestStatus.QUEUED,
+        strategy_snapshots=strategy_snapshots,
     )
 
     db.add(job)

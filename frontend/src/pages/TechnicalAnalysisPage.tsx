@@ -158,6 +158,12 @@ export default function TechnicalAnalysisPage() {
 
   const isLoading = resultLoading || strategyLoading
 
+  // Get strategy snapshot from job (preferred) or fallback to fetched strategy
+  const strategySnapshot = job?.strategy_snapshots?.[result?.strategy_id || '']
+  const strategyCode = strategySnapshot?.code ?? strategy?.code ?? ''
+  const strategyName = strategySnapshot?.name ?? strategy?.name ?? '策略代码'
+  const strategyType = strategySnapshot?.strategy_type ?? strategy?.strategy_type ?? '未分类'
+
   // Transform trades for display
   const trades: TradeRecord[] | undefined = tradesData?.items?.map(t => ({
     id: t.id,
@@ -192,12 +198,12 @@ export default function TechnicalAnalysisPage() {
   const totalReturn = result ? Number(result.total_return) : 0
   const stockName = stockInfo?.code_name || ''
   const dateRange = job ? `${job.start_date.replace(/-/g, '/')} - ${job.end_date.replace(/-/g, '/')}` : ''
-  const headerInfo = result && strategy ? (
+  const headerInfo = result && (strategySnapshot || strategy) ? (
     <div className="flex items-center gap-3 text-sm">
       <Badge variant="outline" className="font-mono">{result.stock_code}</Badge>
       {stockName && <span className="font-medium">{stockName}</span>}
       <span className="text-muted-foreground">|</span>
-      <span className="text-muted-foreground">{strategy.name}</span>
+      <span className="text-muted-foreground">{strategyName}</span>
       <span className="text-muted-foreground">|</span>
       {dateRange && <span className="text-muted-foreground">{dateRange}</span>}
       {dateRange && <span className="text-muted-foreground">|</span>}
@@ -367,16 +373,16 @@ export default function TechnicalAnalysisPage() {
                 <div className="flex items-center justify-between p-3 border-b">
                   <div className="flex items-center gap-2">
                     <Code2 className="h-4 w-4" />
-                    <span className="font-medium text-sm">{strategy?.name || '策略代码'}</span>
+                    <span className="font-medium text-sm">{strategyName}</span>
                   </div>
-                  <Badge variant="secondary" className="text-xs">{strategy?.strategy_type || '未分类'}</Badge>
+                  <Badge variant="secondary" className="text-xs">{strategyType}</Badge>
                 </div>
                 <div>
-                  {strategy?.code ? (
+                  {strategyCode ? (
                     <Editor
                       height="500px"
                       language="python"
-                      value={strategy.code}
+                      value={strategyCode}
                       theme={isDark ? 'vs-dark' : 'light'}
                       options={{
                         readOnly: true,

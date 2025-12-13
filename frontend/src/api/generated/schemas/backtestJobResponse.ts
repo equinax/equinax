@@ -6,6 +6,7 @@ import type { BacktestJobResponseErrorMessage } from "./backtestJobResponseError
 import type { BacktestJobResponseName } from "./backtestJobResponseName";
 import type { BacktestJobResponsePositionSizing } from "./backtestJobResponsePositionSizing";
 import type { BacktestJobResponseStartedAt } from "./backtestJobResponseStartedAt";
+import type { BacktestJobResponseStrategySnapshots } from "./backtestJobResponseStrategySnapshots";
 import type { BacktestJobResponseSummary } from "./backtestJobResponseSummary";
 
 /**
@@ -34,6 +35,7 @@ export interface BacktestJobResponse {
   status: string;
   stock_codes: string[];
   strategy_ids: string[];
+  strategy_snapshots?: BacktestJobResponseStrategySnapshots;
   successful_backtests: number;
   summary?: BacktestJobResponseSummary;
   total_backtests: number;

@@ -104,6 +104,11 @@ class BacktestJob(Base):
     successful_backtests: Mapped[int] = mapped_column(Integer, default=0)
     failed_backtests: Mapped[int] = mapped_column(Integer, default=0)
 
+    # Strategy code snapshot at execution time
+    strategy_snapshots: Mapped[Optional[Dict[str, Any]]] = mapped_column(
+        JSONB, nullable=True, comment="策略执行时的完整快照 {strategy_id: {name, code, ...}}"
+    )
+
     # Relationships
     results: Mapped[List["BacktestResult"]] = relationship(
         "BacktestResult",
