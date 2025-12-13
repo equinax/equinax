@@ -9,6 +9,7 @@ import ResultsPage from '@/pages/ResultsPage'
 import ResultDetailPage from '@/pages/ResultDetailPage'
 import TechnicalAnalysisPage from '@/pages/TechnicalAnalysisPage'
 import DataExplorerPage from '@/pages/DataExplorerPage'
+import SettingsPage from '@/pages/SettingsPage'
 
 function App() {
   return (
@@ -24,6 +25,7 @@ function App() {
           <Route path="results/:jobId" element={<ResultDetailPage />} />
           <Route path="analysis/:jobId/:resultId" element={<TechnicalAnalysisPage />} />
           <Route path="data" element={<DataExplorerPage />} />
+          <Route path="settings" element={<SettingsPage />} />
         </Route>
       </Routes>
     </ThemeProvider>

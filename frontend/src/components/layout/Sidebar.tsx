@@ -8,10 +8,7 @@ import {
   BarChart3,
   Database,
   Settings,
-  ChevronLeft,
-  ChevronRight,
 } from 'lucide-react'
-import { Button } from '@/components/ui/button'
 import {
   Tooltip,
   TooltipContent,
@@ -29,8 +26,9 @@ const navigation = [
 
 export default function Sidebar() {
   const location = useLocation()
-  // 默认展开侧边栏
   const [collapsed, setCollapsed] = useState(false)
+
+  const toggleCollapse = () => setCollapsed(!collapsed)
 
   return (
     <TooltipProvider delayDuration={0}>
@@ -40,13 +38,16 @@ export default function Sidebar() {
           collapsed ? 'w-16' : 'w-64'
         )}
       >
-        {/* Logo */}
-        <div className="flex h-16 items-center border-b border-border px-4">
+        {/* Logo - clickable to toggle */}
+        <div
+          className="flex h-16 items-center border-b border-border px-4 cursor-pointer select-none"
+          onClick={toggleCollapse}
+        >
           <div className={cn('flex items-center', collapsed && 'justify-center w-full')}>
             {collapsed ? (
               <span className="text-lg font-bold tracking-tight text-primary">Eqx</span>
             ) : (
-              <span className="text-[2rem] tracking-[0.02em] select-none">
+              <span className="text-[2rem] tracking-[0.02em]">
                 <span className="font-extrabold text-foreground/90">Equi</span>
                 <span className="font-semibold text-primary">nax</span>
               </span>
@@ -88,7 +89,13 @@ export default function Sidebar() {
           })}
         </nav>
 
-        {/* Bottom section */}
+        {/* Clickable empty area to toggle collapse */}
+        <div
+          className="flex-grow cursor-pointer min-h-[100px]"
+          onClick={toggleCollapse}
+        />
+
+        {/* Bottom section - Settings */}
         <div className="border-t border-border p-2">
           {collapsed ? (
             <Tooltip>
@@ -111,23 +118,6 @@ export default function Sidebar() {
               设置
             </Link>
           )}
-
-          {/* Collapse toggle */}
-          <Button
-            variant="ghost"
-            size="sm"
-            onClick={() => setCollapsed(!collapsed)}
-            className={cn('w-full mt-2', collapsed && 'px-2')}
-          >
-            {collapsed ? (
-              <ChevronRight className="h-4 w-4" />
-            ) : (
-              <>
-                <ChevronLeft className="h-4 w-4 mr-2" />
-                收起
-              </>
-            )}
-          </Button>
         </div>
       </div>
     </TooltipProvider>
