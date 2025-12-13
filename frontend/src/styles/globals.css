@@ -2,6 +2,44 @@
 @tailwind components;
 @tailwind utilities;
 
+/*
+ * ═══════════════════════════════════════════════════════════════
+ * Inter 字体 - 本地加载
+ * ═══════════════════════════════════════════════════════════════
+ * 现代感强，数字清晰，特别适合金融数据展示
+ */
+@font-face {
+  font-family: 'Inter';
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url('/fonts/inter/Inter-Regular.woff2') format('woff2');
+}
+
+@font-face {
+  font-family: 'Inter';
+  font-style: normal;
+  font-weight: 500;
+  font-display: swap;
+  src: url('/fonts/inter/Inter-Medium.woff2') format('woff2');
+}
+
+@font-face {
+  font-family: 'Inter';
+  font-style: normal;
+  font-weight: 600;
+  font-display: swap;
+  src: url('/fonts/inter/Inter-SemiBold.woff2') format('woff2');
+}
+
+@font-face {
+  font-family: 'Inter';
+  font-style: normal;
+  font-weight: 700;
+  font-display: swap;
+  src: url('/fonts/inter/Inter-Bold.woff2') format('woff2');
+}
+
 @layer base {
   :root {
     /*
@@ -58,8 +96,8 @@
     --radius: 0.5rem;
 
     /* 交易色 - A股：红涨绿跌 */
-    --profit: 0 80% 48%;                /* 庄重的红，不刺眼 */
-    --loss: 152 60% 36%;                /* 沉稳的绿，有力量 */
+    --profit: 0 62% 51%;                /* 胭脂红 #c93b3b - 庄重沉稳 */
+    --loss: 152 54% 35%;                /* 翡翠绿 #288a5b - 深邃有力 */
 
     /* 图表色系 - 和谐的冷暖搭配 */
     --chart-1: 220 70% 45%;             /* 深海蓝 */
@@ -129,9 +167,9 @@
     --input: 225 15% 12%;
     --ring: 210 50% 70%;
 
-    /* 交易色 - 冰夜中的光芒，更明亮但不刺眼 */
-    --profit: 0 85% 62%;                /* 冰火红，热烈但克制 */
-    --loss: 152 65% 50%;                /* 极光绿，明亮但柔和 */
+    /* 交易色 - 冰夜中的光芒 */
+    --profit: 0 80% 70%;                /* 珊瑚红 #f07575 - 温暖明亮 */
+    --loss: 152 52% 53%;                /* 极光绿 #4cc38a - 清新如极光 */
 
     /* 图表色系 - 极光般的冷色系 */
     --chart-1: 210 80% 55%;             /* 极光蓝 */

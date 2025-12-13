@@ -1,7 +1,8 @@
-import { useEffect, useRef } from 'react'
+import { useEffect, useRef, useMemo } from 'react'
 import { createChart, IChartApi, ISeriesApi, LineStyle, ColorType, LineData, Time, SeriesMarker } from 'lightweight-charts'
 import { useTheme } from '@/components/theme-provider'
-import { CHART_PALETTE, getMarketColors } from '@/lib/market-colors'
+import { getChartPalette, getMarketColors } from '@/lib/market-colors'
+import { getChartThemeColors } from '@/lib/chart-theme'
 import type { EquityCurvePoint, TradeRecord } from '@/types/backtest'
 
 interface MultiEquityCurveChartProps {
@@ -20,39 +21,45 @@ export function MultiEquityCurveChart({ data, trades, height = 400 }: MultiEquit
 
   const stockCodes = data ? Object.keys(data) : []
 
+  // 获取主题感知的调色板
+  const chartPalette = useMemo(() => getChartPalette(isDark), [isDark])
+
   useEffect(() => {
     if (!chartContainerRef.current) return
+
+    // 获取图表主题颜色
+    const chartColors = getChartThemeColors(isDark)
 
     // Create chart
     const chart = createChart(chartContainerRef.current, {
       layout: {
         background: { type: ColorType.Solid, color: 'transparent' },
-        textColor: isDark ? '#a1a1aa' : '#71717a',
+        textColor: chartColors.text,
       },
       grid: {
-        vertLines: { color: isDark ? '#27272a' : '#e4e4e7' },
-        horzLines: { color: isDark ? '#27272a' : '#e4e4e7' },
+        vertLines: { color: chartColors.grid },
+        horzLines: { color: chartColors.grid },
       },
       crosshair: {
         mode: 1,
         vertLine: {
-          color: isDark ? '#52525b' : '#a1a1aa',
+          color: chartColors.crosshair,
           width: 1,
           style: LineStyle.Dashed,
         },
         horzLine: {
-          color: isDark ? '#52525b' : '#a1a1aa',
+          color: chartColors.crosshair,
           width: 1,
           style: LineStyle.Dashed,
         },
       },
       timeScale: {
-        borderColor: isDark ? '#27272a' : '#e4e4e7',
+        borderColor: chartColors.border,
         timeVisible: true,
         secondsVisible: false,
       },
       rightPriceScale: {
-        borderColor: isDark ? '#27272a' : '#e4e4e7',
+        borderColor: chartColors.border,
         scaleMargins: { top: 0.1, bottom: 0.1 },
       },
       width: chartContainerRef.current.clientWidth,
@@ -95,11 +102,14 @@ export function MultiEquityCurveChart({ data, trades, height = 400 }: MultiEquit
       }
     })
 
+    // 获取主题调色板
+    const palette = getChartPalette(isDark)
+
     // Add or update series for each stock
     Object.entries(data).forEach(([stockCode, points], index) => {
       if (!Array.isArray(points)) return
 
-      const color = CHART_PALETTE[index % CHART_PALETTE.length]
+      const color = palette[index % palette.length]
 
       let series = existingSeries.get(stockCode)
       if (!series) {
@@ -134,7 +144,7 @@ export function MultiEquityCurveChart({ data, trades, height = 400 }: MultiEquit
     })
 
     chart.timeScale().fitContent()
-  }, [data])
+  }, [data, isDark])
 
   // Update trade markers
   useEffect(() => {
@@ -210,7 +220,7 @@ export function MultiEquityCurveChart({ data, trades, height = 400 }: MultiEquit
           <div key={stockCode} className="flex items-center gap-2">
             <div
               className="w-3 h-3 rounded-full"
-              style={{ backgroundColor: CHART_PALETTE[index % CHART_PALETTE.length] }}
+              style={{ backgroundColor: chartPalette[index % chartPalette.length] }}
             />
             <span className="text-sm text-muted-foreground">{stockCode}</span>
           </div>
