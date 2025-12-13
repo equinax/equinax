@@ -4,68 +4,129 @@
 
 @layer base {
   :root {
-    /* Light mode - Professional trading platform */
-    --background: 0 0% 100%;
-    --foreground: 224 71.4% 4.1%;
-    --card: 0 0% 100%;
-    --card-foreground: 224 71.4% 4.1%;
-    --popover: 0 0% 100%;
-    --popover-foreground: 224 71.4% 4.1%;
-    --primary: 220.9 39.3% 11%;
-    --primary-foreground: 210 20% 98%;
-    --secondary: 220 14.3% 95.9%;
-    --secondary-foreground: 220.9 39.3% 11%;
-    --muted: 220 14.3% 95.9%;
-    --muted-foreground: 220 8.9% 46.1%;
-    --accent: 220 14.3% 95.9%;
-    --accent-foreground: 220.9 39.3% 11%;
-    --destructive: 0 84.2% 60.2%;
-    --destructive-foreground: 210 20% 98%;
-    --border: 220 13% 91%;
-    --input: 220 13% 91%;
-    --ring: 224 71.4% 4.1%;
+    /*
+     * 极昼白芒 (Polar Day Radiance)
+     * ═══════════════════════════════════════════════════════════════
+     * 灵感：北极极昼时分，阳光倾洒在无垠雪原上的纯净光芒
+     * 不是刺目的纯白，而是带有温度的、有呼吸感的白
+     *
+     * 核心理念：
+     * - 背景带有微微的暖象牙调，如阳光下的雪
+     * - 文字使用冷调深色，形成优雅对比
+     * - 整体明亮通透，却不让眼睛疲劳
+     */
+
+    /* 基础色调 - 象牙白底，冷蓝墨文 */
+    --background: 60 30% 99%;           /* 极致的象牙白，几乎纯白但有温度 */
+    --foreground: 220 25% 10%;          /* 深墨蓝，比纯黑更有质感 */
+
+    /* 卡片 - 略带奶油色的悬浮层 */
+    --card: 50 25% 98%;
+    --card-foreground: 220 25% 10%;
+
+    /* 弹出层 - 纯净的白 */
+    --popover: 60 20% 99%;
+    --popover-foreground: 220 25% 10%;
+
+    /* 主色 - 深邃的靛蓝，如北极夜空 */
+    --primary: 220 65% 18%;
+    --primary-foreground: 60 20% 98%;
+
+    /* 次要色 - 淡雅的灰蓝 */
+    --secondary: 210 15% 94%;
+    --secondary-foreground: 220 25% 15%;
+
+    /* 静音色 - 用于次要元素 */
+    --muted: 45 12% 95%;
+    --muted-foreground: 220 10% 45%;
+
+    /* 强调色 - 悬浮和选中状态 */
+    --accent: 210 20% 93%;
+    --accent-foreground: 220 25% 12%;
+
+    /* 危险色 - 克制的红 */
+    --destructive: 0 72% 51%;
+    --destructive-foreground: 60 20% 98%;
+
+    /* 边框和输入框 - 几乎透明的分隔 */
+    --border: 45 10% 88%;
+    --input: 45 10% 90%;
+    --ring: 220 60% 50%;
+
     --radius: 0.5rem;
 
-    /* Trading colors - China A-shares: Red up, Green down */
-    --profit: 0 84% 60%;
-    --loss: 142 76% 36%;
-    --chart-1: 12 76% 61%;
-    --chart-2: 173 58% 39%;
-    --chart-3: 197 37% 24%;
-    --chart-4: 43 74% 66%;
-    --chart-5: 27 87% 67%;
+    /* 交易色 - A股：红涨绿跌 */
+    --profit: 0 80% 48%;                /* 庄重的红，不刺眼 */
+    --loss: 152 60% 36%;                /* 沉稳的绿，有力量 */
+
+    /* 图表色系 - 和谐的冷暖搭配 */
+    --chart-1: 220 70% 45%;             /* 深海蓝 */
+    --chart-2: 165 50% 40%;             /* 翡翠绿 */
+    --chart-3: 35 85% 50%;              /* 琥珀橙 */
+    --chart-4: 280 55% 55%;             /* 紫罗兰 */
+    --chart-5: 350 65% 50%;             /* 玫瑰红 */
   }
 
   .dark {
-    /* Dark mode - Professional trading terminal */
-    --background: 224 71.4% 4.1%;
-    --foreground: 210 20% 98%;
-    --card: 224 71.4% 4.1%;
-    --card-foreground: 210 20% 98%;
-    --popover: 224 71.4% 4.1%;
-    --popover-foreground: 210 20% 98%;
-    --primary: 210 20% 98%;
-    --primary-foreground: 220.9 39.3% 11%;
-    --secondary: 215 27.9% 16.9%;
-    --secondary-foreground: 210 20% 98%;
-    --muted: 215 27.9% 16.9%;
-    --muted-foreground: 217.9 10.6% 64.9%;
-    --accent: 215 27.9% 16.9%;
-    --accent-foreground: 210 20% 98%;
-    --destructive: 0 62.8% 30.6%;
-    --destructive-foreground: 210 20% 98%;
-    --border: 215 27.9% 16.9%;
-    --input: 215 27.9% 16.9%;
-    --ring: 216 12.2% 83.9%;
+    /*
+     * 冰夜永黑 (Ice Night Eternal)
+     * ═══════════════════════════════════════════════════════════════
+     * 灵感：深夜北极冰原下的永恒宁静，冰川深处的幽蓝
+     * 不是死寂的纯黑，而是隐含着冰冷气息的深邃
+     *
+     * 核心理念：
+     * - 近乎绝对的黑暗，但带有微妙的冷蓝底调
+     * - 如同站在极夜的冰川之上，仰望星空
+     * - 层次分明却不突兀，如同冰层的渐变
+     */
 
-    /* Trading colors - brighter for dark mode - China A-shares: Red up, Green down */
-    --profit: 0 91% 71%;
-    --loss: 142 69% 58%;
-    --chart-1: 220 70% 50%;
-    --chart-2: 160 60% 45%;
-    --chart-3: 30 80% 55%;
-    --chart-4: 280 65% 60%;
-    --chart-5: 340 75% 55%;
+    /* 基础色调 - 冰川深黑，银霜白文 */
+    --background: 225 30% 3.5%;         /* 极致的深黑，隐含冰蓝 */
+    --foreground: 210 40% 96%;          /* 冷调的银白，如霜雪 */
+
+    /* 卡片 - 略浅的冰层，创造深度 */
+    --card: 225 25% 5.5%;
+    --card-foreground: 210 40% 96%;
+
+    /* 弹出层 - 更明显的层次 */
+    --popover: 225 25% 6%;
+    --popover-foreground: 210 40% 96%;
+
+    /* 主色 - 银白的强调，如极光 */
+    --primary: 210 50% 95%;
+    --primary-foreground: 225 30% 8%;
+
+    /* 次要色 - 深邃的冰蓝 */
+    --secondary: 225 20% 11%;
+    --secondary-foreground: 210 35% 92%;
+
+    /* 静音色 - 冰川的阴影 */
+    --muted: 225 18% 10%;
+    --muted-foreground: 215 15% 55%;
+
+    /* 强调色 - 悬浮状态 */
+    --accent: 225 22% 12%;
+    --accent-foreground: 210 35% 94%;
+
+    /* 危险色 - 冷调的红 */
+    --destructive: 0 60% 40%;
+    --destructive-foreground: 210 40% 96%;
+
+    /* 边框和输入框 - 微妙的冰纹 */
+    --border: 225 15% 13%;
+    --input: 225 15% 12%;
+    --ring: 210 50% 70%;
+
+    /* 交易色 - 冰夜中的光芒，更明亮但不刺眼 */
+    --profit: 0 85% 62%;                /* 冰火红，热烈但克制 */
+    --loss: 152 65% 50%;                /* 极光绿，明亮但柔和 */
+
+    /* 图表色系 - 极光般的冷色系 */
+    --chart-1: 210 80% 55%;             /* 极光蓝 */
+    --chart-2: 165 60% 45%;             /* 冰川绿 */
+    --chart-3: 35 80% 55%;              /* 晨曦橙 */
+    --chart-4: 270 60% 60%;             /* 极夜紫 */
+    --chart-5: 345 70% 55%;             /* 霜玫红 */
   }
 }
 
