@@ -2,12 +2,15 @@ import { useState } from 'react'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
-import { PlayCircle, Loader2, X, ListFilter, Plus, Trash2 } from 'lucide-react'
+import { PlayCircle, Loader2, X, ListFilter, Plus, Trash2, Database, Users } from 'lucide-react'
 import { useListStrategiesApiV1StrategiesGet } from '@/api/generated/strategies/strategies'
 import { useListStocksApiV1StocksGet, useSearchStocksApiV1StocksSearchGet } from '@/api/generated/stocks/stocks'
 import { useCreateBacktestApiV1BacktestsPost } from '@/api/generated/backtests/backtests'
+import { useListPredefinedPoolsApiV1PoolsPredefinedGet, usePreviewPoolApiV1PoolsPoolIdPreviewGet } from '@/api/generated/stock-pools/stock-pools'
 import { useQueryClient } from '@tanstack/react-query'
 import { useNavigate } from 'react-router-dom'
+
+type SelectionMode = 'manual' | 'pool'
 
 export default function BacktestPage() {
   const navigate = useNavigate()
@@ -30,6 +33,10 @@ export default function BacktestPage() {
   const [stockPoolPage, setStockPoolPage] = useState(1)
   const [showStockPool, setShowStockPool] = useState(false)
 
+  // Pool selection mode state
+  const [selectionMode, setSelectionMode] = useState<SelectionMode>('pool')
+  const [selectedPoolId, setSelectedPoolId] = useState<string | null>(null)
+
   // Fetch strategies
   const { data: strategiesData } = useListStrategiesApiV1StrategiesGet({
     page_size: 100,
@@ -51,6 +58,16 @@ export default function BacktestPage() {
       search: stockPoolSearch || undefined,
     },
     { query: { enabled: showStockPool } }
+  )
+
+  // Fetch predefined pools
+  const { data: predefinedPools } = useListPredefinedPoolsApiV1PoolsPredefinedGet()
+
+  // Fetch pool preview when a pool is selected
+  const { data: poolPreview, isLoading: isLoadingPoolPreview } = usePreviewPoolApiV1PoolsPoolIdPreviewGet(
+    selectedPoolId || '',
+    {},
+    { query: { enabled: !!selectedPoolId && selectionMode === 'pool' } }
   )
 
   // Create backtest mutation
@@ -96,22 +113,45 @@ export default function BacktestPage() {
   }
 
   const handleSubmit = () => {
-    if (selectedStrategies.length === 0 || selectedStocks.length === 0) {
+    if (selectedStrategies.length === 0) {
       return
     }
 
-    createMutation.mutate({
-      data: {
-        strategy_ids: selectedStrategies,
-        stock_codes: selectedStocks.map((s) => s.code),
-        start_date: startDate,
-        end_date: endDate,
-        initial_capital: parseFloat(initialCapital),
-        commission_rate: parseFloat(commissionRate),
-        slippage: parseFloat(slippage),
-        position_sizing: { type: 'percent', value: 10 },
-      },
-    })
+    // Check stock source based on mode
+    if (selectionMode === 'manual' && selectedStocks.length === 0) {
+      return
+    }
+    if (selectionMode === 'pool' && !selectedPoolId) {
+      return
+    }
+
+    const baseData = {
+      strategy_ids: selectedStrategies,
+      start_date: startDate,
+      end_date: endDate,
+      initial_capital: parseFloat(initialCapital),
+      commission_rate: parseFloat(commissionRate),
+      slippage: parseFloat(slippage),
+      position_sizing: { type: 'percent', value: 10 },
+    }
+
+    if (selectionMode === 'pool' && selectedPoolId) {
+      // Use pool_id for batch backtest
+      createMutation.mutate({
+        data: {
+          ...baseData,
+          pool_id: selectedPoolId,
+        },
+      })
+    } else {
+      // Use manual stock_codes
+      createMutation.mutate({
+        data: {
+          ...baseData,
+          stock_codes: selectedStocks.map((s) => s.code),
+        },
+      })
+    }
   }
 
   return (
@@ -242,206 +282,309 @@ export default function BacktestPage() {
             <div className="flex items-center justify-between">
               <CardTitle>股票池</CardTitle>
               <div className="flex items-center gap-2">
-                <span className="text-sm text-muted-foreground">
-                  已选 {selectedStocks.length} 只
-                </span>
-                {selectedStocks.length > 0 && (
-                  <Button variant="ghost" size="sm" onClick={handleClearAllStocks}>
-                    <Trash2 className="h-4 w-4" />
-                  </Button>
-                )}
+                {/* Mode selector */}
+                <div className="flex rounded-md border p-0.5 bg-muted/30">
+                  <button
+                    type="button"
+                    onClick={() => setSelectionMode('pool')}
+                    className={`flex items-center gap-1 px-2 py-1 text-xs rounded ${
+                      selectionMode === 'pool'
+                        ? 'bg-background shadow text-foreground'
+                        : 'text-muted-foreground hover:text-foreground'
+                    }`}
+                  >
+                    <Database className="h-3 w-3" />
+                    快速选择
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setSelectionMode('manual')}
+                    className={`flex items-center gap-1 px-2 py-1 text-xs rounded ${
+                      selectionMode === 'manual'
+                        ? 'bg-background shadow text-foreground'
+                        : 'text-muted-foreground hover:text-foreground'
+                    }`}
+                  >
+                    <Users className="h-3 w-3" />
+                    手动选择
+                  </button>
+                </div>
               </div>
             </div>
           </CardHeader>
           <CardContent className="space-y-4">
-            {/* Search input */}
-            <div className="relative">
-              <Input
-                placeholder="搜索股票代码或名称..."
-                value={stockSearch}
-                onChange={(e) => {
-                  setStockSearch(e.target.value)
-                  setShowSearchResults(true)
-                }}
-                onFocus={() => setShowSearchResults(true)}
-                onBlur={() => {
-                  setTimeout(() => setShowSearchResults(false), 200)
-                }}
-              />
-              {showSearchResults && stockSearch.length >= 2 && searchResults.length > 0 && (
-                <div className="absolute z-10 mt-1 w-full rounded-md border bg-background shadow-lg max-h-60 overflow-auto">
-                  {searchResults.slice(0, 10).map((stock) => (
+            {selectionMode === 'pool' ? (
+              /* Pool Selection Mode */
+              <div className="space-y-4">
+                <div className="text-sm text-muted-foreground">
+                  选择预定义股票池进行批量回测
+                </div>
+
+                {/* Predefined pools grid */}
+                <div className="grid grid-cols-2 gap-2">
+                  {predefinedPools?.map((pool) => (
                     <button
-                      key={stock.code}
+                      key={pool.id}
                       type="button"
-                      className="w-full px-3 py-2 text-left text-sm hover:bg-accent flex justify-between items-center"
-                      onMouseDown={(e) => {
-                        e.preventDefault()
-                        handleAddStock(stock.code, stock.code_name || stock.code)
-                      }}
+                      onClick={() => setSelectedPoolId(pool.id === selectedPoolId ? null : pool.id)}
+                      className={`p-3 rounded-lg border text-left transition-colors ${
+                        pool.id === selectedPoolId
+                          ? 'border-primary bg-primary/5'
+                          : 'border-border hover:bg-muted/50'
+                      }`}
                     >
-                      <span>{stock.code} - {stock.code_name}</span>
-                      <Plus className="h-4 w-4 text-muted-foreground" />
+                      <div className="font-medium text-sm">{pool.name}</div>
+                      <div className="text-xs text-muted-foreground mt-1">{pool.description}</div>
                     </button>
                   ))}
                 </div>
-              )}
-            </div>
 
-            {/* Selected stocks */}
-            <div className="flex flex-wrap gap-2 min-h-[60px] p-2 border rounded-md bg-muted/30">
-              {selectedStocks.length > 0 ? (
-                selectedStocks.map((stock) => (
-                  <span
-                    key={stock.code}
-                    className="flex items-center gap-1 rounded-full bg-primary/10 px-2 py-0.5 text-xs"
-                  >
-                    {stock.code}
-                    <button onClick={() => handleRemoveStock(stock.code)}>
-                      <X className="h-3 w-3" />
-                    </button>
-                  </span>
-                ))
-              ) : (
-                <span className="text-sm text-muted-foreground m-auto">搜索或从下方列表添加股票</span>
-              )}
-            </div>
-
-            {/* Stock pool browser toggle */}
-            <div className="border-t pt-4">
-              <Button
-                variant="outline"
-                className="w-full"
-                onClick={() => setShowStockPool(!showStockPool)}
-              >
-                <ListFilter className="mr-2 h-4 w-4" />
-                {showStockPool ? '收起股票列表' : '浏览所有股票'}
-              </Button>
-            </div>
-
-            {/* Stock pool browser */}
-            {showStockPool && (
-              <div className="space-y-3 border-t pt-4">
-                {/* Filters */}
-                <div className="flex gap-2">
-                  <select
-                    className="flex-1 rounded-md border border-input bg-background px-3 py-2 text-sm"
-                    value={stockPoolExchange}
-                    onChange={(e) => {
-                      setStockPoolExchange(e.target.value)
-                      setStockPoolPage(1)
-                    }}
-                  >
-                    <option value="">全部交易所</option>
-                    <option value="sh">上海 (sh)</option>
-                    <option value="sz">深圳 (sz)</option>
-                  </select>
+                {/* Pool preview */}
+                {selectedPoolId && (
+                  <div className="border rounded-lg p-4 bg-muted/30">
+                    <div className="flex items-center justify-between mb-2">
+                      <span className="text-sm font-medium">池预览</span>
+                      {isLoadingPoolPreview ? (
+                        <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
+                      ) : (
+                        <span className="text-sm text-muted-foreground">
+                          共 {poolPreview?.total_count || 0} 只股票
+                        </span>
+                      )}
+                    </div>
+                    {poolPreview && (
+                      <>
+                        {/* Distribution stats */}
+                        {poolPreview.exchange_distribution && (
+                          <div className="grid grid-cols-2 gap-2 text-xs mb-3">
+                            {Object.entries(poolPreview.exchange_distribution).map(([exchange, count]) => (
+                              <div key={exchange} className="flex justify-between p-2 bg-background rounded">
+                                <span className="text-muted-foreground">{exchange === 'sh' ? '沪市' : '深市'}</span>
+                                <span>{count as number} 只</span>
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                        {/* Sample stocks */}
+                        <div className="flex flex-wrap gap-1 max-h-20 overflow-auto">
+                          {poolPreview.stock_codes?.slice(0, 20).map((code) => (
+                            <span key={code} className="text-xs bg-background px-1.5 py-0.5 rounded font-mono">
+                              {code}
+                            </span>
+                          ))}
+                          {poolPreview.stock_codes && poolPreview.stock_codes.length > 20 && (
+                            <span className="text-xs text-muted-foreground px-1.5 py-0.5">
+                              +{poolPreview.stock_codes.length - 20} 更多...
+                            </span>
+                          )}
+                        </div>
+                      </>
+                    )}
+                  </div>
+                )}
+              </div>
+            ) : (
+              /* Manual Selection Mode */
+              <>
+                {/* Search input */}
+                <div className="relative">
                   <Input
-                    className="flex-1"
-                    placeholder="筛选..."
-                    value={stockPoolSearch}
+                    placeholder="搜索股票代码或名称..."
+                    value={stockSearch}
                     onChange={(e) => {
-                      setStockPoolSearch(e.target.value)
-                      setStockPoolPage(1)
+                      setStockSearch(e.target.value)
+                      setShowSearchResults(true)
+                    }}
+                    onFocus={() => setShowSearchResults(true)}
+                    onBlur={() => {
+                      setTimeout(() => setShowSearchResults(false), 200)
                     }}
                   />
-                </div>
-
-                {/* Add all button */}
-                <Button
-                  variant="secondary"
-                  size="sm"
-                  className="w-full"
-                  onClick={handleAddAllFromPool}
-                  disabled={isLoadingStockPool || stockPoolItems.length === 0}
-                >
-                  <Plus className="mr-2 h-4 w-4" />
-                  添加当前页全部 ({stockPoolItems.length} 只)
-                </Button>
-
-                {/* Stock list */}
-                <div className="max-h-[300px] overflow-auto border rounded-md">
-                  {isLoadingStockPool ? (
-                    <div className="flex items-center justify-center py-8">
-                      <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
-                    </div>
-                  ) : stockPoolItems.length > 0 ? (
-                    <table className="w-full text-sm">
-                      <thead className="sticky top-0 bg-muted">
-                        <tr>
-                          <th className="text-left px-3 py-2 font-medium">代码</th>
-                          <th className="text-left px-3 py-2 font-medium">名称</th>
-                          <th className="text-right px-3 py-2 font-medium">操作</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {stockPoolItems.map((stock) => {
-                          const isSelected = selectedStocks.some((s) => s.code === stock.code)
-                          return (
-                            <tr
-                              key={stock.code}
-                              className={`border-t hover:bg-muted/50 ${isSelected ? 'bg-primary/5' : ''}`}
-                            >
-                              <td className="px-3 py-2 font-mono">{stock.code}</td>
-                              <td className="px-3 py-2 truncate max-w-[150px]">{stock.code_name}</td>
-                              <td className="px-3 py-2 text-right">
-                                {isSelected ? (
-                                  <Button
-                                    variant="ghost"
-                                    size="sm"
-                                    onClick={() => handleRemoveStock(stock.code)}
-                                  >
-                                    <X className="h-4 w-4 text-muted-foreground" />
-                                  </Button>
-                                ) : (
-                                  <Button
-                                    variant="ghost"
-                                    size="sm"
-                                    onClick={() => handleAddStock(stock.code, stock.code_name || stock.code)}
-                                  >
-                                    <Plus className="h-4 w-4" />
-                                  </Button>
-                                )}
-                              </td>
-                            </tr>
-                          )
-                        })}
-                      </tbody>
-                    </table>
-                  ) : (
-                    <div className="text-center py-8 text-muted-foreground">
-                      无匹配股票
+                  {showSearchResults && stockSearch.length >= 2 && searchResults.length > 0 && (
+                    <div className="absolute z-10 mt-1 w-full rounded-md border bg-background shadow-lg max-h-60 overflow-auto">
+                      {searchResults.slice(0, 10).map((stock) => (
+                        <button
+                          key={stock.code}
+                          type="button"
+                          className="w-full px-3 py-2 text-left text-sm hover:bg-accent flex justify-between items-center"
+                          onMouseDown={(e) => {
+                            e.preventDefault()
+                            handleAddStock(stock.code, stock.code_name || stock.code)
+                          }}
+                        >
+                          <span>{stock.code} - {stock.code_name}</span>
+                          <Plus className="h-4 w-4 text-muted-foreground" />
+                        </button>
+                      ))}
                     </div>
                   )}
                 </div>
 
-                {/* Pagination */}
-                {stockPoolPages > 1 && (
-                  <div className="flex items-center justify-between text-sm">
-                    <span className="text-muted-foreground">
-                      共 {stockPoolTotal} 只，第 {stockPoolPage}/{stockPoolPages} 页
-                    </span>
-                    <div className="flex gap-1">
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        disabled={stockPoolPage <= 1}
-                        onClick={() => setStockPoolPage(stockPoolPage - 1)}
+                {/* Selected stocks */}
+                <div className="flex items-center justify-between">
+                  <span className="text-sm text-muted-foreground">已选 {selectedStocks.length} 只</span>
+                  {selectedStocks.length > 0 && (
+                    <Button variant="ghost" size="sm" onClick={handleClearAllStocks}>
+                      <Trash2 className="h-4 w-4 mr-1" />
+                      清空
+                    </Button>
+                  )}
+                </div>
+                <div className="flex flex-wrap gap-2 min-h-[60px] p-2 border rounded-md bg-muted/30">
+                  {selectedStocks.length > 0 ? (
+                    selectedStocks.map((stock) => (
+                      <span
+                        key={stock.code}
+                        className="flex items-center gap-1 rounded-full bg-primary/10 px-2 py-0.5 text-xs"
                       >
-                        上一页
-                      </Button>
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        disabled={stockPoolPage >= stockPoolPages}
-                        onClick={() => setStockPoolPage(stockPoolPage + 1)}
+                        {stock.code}
+                        <button onClick={() => handleRemoveStock(stock.code)}>
+                          <X className="h-3 w-3" />
+                        </button>
+                      </span>
+                    ))
+                  ) : (
+                    <span className="text-sm text-muted-foreground m-auto">搜索或从下方列表添加股票</span>
+                  )}
+                </div>
+
+                {/* Stock pool browser toggle */}
+                <div className="border-t pt-4">
+                  <Button
+                    variant="outline"
+                    className="w-full"
+                    onClick={() => setShowStockPool(!showStockPool)}
+                  >
+                    <ListFilter className="mr-2 h-4 w-4" />
+                    {showStockPool ? '收起股票列表' : '浏览所有股票'}
+                  </Button>
+                </div>
+
+                {/* Stock pool browser */}
+                {showStockPool && (
+                  <div className="space-y-3 border-t pt-4">
+                    {/* Filters */}
+                    <div className="flex gap-2">
+                      <select
+                        className="flex-1 rounded-md border border-input bg-background px-3 py-2 text-sm"
+                        value={stockPoolExchange}
+                        onChange={(e) => {
+                          setStockPoolExchange(e.target.value)
+                          setStockPoolPage(1)
+                        }}
                       >
-                        下一页
-                      </Button>
+                        <option value="">全部交易所</option>
+                        <option value="sh">上海 (sh)</option>
+                        <option value="sz">深圳 (sz)</option>
+                      </select>
+                      <Input
+                        className="flex-1"
+                        placeholder="筛选..."
+                        value={stockPoolSearch}
+                        onChange={(e) => {
+                          setStockPoolSearch(e.target.value)
+                          setStockPoolPage(1)
+                        }}
+                      />
                     </div>
+
+                    {/* Add all button */}
+                    <Button
+                      variant="secondary"
+                      size="sm"
+                      className="w-full"
+                      onClick={handleAddAllFromPool}
+                      disabled={isLoadingStockPool || stockPoolItems.length === 0}
+                    >
+                      <Plus className="mr-2 h-4 w-4" />
+                      添加当前页全部 ({stockPoolItems.length} 只)
+                    </Button>
+
+                    {/* Stock list */}
+                    <div className="max-h-[300px] overflow-auto border rounded-md">
+                      {isLoadingStockPool ? (
+                        <div className="flex items-center justify-center py-8">
+                          <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
+                        </div>
+                      ) : stockPoolItems.length > 0 ? (
+                        <table className="w-full text-sm">
+                          <thead className="sticky top-0 bg-muted">
+                            <tr>
+                              <th className="text-left px-3 py-2 font-medium">代码</th>
+                              <th className="text-left px-3 py-2 font-medium">名称</th>
+                              <th className="text-right px-3 py-2 font-medium">操作</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {stockPoolItems.map((stock) => {
+                              const isSelected = selectedStocks.some((s) => s.code === stock.code)
+                              return (
+                                <tr
+                                  key={stock.code}
+                                  className={`border-t hover:bg-muted/50 ${isSelected ? 'bg-primary/5' : ''}`}
+                                >
+                                  <td className="px-3 py-2 font-mono">{stock.code}</td>
+                                  <td className="px-3 py-2 truncate max-w-[150px]">{stock.code_name}</td>
+                                  <td className="px-3 py-2 text-right">
+                                    {isSelected ? (
+                                      <Button
+                                        variant="ghost"
+                                        size="sm"
+                                        onClick={() => handleRemoveStock(stock.code)}
+                                      >
+                                        <X className="h-4 w-4 text-muted-foreground" />
+                                      </Button>
+                                    ) : (
+                                      <Button
+                                        variant="ghost"
+                                        size="sm"
+                                        onClick={() => handleAddStock(stock.code, stock.code_name || stock.code)}
+                                      >
+                                        <Plus className="h-4 w-4" />
+                                      </Button>
+                                    )}
+                                  </td>
+                                </tr>
+                              )
+                            })}
+                          </tbody>
+                        </table>
+                      ) : (
+                        <div className="text-center py-8 text-muted-foreground">
+                          无匹配股票
+                        </div>
+                      )}
+                    </div>
+
+                    {/* Pagination */}
+                    {stockPoolPages > 1 && (
+                      <div className="flex items-center justify-between text-sm">
+                        <span className="text-muted-foreground">
+                          共 {stockPoolTotal} 只，第 {stockPoolPage}/{stockPoolPages} 页
+                        </span>
+                        <div className="flex gap-1">
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            disabled={stockPoolPage <= 1}
+                            onClick={() => setStockPoolPage(stockPoolPage - 1)}
+                          >
+                            上一页
+                          </Button>
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            disabled={stockPoolPage >= stockPoolPages}
+                            onClick={() => setStockPoolPage(stockPoolPage + 1)}
+                          >
+                            下一页
+                          </Button>
+                        </div>
+                      </div>
+                    )}
                   </div>
                 )}
-              </div>
+              </>
             )}
           </CardContent>
         </Card>

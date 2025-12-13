@@ -20,6 +20,8 @@ from app.db.models.backtest import (
     BacktestStatus,
 )
 from app.db.models.strategy import Strategy
+from app.db.models.stock_pool import StockPool, StockPoolCombination
+from app.api.v1.pools import PoolEvaluator
 from app.core.arq import get_arq_pool
 from app.core.redis_pubsub import subscribe_events
 
@@ -41,13 +43,21 @@ class BacktestCreate(BaseModel):
     name: Optional[str] = None
     description: Optional[str] = None
     strategy_ids: List[UUID] = Field(min_length=1)
-    stock_codes: List[str] = Field(min_length=1)
+    # Stock selection - provide ONE of: stock_codes, pool_id, or pool_combination_id
+    stock_codes: Optional[List[str]] = None
+    pool_id: Optional[UUID] = None
+    pool_combination_id: Optional[UUID] = None
     start_date: date
     end_date: date
     initial_capital: Decimal = Field(default=Decimal("1000000.00"))
     commission_rate: Decimal = Field(default=Decimal("0.0003"))
     slippage: Decimal = Field(default=Decimal("0.001"))
     position_sizing: PositionSizing = Field(default_factory=PositionSizing)
+
+    @property
+    def has_stock_source(self) -> bool:
+        """Check if at least one stock source is provided."""
+        return bool(self.stock_codes) or self.pool_id is not None or self.pool_combination_id is not None
 
 
 class BacktestJobSummaryMetrics(BaseModel):
@@ -72,6 +82,14 @@ class StrategySnapshotResponse(BaseModel):
     parameters: Optional[dict]
 
 
+class PoolSnapshotResponse(BaseModel):
+    """Schema for pool snapshot data."""
+    pool_id: Optional[str] = None
+    pool_name: Optional[str] = None
+    stock_count: Optional[int] = None
+    evaluated_at: Optional[datetime] = None
+
+
 class BacktestJobResponse(BaseModel):
     """Schema for backtest job response."""
     id: UUID
@@ -79,6 +97,10 @@ class BacktestJobResponse(BaseModel):
     description: Optional[str]
     strategy_ids: List[str]
     stock_codes: List[str]
+    # Pool support
+    pool_id: Optional[UUID] = None
+    pool_combination_id: Optional[UUID] = None
+    pool_snapshot: Optional[PoolSnapshotResponse] = None
     start_date: date
     end_date: date
     initial_capital: Decimal
@@ -290,6 +312,13 @@ async def create_backtest(
     db: AsyncSession = Depends(get_db),
 ):
     """Create a new backtest job."""
+    # Validate at least one stock source is provided
+    if not backtest_in.has_stock_source:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Must provide stock_codes, pool_id, or pool_combination_id",
+        )
+
     # Validate date range
     if backtest_in.start_date >= backtest_in.end_date:
         raise HTTPException(
@@ -297,8 +326,58 @@ async def create_backtest(
             detail="start_date must be before end_date",
         )
 
+    # Resolve stock codes from pool if needed
+    stock_codes: List[str] = []
+    pool_snapshot: Optional[dict] = None
+
+    if backtest_in.stock_codes:
+        # Direct stock codes provided
+        stock_codes = backtest_in.stock_codes
+    elif backtest_in.pool_id:
+        # Resolve from stock pool
+        result = await db.execute(
+            select(StockPool).where(StockPool.id == backtest_in.pool_id)
+        )
+        pool = result.scalar_one_or_none()
+        if not pool:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"Stock pool {backtest_in.pool_id} not found",
+            )
+
+        # Evaluate pool to get stock codes
+        evaluator = PoolEvaluator(db)
+        stock_codes = await evaluator.evaluate(pool)
+
+        if not stock_codes:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Stock pool is empty",
+            )
+
+        # Create pool snapshot for reproducibility
+        from datetime import datetime
+        pool_snapshot = {
+            "pool_id": str(pool.id),
+            "pool_name": pool.name,
+            "stock_count": len(stock_codes),
+            "evaluated_at": datetime.utcnow().isoformat(),
+        }
+    elif backtest_in.pool_combination_id:
+        # TODO: Implement pool combination evaluation
+        raise HTTPException(
+            status_code=status.HTTP_501_NOT_IMPLEMENTED,
+            detail="Pool combinations not yet implemented",
+        )
+
+    if not stock_codes:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="No stocks found for backtest",
+        )
+
     # Calculate total backtests
-    total_backtests = len(backtest_in.strategy_ids) * len(backtest_in.stock_codes)
+    total_backtests = len(backtest_in.strategy_ids) * len(stock_codes)
 
     # Fetch all strategies and create snapshots
     strategy_snapshots = {}
@@ -326,7 +405,10 @@ async def create_backtest(
         name=backtest_in.name,
         description=backtest_in.description,
         strategy_ids=[str(sid) for sid in backtest_in.strategy_ids],
-        stock_codes=backtest_in.stock_codes,
+        stock_codes=stock_codes,
+        pool_id=backtest_in.pool_id,
+        pool_combination_id=backtest_in.pool_combination_id,
+        pool_snapshot=pool_snapshot,
         start_date=backtest_in.start_date,
         end_date=backtest_in.end_date,
         initial_capital=backtest_in.initial_capital,

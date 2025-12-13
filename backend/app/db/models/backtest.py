@@ -53,6 +53,23 @@ class BacktestJob(Base):
     stock_codes: Mapped[List[str]] = mapped_column(ARRAY(String(20)), nullable=False)
     stock_filter: Mapped[Optional[Dict[str, Any]]] = mapped_column(JSONB, nullable=True)
 
+    # Stock pool support (optional - either stock_codes or pool_id)
+    pool_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("stock_pools.id", ondelete="SET NULL"),
+        nullable=True,
+    )
+    pool_combination_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("stock_pool_combinations.id", ondelete="SET NULL"),
+        nullable=True,
+    )
+    # Snapshot of pool contents at execution time for reproducibility
+    pool_snapshot: Mapped[Optional[Dict[str, Any]]] = mapped_column(
+        JSONB, nullable=True,
+        comment="池执行时的快照 {pool_id, pool_name, stock_count, evaluated_at}"
+    )
+
     # Time range
     start_date: Mapped[date] = mapped_column(Date, nullable=False)
     end_date: Mapped[date] = mapped_column(Date, nullable=False)

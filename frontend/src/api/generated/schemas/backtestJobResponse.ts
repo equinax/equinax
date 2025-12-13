@@ -4,6 +4,9 @@ import type { BacktestJobResponseCompletedAt } from "./backtestJobResponseComple
 import type { BacktestJobResponseDescription } from "./backtestJobResponseDescription";
 import type { BacktestJobResponseErrorMessage } from "./backtestJobResponseErrorMessage";
 import type { BacktestJobResponseName } from "./backtestJobResponseName";
+import type { BacktestJobResponsePoolCombinationId } from "./backtestJobResponsePoolCombinationId";
+import type { BacktestJobResponsePoolId } from "./backtestJobResponsePoolId";
+import type { BacktestJobResponsePoolSnapshot } from "./backtestJobResponsePoolSnapshot";
 import type { BacktestJobResponsePositionSizing } from "./backtestJobResponsePositionSizing";
 import type { BacktestJobResponseStartedAt } from "./backtestJobResponseStartedAt";
 import type { BacktestJobResponseStrategySnapshots } from "./backtestJobResponseStrategySnapshots";
@@ -25,6 +28,9 @@ export interface BacktestJobResponse {
   /** @pattern ^(?!^[-+.]*$)[+-]?0*\d*\.?\d*$ */
   initial_capital: string;
   name: BacktestJobResponseName;
+  pool_combination_id?: BacktestJobResponsePoolCombinationId;
+  pool_id?: BacktestJobResponsePoolId;
+  pool_snapshot?: BacktestJobResponsePoolSnapshot;
   position_sizing: BacktestJobResponsePositionSizing;
   /** @pattern ^(?!^[-+.]*$)[+-]?0*\d*\.?\d*$ */
   progress: string;

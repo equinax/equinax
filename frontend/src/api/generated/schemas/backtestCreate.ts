@@ -4,8 +4,11 @@ import type { BacktestCreateCommissionRate } from "./backtestCreateCommissionRat
 import type { BacktestCreateDescription } from "./backtestCreateDescription";
 import type { BacktestCreateInitialCapital } from "./backtestCreateInitialCapital";
 import type { BacktestCreateName } from "./backtestCreateName";
+import type { BacktestCreatePoolCombinationId } from "./backtestCreatePoolCombinationId";
+import type { BacktestCreatePoolId } from "./backtestCreatePoolId";
 import type { PositionSizing } from "./positionSizing";
 import type { BacktestCreateSlippage } from "./backtestCreateSlippage";
+import type { BacktestCreateStockCodes } from "./backtestCreateStockCodes";
 
 /**
  * Schema for creating a backtest job.
@@ -16,11 +19,12 @@ export interface BacktestCreate {
   end_date: string;
   initial_capital?: BacktestCreateInitialCapital;
   name?: BacktestCreateName;
+  pool_combination_id?: BacktestCreatePoolCombinationId;
+  pool_id?: BacktestCreatePoolId;
   position_sizing?: PositionSizing;
   slippage?: BacktestCreateSlippage;
   start_date: string;
-  /** @minItems 1 */
-  stock_codes: string[];
+  stock_codes?: BacktestCreateStockCodes;
   /** @minItems 1 */
   strategy_ids: string[];
 }
