@@ -1,5 +1,5 @@
 import { useState, useMemo, useCallback, useEffect } from 'react'
-import { useQueries, useQueryClient } from '@tanstack/react-query'
+import { useQueries, useQuery, useQueryClient } from '@tanstack/react-query'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Skeleton } from '@/components/ui/skeleton'
 import { Button } from '@/components/ui/button'
@@ -167,29 +167,25 @@ export function ResultComparisonView({ jobId, results }: ResultComparisonViewPro
     })),
   })
 
-  // 获取股票基本信息（用于 tooltip 显示）
-  const stockInfoQueries = useQueries({
-    queries: allStockCodes.map(code => ({
-      queryKey: getGetStockApiV1StocksCodeGetQueryKey(code),
-      queryFn: ({ signal }) => getStockApiV1StocksCodeGet(code, signal),
-      staleTime: 30 * 60 * 1000, // 30 分钟缓存
-      enabled: !!code,
-    })),
+  // 悬停的股票代码（用于按需加载股票信息）
+  const [hoveredStock, setHoveredStock] = useState<string | null>(null)
+
+  // 按需加载股票信息（只在悬停时加载）
+  const stockInfoQuery = useQuery({
+    queryKey: getGetStockApiV1StocksCodeGetQueryKey(hoveredStock ?? ''),
+    queryFn: ({ signal }) => getStockApiV1StocksCodeGet(hoveredStock!, signal),
+    staleTime: 30 * 60 * 1000, // 30 分钟缓存
+    enabled: !!hoveredStock,
   })
 
-  // 创建 stock_code -> stock_info 映射
-  const stockInfoMap = useMemo(() => {
-    const map = new Map<string, { name: string; industry?: string }>()
-    stockInfoQueries.forEach((query, index) => {
-      if (query.data) {
-        map.set(allStockCodes[index], {
-          name: query.data.code_name ?? '',
-          industry: query.data.industry ?? undefined,
-        })
-      }
-    })
-    return map
-  }, [stockInfoQueries, allStockCodes])
+  // 获取悬停股票的信息
+  const hoveredStockInfo = useMemo(() => {
+    if (!hoveredStock || !stockInfoQuery.data) return null
+    return {
+      name: stockInfoQuery.data.code_name ?? '',
+      industry: stockInfoQuery.data.industry ?? undefined,
+    }
+  }, [hoveredStock, stockInfoQuery.data])
 
   // 更新 loadingStocks 状态
   useEffect(() => {
@@ -327,7 +323,8 @@ export function ResultComparisonView({ jobId, results }: ResultComparisonViewPro
           const isVisible = visibleStocks.has(stockCode)
           const isLoadingStock = loadingStocks.has(stockCode)
           const color = chartPalette[index % chartPalette.length]
-          const stockInfo = stockInfoMap.get(stockCode)
+          // 只有当前悬停的股票才显示详细信息
+          const stockInfo = hoveredStock === stockCode ? hoveredStockInfo : null
 
           return (
             <Tooltip key={stockCode}>
@@ -348,11 +345,17 @@ export function ResultComparisonView({ jobId, results }: ResultComparisonViewPro
                     toggleStock(stockCode)
                   }}
                   onMouseEnter={() => {
+                    // 设置悬停股票，触发按需加载
+                    setHoveredStock(stockCode)
+                    // 拖拽逻辑
                     if (!isDragging || !dragAction) return
                     if ((dragAction === 'show' && !isVisible) ||
                         (dragAction === 'hide' && isVisible)) {
                       toggleStock(stockCode)
                     }
+                  }}
+                  onMouseLeave={() => {
+                    setHoveredStock(null)
                   }}
                 >
                   {isLoadingStock ? (
@@ -374,9 +377,14 @@ export function ResultComparisonView({ jobId, results }: ResultComparisonViewPro
               <TooltipContent side="top" className="max-w-xs">
                 <div className="space-y-1">
                   <div className="font-medium">{stockCode}</div>
-                  {stockInfo?.name && (
+                  {stockInfo?.name ? (
                     <div className="text-sm text-muted-foreground">{stockInfo.name}</div>
-                  )}
+                  ) : stockInfoQuery.isLoading && hoveredStock === stockCode ? (
+                    <div className="text-sm text-muted-foreground flex items-center gap-1">
+                      <Loader2 className="w-3 h-3 animate-spin" />
+                      加载中...
+                    </div>
+                  ) : null}
                   {stockInfo?.industry && (
                     <div className="text-xs text-muted-foreground">行业: {stockInfo.industry}</div>
                   )}
