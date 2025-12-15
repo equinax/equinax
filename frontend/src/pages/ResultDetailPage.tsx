@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useMemo } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
@@ -16,6 +16,10 @@ import {
   List,
   GitCompare,
   Terminal,
+  Code2,
+  ChevronUp,
+  ChevronDown,
+  ArrowUpDown,
 } from 'lucide-react'
 import {
   useGetBacktestApiV1BacktestsJobIdGet,
@@ -23,6 +27,7 @@ import {
 } from '@/api/generated/backtests/backtests'
 import { ResultDetailSheet } from '@/components/backtest/ResultDetailSheet'
 import { ResultComparisonView } from '@/components/backtest/ResultComparisonView'
+import { ReturnDistributionChart } from '@/components/analytics/ReturnDistributionChart'
 import { useBacktestSSE } from '@/hooks/useBacktestSSE'
 
 const statusConfig: Record<string, { label: string; color: string; icon: React.ReactNode }> = {
@@ -69,6 +74,41 @@ export default function ResultDetailPage() {
   // State for result detail sheet
   const [selectedResultId, setSelectedResultId] = useState<string | null>(null)
   const [isSheetOpen, setIsSheetOpen] = useState(false)
+
+  // State for sorting
+  const [sortConfig, setSortConfig] = useState<{
+    key: string
+    direction: 'asc' | 'desc'
+  } | null>(null)
+
+  // Sort handler
+  const handleSort = (key: string) => {
+    setSortConfig(prev => {
+      if (prev?.key === key) {
+        // Toggle direction or clear
+        if (prev.direction === 'desc') {
+          return { key, direction: 'asc' }
+        }
+        return null // Clear sort
+      }
+      // Default to desc for most metrics (higher is better)
+      // Exception: max_drawdown where lower (less negative) is better
+      const defaultDirection = key === 'max_drawdown' ? 'asc' : 'desc'
+      return { key, direction: defaultDirection }
+    })
+  }
+
+  // Sorted results
+  const sortedResults = useMemo(() => {
+    if (!results || !sortConfig) return results
+    return [...results].sort((a, b) => {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const aVal = Number((a as any)[sortConfig.key]) || 0
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const bVal = Number((b as any)[sortConfig.key]) || 0
+      return sortConfig.direction === 'asc' ? aVal - bVal : bVal - aVal
+    })
+  }, [results, sortConfig])
 
   const handleResultClick = (resultId: string) => {
     setSelectedResultId(resultId)
@@ -227,6 +267,52 @@ export default function ResultDetailPage() {
         </Card>
       </div>
 
+      {/* Strategy Info */}
+      {job.strategy_snapshots && Object.keys(job.strategy_snapshots).length > 0 && (
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <Code2 className="h-5 w-5" />
+              策略配置
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+              {Object.entries(job.strategy_snapshots).map(([id, strategy]) => (
+                <div key={id} className="p-4 border rounded-lg space-y-2">
+                  <div className="flex items-start justify-between">
+                    <h4 className="font-medium">{strategy.name}</h4>
+                    <span className="text-xs bg-secondary px-2 py-0.5 rounded">
+                      v{strategy.version}
+                    </span>
+                  </div>
+                  <p className="text-sm text-muted-foreground">
+                    {strategy.strategy_type || '自定义策略'}
+                  </p>
+                  {strategy.parameters && Object.keys(strategy.parameters).length > 0 && (
+                    <div className="pt-2 border-t">
+                      <p className="text-xs text-muted-foreground mb-1">参数</p>
+                      <div className="flex flex-wrap gap-1">
+                        {Object.entries(strategy.parameters).slice(0, 4).map(([key, value]) => (
+                          <span key={key} className="text-xs bg-muted px-1.5 py-0.5 rounded">
+                            {key}: {String(value)}
+                          </span>
+                        ))}
+                        {Object.keys(strategy.parameters).length > 4 && (
+                          <span className="text-xs text-muted-foreground">
+                            +{Object.keys(strategy.parameters).length - 4} 更多
+                          </span>
+                        )}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              ))}
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
       {/* Results */}
       {job.status === 'completed' && (
         <Card>
@@ -247,6 +333,10 @@ export default function ResultDetailPage() {
                   <TabsTrigger value="list" className="gap-1">
                     <List className="h-4 w-4" />
                     股票列表
+                  </TabsTrigger>
+                  <TabsTrigger value="distribution" className="gap-1">
+                    <BarChart3 className="h-4 w-4" />
+                    收益分布
                   </TabsTrigger>
                   <TabsTrigger value="comparison" className="gap-1">
                     <GitCompare className="h-4 w-4" />
@@ -293,17 +383,101 @@ export default function ResultDetailPage() {
                       <thead>
                         <tr className="border-b text-left text-sm text-muted-foreground">
                           <th className="pb-3 font-medium">股票</th>
-                          <th className="pb-3 font-medium text-right">总收益</th>
-                          <th className="pb-3 font-medium text-right">年化收益</th>
-                          <th className="pb-3 font-medium text-right">Sharpe</th>
-                          <th className="pb-3 font-medium text-right">最大回撤</th>
-                          <th className="pb-3 font-medium text-right">胜率</th>
-                          <th className="pb-3 font-medium text-right">交易次数</th>
-                          <th className="pb-3 font-medium text-right">最终价值</th>
+                          <th
+                            className="pb-3 font-medium text-right cursor-pointer hover:text-foreground transition-colors select-none"
+                            onClick={() => handleSort('total_return')}
+                          >
+                            <span className="inline-flex items-center justify-end gap-1">
+                              总收益
+                              {sortConfig?.key === 'total_return' ? (
+                                sortConfig.direction === 'asc' ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />
+                              ) : (
+                                <ArrowUpDown className="h-3 w-3 opacity-50" />
+                              )}
+                            </span>
+                          </th>
+                          <th
+                            className="pb-3 font-medium text-right cursor-pointer hover:text-foreground transition-colors select-none"
+                            onClick={() => handleSort('annual_return')}
+                          >
+                            <span className="inline-flex items-center justify-end gap-1">
+                              年化收益
+                              {sortConfig?.key === 'annual_return' ? (
+                                sortConfig.direction === 'asc' ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />
+                              ) : (
+                                <ArrowUpDown className="h-3 w-3 opacity-50" />
+                              )}
+                            </span>
+                          </th>
+                          <th
+                            className="pb-3 font-medium text-right cursor-pointer hover:text-foreground transition-colors select-none"
+                            onClick={() => handleSort('sharpe_ratio')}
+                          >
+                            <span className="inline-flex items-center justify-end gap-1">
+                              Sharpe
+                              {sortConfig?.key === 'sharpe_ratio' ? (
+                                sortConfig.direction === 'asc' ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />
+                              ) : (
+                                <ArrowUpDown className="h-3 w-3 opacity-50" />
+                              )}
+                            </span>
+                          </th>
+                          <th
+                            className="pb-3 font-medium text-right cursor-pointer hover:text-foreground transition-colors select-none"
+                            onClick={() => handleSort('max_drawdown')}
+                          >
+                            <span className="inline-flex items-center justify-end gap-1">
+                              最大回撤
+                              {sortConfig?.key === 'max_drawdown' ? (
+                                sortConfig.direction === 'asc' ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />
+                              ) : (
+                                <ArrowUpDown className="h-3 w-3 opacity-50" />
+                              )}
+                            </span>
+                          </th>
+                          <th
+                            className="pb-3 font-medium text-right cursor-pointer hover:text-foreground transition-colors select-none"
+                            onClick={() => handleSort('win_rate')}
+                          >
+                            <span className="inline-flex items-center justify-end gap-1">
+                              胜率
+                              {sortConfig?.key === 'win_rate' ? (
+                                sortConfig.direction === 'asc' ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />
+                              ) : (
+                                <ArrowUpDown className="h-3 w-3 opacity-50" />
+                              )}
+                            </span>
+                          </th>
+                          <th
+                            className="pb-3 font-medium text-right cursor-pointer hover:text-foreground transition-colors select-none"
+                            onClick={() => handleSort('total_trades')}
+                          >
+                            <span className="inline-flex items-center justify-end gap-1">
+                              交易次数
+                              {sortConfig?.key === 'total_trades' ? (
+                                sortConfig.direction === 'asc' ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />
+                              ) : (
+                                <ArrowUpDown className="h-3 w-3 opacity-50" />
+                              )}
+                            </span>
+                          </th>
+                          <th
+                            className="pb-3 font-medium text-right cursor-pointer hover:text-foreground transition-colors select-none"
+                            onClick={() => handleSort('final_value')}
+                          >
+                            <span className="inline-flex items-center justify-end gap-1">
+                              最终价值
+                              {sortConfig?.key === 'final_value' ? (
+                                sortConfig.direction === 'asc' ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />
+                              ) : (
+                                <ArrowUpDown className="h-3 w-3 opacity-50" />
+                              )}
+                            </span>
+                          </th>
                         </tr>
                       </thead>
                       <tbody>
-                        {results.map((result) => (
+                        {(sortedResults || results).map((result) => (
                           <tr
                             key={result.id}
                             className="border-b hover:bg-muted/50 cursor-pointer transition-colors"
@@ -340,6 +514,17 @@ export default function ResultDetailPage() {
                         ))}
                       </tbody>
                     </table>
+                  </div>
+                </TabsContent>
+
+                <TabsContent value="distribution" className="space-y-4">
+                  <div className="grid gap-4 lg:grid-cols-2">
+                    <ReturnDistributionChart jobId={jobId || ''} metric="total_return" />
+                    <ReturnDistributionChart jobId={jobId || ''} metric="sharpe_ratio" />
+                  </div>
+                  <div className="grid gap-4 lg:grid-cols-2">
+                    <ReturnDistributionChart jobId={jobId || ''} metric="max_drawdown" />
+                    <ReturnDistributionChart jobId={jobId || ''} metric="win_rate" />
                   </div>
                 </TabsContent>
 
