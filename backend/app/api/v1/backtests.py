@@ -80,6 +80,7 @@ class StrategySnapshotResponse(BaseModel):
     code_hash: Optional[str]
     strategy_type: Optional[str]
     parameters: Optional[dict]
+    description: Optional[str] = None
 
 
 class PoolSnapshotResponse(BaseModel):
@@ -397,6 +398,7 @@ async def create_backtest(
             "code_hash": strategy.code_hash,
             "strategy_type": strategy.strategy_type,
             "parameters": strategy.parameters,
+            "description": strategy.description,
         }
 
     # Create job

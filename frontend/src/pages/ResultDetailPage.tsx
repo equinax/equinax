@@ -289,6 +289,11 @@ export default function ResultDetailPage() {
                   <p className="text-sm text-muted-foreground">
                     {strategy.strategy_type || '自定义策略'}
                   </p>
+                  {strategy.description && (
+                    <p className="text-sm text-muted-foreground/80 italic">
+                      {strategy.description}
+                    </p>
+                  )}
                   {strategy.parameters && Object.keys(strategy.parameters).length > 0 && (
                     <div className="pt-2 border-t">
                       <p className="text-xs text-muted-foreground mb-1">参数</p>
