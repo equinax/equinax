@@ -561,25 +561,6 @@ export default function ResultDetailPage() {
         </Card>
       )}
 
-      {/* Stocks list */}
-      <Card>
-        <CardHeader>
-          <CardTitle>股票池</CardTitle>
-        </CardHeader>
-        <CardContent>
-          <div className="flex flex-wrap gap-2">
-            {job.stock_codes?.map((code) => (
-              <span
-                key={code}
-                className="rounded-full bg-secondary px-3 py-1 text-sm"
-              >
-                {code}
-              </span>
-            ))}
-          </div>
-        </CardContent>
-      </Card>
-
       {/* Result Detail Sheet */}
       <ResultDetailSheet
         jobId={jobId || ''}

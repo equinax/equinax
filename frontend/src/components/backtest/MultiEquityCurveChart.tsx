@@ -1,17 +1,31 @@
-import { useEffect, useRef, useMemo } from 'react'
+import { useEffect, useRef, useMemo, useCallback, useState } from 'react'
 import { createChart, IChartApi, ISeriesApi, LineStyle, ColorType, LineData, Time, SeriesMarker } from 'lightweight-charts'
 import { useTheme } from '@/components/theme-provider'
 import { getChartPalette, getMarketColors } from '@/lib/market-colors'
 import { getChartThemeColors } from '@/lib/chart-theme'
+import { cn } from '@/lib/utils'
 import type { EquityCurvePoint, TradeRecord } from '@/types/backtest'
 
 interface MultiEquityCurveChartProps {
   data: Record<string, EquityCurvePoint[]> | null | undefined
   trades?: Record<string, TradeRecord[]> | null
   height?: number
+  /** 所有可选股票代码（用于显示完整图例） */
+  allStockCodes?: string[]
+  /** 隐藏的股票代码集合 */
+  hiddenStocks?: Set<string>
+  /** 股票显示/隐藏切换回调 */
+  onToggleStock?: (stockCode: string) => void
 }
 
-export function MultiEquityCurveChart({ data, trades, height = 400 }: MultiEquityCurveChartProps) {
+export function MultiEquityCurveChart({
+  data,
+  trades,
+  height = 400,
+  allStockCodes,
+  hiddenStocks,
+  onToggleStock,
+}: MultiEquityCurveChartProps) {
   const chartContainerRef = useRef<HTMLDivElement>(null)
   const chartRef = useRef<IChartApi | null>(null)
   const seriesMapRef = useRef<Map<string, ISeriesApi<'Line'>>>(new Map())
@@ -19,10 +33,28 @@ export function MultiEquityCurveChart({ data, trades, height = 400 }: MultiEquit
 
   const isDark = theme === 'dark' || (theme === 'system' && window.matchMedia('(prefers-color-scheme: dark)').matches)
 
-  const stockCodes = data ? Object.keys(data) : []
+  // 使用 allStockCodes 如果提供，否则从 data 获取
+  const stockCodes = allStockCodes ?? (data ? Object.keys(data) : [])
 
   // 获取主题感知的调色板
   const chartPalette = useMemo(() => getChartPalette(isDark), [isDark])
+
+  // 灰色调色板用于隐藏的股票
+  const grayColor = isDark ? '#52525b' : '#a1a1aa'
+
+  // 拖拽选择状态
+  const [isDragging, setIsDragging] = useState(false)
+  const [dragAction, setDragAction] = useState<'show' | 'hide' | null>(null)
+
+  // 全局 mouseup 监听（防止在图例外松开鼠标）
+  useEffect(() => {
+    const handleMouseUp = () => {
+      setIsDragging(false)
+      setDragAction(null)
+    }
+    window.addEventListener('mouseup', handleMouseUp)
+    return () => window.removeEventListener('mouseup', handleMouseUp)
+  }, [])
 
   useEffect(() => {
     if (!chartContainerRef.current) return
@@ -94,7 +126,7 @@ export function MultiEquityCurveChart({ data, trades, height = 400 }: MultiEquit
     const chart = chartRef.current
     const existingSeries = seriesMapRef.current
 
-    // Remove series for stocks that no longer exist
+    // Remove series for stocks that no longer exist in data
     existingSeries.forEach((series, stockCode) => {
       if (!data[stockCode]) {
         chart.removeSeries(series)
@@ -106,10 +138,13 @@ export function MultiEquityCurveChart({ data, trades, height = 400 }: MultiEquit
     const palette = getChartPalette(isDark)
 
     // Add or update series for each stock
-    Object.entries(data).forEach(([stockCode, points], index) => {
+    // 关键：使用 stockCodes (allStockCodes) 来获取正确的颜色索引
+    Object.entries(data).forEach(([stockCode, points]) => {
       if (!Array.isArray(points)) return
 
-      const color = palette[index % palette.length]
+      // 使用 stockCode 在 allStockCodes 中的索引来获取颜色，保持颜色一致性
+      const colorIndex = stockCodes.indexOf(stockCode)
+      const color = palette[(colorIndex >= 0 ? colorIndex : 0) % palette.length]
 
       let series = existingSeries.get(stockCode)
       if (!series) {
@@ -123,6 +158,9 @@ export function MultiEquityCurveChart({ data, trades, height = 400 }: MultiEquit
           title: stockCode,
         })
         existingSeries.set(stockCode, series)
+      } else {
+        // 更新已有 series 的颜色（主题切换时）
+        series.applyOptions({ color })
       }
 
       const chartData: LineData<Time>[] = points
@@ -144,7 +182,7 @@ export function MultiEquityCurveChart({ data, trades, height = 400 }: MultiEquit
     })
 
     chart.timeScale().fitContent()
-  }, [data, isDark])
+  }, [data, isDark, stockCodes])
 
   // Update trade markers
   useEffect(() => {
@@ -198,34 +236,84 @@ export function MultiEquityCurveChart({ data, trades, height = 400 }: MultiEquit
     })
   }, [trades])
 
-  if (!data || Object.keys(data).length === 0) {
-    return (
-      <div
-        className="flex items-center justify-center bg-muted/30 rounded-lg"
-        style={{ height }}
-      >
-        <p className="text-muted-foreground">暂无权益曲线数据</p>
-      </div>
-    )
-  }
+  // 获取股票在所有股票列表中的索引（用于保持颜色一致性）
+  const getStockIndex = useCallback((stockCode: string) => {
+    return stockCodes.indexOf(stockCode)
+  }, [stockCodes])
+
+  const hasData = data && Object.keys(data).length > 0
+
+  // 图例组件（提取为变量以便复用）
+  const legendElement = stockCodes.length > 0 && (
+    <div className="flex flex-wrap gap-2 justify-center max-h-32 overflow-y-auto p-2">
+      {stockCodes.map((stockCode) => {
+        const index = getStockIndex(stockCode)
+        const isHidden = hiddenStocks?.has(stockCode) ?? false
+        const color = chartPalette[index % chartPalette.length]
+
+        return (
+          <button
+            key={stockCode}
+            type="button"
+            className={cn(
+              'flex items-center gap-1.5 px-2 py-1 rounded-md text-xs transition-all select-none',
+              'hover:bg-muted/80',
+              onToggleStock ? 'cursor-pointer' : 'cursor-default',
+              isHidden ? 'opacity-50' : 'opacity-100'
+            )}
+            disabled={!onToggleStock}
+            onMouseDown={(e) => {
+              if (!onToggleStock) return
+              e.preventDefault()
+              setIsDragging(true)
+              // 根据当前状态决定拖拽动作
+              const action = isHidden ? 'show' : 'hide'
+              setDragAction(action)
+              onToggleStock(stockCode)
+            }}
+            onMouseEnter={() => {
+              if (!isDragging || !dragAction || !onToggleStock) return
+              // 只有当状态与拖拽动作不一致时才切换
+              if ((dragAction === 'show' && isHidden) ||
+                  (dragAction === 'hide' && !isHidden)) {
+                onToggleStock(stockCode)
+              }
+            }}
+          >
+            <div
+              className="w-2.5 h-2.5 rounded-full transition-colors"
+              style={{ backgroundColor: isHidden ? grayColor : color }}
+            />
+            <span className={cn(
+              'transition-colors',
+              isHidden ? 'text-muted-foreground line-through' : 'text-foreground'
+            )}>
+              {stockCode}
+            </span>
+          </button>
+        )
+      })}
+    </div>
+  )
 
   return (
     <div className="space-y-3">
-      <div className="rounded-lg border bg-card">
+      {/* 图表区域 - 容器始终存在以保持 chart 实例 */}
+      <div className="rounded-lg border bg-card relative" style={{ minHeight: height }}>
         <div ref={chartContainerRef} />
-      </div>
-      {/* Legend */}
-      <div className="flex flex-wrap gap-4 justify-center">
-        {stockCodes.map((stockCode, index) => (
-          <div key={stockCode} className="flex items-center gap-2">
-            <div
-              className="w-3 h-3 rounded-full"
-              style={{ backgroundColor: chartPalette[index % chartPalette.length] }}
-            />
-            <span className="text-sm text-muted-foreground">{stockCode}</span>
+        {/* 无数据时显示提示覆盖层 */}
+        {!hasData && (
+          <div
+            className="absolute inset-0 flex items-center justify-center bg-muted/30 rounded-lg"
+          >
+            <p className="text-muted-foreground">
+              {stockCodes.length > 0 ? '点击图例选择要显示的股票' : '暂无权益曲线数据'}
+            </p>
           </div>
-        ))}
+        )}
       </div>
+      {/* 图例始终显示 */}
+      {legendElement}
     </div>
   )
 }
