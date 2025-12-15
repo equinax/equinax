@@ -16,6 +16,8 @@ interface MultiEquityCurveChartProps {
   hiddenStocks?: Set<string>
   /** 股票显示/隐藏切换回调 */
   onToggleStock?: (stockCode: string) => void
+  /** 是否显示图例，默认 true */
+  showLegend?: boolean
 }
 
 export function MultiEquityCurveChart({
@@ -25,6 +27,7 @@ export function MultiEquityCurveChart({
   allStockCodes,
   hiddenStocks,
   onToggleStock,
+  showLegend = true,
 }: MultiEquityCurveChartProps) {
   const chartContainerRef = useRef<HTMLDivElement>(null)
   const chartRef = useRef<IChartApi | null>(null)
@@ -312,8 +315,8 @@ export function MultiEquityCurveChart({
           </div>
         )}
       </div>
-      {/* 图例始终显示 */}
-      {legendElement}
+      {/* 图例 */}
+      {showLegend && legendElement}
     </div>
   )
 }

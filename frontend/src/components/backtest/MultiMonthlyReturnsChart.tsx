@@ -14,6 +14,8 @@ interface MultiMonthlyReturnsChartProps {
   hiddenStocks?: Set<string>
   /** 股票显示/隐藏切换回调 */
   onToggleStock?: (stockCode: string) => void
+  /** 是否显示图例，默认 true */
+  showLegend?: boolean
 }
 
 export function MultiMonthlyReturnsChart({
@@ -22,6 +24,7 @@ export function MultiMonthlyReturnsChart({
   allStockCodes,
   hiddenStocks,
   onToggleStock,
+  showLegend = true,
 }: MultiMonthlyReturnsChartProps) {
   const { theme } = useTheme()
 
@@ -211,8 +214,8 @@ export function MultiMonthlyReturnsChart({
           </p>
         </div>
       )}
-      {/* 图例始终显示 */}
-      {legendElement}
+      {/* 图例 */}
+      {showLegend && legendElement}
     </div>
   )
 }

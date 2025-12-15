@@ -1,9 +1,15 @@
 import { useState, useMemo, useCallback, useEffect } from 'react'
-import { useQueries } from '@tanstack/react-query'
+import { useQueries, useQueryClient } from '@tanstack/react-query'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Skeleton } from '@/components/ui/skeleton'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from '@/components/ui/tooltip'
 import {
   LineChart,
   Calendar,
@@ -12,6 +18,7 @@ import {
   AlertCircle,
   Eye,
   EyeOff,
+  Loader2,
 } from 'lucide-react'
 import { MultiEquityCurveChart } from './MultiEquityCurveChart'
 import { MultiMonthlyReturnsChart } from './MultiMonthlyReturnsChart'
@@ -25,12 +32,19 @@ import {
   getBacktestTradesApiV1BacktestsJobIdResultsResultIdTradesGet,
   getGetBacktestTradesApiV1BacktestsJobIdResultsResultIdTradesGetQueryKey,
 } from '@/api/generated/backtests/backtests'
+import {
+  getStockApiV1StocksCodeGet,
+  getGetStockApiV1StocksCodeGetQueryKey,
+} from '@/api/generated/stocks/stocks'
 import type { EquityCurvePoint, TradeRecord, MonthlyReturns } from '@/types/backtest'
+import { getChartPalette } from '@/lib/market-colors'
+import { useTheme } from '@/components/theme-provider'
+import { cn } from '@/lib/utils'
 
-// 默认显示的最大股票数量（图表显示）
+// 默认显示的最大股票数量
 const DEFAULT_VISIBLE_STOCKS = 20
-// 最大加载的股票数量
-const MAX_STOCKS_TO_LOAD = 100
+// 最大同时加载的股票数量
+const MAX_CONCURRENT_LOAD = 50
 
 interface BacktestResult {
   id: string
@@ -54,51 +68,78 @@ function LoadingSkeleton() {
 export function ResultComparisonView({ jobId, results }: ResultComparisonViewProps) {
   const [activeTab, setActiveTab] = useState('equity')
   const [showChart, setShowChart] = useState(true)
-  // hiddenStocks: 记录被隐藏的股票（点击图例后变灰的）
-  const [hiddenStocks, setHiddenStocks] = useState<Set<string>>(new Set())
+  // visibleStocks: 记录要显示的股票（在图表上显示的）
+  const [visibleStocks, setVisibleStocks] = useState<Set<string>>(new Set())
+  // loadingStocks: 正在加载中的股票
+  const [loadingStocks, setLoadingStocks] = useState<Set<string>>(new Set())
 
-  // 限制加载的股票数量
-  const limitedResults = useMemo(() => {
-    if (!results) return []
-    return results.slice(0, MAX_STOCKS_TO_LOAD)
+  const { theme } = useTheme()
+  const isDark = theme === 'dark' || (theme === 'system' && window.matchMedia('(prefers-color-scheme: dark)').matches)
+  const chartPalette = useMemo(() => getChartPalette(isDark), [isDark])
+  const grayColor = isDark ? '#52525b' : '#a1a1aa'
+
+  const queryClient = useQueryClient()
+
+  // 创建 stock_code -> result 映射
+  const stockResultMap = useMemo(() => {
+    const map = new Map<string, BacktestResult>()
+    results?.forEach(r => map.set(r.stock_code, r))
+    return map
   }, [results])
 
-  // 所有股票代码
+  // 所有股票代码（全部结果，不限制数量）
   const allStockCodes = useMemo(() => {
-    return limitedResults.map(r => r.stock_code)
-  }, [limitedResults])
-
-  // 初始化时隐藏超过默认显示数量的股票
-  useEffect(() => {
-    if (results && results.length > DEFAULT_VISIBLE_STOCKS) {
-      const stocksToHide = new Set(
-        results.slice(DEFAULT_VISIBLE_STOCKS, MAX_STOCKS_TO_LOAD).map(r => r.stock_code)
-      )
-      setHiddenStocks(stocksToHide)
-    }
+    return results?.map(r => r.stock_code) ?? []
   }, [results])
+
+  // 初始化时显示前 N 只股票
+  useEffect(() => {
+    if (results && results.length > 0 && visibleStocks.size === 0) {
+      const initialVisible = new Set(
+        results.slice(0, DEFAULT_VISIBLE_STOCKS).map(r => r.stock_code)
+      )
+      setVisibleStocks(initialVisible)
+    }
+  }, [results, visibleStocks.size])
+
+  // 要加载数据的股票（可见的股票，限制并发数量）
+  const stocksToLoad = useMemo(() => {
+    const visible = Array.from(visibleStocks)
+    return visible.slice(0, MAX_CONCURRENT_LOAD)
+  }, [visibleStocks])
+
+  // 获取要加载的 results
+  const resultsToLoad = useMemo(() => {
+    return stocksToLoad
+      .map(code => stockResultMap.get(code))
+      .filter((r): r is BacktestResult => r !== undefined)
+  }, [stocksToLoad, stockResultMap])
 
   // 切换股票显示/隐藏状态
   const toggleStock = useCallback((stockCode: string) => {
-    setHiddenStocks(prev => {
+    setVisibleStocks(prev => {
       const next = new Set(prev)
       if (next.has(stockCode)) {
         next.delete(stockCode)
       } else {
         next.add(stockCode)
+        // 如果数据还没加载，标记为 loading
+        const result = stockResultMap.get(stockCode)
+        if (result) {
+          const queryKey = getGetBacktestResultDetailApiV1BacktestsJobIdResultsResultIdGetQueryKey(jobId, result.id)
+          const cached = queryClient.getQueryData(queryKey)
+          if (!cached) {
+            setLoadingStocks(current => new Set(current).add(stockCode))
+          }
+        }
       }
       return next
     })
-  }, [])
+  }, [stockResultMap, jobId, queryClient])
 
-  // 可见（未隐藏）的股票
-  const visibleResults = useMemo(() => {
-    return limitedResults.filter(r => !hiddenStocks.has(r.stock_code))
-  }, [limitedResults, hiddenStocks])
-
-  // 获取基础信息（所有加载的股票）
+  // 获取基础信息（只加载可见股票）
   const resultQueries = useQueries({
-    queries: limitedResults.map(result => ({
+    queries: resultsToLoad.map(result => ({
       queryKey: getGetBacktestResultDetailApiV1BacktestsJobIdResultsResultIdGetQueryKey(jobId, result.id),
       queryFn: ({ signal }) => getBacktestResultDetailApiV1BacktestsJobIdResultsResultIdGet(jobId, result.id, signal),
       staleTime: 5 * 60 * 1000,
@@ -106,9 +147,9 @@ export function ResultComparisonView({ jobId, results }: ResultComparisonViewPro
     })),
   })
 
-  // 获取所有已加载股票的权益曲线（使用缓存，只在显示图表时）
+  // 获取权益曲线（只加载可见股票）
   const equityQueries = useQueries({
-    queries: limitedResults.map(result => ({
+    queries: resultsToLoad.map(result => ({
       queryKey: getGetBacktestEquityCurveApiV1BacktestsJobIdResultsResultIdEquityGetQueryKey(jobId, result.id),
       queryFn: ({ signal }) => getBacktestEquityCurveApiV1BacktestsJobIdResultsResultIdEquityGet(jobId, result.id, undefined, signal),
       staleTime: 5 * 60 * 1000,
@@ -116,15 +157,50 @@ export function ResultComparisonView({ jobId, results }: ResultComparisonViewPro
     })),
   })
 
-  // 获取所有已加载股票的交易记录
+  // 获取交易记录（只加载可见股票）
   const tradesQueries = useQueries({
-    queries: limitedResults.map(result => ({
+    queries: resultsToLoad.map(result => ({
       queryKey: getGetBacktestTradesApiV1BacktestsJobIdResultsResultIdTradesGetQueryKey(jobId, result.id, { page_size: 200 }),
       queryFn: ({ signal }) => getBacktestTradesApiV1BacktestsJobIdResultsResultIdTradesGet(jobId, result.id, { page_size: 200 }, signal),
       staleTime: 5 * 60 * 1000,
       enabled: !!jobId && !!result.id,
     })),
   })
+
+  // 获取股票基本信息（用于 tooltip 显示）
+  const stockInfoQueries = useQueries({
+    queries: allStockCodes.map(code => ({
+      queryKey: getGetStockApiV1StocksCodeGetQueryKey(code),
+      queryFn: ({ signal }) => getStockApiV1StocksCodeGet(code, signal),
+      staleTime: 30 * 60 * 1000, // 30 分钟缓存
+      enabled: !!code,
+    })),
+  })
+
+  // 创建 stock_code -> stock_info 映射
+  const stockInfoMap = useMemo(() => {
+    const map = new Map<string, { name: string; industry?: string }>()
+    stockInfoQueries.forEach((query, index) => {
+      if (query.data) {
+        map.set(allStockCodes[index], {
+          name: query.data.code_name ?? '',
+          industry: query.data.industry ?? undefined,
+        })
+      }
+    })
+    return map
+  }, [stockInfoQueries, allStockCodes])
+
+  // 更新 loadingStocks 状态
+  useEffect(() => {
+    const stillLoading = new Set<string>()
+    resultsToLoad.forEach((result, index) => {
+      if (resultQueries[index]?.isLoading || equityQueries[index]?.isLoading) {
+        stillLoading.add(result.stock_code)
+      }
+    })
+    setLoadingStocks(stillLoading)
+  }, [resultQueries, equityQueries, resultsToLoad])
 
   const isLoading = resultQueries.some(q => q.isLoading) ||
     (showChart && equityQueries.some(q => q.isLoading)) ||
@@ -144,19 +220,16 @@ export function ResultComparisonView({ jobId, results }: ResultComparisonViewPro
       if (!query.data) return
 
       const result = query.data
-      const stockCode = limitedResults?.[index]?.stock_code || result.stock_code
+      const stockCode = resultsToLoad?.[index]?.stock_code || result.stock_code
 
       if (!stockCode) return
 
-      // 月度收益（所有股票都处理，用于图例显示）
+      // 月度收益
       if (result.monthly_returns && typeof result.monthly_returns === 'object') {
-        // 只为可见股票添加月度收益数据
-        if (!hiddenStocks.has(stockCode)) {
-          monthlyReturns[stockCode] = result.monthly_returns as MonthlyReturns
-        }
+        monthlyReturns[stockCode] = result.monthly_returns as MonthlyReturns
       }
 
-      // 指标（所有股票都显示）
+      // 指标
       metrics[stockCode] = {
         stock_code: stockCode,
         total_return: result.total_return,
@@ -175,11 +248,11 @@ export function ResultComparisonView({ jobId, results }: ResultComparisonViewPro
       }
     })
 
-    // 聚合权益曲线（根据 hiddenStocks 过滤）
+    // 聚合权益曲线
     equityQueries.forEach((query, index) => {
       if (!query.data) return
-      const stockCode = limitedResults?.[index]?.stock_code
-      if (!stockCode || hiddenStocks.has(stockCode)) return
+      const stockCode = resultsToLoad?.[index]?.stock_code
+      if (!stockCode) return
 
       equityCurves[stockCode] = query.data.map(p => ({
         date: p.date,
@@ -188,11 +261,11 @@ export function ResultComparisonView({ jobId, results }: ResultComparisonViewPro
       }))
     })
 
-    // 聚合交易记录（根据 hiddenStocks 过滤）
+    // 聚合交易记录
     tradesQueries.forEach((query, index) => {
       if (!query.data?.items) return
-      const stockCode = limitedResults?.[index]?.stock_code
-      if (!stockCode || hiddenStocks.has(stockCode)) return
+      const stockCode = resultsToLoad?.[index]?.stock_code
+      if (!stockCode) return
 
       trades[stockCode] = query.data.items.map(t => ({
         id: t.id,
@@ -210,7 +283,21 @@ export function ResultComparisonView({ jobId, results }: ResultComparisonViewPro
     })
 
     return { equityCurves, monthlyReturns, trades, metrics }
-  }, [resultQueries, equityQueries, tradesQueries, limitedResults, hiddenStocks])
+  }, [resultQueries, equityQueries, tradesQueries, resultsToLoad])
+
+  // 拖拽选择状态
+  const [isDragging, setIsDragging] = useState(false)
+  const [dragAction, setDragAction] = useState<'show' | 'hide' | null>(null)
+
+  // 全局 mouseup 监听
+  useEffect(() => {
+    const handleMouseUp = () => {
+      setIsDragging(false)
+      setDragAction(null)
+    }
+    window.addEventListener('mouseup', handleMouseUp)
+    return () => window.removeEventListener('mouseup', handleMouseUp)
+  }, [])
 
   if (!results || results.length === 0) {
     return (
@@ -230,7 +317,80 @@ export function ResultComparisonView({ jobId, results }: ResultComparisonViewPro
   }
 
   const totalResults = results.length
-  const visibleCount = visibleResults.length
+  const visibleCount = visibleStocks.size
+
+  // 图例组件
+  const legendElement = (
+    <TooltipProvider delayDuration={300}>
+      <div className="flex flex-wrap gap-1.5 justify-center max-h-48 overflow-y-auto p-2 bg-muted/30 rounded-lg">
+        {allStockCodes.map((stockCode, index) => {
+          const isVisible = visibleStocks.has(stockCode)
+          const isLoadingStock = loadingStocks.has(stockCode)
+          const color = chartPalette[index % chartPalette.length]
+          const stockInfo = stockInfoMap.get(stockCode)
+
+          return (
+            <Tooltip key={stockCode}>
+              <TooltipTrigger asChild>
+                <button
+                  type="button"
+                  className={cn(
+                    'flex items-center gap-1 px-1.5 py-0.5 rounded text-xs transition-all select-none',
+                    'hover:bg-muted/80',
+                    'cursor-pointer',
+                    isVisible ? 'opacity-100' : 'opacity-50'
+                  )}
+                  onMouseDown={(e) => {
+                    e.preventDefault()
+                    setIsDragging(true)
+                    const action = isVisible ? 'hide' : 'show'
+                    setDragAction(action)
+                    toggleStock(stockCode)
+                  }}
+                  onMouseEnter={() => {
+                    if (!isDragging || !dragAction) return
+                    if ((dragAction === 'show' && !isVisible) ||
+                        (dragAction === 'hide' && isVisible)) {
+                      toggleStock(stockCode)
+                    }
+                  }}
+                >
+                  {isLoadingStock ? (
+                    <Loader2 className="w-2 h-2 animate-spin" style={{ color }} />
+                  ) : (
+                    <div
+                      className="w-2 h-2 rounded-full transition-colors flex-shrink-0"
+                      style={{ backgroundColor: isVisible ? color : grayColor }}
+                    />
+                  )}
+                  <span className={cn(
+                    'transition-colors truncate max-w-[80px]',
+                    isVisible ? 'text-foreground' : 'text-muted-foreground line-through'
+                  )}>
+                    {stockCode}
+                  </span>
+                </button>
+              </TooltipTrigger>
+              <TooltipContent side="top" className="max-w-xs">
+                <div className="space-y-1">
+                  <div className="font-medium">{stockCode}</div>
+                  {stockInfo?.name && (
+                    <div className="text-sm text-muted-foreground">{stockInfo.name}</div>
+                  )}
+                  {stockInfo?.industry && (
+                    <div className="text-xs text-muted-foreground">行业: {stockInfo.industry}</div>
+                  )}
+                  <div className="text-xs text-muted-foreground">
+                    {isVisible ? '点击隐藏' : '点击显示'}
+                  </div>
+                </div>
+              </TooltipContent>
+            </Tooltip>
+          )
+        })}
+      </div>
+    </TooltipProvider>
+  )
 
   return (
     <div className="space-y-4">
@@ -239,21 +399,23 @@ export function ResultComparisonView({ jobId, results }: ResultComparisonViewPro
         <div className="flex items-center gap-3">
           <div className="text-sm text-muted-foreground">
             共 <span className="font-medium text-foreground">{totalResults}</span> 只股票
-            {totalResults > MAX_STOCKS_TO_LOAD && (
-              <span className="text-xs ml-1">(已加载 {MAX_STOCKS_TO_LOAD})</span>
-            )}
           </div>
           <Badge variant="secondary" className="gap-1">
             <Eye className="h-3 w-3" />
             显示 {visibleCount} 只
           </Badge>
+          {loadingStocks.size > 0 && (
+            <Badge variant="outline" className="gap-1">
+              <Loader2 className="h-3 w-3 animate-spin" />
+              加载中 {loadingStocks.size}
+            </Badge>
+          )}
           <span className="text-xs text-muted-foreground">
-            点击图例切换显示
+            点击图例切换显示，拖拽批量选择
           </span>
         </div>
 
         <div className="flex items-center gap-2">
-          {/* 显示/隐藏图表切换 */}
           <Button
             variant="outline"
             size="sm"
@@ -265,6 +427,9 @@ export function ResultComparisonView({ jobId, results }: ResultComparisonViewPro
           </Button>
         </div>
       </div>
+
+      {/* 图例区域 */}
+      {legendElement}
 
       <Tabs value={activeTab} onValueChange={setActiveTab}>
         <TabsList className="grid w-full grid-cols-4">
@@ -297,36 +462,36 @@ export function ResultComparisonView({ jobId, results }: ResultComparisonViewPro
                 </Button>
               </div>
             </div>
-          ) : isLoading && visibleResults.length > 0 ? (
+          ) : isLoading && visibleStocks.size > 0 ? (
             <LoadingSkeleton />
           ) : (
             <MultiEquityCurveChart
               data={aggregatedData.equityCurves}
               trades={aggregatedData.trades}
               height={400}
-              allStockCodes={allStockCodes}
-              hiddenStocks={hiddenStocks}
-              onToggleStock={toggleStock}
+              allStockCodes={Array.from(visibleStocks)}
+              hiddenStocks={new Set()}
+              showLegend={false}
             />
           )}
         </TabsContent>
 
         <TabsContent value="monthly" className="mt-4">
-          {isLoading && visibleResults.length > 0 ? (
+          {isLoading && visibleStocks.size > 0 ? (
             <LoadingSkeleton />
           ) : (
             <MultiMonthlyReturnsChart
               data={aggregatedData.monthlyReturns}
               height={350}
-              allStockCodes={allStockCodes}
-              hiddenStocks={hiddenStocks}
-              onToggleStock={toggleStock}
+              allStockCodes={Array.from(visibleStocks)}
+              hiddenStocks={new Set()}
+              showLegend={false}
             />
           )}
         </TabsContent>
 
         <TabsContent value="trades" className="mt-4">
-          {visibleResults.length === 0 ? (
+          {visibleStocks.size === 0 ? (
             <div className="flex items-center justify-center h-[300px] text-muted-foreground">
               <div className="text-center">
                 <AlertCircle className="h-12 w-12 mx-auto mb-2 opacity-50" />
