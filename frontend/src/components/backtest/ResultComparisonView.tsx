@@ -1,4 +1,4 @@
-import { useState, useMemo, useCallback, useEffect } from 'react'
+import { useState, useMemo, useCallback, useEffect, useRef } from 'react'
 import { useQueries, useQuery, useQueryClient } from '@tanstack/react-query'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Skeleton } from '@/components/ui/skeleton'
@@ -72,6 +72,8 @@ export function ResultComparisonView({ jobId, results }: ResultComparisonViewPro
   const [visibleStocks, setVisibleStocks] = useState<Set<string>>(new Set())
   // loadingStocks: 正在加载中的股票
   const [loadingStocks, setLoadingStocks] = useState<Set<string>>(new Set())
+  // 是否已经初始化过（防止用户清空后自动重新选择）
+  const hasInitializedRef = useRef(false)
 
   const { theme } = useTheme()
   const isDark = theme === 'dark' || (theme === 'system' && window.matchMedia('(prefers-color-scheme: dark)').matches)
@@ -92,15 +94,16 @@ export function ResultComparisonView({ jobId, results }: ResultComparisonViewPro
     return results?.map(r => r.stock_code) ?? []
   }, [results])
 
-  // 初始化时显示前 N 只股票
+  // 初始化时显示前 N 只股票（只执行一次）
   useEffect(() => {
-    if (results && results.length > 0 && visibleStocks.size === 0) {
+    if (results && results.length > 0 && !hasInitializedRef.current) {
+      hasInitializedRef.current = true
       const initialVisible = new Set(
         results.slice(0, DEFAULT_VISIBLE_STOCKS).map(r => r.stock_code)
       )
       setVisibleStocks(initialVisible)
     }
-  }, [results, visibleStocks.size])
+  }, [results])
 
   // 要加载数据的股票（可见的股票，限制并发数量）
   const stocksToLoad = useMemo(() => {

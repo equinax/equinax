@@ -124,7 +124,7 @@ export function StockKlineChart({ data, className }: StockKlineChartProps) {
 
     // Add volume series
     const volumeSeries = chart.addHistogramSeries({
-      color: textColor,
+      color: chartColors.text,
       priceFormat: {
         type: 'volume',
       },
