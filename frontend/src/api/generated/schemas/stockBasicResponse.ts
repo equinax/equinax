@@ -10,7 +10,7 @@ import type { StockBasicResponseStatus } from "./stockBasicResponseStatus";
 import type { StockBasicResponseStockType } from "./stockBasicResponseStockType";
 
 /**
- * Schema for stock basic info response.
+ * Schema for stock basic info response (backward compatible).
  */
 export interface StockBasicResponse {
   code: string;

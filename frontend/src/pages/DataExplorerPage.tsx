@@ -28,13 +28,13 @@ import { StockIndicators } from '@/components/stock/StockIndicators'
 import { StockHistoryTable } from '@/components/stock/StockHistoryTable'
 
 type ExchangeFilter = 'all' | 'sh' | 'sz'
-type AssetTypeFilter = 'STOCK' | 'ETF'
+type AssetTypeFilter = 'stock' | 'etf'
 
 export default function DataExplorerPage() {
   const [searchQuery, setSearchQuery] = useState('')
   const [selectedStock, setSelectedStock] = useState<string | null>(null)
   const [exchangeFilter, setExchangeFilter] = useState<ExchangeFilter>('all')
-  const [assetTypeFilter, setAssetTypeFilter] = useState<AssetTypeFilter>('STOCK')
+  const [assetTypeFilter, setAssetTypeFilter] = useState<AssetTypeFilter>('stock')
 
   // Fetch stock list
   const { data: stocksData, isLoading: isLoadingStocks } = useListStocksApiV1StocksGet({
@@ -79,15 +79,15 @@ export default function DataExplorerPage() {
         <div>
           <h1 className="text-3xl font-bold">数据浏览</h1>
           <p className="text-muted-foreground">
-            浏览{assetTypeFilter === 'STOCK' ? '股票' : 'ETF'}行情和指标数据
+            浏览{assetTypeFilter === 'stock' ? '股票' : 'ETF'}行情和指标数据
           </p>
         </div>
         {/* Asset type filter */}
         <div className="flex gap-2">
           <Button
-            variant={assetTypeFilter === 'STOCK' ? 'default' : 'outline'}
+            variant={assetTypeFilter === 'stock' ? 'default' : 'outline'}
             onClick={() => {
-              setAssetTypeFilter('STOCK')
+              setAssetTypeFilter('stock')
               setSelectedStock(null)
             }}
           >
@@ -95,9 +95,9 @@ export default function DataExplorerPage() {
             股票
           </Button>
           <Button
-            variant={assetTypeFilter === 'ETF' ? 'default' : 'outline'}
+            variant={assetTypeFilter === 'etf' ? 'default' : 'outline'}
             onClick={() => {
-              setAssetTypeFilter('ETF')
+              setAssetTypeFilter('etf')
               setSelectedStock(null)
             }}
           >
@@ -115,7 +115,7 @@ export default function DataExplorerPage() {
             <div className="relative">
               <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
               <Input
-                placeholder={assetTypeFilter === 'STOCK' ? '搜索股票...' : '搜索ETF...'}
+                placeholder={assetTypeFilter === 'stock' ? '搜索股票...' : '搜索ETF...'}
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
                 className="pl-9"
@@ -303,12 +303,12 @@ export default function DataExplorerPage() {
             <Card>
               <CardContent className="flex h-[500px] items-center justify-center">
                 <div className="text-center text-muted-foreground">
-                  {assetTypeFilter === 'ETF' ? (
+                  {assetTypeFilter === 'etf' ? (
                     <PieChart className="h-12 w-12 mx-auto mb-4 opacity-50" />
                   ) : (
                     <LineChart className="h-12 w-12 mx-auto mb-4 opacity-50" />
                   )}
-                  <p>从左侧列表选择{assetTypeFilter === 'STOCK' ? '股票' : 'ETF'}以查看详情</p>
+                  <p>从左侧列表选择{assetTypeFilter === 'stock' ? '股票' : 'ETF'}以查看详情</p>
                 </div>
               </CardContent>
             </Card>

@@ -4,7 +4,7 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { PlayCircle, Loader2, X, ListFilter, Plus, Trash2, Database, Users, PieChart, TrendingUp } from 'lucide-react'
 import { useListStrategiesApiV1StrategiesGet } from '@/api/generated/strategies/strategies'
-import { useListStocksApiV1StocksGet, useSearchStocksApiV1StocksSearchGet } from '@/api/generated/stocks/stocks'
+import { useListStocksApiV1StocksGet, useSearchAssetsApiV1StocksSearchGet } from '@/api/generated/stocks/stocks'
 import { useCreateBacktestApiV1BacktestsPost } from '@/api/generated/backtests/backtests'
 import { useListPredefinedPoolsApiV1PoolsPredefinedGet, usePreviewPoolApiV1PoolsPoolIdPreviewGet } from '@/api/generated/stock-pools/stock-pools'
 import { useQueryClient } from '@tanstack/react-query'
@@ -46,7 +46,7 @@ export default function BacktestPage() {
   })
 
   // Search stocks for input
-  const { data: stockSearchData } = useSearchStocksApiV1StocksSearchGet(
+  const { data: stockSearchData } = useSearchAssetsApiV1StocksSearchGet(
     { q: stockSearch },
     { query: { enabled: stockSearch.length >= 2 } }
   )
@@ -470,10 +470,10 @@ export default function BacktestPage() {
                           className="w-full px-3 py-2 text-left text-sm hover:bg-accent flex justify-between items-center"
                           onMouseDown={(e) => {
                             e.preventDefault()
-                            handleAddStock(stock.code, stock.code_name || stock.code)
+                            handleAddStock(stock.code, stock.name || stock.code)
                           }}
                         >
-                          <span>{stock.code} - {stock.code_name}</span>
+                          <span>{stock.code} - {stock.name}</span>
                           <Plus className="h-4 w-4 text-muted-foreground" />
                         </button>
                       ))}

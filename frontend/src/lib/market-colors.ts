@@ -75,8 +75,6 @@ const COLORS_DARK: Record<MarketRegion, MarketColors> = {
 // Default market region - hardcoded to CN (China A-shares)
 let currentRegion: MarketRegion = 'CN'
 
-// 缓存当前主题状态
-let cachedIsDark: boolean | null = null
 
 /**
  * 检测当前是否为暗色主题
@@ -91,7 +89,6 @@ function isDarkTheme(): boolean {
  */
 export function getMarketColors(): MarketColors {
   const isDark = isDarkTheme()
-  cachedIsDark = isDark
   return isDark ? COLORS_DARK[currentRegion] : COLORS_LIGHT[currentRegion]
 }
 

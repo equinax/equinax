@@ -3,7 +3,7 @@
 import type { StockBasicResponse } from "./stockBasicResponse";
 
 /**
- * Schema for paginated stock list.
+ * Schema for paginated stock list (backward compatible).
  */
 export interface StockListResponse {
   items: StockBasicResponse[];

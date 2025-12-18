@@ -14,6 +14,7 @@ import type {
   UseQueryResult,
 } from "@tanstack/react-query";
 import type {
+  AttributionAnalysisResponse,
   BacktestCreate,
   BacktestJobResponse,
   BacktestListResponse,
@@ -2037,6 +2038,247 @@ export const useStreamBacktestEventsApiV1BacktestsJobIdEventsGet = <
 ): UseQueryResult<TData, TError> & { queryKey: QueryKey } => {
   const queryOptions =
     getStreamBacktestEventsApiV1BacktestsJobIdEventsGetQueryOptions(
+      jobId,
+      options,
+    );
+
+  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
+    queryKey: QueryKey;
+  };
+
+  query.queryKey = queryOptions.queryKey;
+
+  return query;
+};
+
+/**
+ * Get performance attribution analysis for a completed backtest job.
+
+Breaks down performance by the 4+1 classification dimensions:
+- board: 板块分类 (主板/创业板/科创板/北交所)
+- size: 市值规模 (超大盘/大盘/中盘/小盘/微盘)
+- industry: 行业分类 (申万一级行业)
+- style: 风格因子 (价值/成长/中性)
+- regime: 市场环境 (牛市/熊市/震荡)
+
+Requires the job to be completed.
+ * @summary Get Attribution Analysis
+ */
+export const getAttributionAnalysisApiV1BacktestsJobIdAttributionGet = (
+  jobId: string,
+  signal?: AbortSignal,
+) => {
+  return customInstance<AttributionAnalysisResponse>({
+    url: `/api/v1/backtests/${jobId}/attribution`,
+    method: "GET",
+    signal,
+  });
+};
+
+export const getGetAttributionAnalysisApiV1BacktestsJobIdAttributionGetQueryKey =
+  (jobId: string) => {
+    return [`/api/v1/backtests/${jobId}/attribution`] as const;
+  };
+
+export const getGetAttributionAnalysisApiV1BacktestsJobIdAttributionGetInfiniteQueryOptions =
+  <
+    TData = InfiniteData<
+      Awaited<
+        ReturnType<
+          typeof getAttributionAnalysisApiV1BacktestsJobIdAttributionGet
+        >
+      >
+    >,
+    TError = HTTPValidationError,
+  >(
+    jobId: string,
+    options?: {
+      query?: Partial<
+        UseInfiniteQueryOptions<
+          Awaited<
+            ReturnType<
+              typeof getAttributionAnalysisApiV1BacktestsJobIdAttributionGet
+            >
+          >,
+          TError,
+          TData
+        >
+      >;
+    },
+  ) => {
+    const { query: queryOptions } = options ?? {};
+
+    const queryKey =
+      queryOptions?.queryKey ??
+      getGetAttributionAnalysisApiV1BacktestsJobIdAttributionGetQueryKey(jobId);
+
+    const queryFn: QueryFunction<
+      Awaited<
+        ReturnType<
+          typeof getAttributionAnalysisApiV1BacktestsJobIdAttributionGet
+        >
+      >
+    > = ({ signal }) =>
+      getAttributionAnalysisApiV1BacktestsJobIdAttributionGet(jobId, signal);
+
+    return {
+      queryKey,
+      queryFn,
+      enabled: !!jobId,
+      ...queryOptions,
+    } as UseInfiniteQueryOptions<
+      Awaited<
+        ReturnType<
+          typeof getAttributionAnalysisApiV1BacktestsJobIdAttributionGet
+        >
+      >,
+      TError,
+      TData
+    > & { queryKey: QueryKey };
+  };
+
+export type GetAttributionAnalysisApiV1BacktestsJobIdAttributionGetInfiniteQueryResult =
+  NonNullable<
+    Awaited<
+      ReturnType<typeof getAttributionAnalysisApiV1BacktestsJobIdAttributionGet>
+    >
+  >;
+export type GetAttributionAnalysisApiV1BacktestsJobIdAttributionGetInfiniteQueryError =
+  HTTPValidationError;
+
+/**
+ * @summary Get Attribution Analysis
+ */
+export const useGetAttributionAnalysisApiV1BacktestsJobIdAttributionGetInfinite =
+  <
+    TData = InfiniteData<
+      Awaited<
+        ReturnType<
+          typeof getAttributionAnalysisApiV1BacktestsJobIdAttributionGet
+        >
+      >
+    >,
+    TError = HTTPValidationError,
+  >(
+    jobId: string,
+    options?: {
+      query?: Partial<
+        UseInfiniteQueryOptions<
+          Awaited<
+            ReturnType<
+              typeof getAttributionAnalysisApiV1BacktestsJobIdAttributionGet
+            >
+          >,
+          TError,
+          TData
+        >
+      >;
+    },
+  ): UseInfiniteQueryResult<TData, TError> & { queryKey: QueryKey } => {
+    const queryOptions =
+      getGetAttributionAnalysisApiV1BacktestsJobIdAttributionGetInfiniteQueryOptions(
+        jobId,
+        options,
+      );
+
+    const query = useInfiniteQuery(queryOptions) as UseInfiniteQueryResult<
+      TData,
+      TError
+    > & { queryKey: QueryKey };
+
+    query.queryKey = queryOptions.queryKey;
+
+    return query;
+  };
+
+export const getGetAttributionAnalysisApiV1BacktestsJobIdAttributionGetQueryOptions =
+  <
+    TData = Awaited<
+      ReturnType<typeof getAttributionAnalysisApiV1BacktestsJobIdAttributionGet>
+    >,
+    TError = HTTPValidationError,
+  >(
+    jobId: string,
+    options?: {
+      query?: Partial<
+        UseQueryOptions<
+          Awaited<
+            ReturnType<
+              typeof getAttributionAnalysisApiV1BacktestsJobIdAttributionGet
+            >
+          >,
+          TError,
+          TData
+        >
+      >;
+    },
+  ) => {
+    const { query: queryOptions } = options ?? {};
+
+    const queryKey =
+      queryOptions?.queryKey ??
+      getGetAttributionAnalysisApiV1BacktestsJobIdAttributionGetQueryKey(jobId);
+
+    const queryFn: QueryFunction<
+      Awaited<
+        ReturnType<
+          typeof getAttributionAnalysisApiV1BacktestsJobIdAttributionGet
+        >
+      >
+    > = ({ signal }) =>
+      getAttributionAnalysisApiV1BacktestsJobIdAttributionGet(jobId, signal);
+
+    return {
+      queryKey,
+      queryFn,
+      enabled: !!jobId,
+      ...queryOptions,
+    } as UseQueryOptions<
+      Awaited<
+        ReturnType<
+          typeof getAttributionAnalysisApiV1BacktestsJobIdAttributionGet
+        >
+      >,
+      TError,
+      TData
+    > & { queryKey: QueryKey };
+  };
+
+export type GetAttributionAnalysisApiV1BacktestsJobIdAttributionGetQueryResult =
+  NonNullable<
+    Awaited<
+      ReturnType<typeof getAttributionAnalysisApiV1BacktestsJobIdAttributionGet>
+    >
+  >;
+export type GetAttributionAnalysisApiV1BacktestsJobIdAttributionGetQueryError =
+  HTTPValidationError;
+
+/**
+ * @summary Get Attribution Analysis
+ */
+export const useGetAttributionAnalysisApiV1BacktestsJobIdAttributionGet = <
+  TData = Awaited<
+    ReturnType<typeof getAttributionAnalysisApiV1BacktestsJobIdAttributionGet>
+  >,
+  TError = HTTPValidationError,
+>(
+  jobId: string,
+  options?: {
+    query?: Partial<
+      UseQueryOptions<
+        Awaited<
+          ReturnType<
+            typeof getAttributionAnalysisApiV1BacktestsJobIdAttributionGet
+          >
+        >,
+        TError,
+        TData
+      >
+    >;
+  },
+): UseQueryResult<TData, TError> & { queryKey: QueryKey } => {
+  const queryOptions =
+    getGetAttributionAnalysisApiV1BacktestsJobIdAttributionGetQueryOptions(
       jobId,
       options,
     );

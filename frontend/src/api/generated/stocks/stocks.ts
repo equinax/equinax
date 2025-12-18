@@ -12,22 +12,24 @@ import type {
 } from "@tanstack/react-query";
 import type {
   AdjustFactorResponse,
+  AssetListResponse,
+  AssetSearchResult,
   GetAdjustFactorsApiV1StocksCodeAdjustFactorsGetParams,
   GetIndicatorsApiV1StocksCodeIndicatorsGetParams,
   GetKlineApiV1StocksCodeKlineGetParams,
   HTTPValidationError,
   KLineResponse,
+  ListAssetsApiV1StocksAssetsGetParams,
   ListStocksApiV1StocksGetParams,
-  SearchStocksApiV1StocksSearchGetParams,
+  SearchAssetsApiV1StocksSearchGetParams,
   StockBasicResponse,
   StockListResponse,
-  StockSearchResult,
   TechnicalIndicatorResponse,
 } from ".././schemas";
 import { customInstance } from "../../mutator";
 
 /**
- * List all stocks with pagination and filtering.
+ * List assets with pagination and filtering.
  * @summary List Stocks
  */
 export const listStocksApiV1StocksGet = (
@@ -204,44 +206,44 @@ export const useListStocksApiV1StocksGet = <
 };
 
 /**
- * Search stocks by code or name.
- * @summary Search Stocks
+ * List all assets with pagination (new API).
+ * @summary List Assets
  */
-export const searchStocksApiV1StocksSearchGet = (
-  params: SearchStocksApiV1StocksSearchGetParams,
+export const listAssetsApiV1StocksAssetsGet = (
+  params?: ListAssetsApiV1StocksAssetsGetParams,
   signal?: AbortSignal,
 ) => {
-  return customInstance<StockSearchResult[]>({
-    url: `/api/v1/stocks/search`,
+  return customInstance<AssetListResponse>({
+    url: `/api/v1/stocks/assets`,
     method: "GET",
     params,
     signal,
   });
 };
 
-export const getSearchStocksApiV1StocksSearchGetQueryKey = (
-  params: SearchStocksApiV1StocksSearchGetParams,
+export const getListAssetsApiV1StocksAssetsGetQueryKey = (
+  params?: ListAssetsApiV1StocksAssetsGetParams,
 ) => {
-  return [`/api/v1/stocks/search`, ...(params ? [params] : [])] as const;
+  return [`/api/v1/stocks/assets`, ...(params ? [params] : [])] as const;
 };
 
-export const getSearchStocksApiV1StocksSearchGetInfiniteQueryOptions = <
+export const getListAssetsApiV1StocksAssetsGetInfiniteQueryOptions = <
   TData = InfiniteData<
-    Awaited<ReturnType<typeof searchStocksApiV1StocksSearchGet>>,
-    SearchStocksApiV1StocksSearchGetParams["page"]
+    Awaited<ReturnType<typeof listAssetsApiV1StocksAssetsGet>>,
+    ListAssetsApiV1StocksAssetsGetParams["page"]
   >,
   TError = HTTPValidationError,
 >(
-  params: SearchStocksApiV1StocksSearchGetParams,
+  params?: ListAssetsApiV1StocksAssetsGetParams,
   options?: {
     query?: Partial<
       UseInfiniteQueryOptions<
-        Awaited<ReturnType<typeof searchStocksApiV1StocksSearchGet>>,
+        Awaited<ReturnType<typeof listAssetsApiV1StocksAssetsGet>>,
         TError,
         TData,
-        Awaited<ReturnType<typeof searchStocksApiV1StocksSearchGet>>,
+        Awaited<ReturnType<typeof listAssetsApiV1StocksAssetsGet>>,
         QueryKey,
-        SearchStocksApiV1StocksSearchGetParams["page"]
+        ListAssetsApiV1StocksAssetsGetParams["page"]
       >
     >;
   },
@@ -249,60 +251,59 @@ export const getSearchStocksApiV1StocksSearchGetInfiniteQueryOptions = <
   const { query: queryOptions } = options ?? {};
 
   const queryKey =
-    queryOptions?.queryKey ??
-    getSearchStocksApiV1StocksSearchGetQueryKey(params);
+    queryOptions?.queryKey ?? getListAssetsApiV1StocksAssetsGetQueryKey(params);
 
   const queryFn: QueryFunction<
-    Awaited<ReturnType<typeof searchStocksApiV1StocksSearchGet>>,
+    Awaited<ReturnType<typeof listAssetsApiV1StocksAssetsGet>>,
     QueryKey,
-    SearchStocksApiV1StocksSearchGetParams["page"]
+    ListAssetsApiV1StocksAssetsGetParams["page"]
   > = ({ signal, pageParam }) =>
-    searchStocksApiV1StocksSearchGet(
+    listAssetsApiV1StocksAssetsGet(
       { ...params, page: pageParam || params?.["page"] },
       signal,
     );
 
   return { queryKey, queryFn, ...queryOptions } as UseInfiniteQueryOptions<
-    Awaited<ReturnType<typeof searchStocksApiV1StocksSearchGet>>,
+    Awaited<ReturnType<typeof listAssetsApiV1StocksAssetsGet>>,
     TError,
     TData,
-    Awaited<ReturnType<typeof searchStocksApiV1StocksSearchGet>>,
+    Awaited<ReturnType<typeof listAssetsApiV1StocksAssetsGet>>,
     QueryKey,
-    SearchStocksApiV1StocksSearchGetParams["page"]
+    ListAssetsApiV1StocksAssetsGetParams["page"]
   > & { queryKey: QueryKey };
 };
 
-export type SearchStocksApiV1StocksSearchGetInfiniteQueryResult = NonNullable<
-  Awaited<ReturnType<typeof searchStocksApiV1StocksSearchGet>>
+export type ListAssetsApiV1StocksAssetsGetInfiniteQueryResult = NonNullable<
+  Awaited<ReturnType<typeof listAssetsApiV1StocksAssetsGet>>
 >;
-export type SearchStocksApiV1StocksSearchGetInfiniteQueryError =
+export type ListAssetsApiV1StocksAssetsGetInfiniteQueryError =
   HTTPValidationError;
 
 /**
- * @summary Search Stocks
+ * @summary List Assets
  */
-export const useSearchStocksApiV1StocksSearchGetInfinite = <
+export const useListAssetsApiV1StocksAssetsGetInfinite = <
   TData = InfiniteData<
-    Awaited<ReturnType<typeof searchStocksApiV1StocksSearchGet>>,
-    SearchStocksApiV1StocksSearchGetParams["page"]
+    Awaited<ReturnType<typeof listAssetsApiV1StocksAssetsGet>>,
+    ListAssetsApiV1StocksAssetsGetParams["page"]
   >,
   TError = HTTPValidationError,
 >(
-  params: SearchStocksApiV1StocksSearchGetParams,
+  params?: ListAssetsApiV1StocksAssetsGetParams,
   options?: {
     query?: Partial<
       UseInfiniteQueryOptions<
-        Awaited<ReturnType<typeof searchStocksApiV1StocksSearchGet>>,
+        Awaited<ReturnType<typeof listAssetsApiV1StocksAssetsGet>>,
         TError,
         TData,
-        Awaited<ReturnType<typeof searchStocksApiV1StocksSearchGet>>,
+        Awaited<ReturnType<typeof listAssetsApiV1StocksAssetsGet>>,
         QueryKey,
-        SearchStocksApiV1StocksSearchGetParams["page"]
+        ListAssetsApiV1StocksAssetsGetParams["page"]
       >
     >;
   },
 ): UseInfiniteQueryResult<TData, TError> & { queryKey: QueryKey } => {
-  const queryOptions = getSearchStocksApiV1StocksSearchGetInfiniteQueryOptions(
+  const queryOptions = getListAssetsApiV1StocksAssetsGetInfiniteQueryOptions(
     params,
     options,
   );
@@ -317,15 +318,15 @@ export const useSearchStocksApiV1StocksSearchGetInfinite = <
   return query;
 };
 
-export const getSearchStocksApiV1StocksSearchGetQueryOptions = <
-  TData = Awaited<ReturnType<typeof searchStocksApiV1StocksSearchGet>>,
+export const getListAssetsApiV1StocksAssetsGetQueryOptions = <
+  TData = Awaited<ReturnType<typeof listAssetsApiV1StocksAssetsGet>>,
   TError = HTTPValidationError,
 >(
-  params: SearchStocksApiV1StocksSearchGetParams,
+  params?: ListAssetsApiV1StocksAssetsGetParams,
   options?: {
     query?: Partial<
       UseQueryOptions<
-        Awaited<ReturnType<typeof searchStocksApiV1StocksSearchGet>>,
+        Awaited<ReturnType<typeof listAssetsApiV1StocksAssetsGet>>,
         TError,
         TData
       >
@@ -335,44 +336,43 @@ export const getSearchStocksApiV1StocksSearchGetQueryOptions = <
   const { query: queryOptions } = options ?? {};
 
   const queryKey =
-    queryOptions?.queryKey ??
-    getSearchStocksApiV1StocksSearchGetQueryKey(params);
+    queryOptions?.queryKey ?? getListAssetsApiV1StocksAssetsGetQueryKey(params);
 
   const queryFn: QueryFunction<
-    Awaited<ReturnType<typeof searchStocksApiV1StocksSearchGet>>
-  > = ({ signal }) => searchStocksApiV1StocksSearchGet(params, signal);
+    Awaited<ReturnType<typeof listAssetsApiV1StocksAssetsGet>>
+  > = ({ signal }) => listAssetsApiV1StocksAssetsGet(params, signal);
 
   return { queryKey, queryFn, ...queryOptions } as UseQueryOptions<
-    Awaited<ReturnType<typeof searchStocksApiV1StocksSearchGet>>,
+    Awaited<ReturnType<typeof listAssetsApiV1StocksAssetsGet>>,
     TError,
     TData
   > & { queryKey: QueryKey };
 };
 
-export type SearchStocksApiV1StocksSearchGetQueryResult = NonNullable<
-  Awaited<ReturnType<typeof searchStocksApiV1StocksSearchGet>>
+export type ListAssetsApiV1StocksAssetsGetQueryResult = NonNullable<
+  Awaited<ReturnType<typeof listAssetsApiV1StocksAssetsGet>>
 >;
-export type SearchStocksApiV1StocksSearchGetQueryError = HTTPValidationError;
+export type ListAssetsApiV1StocksAssetsGetQueryError = HTTPValidationError;
 
 /**
- * @summary Search Stocks
+ * @summary List Assets
  */
-export const useSearchStocksApiV1StocksSearchGet = <
-  TData = Awaited<ReturnType<typeof searchStocksApiV1StocksSearchGet>>,
+export const useListAssetsApiV1StocksAssetsGet = <
+  TData = Awaited<ReturnType<typeof listAssetsApiV1StocksAssetsGet>>,
   TError = HTTPValidationError,
 >(
-  params: SearchStocksApiV1StocksSearchGetParams,
+  params?: ListAssetsApiV1StocksAssetsGetParams,
   options?: {
     query?: Partial<
       UseQueryOptions<
-        Awaited<ReturnType<typeof searchStocksApiV1StocksSearchGet>>,
+        Awaited<ReturnType<typeof listAssetsApiV1StocksAssetsGet>>,
         TError,
         TData
       >
     >;
   },
 ): UseQueryResult<TData, TError> & { queryKey: QueryKey } => {
-  const queryOptions = getSearchStocksApiV1StocksSearchGetQueryOptions(
+  const queryOptions = getListAssetsApiV1StocksAssetsGetQueryOptions(
     params,
     options,
   );
@@ -387,7 +387,190 @@ export const useSearchStocksApiV1StocksSearchGet = <
 };
 
 /**
- * Get stock basic information by code.
+ * Search assets by code or name.
+ * @summary Search Assets
+ */
+export const searchAssetsApiV1StocksSearchGet = (
+  params: SearchAssetsApiV1StocksSearchGetParams,
+  signal?: AbortSignal,
+) => {
+  return customInstance<AssetSearchResult[]>({
+    url: `/api/v1/stocks/search`,
+    method: "GET",
+    params,
+    signal,
+  });
+};
+
+export const getSearchAssetsApiV1StocksSearchGetQueryKey = (
+  params: SearchAssetsApiV1StocksSearchGetParams,
+) => {
+  return [`/api/v1/stocks/search`, ...(params ? [params] : [])] as const;
+};
+
+export const getSearchAssetsApiV1StocksSearchGetInfiniteQueryOptions = <
+  TData = InfiniteData<
+    Awaited<ReturnType<typeof searchAssetsApiV1StocksSearchGet>>,
+    SearchAssetsApiV1StocksSearchGetParams["page"]
+  >,
+  TError = HTTPValidationError,
+>(
+  params: SearchAssetsApiV1StocksSearchGetParams,
+  options?: {
+    query?: Partial<
+      UseInfiniteQueryOptions<
+        Awaited<ReturnType<typeof searchAssetsApiV1StocksSearchGet>>,
+        TError,
+        TData,
+        Awaited<ReturnType<typeof searchAssetsApiV1StocksSearchGet>>,
+        QueryKey,
+        SearchAssetsApiV1StocksSearchGetParams["page"]
+      >
+    >;
+  },
+) => {
+  const { query: queryOptions } = options ?? {};
+
+  const queryKey =
+    queryOptions?.queryKey ??
+    getSearchAssetsApiV1StocksSearchGetQueryKey(params);
+
+  const queryFn: QueryFunction<
+    Awaited<ReturnType<typeof searchAssetsApiV1StocksSearchGet>>,
+    QueryKey,
+    SearchAssetsApiV1StocksSearchGetParams["page"]
+  > = ({ signal, pageParam }) =>
+    searchAssetsApiV1StocksSearchGet(
+      { ...params, page: pageParam || params?.["page"] },
+      signal,
+    );
+
+  return { queryKey, queryFn, ...queryOptions } as UseInfiniteQueryOptions<
+    Awaited<ReturnType<typeof searchAssetsApiV1StocksSearchGet>>,
+    TError,
+    TData,
+    Awaited<ReturnType<typeof searchAssetsApiV1StocksSearchGet>>,
+    QueryKey,
+    SearchAssetsApiV1StocksSearchGetParams["page"]
+  > & { queryKey: QueryKey };
+};
+
+export type SearchAssetsApiV1StocksSearchGetInfiniteQueryResult = NonNullable<
+  Awaited<ReturnType<typeof searchAssetsApiV1StocksSearchGet>>
+>;
+export type SearchAssetsApiV1StocksSearchGetInfiniteQueryError =
+  HTTPValidationError;
+
+/**
+ * @summary Search Assets
+ */
+export const useSearchAssetsApiV1StocksSearchGetInfinite = <
+  TData = InfiniteData<
+    Awaited<ReturnType<typeof searchAssetsApiV1StocksSearchGet>>,
+    SearchAssetsApiV1StocksSearchGetParams["page"]
+  >,
+  TError = HTTPValidationError,
+>(
+  params: SearchAssetsApiV1StocksSearchGetParams,
+  options?: {
+    query?: Partial<
+      UseInfiniteQueryOptions<
+        Awaited<ReturnType<typeof searchAssetsApiV1StocksSearchGet>>,
+        TError,
+        TData,
+        Awaited<ReturnType<typeof searchAssetsApiV1StocksSearchGet>>,
+        QueryKey,
+        SearchAssetsApiV1StocksSearchGetParams["page"]
+      >
+    >;
+  },
+): UseInfiniteQueryResult<TData, TError> & { queryKey: QueryKey } => {
+  const queryOptions = getSearchAssetsApiV1StocksSearchGetInfiniteQueryOptions(
+    params,
+    options,
+  );
+
+  const query = useInfiniteQuery(queryOptions) as UseInfiniteQueryResult<
+    TData,
+    TError
+  > & { queryKey: QueryKey };
+
+  query.queryKey = queryOptions.queryKey;
+
+  return query;
+};
+
+export const getSearchAssetsApiV1StocksSearchGetQueryOptions = <
+  TData = Awaited<ReturnType<typeof searchAssetsApiV1StocksSearchGet>>,
+  TError = HTTPValidationError,
+>(
+  params: SearchAssetsApiV1StocksSearchGetParams,
+  options?: {
+    query?: Partial<
+      UseQueryOptions<
+        Awaited<ReturnType<typeof searchAssetsApiV1StocksSearchGet>>,
+        TError,
+        TData
+      >
+    >;
+  },
+) => {
+  const { query: queryOptions } = options ?? {};
+
+  const queryKey =
+    queryOptions?.queryKey ??
+    getSearchAssetsApiV1StocksSearchGetQueryKey(params);
+
+  const queryFn: QueryFunction<
+    Awaited<ReturnType<typeof searchAssetsApiV1StocksSearchGet>>
+  > = ({ signal }) => searchAssetsApiV1StocksSearchGet(params, signal);
+
+  return { queryKey, queryFn, ...queryOptions } as UseQueryOptions<
+    Awaited<ReturnType<typeof searchAssetsApiV1StocksSearchGet>>,
+    TError,
+    TData
+  > & { queryKey: QueryKey };
+};
+
+export type SearchAssetsApiV1StocksSearchGetQueryResult = NonNullable<
+  Awaited<ReturnType<typeof searchAssetsApiV1StocksSearchGet>>
+>;
+export type SearchAssetsApiV1StocksSearchGetQueryError = HTTPValidationError;
+
+/**
+ * @summary Search Assets
+ */
+export const useSearchAssetsApiV1StocksSearchGet = <
+  TData = Awaited<ReturnType<typeof searchAssetsApiV1StocksSearchGet>>,
+  TError = HTTPValidationError,
+>(
+  params: SearchAssetsApiV1StocksSearchGetParams,
+  options?: {
+    query?: Partial<
+      UseQueryOptions<
+        Awaited<ReturnType<typeof searchAssetsApiV1StocksSearchGet>>,
+        TError,
+        TData
+      >
+    >;
+  },
+): UseQueryResult<TData, TError> & { queryKey: QueryKey } => {
+  const queryOptions = getSearchAssetsApiV1StocksSearchGetQueryOptions(
+    params,
+    options,
+  );
+
+  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
+    queryKey: QueryKey;
+  };
+
+  query.queryKey = queryOptions.queryKey;
+
+  return query;
+};
+
+/**
+ * Get asset basic information by code.
  * @summary Get Stock
  */
 export const getStockApiV1StocksCodeGet = (
@@ -550,7 +733,7 @@ export const useGetStockApiV1StocksCodeGet = <
 };
 
 /**
- * Get K-line (OHLCV) data for a stock.
+ * Get K-line (OHLCV) data for an asset.
  * @summary Get Kline
  */
 export const getKlineApiV1StocksCodeKlineGet = (
@@ -752,7 +935,7 @@ export const useGetKlineApiV1StocksCodeKlineGet = <
 };
 
 /**
- * Get technical indicators for a stock.
+ * Get technical indicators for an asset.
  * @summary Get Indicators
  */
 export const getIndicatorsApiV1StocksCodeIndicatorsGet = (
@@ -962,7 +1145,7 @@ export const useGetIndicatorsApiV1StocksCodeIndicatorsGet = <
 };
 
 /**
- * Get fundamental data for a stock (from daily_k_data).
+ * Get fundamental/valuation data for an asset.
  * @summary Get Fundamentals
  */
 export const getFundamentalsApiV1StocksCodeFundamentalsGet = (
@@ -1154,7 +1337,7 @@ export const useGetFundamentalsApiV1StocksCodeFundamentalsGet = <
 };
 
 /**
- * Get adjustment factors for a stock.
+ * Get adjustment factors for an asset.
  * @summary Get Adjust Factors
  */
 export const getAdjustFactorsApiV1StocksCodeAdjustFactorsGet = (
@@ -1379,6 +1562,184 @@ export const useGetAdjustFactorsApiV1StocksCodeAdjustFactorsGet = <
       params,
       options,
     );
+
+  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
+    queryKey: QueryKey;
+  };
+
+  query.queryKey = queryOptions.queryKey;
+
+  return query;
+};
+
+/**
+ * Get detailed profile for an asset (stock or ETF).
+ * @summary Get Asset Profile
+ */
+export const getAssetProfileApiV1StocksCodeProfileGet = (
+  code: string,
+  signal?: AbortSignal,
+) => {
+  return customInstance<unknown>({
+    url: `/api/v1/stocks/${code}/profile`,
+    method: "GET",
+    signal,
+  });
+};
+
+export const getGetAssetProfileApiV1StocksCodeProfileGetQueryKey = (
+  code: string,
+) => {
+  return [`/api/v1/stocks/${code}/profile`] as const;
+};
+
+export const getGetAssetProfileApiV1StocksCodeProfileGetInfiniteQueryOptions = <
+  TData = InfiniteData<
+    Awaited<ReturnType<typeof getAssetProfileApiV1StocksCodeProfileGet>>
+  >,
+  TError = HTTPValidationError,
+>(
+  code: string,
+  options?: {
+    query?: Partial<
+      UseInfiniteQueryOptions<
+        Awaited<ReturnType<typeof getAssetProfileApiV1StocksCodeProfileGet>>,
+        TError,
+        TData
+      >
+    >;
+  },
+) => {
+  const { query: queryOptions } = options ?? {};
+
+  const queryKey =
+    queryOptions?.queryKey ??
+    getGetAssetProfileApiV1StocksCodeProfileGetQueryKey(code);
+
+  const queryFn: QueryFunction<
+    Awaited<ReturnType<typeof getAssetProfileApiV1StocksCodeProfileGet>>
+  > = ({ signal }) => getAssetProfileApiV1StocksCodeProfileGet(code, signal);
+
+  return {
+    queryKey,
+    queryFn,
+    enabled: !!code,
+    ...queryOptions,
+  } as UseInfiniteQueryOptions<
+    Awaited<ReturnType<typeof getAssetProfileApiV1StocksCodeProfileGet>>,
+    TError,
+    TData
+  > & { queryKey: QueryKey };
+};
+
+export type GetAssetProfileApiV1StocksCodeProfileGetInfiniteQueryResult =
+  NonNullable<
+    Awaited<ReturnType<typeof getAssetProfileApiV1StocksCodeProfileGet>>
+  >;
+export type GetAssetProfileApiV1StocksCodeProfileGetInfiniteQueryError =
+  HTTPValidationError;
+
+/**
+ * @summary Get Asset Profile
+ */
+export const useGetAssetProfileApiV1StocksCodeProfileGetInfinite = <
+  TData = InfiniteData<
+    Awaited<ReturnType<typeof getAssetProfileApiV1StocksCodeProfileGet>>
+  >,
+  TError = HTTPValidationError,
+>(
+  code: string,
+  options?: {
+    query?: Partial<
+      UseInfiniteQueryOptions<
+        Awaited<ReturnType<typeof getAssetProfileApiV1StocksCodeProfileGet>>,
+        TError,
+        TData
+      >
+    >;
+  },
+): UseInfiniteQueryResult<TData, TError> & { queryKey: QueryKey } => {
+  const queryOptions =
+    getGetAssetProfileApiV1StocksCodeProfileGetInfiniteQueryOptions(
+      code,
+      options,
+    );
+
+  const query = useInfiniteQuery(queryOptions) as UseInfiniteQueryResult<
+    TData,
+    TError
+  > & { queryKey: QueryKey };
+
+  query.queryKey = queryOptions.queryKey;
+
+  return query;
+};
+
+export const getGetAssetProfileApiV1StocksCodeProfileGetQueryOptions = <
+  TData = Awaited<ReturnType<typeof getAssetProfileApiV1StocksCodeProfileGet>>,
+  TError = HTTPValidationError,
+>(
+  code: string,
+  options?: {
+    query?: Partial<
+      UseQueryOptions<
+        Awaited<ReturnType<typeof getAssetProfileApiV1StocksCodeProfileGet>>,
+        TError,
+        TData
+      >
+    >;
+  },
+) => {
+  const { query: queryOptions } = options ?? {};
+
+  const queryKey =
+    queryOptions?.queryKey ??
+    getGetAssetProfileApiV1StocksCodeProfileGetQueryKey(code);
+
+  const queryFn: QueryFunction<
+    Awaited<ReturnType<typeof getAssetProfileApiV1StocksCodeProfileGet>>
+  > = ({ signal }) => getAssetProfileApiV1StocksCodeProfileGet(code, signal);
+
+  return {
+    queryKey,
+    queryFn,
+    enabled: !!code,
+    ...queryOptions,
+  } as UseQueryOptions<
+    Awaited<ReturnType<typeof getAssetProfileApiV1StocksCodeProfileGet>>,
+    TError,
+    TData
+  > & { queryKey: QueryKey };
+};
+
+export type GetAssetProfileApiV1StocksCodeProfileGetQueryResult = NonNullable<
+  Awaited<ReturnType<typeof getAssetProfileApiV1StocksCodeProfileGet>>
+>;
+export type GetAssetProfileApiV1StocksCodeProfileGetQueryError =
+  HTTPValidationError;
+
+/**
+ * @summary Get Asset Profile
+ */
+export const useGetAssetProfileApiV1StocksCodeProfileGet = <
+  TData = Awaited<ReturnType<typeof getAssetProfileApiV1StocksCodeProfileGet>>,
+  TError = HTTPValidationError,
+>(
+  code: string,
+  options?: {
+    query?: Partial<
+      UseQueryOptions<
+        Awaited<ReturnType<typeof getAssetProfileApiV1StocksCodeProfileGet>>,
+        TError,
+        TData
+      >
+    >;
+  },
+): UseQueryResult<TData, TError> & { queryKey: QueryKey } => {
+  const queryOptions = getGetAssetProfileApiV1StocksCodeProfileGetQueryOptions(
+    code,
+    options,
+  );
 
   const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
     queryKey: QueryKey;

@@ -77,4 +77,8 @@ export const INDICATOR_COLORS = {
 
   // 成交量
   volume: '#64748b',
+
+  // 收盘价线和权益曲线
+  closeLine: '#818cf8', // 靛蓝色
+  equity: '#60a5fa',    // 极光蓝
 } as const
