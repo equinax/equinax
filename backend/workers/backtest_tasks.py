@@ -22,7 +22,7 @@ from app.db.models.backtest import (
     BacktestStatus,
 )
 from app.db.models.strategy import Strategy
-from app.db.models.stock import DailyKData, AdjustFactor
+from app.db.models.asset import MarketDaily, AdjustFactor
 from app.domain.engine import BacktraderEngine, BacktestConfig
 from app.core.redis_pubsub import publish_event
 
@@ -274,15 +274,15 @@ async def load_stock_data(
     from datetime import date as date_type
 
     # Build query for daily k-line data
-    query = select(DailyKData).where(DailyKData.code == stock_code)
+    query = select(MarketDaily).where(MarketDaily.code == stock_code)
     if start_date:
         # Handle both date and datetime objects
         sd = start_date if isinstance(start_date, date_type) else start_date.date()
-        query = query.where(DailyKData.date >= sd)
+        query = query.where(MarketDaily.date >= sd)
     if end_date:
         ed = end_date if isinstance(end_date, date_type) else end_date.date()
-        query = query.where(DailyKData.date <= ed)
-    query = query.order_by(DailyKData.date)
+        query = query.where(MarketDaily.date <= ed)
+    query = query.order_by(MarketDaily.date)
 
     result = await db.execute(query)
     rows = result.scalars().all()
@@ -310,9 +310,9 @@ async def load_stock_data(
     # Load adjustment factors
     adjust_query = select(AdjustFactor).where(AdjustFactor.code == stock_code)
     if start_date:
-        adjust_query = adjust_query.where(AdjustFactor.divid_operate_date >= sd)
+        adjust_query = adjust_query.where(AdjustFactor.divid_operate_date >= start_date)
     if end_date:
-        adjust_query = adjust_query.where(AdjustFactor.divid_operate_date <= ed)
+        adjust_query = adjust_query.where(AdjustFactor.divid_operate_date <= end_date)
 
     adjust_result = await db.execute(adjust_query)
     adjust_rows = adjust_result.scalars().all()

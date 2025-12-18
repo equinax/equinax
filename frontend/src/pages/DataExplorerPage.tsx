@@ -14,6 +14,7 @@ import {
   BarChart3,
   History,
   Calendar,
+  PieChart,
 } from 'lucide-react'
 import {
   useListStocksApiV1StocksGet,
@@ -27,17 +28,20 @@ import { StockIndicators } from '@/components/stock/StockIndicators'
 import { StockHistoryTable } from '@/components/stock/StockHistoryTable'
 
 type ExchangeFilter = 'all' | 'sh' | 'sz'
+type AssetTypeFilter = 'STOCK' | 'ETF'
 
 export default function DataExplorerPage() {
   const [searchQuery, setSearchQuery] = useState('')
   const [selectedStock, setSelectedStock] = useState<string | null>(null)
   const [exchangeFilter, setExchangeFilter] = useState<ExchangeFilter>('all')
+  const [assetTypeFilter, setAssetTypeFilter] = useState<AssetTypeFilter>('STOCK')
 
   // Fetch stock list
   const { data: stocksData, isLoading: isLoadingStocks } = useListStocksApiV1StocksGet({
     page_size: 100,
     search: searchQuery || undefined,
     exchange: exchangeFilter === 'all' ? undefined : exchangeFilter,
+    asset_type: assetTypeFilter,
   })
 
   // Fetch K-line data for selected stock (get more data for chart)
@@ -71,9 +75,36 @@ export default function DataExplorerPage() {
   return (
     <div className="space-y-6">
       {/* Header */}
-      <div>
-        <h1 className="text-3xl font-bold">数据浏览</h1>
-        <p className="text-muted-foreground">浏览股票行情和指标数据</p>
+      <div className="flex items-center justify-between">
+        <div>
+          <h1 className="text-3xl font-bold">数据浏览</h1>
+          <p className="text-muted-foreground">
+            浏览{assetTypeFilter === 'STOCK' ? '股票' : 'ETF'}行情和指标数据
+          </p>
+        </div>
+        {/* Asset type filter */}
+        <div className="flex gap-2">
+          <Button
+            variant={assetTypeFilter === 'STOCK' ? 'default' : 'outline'}
+            onClick={() => {
+              setAssetTypeFilter('STOCK')
+              setSelectedStock(null)
+            }}
+          >
+            <TrendingUp className="h-4 w-4 mr-2" />
+            股票
+          </Button>
+          <Button
+            variant={assetTypeFilter === 'ETF' ? 'default' : 'outline'}
+            onClick={() => {
+              setAssetTypeFilter('ETF')
+              setSelectedStock(null)
+            }}
+          >
+            <PieChart className="h-4 w-4 mr-2" />
+            ETF
+          </Button>
+        </div>
       </div>
 
       <div className="grid gap-6 lg:grid-cols-3">
@@ -84,7 +115,7 @@ export default function DataExplorerPage() {
             <div className="relative">
               <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
               <Input
-                placeholder="搜索股票..."
+                placeholder={assetTypeFilter === 'STOCK' ? '搜索股票...' : '搜索ETF...'}
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
                 className="pl-9"
@@ -272,8 +303,12 @@ export default function DataExplorerPage() {
             <Card>
               <CardContent className="flex h-[500px] items-center justify-center">
                 <div className="text-center text-muted-foreground">
-                  <LineChart className="h-12 w-12 mx-auto mb-4 opacity-50" />
-                  <p>从左侧列表选择股票以查看详情</p>
+                  {assetTypeFilter === 'ETF' ? (
+                    <PieChart className="h-12 w-12 mx-auto mb-4 opacity-50" />
+                  ) : (
+                    <LineChart className="h-12 w-12 mx-auto mb-4 opacity-50" />
+                  )}
+                  <p>从左侧列表选择{assetTypeFilter === 'STOCK' ? '股票' : 'ETF'}以查看详情</p>
                 </div>
               </CardContent>
             </Card>

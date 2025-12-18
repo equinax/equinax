@@ -2,7 +2,7 @@ import { useState } from 'react'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
-import { PlayCircle, Loader2, X, ListFilter, Plus, Trash2, Database, Users } from 'lucide-react'
+import { PlayCircle, Loader2, X, ListFilter, Plus, Trash2, Database, Users, PieChart, TrendingUp } from 'lucide-react'
 import { useListStrategiesApiV1StrategiesGet } from '@/api/generated/strategies/strategies'
 import { useListStocksApiV1StocksGet, useSearchStocksApiV1StocksSearchGet } from '@/api/generated/stocks/stocks'
 import { useCreateBacktestApiV1BacktestsPost } from '@/api/generated/backtests/backtests'
@@ -11,6 +11,7 @@ import { useQueryClient } from '@tanstack/react-query'
 import { useNavigate } from 'react-router-dom'
 
 type SelectionMode = 'manual' | 'pool'
+type PoolCategory = 'stock' | 'etf'
 
 export default function BacktestPage() {
   const navigate = useNavigate()
@@ -36,6 +37,7 @@ export default function BacktestPage() {
   // Pool selection mode state
   const [selectionMode, setSelectionMode] = useState<SelectionMode>('pool')
   const [selectedPoolId, setSelectedPoolId] = useState<string | null>(null)
+  const [poolCategory, setPoolCategory] = useState<PoolCategory>('etf')
 
   // Fetch strategies
   const { data: strategiesData } = useListStrategiesApiV1StrategiesGet({
@@ -316,27 +318,86 @@ export default function BacktestPage() {
             {selectionMode === 'pool' ? (
               /* Pool Selection Mode */
               <div className="space-y-4">
-                <div className="text-sm text-muted-foreground">
-                  选择预定义股票池进行批量回测
+                {/* Pool category tabs */}
+                <div className="flex rounded-md border p-0.5 bg-muted/30">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setPoolCategory('stock')
+                      setSelectedPoolId(null)
+                    }}
+                    className={`flex-1 flex items-center justify-center gap-1 px-3 py-1.5 text-sm rounded ${
+                      poolCategory === 'stock'
+                        ? 'bg-background shadow text-foreground'
+                        : 'text-muted-foreground hover:text-foreground'
+                    }`}
+                  >
+                    <TrendingUp className="h-4 w-4" />
+                    股票池
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setPoolCategory('etf')
+                      setSelectedPoolId(null)
+                    }}
+                    className={`flex-1 flex items-center justify-center gap-1 px-3 py-1.5 text-sm rounded ${
+                      poolCategory === 'etf'
+                        ? 'bg-background shadow text-foreground'
+                        : 'text-muted-foreground hover:text-foreground'
+                    }`}
+                  >
+                    <PieChart className="h-4 w-4" />
+                    ETF池
+                  </button>
                 </div>
 
-                {/* Predefined pools grid */}
+                <div className="text-sm text-muted-foreground">
+                  选择预定义{poolCategory === 'stock' ? '股票' : 'ETF'}池进行批量回测
+                </div>
+
+                {/* Predefined pools grid - filtered by category */}
                 <div className="grid grid-cols-2 gap-2">
-                  {predefinedPools?.map((pool) => (
-                    <button
-                      key={pool.id}
-                      type="button"
-                      onClick={() => setSelectedPoolId(pool.id === selectedPoolId ? null : pool.id)}
-                      className={`p-3 rounded-lg border text-left transition-colors ${
-                        pool.id === selectedPoolId
-                          ? 'border-primary bg-primary/5'
-                          : 'border-border hover:bg-muted/50'
-                      }`}
-                    >
-                      <div className="font-medium text-sm">{pool.name}</div>
-                      <div className="text-xs text-muted-foreground mt-1">{pool.description}</div>
-                    </button>
-                  ))}
+                  {(() => {
+                    const filteredPools = predefinedPools?.filter((pool) => {
+                      const predefinedKey = pool.predefined_key || ''
+                      if (poolCategory === 'etf') {
+                        return predefinedKey.startsWith('etf_')
+                      }
+                      return !predefinedKey.startsWith('etf_')
+                    }) || []
+
+                    if (filteredPools.length === 0) {
+                      return (
+                        <div className="col-span-2 text-center py-8 text-muted-foreground border rounded-lg">
+                          {poolCategory === 'stock' ? (
+                            <div className="space-y-2">
+                              <p>暂无预定义股票池</p>
+                              <p className="text-xs">请使用"手动选择"模式或创建自定义股票池</p>
+                            </div>
+                          ) : (
+                            <p>暂无预定义 ETF 池</p>
+                          )}
+                        </div>
+                      )
+                    }
+
+                    return filteredPools.map((pool) => (
+                      <button
+                        key={pool.id}
+                        type="button"
+                        onClick={() => setSelectedPoolId(pool.id === selectedPoolId ? null : pool.id)}
+                        className={`p-3 rounded-lg border text-left transition-colors ${
+                          pool.id === selectedPoolId
+                            ? 'border-primary bg-primary/5'
+                            : 'border-border hover:bg-muted/50'
+                        }`}
+                      >
+                        <div className="font-medium text-sm">{pool.name}</div>
+                        <div className="text-xs text-muted-foreground mt-1">{pool.description}</div>
+                      </button>
+                    ))
+                  })()}
                 </div>
 
                 {/* Pool preview */}
@@ -348,7 +409,7 @@ export default function BacktestPage() {
                         <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
                       ) : (
                         <span className="text-sm text-muted-foreground">
-                          共 {poolPreview?.total_count || 0} 只股票
+                          共 {poolPreview?.total_count || 0} 只{poolCategory === 'etf' ? 'ETF' : '股票'}
                         </span>
                       )}
                     </div>

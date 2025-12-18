@@ -10,7 +10,7 @@ from sqlalchemy import select, delete
 from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession, async_sessionmaker
 
 from app.config import settings
-from app.db.models.stock import DailyKData
+from app.db.models.asset import MarketDaily
 from app.db.models.indicator import TechnicalIndicator
 
 
@@ -98,14 +98,14 @@ async def calculate_indicators(
     """
     async with worker_session_maker() as db:
         # Load OHLCV data
-        query = select(DailyKData).where(DailyKData.code == stock_code)
+        query = select(MarketDaily).where(MarketDaily.code == stock_code)
 
         if start_date:
-            query = query.where(DailyKData.date >= date.fromisoformat(start_date))
+            query = query.where(MarketDaily.date >= date.fromisoformat(start_date))
         if end_date:
-            query = query.where(DailyKData.date <= date.fromisoformat(end_date))
+            query = query.where(MarketDaily.date <= date.fromisoformat(end_date))
 
-        query = query.order_by(DailyKData.date)
+        query = query.order_by(MarketDaily.date)
 
         result = await db.execute(query)
         records = result.scalars().all()

@@ -154,8 +154,8 @@ async def get_dashboard_stats(
         avg_sharpe = Decimal(str(round(float(avg_sharpe_value), 4)))
 
     # Get total stocks count
-    from app.db.models.stock import StockBasic
-    total_stocks_query = select(func.count()).select_from(StockBasic)
+    from app.db.models.asset import AssetMeta
+    total_stocks_query = select(func.count()).select_from(AssetMeta)
     total_stocks_result = await db.execute(total_stocks_query)
     total_stocks = total_stocks_result.scalar() or 0
 

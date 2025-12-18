@@ -16,7 +16,8 @@ from app.db.models.stock_pool import (
     StockPool, StockPoolMember, IndexConstituent, StockPoolCombination,
     PoolType, PredefinedPoolKey
 )
-from app.db.models.stock import StockBasic, DailyKData
+from app.db.models.asset import AssetMeta, MarketDaily
+from app.db.models.classification import StockStructuralInfo
 
 router = APIRouter()
 
@@ -138,56 +139,60 @@ class PoolEvaluator:
         """Evaluate predefined pool."""
 
         if key == PredefinedPoolKey.SH_ALL.value:
-            query = select(StockBasic.code).where(StockBasic.exchange == "sh")
+            query = select(AssetMeta.code).where(AssetMeta.exchange == "sh")
             result = await self.db.execute(query)
             return [r[0] for r in result.fetchall()]
 
         elif key == PredefinedPoolKey.SZ_ALL.value:
-            query = select(StockBasic.code).where(StockBasic.exchange == "sz")
+            query = select(AssetMeta.code).where(AssetMeta.exchange == "sz")
             result = await self.db.execute(query)
             return [r[0] for r in result.fetchall()]
 
         elif key == PredefinedPoolKey.MAIN_BOARD.value:
-            # Main board: codes starting with 60xxxx (SH) or 00xxxx (SZ)
-            query = select(StockBasic.code).where(
-                or_(
-                    StockBasic.code.like("sh.60%"),
-                    StockBasic.code.like("sz.00%")
-                )
+            # Main board: use classification data
+            query = select(StockStructuralInfo.code).where(
+                StockStructuralInfo.board == "main"
             )
             result = await self.db.execute(query)
             return [r[0] for r in result.fetchall()]
 
         elif key == PredefinedPoolKey.GEM.value:
-            # ChiNext (创业板): 30xxxx
-            query = select(StockBasic.code).where(StockBasic.code.like("sz.30%"))
+            # ChiNext (创业板): use classification data
+            query = select(StockStructuralInfo.code).where(
+                StockStructuralInfo.board == "gem"
+            )
             result = await self.db.execute(query)
             return [r[0] for r in result.fetchall()]
 
         elif key == PredefinedPoolKey.STAR.value:
-            # STAR Market (科创板): 688xxx
-            query = select(StockBasic.code).where(StockBasic.code.like("sh.688%"))
+            # STAR Market (科创板): use classification data
+            query = select(StockStructuralInfo.code).where(
+                StockStructuralInfo.board == "star"
+            )
             result = await self.db.execute(query)
             return [r[0] for r in result.fetchall()]
 
         elif key == PredefinedPoolKey.NON_ST.value:
-            # Non-ST stocks: get latest daily data and filter is_st = 0
-            # First get all stocks
-            all_stocks_query = select(StockBasic.code)
-            all_stocks_result = await self.db.execute(all_stocks_query)
-            all_codes = [r[0] for r in all_stocks_result.fetchall()]
-
-            # Get ST stocks from latest daily data
-            st_subquery = (
-                select(DailyKData.code)
-                .where(DailyKData.is_st == 1)
-                .distinct()
+            # Non-ST stocks: use classification data
+            query = select(StockStructuralInfo.code).where(
+                StockStructuralInfo.is_st == False
             )
-            st_result = await self.db.execute(st_subquery)
-            st_codes = set(r[0] for r in st_result.fetchall())
+            result = await self.db.execute(query)
+            return [r[0] for r in result.fetchall()]
 
-            # Filter out ST stocks
-            return [code for code in all_codes if code not in st_codes]
+        # ETF pools
+        elif key.startswith("etf_"):
+            query = select(AssetMeta.code).where(
+                AssetMeta.asset_type == "ETF"
+            )
+            if key == "etf_sh":
+                query = query.where(AssetMeta.exchange == "sh")
+            elif key == "etf_sz":
+                query = query.where(AssetMeta.exchange == "sz")
+            # For etf_broad, etf_sector, etc. - filter by ETFProfile.fund_type
+            # TODO: implement when ETF classification is in place
+            result = await self.db.execute(query)
+            return [r[0] for r in result.fetchall()]
 
         raise ValueError(f"Unknown predefined key: {key}")
 
@@ -207,7 +212,7 @@ class PoolEvaluator:
         """Evaluate dynamic filter expression."""
         if not filter_expr:
             # Return all stocks if no filter
-            query = select(StockBasic.code)
+            query = select(AssetMeta.code)
             result = await self.db.execute(query)
             return [r[0] for r in result.fetchall()]
 
@@ -215,7 +220,7 @@ class PoolEvaluator:
         logic = filter_expr.get("logic", "AND")
 
         if not conditions:
-            query = select(StockBasic.code)
+            query = select(AssetMeta.code)
             result = await self.db.execute(query)
             return [r[0] for r in result.fetchall()]
 
@@ -258,42 +263,42 @@ class PoolEvaluator:
     ) -> List[str]:
         """Evaluate a single filter condition."""
 
-        if table == "stock_basic":
-            # Filter on stock_basic fields
-            column = getattr(StockBasic, field, None)
+        if table == "asset_meta" or table == "stock_basic":
+            # Filter on asset_meta fields
+            column = getattr(AssetMeta, field, None)
             if column is None:
                 raise ValueError(f"Unknown field: {field}")
 
-            query = select(StockBasic.code)
+            query = select(AssetMeta.code)
             query = self._apply_operator(query, column, operator, value)
             result = await self.db.execute(query)
             return [r[0] for r in result.fetchall()]
 
-        elif table == "daily_k_data":
-            # Filter on latest daily_k_data
+        elif table == "market_daily" or table == "daily_k_data":
+            # Filter on latest market_daily
             # Get latest date for each stock, then apply filter
-            column = getattr(DailyKData, field, None)
+            column = getattr(MarketDaily, field, None)
             if column is None:
                 raise ValueError(f"Unknown field: {field}")
 
             # Subquery to get latest date per stock
             latest_date_subq = (
                 select(
-                    DailyKData.code,
-                    func.max(DailyKData.date).label("max_date")
+                    MarketDaily.code,
+                    func.max(MarketDaily.date).label("max_date")
                 )
-                .group_by(DailyKData.code)
+                .group_by(MarketDaily.code)
                 .subquery()
             )
 
             # Main query joining with latest date
             query = (
-                select(DailyKData.code)
+                select(MarketDaily.code)
                 .join(
                     latest_date_subq,
                     and_(
-                        DailyKData.code == latest_date_subq.c.code,
-                        DailyKData.date == latest_date_subq.c.max_date
+                        MarketDaily.code == latest_date_subq.c.code,
+                        MarketDaily.date == latest_date_subq.c.max_date
                     )
                 )
             )
@@ -576,7 +581,7 @@ async def preview_pool(
     # Get stock details for preview
     limited_codes = stock_codes[:limit]
     if limited_codes:
-        stocks_query = select(StockBasic).where(StockBasic.code.in_(limited_codes))
+        stocks_query = select(AssetMeta).where(AssetMeta.code.in_(limited_codes))
         stocks_result = await db.execute(stocks_query)
         stocks = stocks_result.scalars().all()
     else:
@@ -584,14 +589,14 @@ async def preview_pool(
 
     # Calculate distributions
     exchange_dist: Dict[str, int] = {}
-    sector_dist: Dict[str, int] = {}
+    asset_type_dist: Dict[str, int] = {}
 
     for s in stocks:
         ex = s.exchange or "unknown"
         exchange_dist[ex] = exchange_dist.get(ex, 0) + 1
 
-        sect = s.sector or "unknown"
-        sector_dist[sect] = sector_dist.get(sect, 0) + 1
+        at = s.asset_type or "unknown"
+        asset_type_dist[at] = asset_type_dist.get(at, 0) + 1
 
     return PoolPreviewResponse(
         pool_id=str(pool.id),
@@ -600,16 +605,16 @@ async def preview_pool(
         stocks=[
             StockPreview(
                 code=s.code,
-                code_name=s.code_name,
+                code_name=s.name,
                 exchange=s.exchange,
-                sector=s.sector,
-                industry=s.industry,
+                sector=None,
+                industry=None,
             )
             for s in stocks
         ],
         total_count=len(stock_codes),
         exchange_distribution=exchange_dist,
-        sector_distribution=sector_dist,
+        sector_distribution=asset_type_dist,
     )
 
 

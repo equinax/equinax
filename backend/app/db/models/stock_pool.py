@@ -25,15 +25,25 @@ class PoolType(str, Enum):
 
 class PredefinedPoolKey(str, Enum):
     """Predefined pool identifiers."""
-    # Exchange pools
-    SH_ALL = "sh_all"           # 全部沪市
-    SZ_ALL = "sz_all"           # 全部深市
+    # Exchange pools - Stocks
+    SH_ALL = "sh_all"           # 全部沪市股票
+    SZ_ALL = "sz_all"           # 全部深市股票
 
-    # Special pools
+    # Special pools - Stocks
     NON_ST = "non_st"           # 非ST股票
     MAIN_BOARD = "main_board"   # 主板股票
     GEM = "gem"                 # 创业板
     STAR = "star"               # 科创板
+
+    # ETF pools
+    ETF_ALL = "etf_all"         # 全部ETF
+    ETF_SH = "etf_sh"           # 沪市ETF
+    ETF_SZ = "etf_sz"           # 深市ETF
+    ETF_BROAD = "etf_broad"     # 宽基ETF
+    ETF_SECTOR = "etf_sector"   # 行业ETF
+    ETF_THEME = "etf_theme"     # 主题ETF
+    ETF_CROSS_BORDER = "etf_cross_border"  # 跨境ETF
+    ETF_COMMODITY = "etf_commodity"  # 商品ETF
 
     # Index constituents (future - need external data)
     # HS300 = "hs300"           # 沪深300

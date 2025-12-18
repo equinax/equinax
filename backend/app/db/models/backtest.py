@@ -91,9 +91,9 @@ class BacktestJob(Base):
     # Execution settings
     priority: Mapped[int] = mapped_column(Integer, default=5)  # 1-10
 
-    # Status
+    # Status (use native_enum=False to match VARCHAR column)
     status: Mapped[BacktestStatus] = mapped_column(
-        SQLEnum(BacktestStatus),
+        SQLEnum(BacktestStatus, native_enum=False),
         default=BacktestStatus.PENDING,
     )
     progress: Mapped[Decimal] = mapped_column(Numeric(5, 2), default=0)  # 0-100
@@ -204,7 +204,7 @@ class BacktestResult(Base):
     # Execution info
     execution_time_ms: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
     status: Mapped[BacktestStatus] = mapped_column(
-        SQLEnum(BacktestStatus),
+        SQLEnum(BacktestStatus, native_enum=False),
         default=BacktestStatus.COMPLETED,
     )
     error_message: Mapped[Optional[str]] = mapped_column(Text, nullable=True)

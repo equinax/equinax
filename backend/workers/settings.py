@@ -6,6 +6,13 @@ from arq import cron
 from app.config import settings
 from workers.backtest_tasks import run_backtest_job, run_single_backtest
 from workers.indicator_tasks import calculate_indicators
+from workers.classification_tasks import (
+    calculate_structural_classification,
+    calculate_style_factors,
+    calculate_market_regime,
+    generate_classification_snapshot,
+    daily_classification_update,
+)
 
 
 def parse_redis_url(url: str) -> RedisSettings:
@@ -31,6 +38,12 @@ class WorkerSettings:
         run_backtest_job,
         run_single_backtest,
         calculate_indicators,
+        # Classification tasks
+        calculate_structural_classification,
+        calculate_style_factors,
+        calculate_market_regime,
+        generate_classification_snapshot,
+        daily_classification_update,
     ]
 
     # Optional: Cron jobs
