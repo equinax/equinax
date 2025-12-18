@@ -17,6 +17,10 @@ export interface UniverseFilters {
   search: string
   industryL1: string
   isSt: boolean | null
+  board: string
+  sizeCategory: string
+  volCategory: string
+  valueCategory: string
 }
 
 interface UniverseScreenerProps {
@@ -61,6 +65,10 @@ export function UniverseScreener({
       search: '',
       industryL1: 'all',
       isSt: null,
+      board: 'all',
+      sizeCategory: 'all',
+      volCategory: 'all',
+      valueCategory: 'all',
     })
   }
 
@@ -68,7 +76,11 @@ export function UniverseScreener({
     filters.exchange !== 'all' ||
     filters.search ||
     filters.industryL1 !== 'all' ||
-    filters.isSt !== null
+    filters.isSt !== null ||
+    filters.board !== 'all' ||
+    filters.sizeCategory !== 'all' ||
+    filters.volCategory !== 'all' ||
+    filters.valueCategory !== 'all'
 
   return (
     <div className="space-y-3">
@@ -178,6 +190,81 @@ export function UniverseScreener({
           </Select>
         )}
 
+        {/* Board Filter */}
+        {filters.assetType === 'stock' && (
+          <Select
+            value={filters.board}
+            onValueChange={(value) => updateFilter('board', value)}
+          >
+            <SelectTrigger className="w-[90px] h-9">
+              <SelectValue placeholder="板块" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">全部板块</SelectItem>
+              <SelectItem value="MAIN">主板</SelectItem>
+              <SelectItem value="GEM">创业板</SelectItem>
+              <SelectItem value="STAR">科创板</SelectItem>
+              <SelectItem value="BSE">北交所</SelectItem>
+            </SelectContent>
+          </Select>
+        )}
+
+        {/* Size Category Filter */}
+        {filters.assetType === 'stock' && (
+          <Select
+            value={filters.sizeCategory}
+            onValueChange={(value) => updateFilter('sizeCategory', value)}
+          >
+            <SelectTrigger className="w-[90px] h-9">
+              <SelectValue placeholder="规模" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">全部规模</SelectItem>
+              <SelectItem value="MEGA">巨型</SelectItem>
+              <SelectItem value="LARGE">大型</SelectItem>
+              <SelectItem value="MID">中型</SelectItem>
+              <SelectItem value="SMALL">小型</SelectItem>
+              <SelectItem value="MICRO">微型</SelectItem>
+            </SelectContent>
+          </Select>
+        )}
+
+        {/* Volatility Category Filter */}
+        {filters.assetType === 'stock' && (
+          <Select
+            value={filters.volCategory}
+            onValueChange={(value) => updateFilter('volCategory', value)}
+          >
+            <SelectTrigger className="w-[90px] h-9">
+              <SelectValue placeholder="波动" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">全部波动</SelectItem>
+              <SelectItem value="HIGH">高波动</SelectItem>
+              <SelectItem value="NORMAL">正常</SelectItem>
+              <SelectItem value="LOW">低波动</SelectItem>
+            </SelectContent>
+          </Select>
+        )}
+
+        {/* Value Category Filter */}
+        {filters.assetType === 'stock' && (
+          <Select
+            value={filters.valueCategory}
+            onValueChange={(value) => updateFilter('valueCategory', value)}
+          >
+            <SelectTrigger className="w-[90px] h-9">
+              <SelectValue placeholder="风格" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">全部风格</SelectItem>
+              <SelectItem value="VALUE">价值</SelectItem>
+              <SelectItem value="NEUTRAL">平衡</SelectItem>
+              <SelectItem value="GROWTH">成长</SelectItem>
+            </SelectContent>
+          </Select>
+        )}
+
         {/* Clear Filters */}
         {hasActiveFilters && (
           <Button
@@ -224,6 +311,38 @@ export function UniverseScreener({
             <Badge variant="secondary" className="gap-1">
               {filters.isSt ? 'ST股票' : '非ST'}
               <button onClick={() => updateFilter('isSt', null)}>
+                <X className="h-3 w-3" />
+              </button>
+            </Badge>
+          )}
+          {filters.board !== 'all' && (
+            <Badge variant="secondary" className="gap-1">
+              {filters.board === 'MAIN' ? '主板' : filters.board === 'GEM' ? '创业板' : filters.board === 'STAR' ? '科创板' : '北交所'}
+              <button onClick={() => updateFilter('board', 'all')}>
+                <X className="h-3 w-3" />
+              </button>
+            </Badge>
+          )}
+          {filters.sizeCategory !== 'all' && (
+            <Badge variant="secondary" className="gap-1">
+              {filters.sizeCategory === 'MEGA' ? '巨型' : filters.sizeCategory === 'LARGE' ? '大型' : filters.sizeCategory === 'MID' ? '中型' : filters.sizeCategory === 'SMALL' ? '小型' : '微型'}
+              <button onClick={() => updateFilter('sizeCategory', 'all')}>
+                <X className="h-3 w-3" />
+              </button>
+            </Badge>
+          )}
+          {filters.volCategory !== 'all' && (
+            <Badge variant="secondary" className="gap-1">
+              {filters.volCategory === 'HIGH' ? '高波动' : filters.volCategory === 'NORMAL' ? '正常波动' : '低波动'}
+              <button onClick={() => updateFilter('volCategory', 'all')}>
+                <X className="h-3 w-3" />
+              </button>
+            </Badge>
+          )}
+          {filters.valueCategory !== 'all' && (
+            <Badge variant="secondary" className="gap-1">
+              {filters.valueCategory === 'VALUE' ? '价值' : filters.valueCategory === 'NEUTRAL' ? '平衡' : '成长'}
+              <button onClick={() => updateFilter('valueCategory', 'all')}>
                 <X className="h-3 w-3" />
               </button>
             </Badge>

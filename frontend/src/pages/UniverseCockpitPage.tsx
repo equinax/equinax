@@ -33,6 +33,10 @@ export default function UniverseCockpitPage() {
     search: '',
     industryL1: 'all',
     isSt: null,
+    board: 'all',
+    sizeCategory: 'all',
+    volCategory: 'all',
+    valueCategory: 'all',
   })
 
   // Pagination state
@@ -75,6 +79,10 @@ export default function UniverseCockpitPage() {
     search: filters.search || undefined,
     industry_l1: filters.industryL1 === 'all' ? undefined : filters.industryL1,
     is_st: filters.isSt === null ? undefined : filters.isSt,
+    board: filters.board === 'all' ? undefined : filters.board,
+    size_category: filters.sizeCategory === 'all' ? undefined : filters.sizeCategory,
+    vol_category: filters.volCategory === 'all' ? undefined : filters.volCategory,
+    value_category: filters.valueCategory === 'all' ? undefined : filters.valueCategory,
     sort_by: sortBy as 'code' | 'name' | 'market_cap' | 'price' | 'change' | 'pe' | 'pb' | 'turnover',
     sort_order: sortOrder as 'asc' | 'desc',
   })

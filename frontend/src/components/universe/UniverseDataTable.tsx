@@ -41,6 +41,8 @@ import {
   getVolLabel,
   getValueColor,
   getValueLabel,
+  getBoardColor,
+  getBoardLabel,
   getPriceChangeColor,
   formatPriceChange,
   formatMarketCap,
@@ -114,6 +116,19 @@ export function UniverseDataTable({
           )
         },
         size: 80,
+      }),
+      columnHelper.accessor('board', {
+        header: '板块',
+        cell: ({ getValue }) => {
+          const board = getValue()
+          if (!board) return <span className="text-muted-foreground">-</span>
+          return (
+            <Badge className={cn('text-xs font-normal', getBoardColor(board))}>
+              {getBoardLabel(board)}
+            </Badge>
+          )
+        },
+        size: 60,
       }),
       columnHelper.accessor('price', {
         header: ({ column }) => (

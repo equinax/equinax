@@ -291,7 +291,31 @@ async def get_universe_snapshot(
         .subquery()
     )
 
-    # Main query
+    # Style factors subquery (for size, volatility, value, turnover categories)
+    style_subq = (
+        select(
+            StockStyleExposure.code,
+            StockStyleExposure.size_category,
+            StockStyleExposure.vol_category,
+            StockStyleExposure.value_category,
+            StockStyleExposure.turnover_category,
+        )
+        .where(StockStyleExposure.date == latest_date)
+        .subquery()
+    )
+
+    # Microstructure subquery (for institutional/northbound flags)
+    micro_subq = (
+        select(
+            StockMicrostructure.code,
+            StockMicrostructure.is_institutional,
+            StockMicrostructure.is_northbound_heavy,
+        )
+        .where(StockMicrostructure.date == latest_date)
+        .subquery()
+    )
+
+    # Main query with all classification data
     query = (
         select(
             AssetMeta.code,
@@ -310,10 +334,21 @@ async def get_universe_snapshot(
             valuation_subq.c.is_st,
             StockProfile.sw_industry_l1.label("industry_l1"),
             StockProfile.sw_industry_l2.label("industry_l2"),
+            # Classification fields
+            StockStructuralInfo.board,
+            style_subq.c.size_category,
+            style_subq.c.vol_category,
+            style_subq.c.value_category,
+            style_subq.c.turnover_category,
+            micro_subq.c.is_institutional,
+            micro_subq.c.is_northbound_heavy,
         )
         .outerjoin(market_subq, AssetMeta.code == market_subq.c.code)
         .outerjoin(valuation_subq, AssetMeta.code == valuation_subq.c.code)
         .outerjoin(StockProfile, AssetMeta.code == StockProfile.code)
+        .outerjoin(StockStructuralInfo, AssetMeta.code == StockStructuralInfo.code)
+        .outerjoin(style_subq, AssetMeta.code == style_subq.c.code)
+        .outerjoin(micro_subq, AssetMeta.code == micro_subq.c.code)
     )
 
     # Apply asset type filter
@@ -345,6 +380,18 @@ async def get_universe_snapshot(
             query = query.where(valuation_subq.c.is_st == 1)
         else:
             query = query.where(or_(valuation_subq.c.is_st == 0, valuation_subq.c.is_st.is_(None)))
+
+    # Apply classification filters
+    if board_list:
+        query = query.where(StockStructuralInfo.board.in_(board_list))
+    if size_list:
+        query = query.where(style_subq.c.size_category.in_(size_list))
+    if vol_list:
+        query = query.where(style_subq.c.vol_category.in_(vol_list))
+    if value_list:
+        query = query.where(style_subq.c.value_category.in_(value_list))
+    if turnover_list:
+        query = query.where(style_subq.c.turnover_category.in_(turnover_list))
 
     # Get total count
     count_query = select(func.count()).select_from(query.subquery())
@@ -378,6 +425,27 @@ async def get_universe_snapshot(
     # Convert to response
     items = []
     for row in rows:
+        # Handle enum values for board and style categories
+        board_value = None
+        if row.board:
+            board_value = row.board.value if isinstance(row.board, BoardType) else row.board
+
+        size_cat = None
+        if row.size_category:
+            size_cat = row.size_category.value if isinstance(row.size_category, SizeCategory) else row.size_category
+
+        vol_cat = None
+        if row.vol_category:
+            vol_cat = row.vol_category.value if isinstance(row.vol_category, VolatilityCategory) else row.vol_category
+
+        value_cat = None
+        if row.value_category:
+            value_cat = row.value_category.value if isinstance(row.value_category, ValueCategory) else row.value_category
+
+        turnover_cat = None
+        if row.turnover_category:
+            turnover_cat = row.turnover_category.value if isinstance(row.turnover_category, TurnoverCategory) else row.turnover_category
+
         items.append(UniverseAssetItem(
             code=row.code,
             name=row.name,
@@ -395,6 +463,14 @@ async def get_universe_snapshot(
             industry_l1=row.industry_l1,
             industry_l2=row.industry_l2,
             is_st=bool(row.is_st) if row.is_st is not None else False,
+            # Classification fields
+            board=board_value,
+            size_category=size_cat,
+            vol_category=vol_cat,
+            value_category=value_cat,
+            turnover_category=turnover_cat,
+            is_institutional=bool(row.is_institutional) if row.is_institutional else False,
+            is_northbound_heavy=bool(row.is_northbound_heavy) if row.is_northbound_heavy else False,
         ))
 
     return UniverseSnapshotResponse(
@@ -435,14 +511,29 @@ async def get_universe_stats(
     )
     total_etfs = etf_count_result.scalar() or 0
 
-    # Count by board (using category field in AssetMeta)
+    # Count by board (from StockStructuralInfo)
     board_result = await db.execute(
-        select(AssetMeta.category, func.count())
-        .where(AssetMeta.asset_type == AssetType.STOCK)
-        .where(AssetMeta.category.isnot(None))
-        .group_by(AssetMeta.category)
+        select(StockStructuralInfo.board, func.count())
+        .where(StockStructuralInfo.board.isnot(None))
+        .group_by(StockStructuralInfo.board)
     )
-    by_board = {row[0]: row[1] for row in board_result.all()}
+    by_board = {}
+    for row in board_result.all():
+        board_val = row[0].value if isinstance(row[0], BoardType) else row[0]
+        by_board[board_val] = row[1]
+
+    # Count by size category (from StockStyleExposure for latest date)
+    by_size_category = {}
+    if latest_date:
+        size_result = await db.execute(
+            select(StockStyleExposure.size_category, func.count())
+            .where(StockStyleExposure.date == latest_date)
+            .where(StockStyleExposure.size_category.isnot(None))
+            .group_by(StockStyleExposure.size_category)
+        )
+        for row in size_result.all():
+            size_val = row[0].value if isinstance(row[0], SizeCategory) else row[0]
+            by_size_category[size_val] = row[1]
 
     # Count by industry L1
     industry_result = await db.execute(
@@ -477,7 +568,7 @@ async def get_universe_stats(
         total_stocks=total_stocks,
         total_etfs=total_etfs,
         trading_date=latest_date,
-        by_size_category={},  # Will be populated when classification data exists
+        by_size_category=by_size_category,
         by_board=by_board,
         by_industry_l1=by_industry_l1,
         market_regime=market_regime,
