@@ -532,8 +532,18 @@ async def _init_database(database_url: str, force: bool) -> dict:
     if industry_db.exists():
         console.print("\n[4/5] Importing industry classification...")
         try:
-            from scripts.import_sw_industry import import_industries_from_sqlite, get_async_session
-            session, engine = await get_async_session()
+            from scripts.import_sw_industry import import_industries_from_sqlite
+            from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession
+            from sqlalchemy.orm import sessionmaker
+
+            # Use passed database_url instead of settings
+            async_url = database_url.replace("postgresql://", "postgresql+asyncpg://")
+            if "+asyncpg" not in async_url:
+                async_url = async_url.replace("postgresql:", "postgresql+asyncpg:")
+
+            engine = create_async_engine(async_url, echo=False)
+            async_session = sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
+            session = async_session()
             try:
                 ind_count, mapping_count = await import_industries_from_sqlite(session, industry_db)
                 results['industries'] = {'classifications': ind_count, 'mappings': mapping_count}

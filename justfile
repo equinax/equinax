@@ -40,15 +40,15 @@ restart:
 status:
     docker compose ps
 
-# First-time project setup
+# First-time project setup (Docker mode)
 setup: _ensure-env up
     @echo "Waiting for services to be healthy..."
     @sleep 5
     just db-migrate
+    just data-init
     @echo ""
     @echo "Setup complete! Access the app at http://localhost:3000"
-    @echo ""
-    @echo "Next step: Initialize data with 'just data-init'"
+    @echo "API Docs: http://localhost:8000/api/docs"
 
 # ==============================================================================
 # Database Commands
