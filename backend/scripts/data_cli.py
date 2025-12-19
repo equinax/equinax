@@ -486,36 +486,36 @@ async def _init_database(database_url: str, force: bool) -> dict:
     pg_url = get_sync_pg_url(database_url)
 
     # 0. Create default user first
-    console.print("\n[0/5] Creating default user...")
+    console.print("\n[0/6] Creating default user...")
     user_result = await _create_default_user(database_url)
     results['user'] = 'created' if user_result == 0 else 'failed'
 
     # 1. Import stocks
     stock_db = FIXTURES_DIR / "sample_stocks.db"
     if stock_db.exists():
-        console.print("\n[1/5] Importing stock data...")
+        console.print("\n[1/6] Importing stock data...")
         stock_results = await migrate_stock_database(stock_db, pg_url)
         results['stocks'] = stock_results
         console.print(f"  Imported: {stock_results.get('stock_basic', 0)} stocks, {stock_results.get('daily_k_data', 0)} daily records")
     else:
-        console.print("\n[1/5] Skipping stocks (sample_stocks.db not found)")
+        console.print("\n[1/6] Skipping stocks (sample_stocks.db not found)")
         results['stocks'] = {}
 
     # 2. Import ETFs
     etf_db = FIXTURES_DIR / "sample_etfs.db"
     if etf_db.exists():
-        console.print("\n[2/5] Importing ETF data...")
+        console.print("\n[2/6] Importing ETF data...")
         etf_results = await migrate_etf_database(etf_db, pg_url)
         results['etfs'] = etf_results
         console.print(f"  Imported: {etf_results.get('etf_basic', 0)} ETFs, {etf_results.get('etf_daily', 0)} daily records")
     else:
-        console.print("\n[2/5] Skipping ETFs (sample_etfs.db not found)")
+        console.print("\n[2/6] Skipping ETFs (sample_etfs.db not found)")
         results['etfs'] = {}
 
     # 3. Import index constituents
     index_db = FIXTURES_DIR / "sample_indices.db"
     if index_db.exists():
-        console.print("\n[3/5] Importing index constituents...")
+        console.print("\n[3/6] Importing index constituents...")
         pg_conn = await asyncpg.connect(pg_url)
         try:
             index_count = await import_index_constituents(index_db, pg_conn, force=force)
@@ -524,15 +524,15 @@ async def _init_database(database_url: str, force: bool) -> dict:
         finally:
             await pg_conn.close()
     else:
-        console.print("\n[3/5] Skipping indices (sample_indices.db not found)")
+        console.print("\n[3/6] Skipping indices (sample_indices.db not found)")
         results['indices'] = 0
 
     # 4. Import industry classification
     industry_db = FIXTURES_DIR / "sample_industries.db"
     if industry_db.exists():
-        console.print("\n[4/5] Importing industry classification...")
+        console.print("\n[4/6] Importing industry classification...")
         try:
-            from scripts.import_sw_industry import import_industries_from_sqlite
+            from scripts.import_sw_industry import import_industries_from_sqlite, update_stock_profile_industries
             from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession
             from sqlalchemy.orm import sessionmaker
 
@@ -548,6 +548,10 @@ async def _init_database(database_url: str, force: bool) -> dict:
                 ind_count, mapping_count = await import_industries_from_sqlite(session, industry_db)
                 results['industries'] = {'classifications': ind_count, 'mappings': mapping_count}
                 console.print(f"  Imported: {ind_count} industries, {mapping_count} stock mappings")
+
+                # Update stock_profile with industry L1/L2/L3
+                console.print("  Updating stock_profile with industry classification...")
+                await update_stock_profile_industries(session)
             finally:
                 await session.close()
                 await engine.dispose()
@@ -555,11 +559,61 @@ async def _init_database(database_url: str, force: bool) -> dict:
             console.print(f"  [yellow]Skipped industry import: {e}[/yellow]")
             results['industries'] = {'error': str(e)}
     else:
-        console.print("\n[4/5] Skipping industries (sample_industries.db not found)")
+        console.print("\n[4/6] Skipping industries (sample_industries.db not found)")
         results['industries'] = {}
 
-    # 5. Load default strategies
-    console.print("\n[5/5] Loading default strategies...")
+    # 5. Calculate classification snapshot for the latest date in fixtures
+    console.print("\n[5/6] Calculating classification data...")
+    try:
+        from workers.classification_tasks import (
+            calculate_structural_classification,
+            calculate_style_factors,
+            calculate_market_regime,
+            generate_classification_snapshot,
+        )
+
+        # Find the latest date in the data
+        latest_date = "2024-12-31"  # Default to end of fixture data
+        try:
+            pg_conn = await asyncpg.connect(pg_url)
+            row = await pg_conn.fetchrow("SELECT MAX(date) as max_date FROM market_daily")
+            if row and row['max_date']:
+                latest_date = str(row['max_date'])
+            await pg_conn.close()
+        except:
+            pass
+
+        console.print(f"  Calculating classification for {latest_date}...")
+
+        # Run classification tasks
+        ctx = {}  # Empty context for non-ARQ direct call
+        structural_result = await calculate_structural_classification(ctx, latest_date)
+        console.print(f"  Structural: {structural_result.get('records_updated', 0)} records")
+
+        style_result = await calculate_style_factors(ctx, latest_date)
+        console.print(f"  Style factors: {style_result.get('records_inserted', 0)} records")
+
+        regime_result = await calculate_market_regime(ctx, latest_date)
+        console.print(f"  Market regime: {regime_result.get('regime', 'unknown')}")
+
+        snapshot_result = await generate_classification_snapshot(ctx, latest_date)
+        console.print(f"  Snapshot: {snapshot_result.get('records_generated', 0)} records")
+
+        results['classification'] = {
+            'date': latest_date,
+            'structural': structural_result.get('records_updated', 0),
+            'style': style_result.get('records_inserted', 0),
+            'regime': regime_result.get('regime', 'unknown'),
+            'snapshot': snapshot_result.get('records_generated', 0),
+        }
+    except Exception as e:
+        console.print(f"  [yellow]Skipped classification: {e}[/yellow]")
+        import traceback
+        traceback.print_exc()
+        results['classification'] = {'error': str(e)}
+
+    # 6. Load default strategies
+    console.print("\n[6/6] Loading default strategies...")
     if DEFAULT_STRATEGIES_PATH.exists():
         await _load_strategies(database_url)
         results['strategies'] = 'loaded'

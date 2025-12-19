@@ -1,15 +1,14 @@
-import { useState } from 'react'
+import { useState, useMemo } from 'react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Badge } from '@/components/ui/badge'
+import { Search, X, TrendingUp, PieChart, ChevronDown, ChevronUp } from 'lucide-react'
+import { cn } from '@/lib/utils'
 import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select'
-import { Search, X, Filter, TrendingUp, PieChart } from 'lucide-react'
+  UniverseCategoryFilter,
+  stockCategoryGroups,
+  etfCategoryGroups,
+} from './UniverseCategoryFilter'
 
 export interface UniverseFilters {
   assetType: 'stock' | 'etf'
@@ -39,6 +38,7 @@ export function UniverseScreener({
   isLoading: _isLoading,
 }: UniverseScreenerProps) {
   const [searchInput, setSearchInput] = useState(filters.search)
+  const [isExpanded, setIsExpanded] = useState(true)
 
   const updateFilter = <K extends keyof UniverseFilters>(
     key: K,
@@ -60,7 +60,7 @@ export function UniverseScreener({
   const clearAllFilters = () => {
     setSearchInput('')
     onFiltersChange({
-      assetType: 'stock',
+      assetType: filters.assetType,
       exchange: 'all',
       search: '',
       industryL1: 'all',
@@ -70,6 +70,59 @@ export function UniverseScreener({
       volCategory: 'all',
       valueCategory: 'all',
     })
+  }
+
+  // Convert ST filter to string for category filter
+  const stFilterValue = filters.isSt === null ? 'all' : filters.isSt ? 'st' : 'non_st'
+
+  // Get selected values for category filter
+  const selectedValues: Record<string, string> = {
+    exchange: filters.exchange,
+    board: filters.board,
+    sizeCategory: filters.sizeCategory,
+    volCategory: filters.volCategory,
+    valueCategory: filters.valueCategory,
+    isSt: stFilterValue,
+  }
+
+  // Handle category selection
+  const handleCategorySelect = (groupId: string, value: string) => {
+    if (groupId === 'isSt') {
+      if (value === 'all') updateFilter('isSt', null)
+      else if (value === 'st') updateFilter('isSt', true)
+      else updateFilter('isSt', false)
+    } else {
+      updateFilter(groupId as keyof UniverseFilters, value)
+    }
+  }
+
+  // Build industry category group dynamically from API data
+  const industryCategoryGroup = useMemo(() => ({
+    id: 'industryL1',
+    label: '行业',
+    options: [
+      { value: 'all', label: '全部' },
+      ...industries.map((ind) => ({ value: ind, label: ind })),
+    ],
+  }), [industries])
+
+  // Combine category groups based on asset type
+  const categoryGroups = useMemo(() => {
+    if (filters.assetType === 'etf') {
+      return etfCategoryGroups
+    }
+
+    // For stocks, add industry group before other groups
+    const groups = [...stockCategoryGroups]
+    // Insert industry group after exchange
+    const exchangeIndex = groups.findIndex((g) => g.id === 'exchange')
+    groups.splice(exchangeIndex + 1, 0, industryCategoryGroup)
+    return groups
+  }, [filters.assetType, industryCategoryGroup])
+
+  const allSelectedValues = {
+    ...selectedValues,
+    industryL1: filters.industryL1,
   }
 
   const hasActiveFilters =
@@ -82,40 +135,51 @@ export function UniverseScreener({
     filters.volCategory !== 'all' ||
     filters.valueCategory !== 'all'
 
+  // Count active filters
+  const activeFilterCount = [
+    filters.exchange !== 'all',
+    filters.industryL1 !== 'all',
+    filters.isSt !== null,
+    filters.board !== 'all',
+    filters.sizeCategory !== 'all',
+    filters.volCategory !== 'all',
+    filters.valueCategory !== 'all',
+  ].filter(Boolean).length
+
   return (
-    <div className="space-y-3">
-      {/* Asset Type Toggle */}
-      <div className="flex items-center justify-between">
-        <div className="flex gap-2">
-          <Button
-            variant={filters.assetType === 'stock' ? 'default' : 'outline'}
-            size="sm"
+    <div className="space-y-4">
+      {/* Header Row: Asset Type Toggle + Search + Count */}
+      <div className="flex items-center gap-4">
+        {/* Asset Type Toggle */}
+        <div className="flex gap-1 p-1 bg-muted rounded-lg">
+          <button
             onClick={() => updateFilter('assetType', 'stock')}
+            className={cn(
+              'flex items-center gap-1.5 px-3 py-1.5 text-sm rounded-md transition-colors',
+              filters.assetType === 'stock'
+                ? 'bg-background text-foreground shadow-sm'
+                : 'text-muted-foreground hover:text-foreground'
+            )}
           >
-            <TrendingUp className="h-4 w-4 mr-1.5" />
+            <TrendingUp className="h-4 w-4" />
             股票
-          </Button>
-          <Button
-            variant={filters.assetType === 'etf' ? 'default' : 'outline'}
-            size="sm"
+          </button>
+          <button
             onClick={() => updateFilter('assetType', 'etf')}
+            className={cn(
+              'flex items-center gap-1.5 px-3 py-1.5 text-sm rounded-md transition-colors',
+              filters.assetType === 'etf'
+                ? 'bg-background text-foreground shadow-sm'
+                : 'text-muted-foreground hover:text-foreground'
+            )}
           >
-            <PieChart className="h-4 w-4 mr-1.5" />
+            <PieChart className="h-4 w-4" />
             ETF
-          </Button>
+          </button>
         </div>
 
-        {totalCount !== undefined && (
-          <div className="text-sm text-muted-foreground">
-            共 <span className="font-medium text-foreground">{totalCount.toLocaleString()}</span> 只
-          </div>
-        )}
-      </div>
-
-      {/* Filter Bar */}
-      <div className="flex flex-wrap items-center gap-2">
         {/* Search */}
-        <form onSubmit={handleSearchSubmit} className="relative flex-1 min-w-[200px] max-w-[300px]">
+        <form onSubmit={handleSearchSubmit} className="relative flex-1 max-w-[300px]">
           <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
           <Input
             placeholder="搜索代码或名称..."
@@ -134,163 +198,83 @@ export function UniverseScreener({
           )}
         </form>
 
-        {/* Exchange Filter */}
-        <Select
-          value={filters.exchange}
-          onValueChange={(value) => updateFilter('exchange', value)}
-        >
-          <SelectTrigger className="w-[100px] h-9">
-            <SelectValue placeholder="交易所" />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="all">全部</SelectItem>
-            <SelectItem value="sh">上海</SelectItem>
-            <SelectItem value="sz">深圳</SelectItem>
-          </SelectContent>
-        </Select>
-
-        {/* Industry Filter */}
-        {filters.assetType === 'stock' && (
-          <Select
-            value={filters.industryL1}
-            onValueChange={(value) => updateFilter('industryL1', value)}
-          >
-            <SelectTrigger className="w-[120px] h-9">
-              <SelectValue placeholder="行业" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">全部行业</SelectItem>
-              {industries.map((industry) => (
-                <SelectItem key={industry} value={industry}>
-                  {industry}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
+        {/* Search Badge */}
+        {filters.search && (
+          <Badge variant="secondary" className="gap-1">
+            搜索: {filters.search}
+            <button onClick={() => updateFilter('search', '')}>
+              <X className="h-3 w-3" />
+            </button>
+          </Badge>
         )}
 
-        {/* ST Filter */}
-        {filters.assetType === 'stock' && (
-          <Select
-            value={filters.isSt === null ? 'all' : filters.isSt ? 'st' : 'non_st'}
-            onValueChange={(value) => {
-              if (value === 'all') updateFilter('isSt', null)
-              else if (value === 'st') updateFilter('isSt', true)
-              else updateFilter('isSt', false)
-            }}
-          >
-            <SelectTrigger className="w-[100px] h-9">
-              <SelectValue placeholder="ST" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">全部</SelectItem>
-              <SelectItem value="non_st">非ST</SelectItem>
-              <SelectItem value="st">仅ST</SelectItem>
-            </SelectContent>
-          </Select>
-        )}
+        {/* Spacer */}
+        <div className="flex-1" />
 
-        {/* Board Filter */}
-        {filters.assetType === 'stock' && (
-          <Select
-            value={filters.board}
-            onValueChange={(value) => updateFilter('board', value)}
-          >
-            <SelectTrigger className="w-[90px] h-9">
-              <SelectValue placeholder="板块" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">全部板块</SelectItem>
-              <SelectItem value="MAIN">主板</SelectItem>
-              <SelectItem value="GEM">创业板</SelectItem>
-              <SelectItem value="STAR">科创板</SelectItem>
-              <SelectItem value="BSE">北交所</SelectItem>
-            </SelectContent>
-          </Select>
-        )}
+        {/* Count & Expand Toggle */}
+        <div className="flex items-center gap-3">
+          {totalCount !== undefined && (
+            <div className="text-sm text-muted-foreground">
+              共 <span className="font-medium text-foreground">{totalCount.toLocaleString()}</span> 只
+            </div>
+          )}
 
-        {/* Size Category Filter */}
-        {filters.assetType === 'stock' && (
-          <Select
-            value={filters.sizeCategory}
-            onValueChange={(value) => updateFilter('sizeCategory', value)}
-          >
-            <SelectTrigger className="w-[90px] h-9">
-              <SelectValue placeholder="规模" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">全部规模</SelectItem>
-              <SelectItem value="MEGA">巨型</SelectItem>
-              <SelectItem value="LARGE">大型</SelectItem>
-              <SelectItem value="MID">中型</SelectItem>
-              <SelectItem value="SMALL">小型</SelectItem>
-              <SelectItem value="MICRO">微型</SelectItem>
-            </SelectContent>
-          </Select>
-        )}
-
-        {/* Volatility Category Filter */}
-        {filters.assetType === 'stock' && (
-          <Select
-            value={filters.volCategory}
-            onValueChange={(value) => updateFilter('volCategory', value)}
-          >
-            <SelectTrigger className="w-[90px] h-9">
-              <SelectValue placeholder="波动" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">全部波动</SelectItem>
-              <SelectItem value="HIGH">高波动</SelectItem>
-              <SelectItem value="NORMAL">正常</SelectItem>
-              <SelectItem value="LOW">低波动</SelectItem>
-            </SelectContent>
-          </Select>
-        )}
-
-        {/* Value Category Filter */}
-        {filters.assetType === 'stock' && (
-          <Select
-            value={filters.valueCategory}
-            onValueChange={(value) => updateFilter('valueCategory', value)}
-          >
-            <SelectTrigger className="w-[90px] h-9">
-              <SelectValue placeholder="风格" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">全部风格</SelectItem>
-              <SelectItem value="VALUE">价值</SelectItem>
-              <SelectItem value="NEUTRAL">平衡</SelectItem>
-              <SelectItem value="GROWTH">成长</SelectItem>
-            </SelectContent>
-          </Select>
-        )}
-
-        {/* Clear Filters */}
-        {hasActiveFilters && (
           <Button
             variant="ghost"
             size="sm"
-            onClick={clearAllFilters}
-            className="h-9 text-muted-foreground"
+            onClick={() => setIsExpanded(!isExpanded)}
+            className="text-muted-foreground"
           >
-            <X className="h-4 w-4 mr-1" />
-            清除筛选
+            {isExpanded ? (
+              <>
+                收起筛选
+                <ChevronUp className="h-4 w-4 ml-1" />
+              </>
+            ) : (
+              <>
+                展开筛选
+                {activeFilterCount > 0 && (
+                  <Badge variant="secondary" className="ml-1 h-5 px-1.5">
+                    {activeFilterCount}
+                  </Badge>
+                )}
+                <ChevronDown className="h-4 w-4 ml-1" />
+              </>
+            )}
           </Button>
-        )}
+        </div>
       </div>
 
-      {/* Active Filters Display */}
-      {hasActiveFilters && (
-        <div className="flex flex-wrap gap-1.5">
-          <Filter className="h-4 w-4 text-muted-foreground mt-0.5" />
-          {filters.search && (
-            <Badge variant="secondary" className="gap-1">
-              搜索: {filters.search}
-              <button onClick={() => updateFilter('search', '')}>
-                <X className="h-3 w-3" />
-              </button>
-            </Badge>
+      {/* Expanded Category Filters */}
+      {isExpanded && (
+        <div className="relative">
+          {/* Category Filter Grid */}
+          <div className="bg-muted/30 rounded-lg p-4 border">
+            <UniverseCategoryFilter
+              groups={categoryGroups}
+              selectedValues={allSelectedValues}
+              onSelect={handleCategorySelect}
+            />
+          </div>
+
+          {/* Clear All Button */}
+          {hasActiveFilters && (
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={clearAllFilters}
+              className="absolute top-3 right-3 h-7 text-xs text-muted-foreground hover:text-destructive"
+            >
+              <X className="h-3 w-3 mr-1" />
+              清除全部
+            </Button>
           )}
+        </div>
+      )}
+
+      {/* Collapsed Active Filters Summary */}
+      {!isExpanded && hasActiveFilters && (
+        <div className="flex flex-wrap gap-1.5">
           {filters.exchange !== 'all' && (
             <Badge variant="secondary" className="gap-1">
               {filters.exchange === 'sh' ? '上海' : '深圳'}
@@ -307,14 +291,6 @@ export function UniverseScreener({
               </button>
             </Badge>
           )}
-          {filters.isSt !== null && (
-            <Badge variant="secondary" className="gap-1">
-              {filters.isSt ? 'ST股票' : '非ST'}
-              <button onClick={() => updateFilter('isSt', null)}>
-                <X className="h-3 w-3" />
-              </button>
-            </Badge>
-          )}
           {filters.board !== 'all' && (
             <Badge variant="secondary" className="gap-1">
               {filters.board === 'MAIN' ? '主板' : filters.board === 'GEM' ? '创业板' : filters.board === 'STAR' ? '科创板' : '北交所'}
@@ -325,7 +301,7 @@ export function UniverseScreener({
           )}
           {filters.sizeCategory !== 'all' && (
             <Badge variant="secondary" className="gap-1">
-              {filters.sizeCategory === 'MEGA' ? '巨型' : filters.sizeCategory === 'LARGE' ? '大型' : filters.sizeCategory === 'MID' ? '中型' : filters.sizeCategory === 'SMALL' ? '小型' : '微型'}
+              {filters.sizeCategory === 'MEGA' ? '超大盘' : filters.sizeCategory === 'LARGE' ? '大盘' : filters.sizeCategory === 'MID' ? '中盘' : filters.sizeCategory === 'SMALL' ? '小盘' : '微盘'}
               <button onClick={() => updateFilter('sizeCategory', 'all')}>
                 <X className="h-3 w-3" />
               </button>
@@ -333,7 +309,7 @@ export function UniverseScreener({
           )}
           {filters.volCategory !== 'all' && (
             <Badge variant="secondary" className="gap-1">
-              {filters.volCategory === 'HIGH' ? '高波动' : filters.volCategory === 'NORMAL' ? '正常波动' : '低波动'}
+              {filters.volCategory === 'HIGH' ? '高波动' : filters.volCategory === 'NORMAL' ? '正常' : '低波动'}
               <button onClick={() => updateFilter('volCategory', 'all')}>
                 <X className="h-3 w-3" />
               </button>
@@ -343,6 +319,14 @@ export function UniverseScreener({
             <Badge variant="secondary" className="gap-1">
               {filters.valueCategory === 'VALUE' ? '价值' : filters.valueCategory === 'NEUTRAL' ? '平衡' : '成长'}
               <button onClick={() => updateFilter('valueCategory', 'all')}>
+                <X className="h-3 w-3" />
+              </button>
+            </Badge>
+          )}
+          {filters.isSt !== null && (
+            <Badge variant="secondary" className="gap-1">
+              {filters.isSt ? 'ST' : '非ST'}
+              <button onClick={() => updateFilter('isSt', null)}>
                 <X className="h-3 w-3" />
               </button>
             </Badge>

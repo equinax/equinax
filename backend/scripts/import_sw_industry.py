@@ -174,42 +174,57 @@ async def import_industries_from_sqlite(
 
 
 async def update_stock_profile_industries(session: AsyncSession):
-    """Update stock_profile table with primary industry classification.
+    """Update stock_profile table with industry classification (L1, L2, L3).
 
-    Uses Shenwan (SW) L1 classification as the default industry.
+    Uses Shenwan (SW) classification system.
     """
     print("\n=== Updating Stock Profile Industries ===\n")
 
-    # Get all SW L1 mappings with industry names
-    result = await session.execute(
-        select(StockIndustryMapping, IndustryClassification)
-        .join(IndustryClassification,
-              StockIndustryMapping.industry_code == IndustryClassification.industry_code)
-        .where(StockIndustryMapping.classification_system == "sw")
-        .where(IndustryClassification.industry_level == 1)
-        .where(StockIndustryMapping.expire_date.is_(None))
-    )
-    mappings = result.all()
+    # Get all SW mappings with industry names for each level
+    stock_industries = {}  # stock_code -> {l1: name, l2: name, l3: name}
 
-    print(f"Found {len(mappings)} active SW L1 industry mappings")
+    for level in [1, 2, 3]:
+        result = await session.execute(
+            select(StockIndustryMapping, IndustryClassification)
+            .join(IndustryClassification,
+                  StockIndustryMapping.industry_code == IndustryClassification.industry_code)
+            .where(StockIndustryMapping.classification_system == "sw")
+            .where(IndustryClassification.industry_level == level)
+            .where(StockIndustryMapping.expire_date.is_(None))
+        )
+        mappings = result.all()
+        print(f"Found {len(mappings)} active SW L{level} industry mappings")
+
+        for mapping, industry in mappings:
+            if mapping.stock_code not in stock_industries:
+                stock_industries[mapping.stock_code] = {}
+            stock_industries[mapping.stock_code][f"l{level}"] = industry.industry_name
+
+    print(f"\nTotal stocks with industry mappings: {len(stock_industries)}")
 
     # Update stock_profile
     updated = 0
-    for mapping, industry in mappings:
+    for stock_code, industries in stock_industries.items():
+        l1 = industries.get("l1")
+        l2 = industries.get("l2")
+        l3 = industries.get("l3")
+
         result = await session.execute(
             text("""
                 UPDATE stock_profile
-                SET sw_industry_l1 = :industry_name,
+                SET sw_industry_l1 = :l1,
+                    sw_industry_l2 = :l2,
+                    sw_industry_l3 = :l3,
                     updated_at = NOW()
                 WHERE code = :stock_code
             """),
-            {"industry_name": industry.industry_name, "stock_code": mapping.stock_code}
+            {"l1": l1, "l2": l2, "l3": l3, "stock_code": stock_code}
         )
         if result.rowcount > 0:
             updated += 1
 
     await session.commit()
-    print(f"Updated {updated} stock profiles with industry classification")
+    print(f"Updated {updated} stock profiles with industry classification (L1/L2/L3)")
 
 
 async def main(source_db: Path, system: Optional[str] = None):
