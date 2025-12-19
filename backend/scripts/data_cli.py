@@ -1041,35 +1041,50 @@ async def _get_pg_status(database_url: str) -> dict:
 
 @app.command()
 def download(
-    data_type: str = typer.Argument("all", help="Data type: indices, industries, northbound, institutional, market_cap, all"),
+    data_type: str = typer.Argument("all", help="Data type: stocks, etfs, indices, industries, northbound, institutional, market_cap, all"),
     full: bool = typer.Option(False, "--full", help="Download full history"),
     recent: int = typer.Option(30, "--recent", "-r", help="Download recent N days"),
     years: str = typer.Option(None, "--years", "-y", help="Years to download (comma-separated): 2023,2024,2025"),
+    mode: str = typer.Option("all", "--mode", "-m", help="Download mode for stocks/etfs: all, basic, daily, adjust"),
+    force: bool = typer.Option(False, "--force", "-f", help="Force re-download even if data exists"),
 ):
     """
     Download data from external sources to data/cache/.
 
-    Uses AKShare to download market data directly.
+    Uses data.downloads module with rate limiting and checkpoint support.
 
     Examples:
+        python -m scripts.data_cli download stocks --years 2024
+        python -m scripts.data_cli download etfs --years 2024
         python -m scripts.data_cli download indices
         python -m scripts.data_cli download all --full
-        python -m scripts.data_cli download market_cap --years 2024
-        python -m scripts.data_cli download northbound --recent 30
+        python -m scripts.data_cli download market_cap --recent 30
+        python -m scripts.data_cli download northbound
     """
+    from data.downloads import (
+        download_stocks,
+        download_etfs,
+        download_market_cap,
+        download_northbound,
+        download_institutional,
+        download_indices,
+        download_industries,
+    )
+
     console.print(f"\n[bold blue]Downloading {data_type} data to cache/...[/bold blue]\n")
 
     # Ensure cache directory exists
     ensure_cache_dir()
 
     # Parse years if provided
-    year_list = []
+    year_list = None
     if years:
         year_list = [int(y.strip()) for y in years.split(',')]
         console.print(f"Target years: {year_list}")
 
+    # Define all available downloaders
     if data_type == "all":
-        types_to_download = ["indices", "industries", "northbound", "institutional", "market_cap"]
+        types_to_download = ["stocks", "etfs", "indices", "industries", "northbound", "institutional", "market_cap"]
     else:
         types_to_download = [data_type]
 
@@ -1077,20 +1092,26 @@ def download(
         console.print(f"\n[cyan]Downloading {dtype}...[/cyan]")
 
         try:
-            if dtype == "indices":
-                count = _download_indices()
+            if dtype == "stocks":
+                count = download_stocks(years=year_list, mode=mode, force=force)
+                console.print(f"  [green]✓ Downloaded {count} stock records[/green]")
+            elif dtype == "etfs":
+                count = download_etfs(years=year_list, mode=mode, force=force)
+                console.print(f"  [green]✓ Downloaded {count} ETF records[/green]")
+            elif dtype == "indices":
+                count = download_indices()
                 console.print(f"  [green]✓ Downloaded {count} index constituent records[/green]")
             elif dtype == "industries":
-                count = _download_industries()
+                count = download_industries()
                 console.print(f"  [green]✓ Downloaded {count} industry records[/green]")
             elif dtype == "northbound":
-                count = _download_northbound(recent=recent if not full else None)
+                count = download_northbound(today_only=not full)
                 console.print(f"  [green]✓ Downloaded {count} northbound records[/green]")
             elif dtype == "institutional":
-                count = _download_institutional()
+                count = download_institutional()
                 console.print(f"  [green]✓ Downloaded {count} institutional records[/green]")
             elif dtype == "market_cap":
-                count = _download_market_cap()
+                count = download_market_cap(recent=recent, full_history=full)
                 console.print(f"  [green]✓ Downloaded {count} market cap records[/green]")
             else:
                 console.print(f"  [yellow]Unknown data type: {dtype}[/yellow]")
@@ -1103,282 +1124,78 @@ def download(
     console.print(f"Data saved to: {CACHE_DIR}\n")
 
 
-def _download_indices() -> int:
-    """Download index constituents to cache/index_constituents.db"""
-    import akshare as ak
-
-    db_path = CACHE_DIR / "index_constituents.db"
-    conn = sqlite3.connect(str(db_path))
-
-    conn.execute("""
-        CREATE TABLE IF NOT EXISTS index_constituents (
-            index_code TEXT NOT NULL,
-            stock_code TEXT NOT NULL,
-            stock_name TEXT,
-            weight REAL,
-            update_date TEXT,
-            PRIMARY KEY (index_code, stock_code)
-        )
-    """)
-
-    indices = {
-        "000300": "hs300",   # 沪深300
-        "000905": "zz500",   # 中证500
-        "000852": "zz1000",  # 中证1000
-        "000016": "sz50",    # 上证50
-        "399006": "cyb",     # 创业板指
-    }
-
-    total_count = 0
-    for code, name in indices.items():
-        try:
-            console.print(f"    Fetching {name} ({code})...")
-            df = ak.index_stock_cons(symbol=code)
-            if df is not None and not df.empty:
-                for _, row in df.iterrows():
-                    # Normalize stock code to sh.XXXXXX/sz.XXXXXX format
-                    stock_code = row.get('品种代码', row.get('股票代码', ''))
-                    if stock_code:
-                        if stock_code.startswith('6'):
-                            stock_code = f"sh.{stock_code}"
-                        else:
-                            stock_code = f"sz.{stock_code}"
-
-                    conn.execute("""
-                        INSERT OR REPLACE INTO index_constituents
-                        (index_code, stock_code, stock_name, weight, update_date)
-                        VALUES (?, ?, ?, ?, date('now'))
-                    """, (name, stock_code, row.get('品种名称', row.get('股票名称', '')), None))
-                total_count += len(df)
-        except Exception as e:
-            console.print(f"    [yellow]Warning: Failed to fetch {name}: {e}[/yellow]")
-
-    conn.commit()
-    conn.close()
-    return total_count
-
-
-def _download_industries() -> int:
-    """Download industry classification to cache/industry_classification.db"""
-    import akshare as ak
-
-    db_path = CACHE_DIR / "industry_classification.db"
-    conn = sqlite3.connect(str(db_path))
-
-    conn.execute("""
-        CREATE TABLE IF NOT EXISTS industry_classification (
-            code TEXT PRIMARY KEY,
-            name TEXT,
-            level INTEGER,
-            parent_code TEXT
-        )
-    """)
-    conn.execute("""
-        CREATE TABLE IF NOT EXISTS stock_industry_mapping (
-            stock_code TEXT NOT NULL,
-            industry_code TEXT NOT NULL,
-            PRIMARY KEY (stock_code, industry_code)
-        )
-    """)
-
-    try:
-        # Download industry list
-        console.print("    Fetching industry list...")
-        df = ak.stock_board_industry_name_em()
-        if df is not None and not df.empty:
-            for _, row in df.iterrows():
-                conn.execute("""
-                    INSERT OR REPLACE INTO industry_classification (code, name, level)
-                    VALUES (?, ?, 1)
-                """, (row['板块代码'], row['板块名称']))
-
-            conn.commit()
-            return len(df)
-    except Exception as e:
-        console.print(f"    [yellow]Warning: {e}[/yellow]")
-
-    conn.close()
-    return 0
-
-
-def _download_northbound(recent: int = None) -> int:
-    """Download northbound holdings to cache/northbound_holdings.db"""
-    import akshare as ak
-
-    db_path = CACHE_DIR / "northbound_holdings.db"
-    conn = sqlite3.connect(str(db_path))
-
-    conn.execute("""
-        CREATE TABLE IF NOT EXISTS northbound_holdings (
-            code TEXT NOT NULL,
-            date TEXT NOT NULL,
-            holding_shares REAL,
-            holding_ratio REAL,
-            holding_change REAL,
-            market_value REAL,
-            PRIMARY KEY (code, date)
-        )
-    """)
-
-    try:
-        console.print("    Fetching northbound holdings...")
-        df = ak.stock_hsgt_hold_stock_em()
-        if df is not None and not df.empty:
-            today = date.today().strftime("%Y-%m-%d")
-            count = 0
-            for _, row in df.iterrows():
-                stock_code = row.get('代码', '')
-                if stock_code:
-                    if stock_code.startswith('6'):
-                        stock_code = f"sh.{stock_code}"
-                    else:
-                        stock_code = f"sz.{stock_code}"
-
-                    conn.execute("""
-                        INSERT OR REPLACE INTO northbound_holdings
-                        (code, date, holding_shares, holding_ratio, holding_change, market_value)
-                        VALUES (?, ?, ?, ?, ?, ?)
-                    """, (
-                        stock_code,
-                        today,
-                        row.get('持股数量', 0),
-                        row.get('持股占比', 0),
-                        row.get('持股变动', 0),
-                        row.get('持股市值', 0),
-                    ))
-                    count += 1
-
-            conn.commit()
-            conn.close()
-            return count
-    except Exception as e:
-        console.print(f"    [yellow]Warning: {e}[/yellow]")
-
-    conn.close()
-    return 0
-
-
-def _download_institutional() -> int:
-    """Download institutional holdings to cache/institutional_holdings.db"""
-    import akshare as ak
-
-    db_path = CACHE_DIR / "institutional_holdings.db"
-    conn = sqlite3.connect(str(db_path))
-
-    conn.execute("""
-        CREATE TABLE IF NOT EXISTS institutional_holdings (
-            code TEXT NOT NULL,
-            report_date TEXT NOT NULL,
-            fund_count INTEGER,
-            holding_shares REAL,
-            holding_ratio REAL,
-            holding_change REAL,
-            market_value REAL,
-            PRIMARY KEY (code, report_date)
-        )
-    """)
-
-    try:
-        console.print("    Fetching institutional holdings (this may take a while)...")
-        # Get the latest quarter's fund holdings
-        df = ak.stock_report_fund_hold(symbol="全部")
-        if df is not None and not df.empty:
-            count = 0
-            for _, row in df.iterrows():
-                stock_code = row.get('代码', '')
-                if stock_code:
-                    if stock_code.startswith('6'):
-                        stock_code = f"sh.{stock_code}"
-                    else:
-                        stock_code = f"sz.{stock_code}"
-
-                    conn.execute("""
-                        INSERT OR REPLACE INTO institutional_holdings
-                        (code, report_date, fund_count, holding_shares, holding_ratio, holding_change, market_value)
-                        VALUES (?, ?, ?, ?, ?, ?, ?)
-                    """, (
-                        stock_code,
-                        str(row.get('报告期', '')),
-                        row.get('基金家数', 0),
-                        row.get('持股总数', 0),
-                        row.get('持股占流通股比', 0),
-                        row.get('持股变动', 0),
-                        row.get('持股市值', 0),
-                    ))
-                    count += 1
-
-            conn.commit()
-            conn.close()
-            return count
-    except Exception as e:
-        console.print(f"    [yellow]Warning: {e}[/yellow]")
-
-    conn.close()
-    return 0
-
-
-def _download_market_cap() -> int:
-    """Download market cap data to cache/market_cap.db"""
-    import akshare as ak
-
-    db_path = CACHE_DIR / "market_cap.db"
-    conn = sqlite3.connect(str(db_path))
-
-    conn.execute("""
-        CREATE TABLE IF NOT EXISTS stock_market_cap (
-            code TEXT NOT NULL,
-            date TEXT NOT NULL,
-            total_mv REAL,
-            circ_mv REAL,
-            PRIMARY KEY (code, date)
-        )
-    """)
-
-    try:
-        console.print("    Fetching market cap data...")
-        # Get real-time market data which includes market cap
-        df = ak.stock_zh_a_spot_em()
-        if df is not None and not df.empty:
-            today = date.today().strftime("%Y-%m-%d")
-            count = 0
-            for _, row in df.iterrows():
-                stock_code = row.get('代码', '')
-                if stock_code:
-                    if stock_code.startswith('6'):
-                        stock_code = f"sh.{stock_code}"
-                    else:
-                        stock_code = f"sz.{stock_code}"
-
-                    # Total market cap and circulating market cap (in 亿元)
-                    total_mv = row.get('总市值', 0)
-                    circ_mv = row.get('流通市值', 0)
-
-                    # Convert from yuan to 亿元 if needed
-                    if total_mv and total_mv > 1e10:
-                        total_mv = total_mv / 1e8
-                    if circ_mv and circ_mv > 1e10:
-                        circ_mv = circ_mv / 1e8
-
-                    conn.execute("""
-                        INSERT OR REPLACE INTO stock_market_cap
-                        (code, date, total_mv, circ_mv)
-                        VALUES (?, ?, ?, ?)
-                    """, (stock_code, today, total_mv, circ_mv))
-                    count += 1
-
-            conn.commit()
-            conn.close()
-            return count
-    except Exception as e:
-        console.print(f"    [yellow]Warning: {e}[/yellow]")
-
-    conn.close()
-    return 0
-
-
 # =============================================================================
 # LOAD Command
 # =============================================================================
+
+
+def _check_cache_integrity(cache_dir: Path, data_types: list = None) -> dict:
+    """
+    Check cache data integrity before loading.
+
+    Returns dict with:
+        - valid: bool - whether all required files exist
+        - missing: list - missing data types
+        - files: dict - mapping of data types to file info
+    """
+    # Expected files for each data type
+    expected_files = {
+        "stocks": {"pattern": "a_stock_*.db", "required": False},
+        "etfs": {"pattern": "etf_*.db", "required": False},
+        "indices": {"pattern": "index_constituents.db", "required": False},
+        "industries": {"pattern": "industry_classification.db", "required": False},
+        "northbound": {"pattern": "northbound_holdings.db", "required": False},
+        "institutional": {"pattern": "institutional_holdings.db", "required": False},
+        "market_cap": {"pattern": "market_cap.db", "required": False},
+    }
+
+    # Filter to requested types
+    if data_types:
+        expected_files = {k: v for k, v in expected_files.items() if k in data_types}
+
+    status = {"valid": True, "missing": [], "files": {}}
+
+    for dtype, info in expected_files.items():
+        pattern = info["pattern"]
+        files = list(cache_dir.glob(pattern))
+
+        if not files:
+            status["missing"].append(dtype)
+            if info["required"]:
+                status["valid"] = False
+        else:
+            # Get file stats
+            total_size = sum(f.stat().st_size for f in files) / 1024 / 1024
+            status["files"][dtype] = {
+                "count": len(files),
+                "names": [f.name for f in files],
+                "size_mb": round(total_size, 2),
+            }
+
+    return status
+
+
+async def _get_pg_loaded_dates(pg_url: str, table: str) -> set:
+    """Get set of dates already loaded in PostgreSQL table."""
+    import asyncpg
+
+    try:
+        conn = await asyncpg.connect(pg_url)
+        try:
+            if table == "market_daily":
+                rows = await conn.fetch("SELECT DISTINCT trade_date FROM market_daily")
+                return {str(row['trade_date']) for row in rows}
+            elif table == "indicator_valuation":
+                rows = await conn.fetch("SELECT DISTINCT date FROM indicator_valuation")
+                return {str(row['date']) for row in rows}
+            elif table == "stock_microstructure":
+                rows = await conn.fetch("SELECT DISTINCT date FROM stock_microstructure")
+                return {str(row['date']) for row in rows}
+            return set()
+        finally:
+            await conn.close()
+    except Exception:
+        return set()
 
 
 @app.command()
@@ -1388,15 +1205,19 @@ def load(
     recent: int = typer.Option(None, "--recent", "-r", help="Load recent N days only"),
     years: str = typer.Option(None, "--years", "-y", help="Years to load (comma-separated): 2023,2024"),
     source: str = typer.Option(None, "--source", "-s", help="Source directory (default: data/cache/)"),
+    skip_check: bool = typer.Option(False, "--skip-check", help="Skip cache integrity check"),
     database_url: str = typer.Option(DEFAULT_DATABASE_URL, "--database", "-d", help="Database URL"),
 ):
     """
     Load data from data/cache/ to PostgreSQL.
 
+    Checks cache integrity before loading and reports missing files.
+
     Examples:
         python -m scripts.data_cli load stocks --full
         python -m scripts.data_cli load all --recent 30
         python -m scripts.data_cli load market_cap --years 2024
+        python -m scripts.data_cli load --years 2024  # Load all types for 2024
     """
     console.print("\n[bold blue]Loading data to PostgreSQL...[/bold blue]\n")
 
@@ -1413,22 +1234,39 @@ def load(
         year_list = [y.strip() for y in years.split(',')]
         console.print(f"Target years: {year_list}")
 
-    # Find SQLite files
-    db_files = list(source_dir.glob("*.db"))
-    if not db_files:
-        console.print(f"[yellow]No .db files found in {source_dir}[/yellow]")
-        raise typer.Exit(1)
-
-    console.print(f"Found {len(db_files)} database files in {source_dir}:")
-    for f in sorted(db_files):
-        stats = get_sqlite_stats(f)
-        size = stats.get("size_mb", 0)
-        console.print(f"  - {f.name} ({size:.1f} MB)")
-
+    # Determine types to load
     if data_type == "all":
         types_to_load = ["stocks", "etfs", "indices", "industries", "northbound", "institutional", "market_cap"]
     else:
         types_to_load = [data_type]
+
+    # Check cache integrity
+    if not skip_check:
+        console.print("[cyan]Checking cache integrity...[/cyan]")
+        cache_status = _check_cache_integrity(source_dir, types_to_load)
+
+        if cache_status["missing"]:
+            console.print(f"\n[yellow]Missing data in cache:[/yellow]")
+            for dtype in cache_status["missing"]:
+                console.print(f"  - {dtype}")
+            console.print(f"\n[dim]Run 'data_cli download {' '.join(cache_status['missing'])}' to download[/dim]")
+
+            # Filter out missing types
+            types_to_load = [t for t in types_to_load if t not in cache_status["missing"]]
+            if not types_to_load:
+                console.print("[red]No data available to load[/red]")
+                raise typer.Exit(1)
+
+        # Show available files
+        console.print("\n[cyan]Cache status:[/cyan]")
+        for dtype, info in cache_status["files"].items():
+            console.print(f"  {dtype}: {info['count']} file(s), {info['size_mb']} MB")
+
+    # Find and display SQLite files
+    db_files = list(source_dir.glob("*.db"))
+    if not db_files and not skip_check:
+        console.print(f"[yellow]No .db files found in {source_dir}[/yellow]")
+        raise typer.Exit(1)
 
     console.print(f"\n[cyan]Loading data types: {', '.join(types_to_load)}[/cyan]")
 

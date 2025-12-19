@@ -223,20 +223,15 @@ data-update:
 data-copy-cache *args='':
     docker compose exec api python -m scripts.data_cli copy-cache {{args}}
 
-# Generate fixture data from cache dataset
-[group('data')]
-data-generate-fixtures *args='':
-    docker compose exec api python -m scripts.data_cli generate-fixtures {{args}}
-
-# Download fixture data from AKShare
+# Fixture management (generate from cache, download from API)
 # Examples:
-#   just data-download-fixtures                    # Download all (market_cap, northbound, institutional)
-#   just data-download-fixtures market_cap         # Download market cap only
-#   just data-download-fixtures northbound         # Download northbound only
-#   just data-download-fixtures institutional      # Download institutional only
+#   just data-fixtures status                      # Show fixture file status
+#   just data-fixtures generate --stocks 100      # Generate from cache
+#   just data-fixtures download all               # Download from API
+#   just data-fixtures download market_cap        # Download market cap only
 [group('data')]
-data-download-fixtures *args='all':
-    docker compose exec api python -m scripts.download_fixtures {{args}}
+data-fixtures *args='status':
+    docker compose exec api python -m scripts.fixtures {{args}}
 
 # ==============================================================================
 # Internal Helpers
