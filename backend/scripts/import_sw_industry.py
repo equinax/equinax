@@ -37,8 +37,10 @@ from app.config import settings
 from app.db.models.classification import IndustryClassification, StockIndustryMapping
 
 
-# Default source database path
-DEFAULT_SOURCE_DB = Path("/Users/dan/Code/q/trading_data/industry_classification.db")
+# Default source database path - use cache or fixtures
+CACHE_DB = Path(__file__).parent.parent / "data" / "cache" / "industry_classification.db"
+FIXTURES_DB = Path(__file__).parent.parent / "data" / "fixtures" / "sample_industries.db"
+DEFAULT_SOURCE_DB = CACHE_DB if CACHE_DB.exists() else FIXTURES_DB
 
 
 async def get_async_session():
@@ -174,21 +176,22 @@ async def import_industries_from_sqlite(
 async def update_stock_profile_industries(session: AsyncSession):
     """Update stock_profile table with primary industry classification.
 
-    Uses EastMoney classification as the default L1 industry.
+    Uses Shenwan (SW) L1 classification as the default industry.
     """
     print("\n=== Updating Stock Profile Industries ===\n")
 
-    # Get all EM mappings with industry names
+    # Get all SW L1 mappings with industry names
     result = await session.execute(
         select(StockIndustryMapping, IndustryClassification)
         .join(IndustryClassification,
               StockIndustryMapping.industry_code == IndustryClassification.industry_code)
-        .where(StockIndustryMapping.classification_system == "em")
+        .where(StockIndustryMapping.classification_system == "sw")
+        .where(IndustryClassification.industry_level == 1)
         .where(StockIndustryMapping.expire_date.is_(None))
     )
     mappings = result.all()
 
-    print(f"Found {len(mappings)} active EM industry mappings")
+    print(f"Found {len(mappings)} active SW L1 industry mappings")
 
     # Update stock_profile
     updated = 0
