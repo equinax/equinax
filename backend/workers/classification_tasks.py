@@ -38,17 +38,27 @@ from app.db.models.classification import (
 
 logger = logging.getLogger(__name__)
 
-# Create engine for worker
-worker_engine = create_async_engine(
-    settings.database_url,
-    pool_size=5,
-    max_overflow=5,
-)
-worker_session_maker = async_sessionmaker(
-    worker_engine,
-    class_=AsyncSession,
-    expire_on_commit=False,
-)
+
+def get_session_maker(database_url: str = None):
+    """Get async session maker for the given database URL.
+
+    If database_url is not provided, uses settings.database_url.
+    """
+    url = database_url or settings.database_url
+    engine = create_async_engine(
+        url,
+        pool_size=5,
+        max_overflow=5,
+    )
+    return async_sessionmaker(
+        engine,
+        class_=AsyncSession,
+        expire_on_commit=False,
+    )
+
+
+# Default session maker using settings (for worker/ARQ usage)
+worker_session_maker = get_session_maker()
 
 
 # =============================================================================
@@ -188,6 +198,7 @@ def determine_market_regime(
 async def calculate_structural_classification(
     ctx: dict,
     ref_date: Optional[str] = None,
+    database_url: Optional[str] = None,
 ) -> Dict[str, Any]:
     """
     Calculate structural classification for all stocks.
@@ -198,7 +209,8 @@ async def calculate_structural_classification(
     calc_date = date.fromisoformat(ref_date) if ref_date else date.today()
     new_threshold = calc_date - timedelta(days=60)  # 60 days for new stock
 
-    async with worker_session_maker() as db:
+    session_maker = get_session_maker(database_url) if database_url else worker_session_maker
+    async with session_maker() as db:
         # Get all stocks
         query = select(AssetMeta).where(AssetMeta.asset_type == AssetType.STOCK)
         result = await db.execute(query)
@@ -272,6 +284,7 @@ async def calculate_structural_classification(
 async def calculate_style_factors(
     ctx: dict,
     calc_date: Optional[str] = None,
+    database_url: Optional[str] = None,
 ) -> Dict[str, Any]:
     """
     Calculate style factor exposures for all stocks.
@@ -283,7 +296,8 @@ async def calculate_style_factors(
     lookback_20d = target_date - timedelta(days=30)  # ~20 trading days
     lookback_60d = target_date - timedelta(days=90)  # ~60 trading days
 
-    async with worker_session_maker() as db:
+    session_maker = get_session_maker(database_url) if database_url else worker_session_maker
+    async with session_maker() as db:
         # Get stocks with data on target date
         stocks_query = select(AssetMeta.code).where(
             AssetMeta.asset_type == AssetType.STOCK,
@@ -483,6 +497,7 @@ async def calculate_style_factors(
 async def calculate_market_regime(
     ctx: dict,
     calc_date: Optional[str] = None,
+    database_url: Optional[str] = None,
 ) -> Dict[str, Any]:
     """
     Calculate market regime (bull/bear/range) for a given date.
@@ -491,7 +506,8 @@ async def calculate_market_regime(
     """
     target_date = date.fromisoformat(calc_date) if calc_date else date.today()
 
-    async with worker_session_maker() as db:
+    session_maker = get_session_maker(database_url) if database_url else worker_session_maker
+    async with session_maker() as db:
         # Get market statistics for the day
         stats_query = text("""
             SELECT
@@ -579,13 +595,15 @@ async def calculate_market_regime(
 async def generate_classification_snapshot(
     ctx: dict,
     calc_date: Optional[str] = None,
+    database_url: Optional[str] = None,
 ) -> Dict[str, Any]:
     """
     Generate unified classification snapshot by joining all dimension tables.
     """
     target_date = date.fromisoformat(calc_date) if calc_date else date.today()
 
-    async with worker_session_maker() as db:
+    session_maker = get_session_maker(database_url) if database_url else worker_session_maker
+    async with session_maker() as db:
         # Join all classification data
         snapshot_query = text("""
             INSERT INTO stock_classification_snapshot (

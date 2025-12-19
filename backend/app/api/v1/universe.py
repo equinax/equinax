@@ -589,6 +589,13 @@ async def get_industry_list(
     return [row[0] for row in result.all()]
 
 
+def _get_enum_value(val):
+    """Safely get enum value or return string directly."""
+    if val is None:
+        return None
+    return val.value if hasattr(val, 'value') else val
+
+
 @router.get("/{code}", response_model=UniverseAssetDetail)
 async def get_asset_detail(
     code: str,
@@ -691,7 +698,7 @@ async def get_asset_detail(
         industry_l1=profile.sw_industry_l1 if profile else None,
         industry_l2=profile.sw_industry_l2 if profile else None,
         industry_l3=profile.sw_industry_l3 if profile else None,
-        board=structural.board.value if structural and structural.board else None,
+        board=_get_enum_value(structural.board) if structural else None,
         province=profile.province if profile else None,
         concepts=profile.concepts if profile else None,
 
@@ -712,44 +719,44 @@ async def get_asset_detail(
         pb_mrq=valuation.pb_mrq if valuation else None,
         ps_ttm=valuation.ps_ttm if valuation else None,
 
-        # Style factors
+        # Style factors (with defensive None checks)
         size_factor=StyleFactorDetail(
-            value=style.market_cap,
-            rank=style.size_rank,
-            percentile=style.size_percentile,
-            category=style.size_category.value if style and style.size_category else None,
+            value=style.market_cap if style else None,
+            rank=style.size_rank if style else None,
+            percentile=style.size_percentile if style else None,
+            category=_get_enum_value(style.size_category) if style else None,
         ) if style else None,
         vol_factor=StyleFactorDetail(
-            value=style.volatility_20d,
-            rank=style.vol_rank,
-            percentile=style.vol_percentile,
-            category=style.vol_category.value if style and style.vol_category else None,
+            value=style.volatility_20d if style else None,
+            rank=style.vol_rank if style else None,
+            percentile=style.vol_percentile if style else None,
+            category=_get_enum_value(style.vol_category) if style else None,
         ) if style else None,
         value_factor=StyleFactorDetail(
-            value=style.ep_ratio,
-            rank=style.value_rank,
-            percentile=style.value_percentile,
-            category=style.value_category.value if style and style.value_category else None,
+            value=style.ep_ratio if style else None,
+            rank=style.value_rank if style else None,
+            percentile=style.value_percentile if style else None,
+            category=_get_enum_value(style.value_category) if style else None,
         ) if style else None,
         turnover_factor=StyleFactorDetail(
-            value=style.avg_turnover_20d,
-            rank=style.turnover_rank,
-            percentile=style.turnover_percentile,
-            category=style.turnover_category.value if style and style.turnover_category else None,
+            value=style.avg_turnover_20d if style else None,
+            rank=style.turnover_rank if style else None,
+            percentile=style.turnover_percentile if style else None,
+            category=_get_enum_value(style.turnover_category) if style else None,
         ) if style else None,
         momentum_20d=style.momentum_20d if style else None,
         momentum_60d=style.momentum_60d if style else None,
 
-        # Microstructure
+        # Microstructure (with defensive None checks)
         fund_holding_ratio=micro.fund_holding_ratio if micro else None,
         northbound_holding_ratio=micro.northbound_holding_ratio if micro else None,
-        is_institutional=micro.is_institutional if micro else False,
-        is_northbound_heavy=micro.is_northbound_heavy if micro else False,
-        is_retail_hot=micro.is_retail_hot if micro else False,
+        is_institutional=bool(micro.is_institutional) if micro else False,
+        is_northbound_heavy=bool(micro.is_northbound_heavy) if micro else False,
+        is_retail_hot=bool(micro.is_retail_hot) if micro else False,
 
-        # Flags
-        is_st=structural.is_st if structural else False,
-        is_new=structural.is_new if structural else False,
+        # Flags (with defensive None checks)
+        is_st=bool(structural.is_st) if structural else False,
+        is_new=bool(structural.is_new) if structural else False,
 
         recent_klines=recent_klines,
     )

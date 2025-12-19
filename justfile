@@ -161,7 +161,10 @@ test-coverage:
 # Initialize database with fixtures (user + market data + strategies, ~30s)
 [group('data')]
 data-init:
-    cd backend && source .venv/bin/activate && python -m scripts.data_cli init
+    cd backend && source .venv/bin/activate && \
+    DATABASE_URL="postgresql+asyncpg://quant:quant_dev_password@localhost:54321/quantdb" \
+    SECRET_KEY="dev-secret-key" \
+    python -m scripts.data_cli init
 
 # Show comprehensive data status (PostgreSQL + cache)
 [group('data')]

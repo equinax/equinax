@@ -585,18 +585,23 @@ async def _init_database(database_url: str, force: bool) -> dict:
 
         console.print(f"  Calculating classification for {latest_date}...")
 
-        # Run classification tasks
+        # Convert database_url to async format for classification tasks
+        async_db_url = database_url.replace("postgresql://", "postgresql+asyncpg://")
+        if "+asyncpg" not in async_db_url:
+            async_db_url = async_db_url.replace("postgresql:", "postgresql+asyncpg:")
+
+        # Run classification tasks with explicit database URL
         ctx = {}  # Empty context for non-ARQ direct call
-        structural_result = await calculate_structural_classification(ctx, latest_date)
+        structural_result = await calculate_structural_classification(ctx, latest_date, async_db_url)
         console.print(f"  Structural: {structural_result.get('records_updated', 0)} records")
 
-        style_result = await calculate_style_factors(ctx, latest_date)
+        style_result = await calculate_style_factors(ctx, latest_date, async_db_url)
         console.print(f"  Style factors: {style_result.get('records_inserted', 0)} records")
 
-        regime_result = await calculate_market_regime(ctx, latest_date)
+        regime_result = await calculate_market_regime(ctx, latest_date, async_db_url)
         console.print(f"  Market regime: {regime_result.get('regime', 'unknown')}")
 
-        snapshot_result = await generate_classification_snapshot(ctx, latest_date)
+        snapshot_result = await generate_classification_snapshot(ctx, latest_date, async_db_url)
         console.print(f"  Snapshot: {snapshot_result.get('records_generated', 0)} records")
 
         results['classification'] = {

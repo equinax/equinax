@@ -71,18 +71,21 @@ export default function UniverseCockpitPage() {
   const { data: industries } = useGetIndustryListApiV1UniverseIndustriesGet()
 
   // Fetch universe snapshot with filters
+  // Stock-specific filters are only sent when asset_type is 'stock'
+  const isStock = filters.assetType === 'stock'
   const { data: snapshot, isLoading: isLoadingSnapshot } = useGetUniverseSnapshotApiV1UniverseSnapshotGet({
     page,
     page_size: pageSize,
     asset_type: filters.assetType,
     exchange: filters.exchange === 'all' ? undefined : filters.exchange,
     search: filters.search || undefined,
-    industry_l1: filters.industryL1 === 'all' ? undefined : filters.industryL1,
-    is_st: filters.isSt === null ? undefined : filters.isSt,
-    board: filters.board === 'all' ? undefined : filters.board,
-    size_category: filters.sizeCategory === 'all' ? undefined : filters.sizeCategory,
-    vol_category: filters.volCategory === 'all' ? undefined : filters.volCategory,
-    value_category: filters.valueCategory === 'all' ? undefined : filters.valueCategory,
+    // Stock-specific filters only for stocks
+    industry_l1: isStock && filters.industryL1 !== 'all' ? filters.industryL1 : undefined,
+    is_st: isStock && filters.isSt !== null ? filters.isSt : undefined,
+    board: isStock && filters.board !== 'all' ? filters.board : undefined,
+    size_category: isStock && filters.sizeCategory !== 'all' ? filters.sizeCategory : undefined,
+    vol_category: isStock && filters.volCategory !== 'all' ? filters.volCategory : undefined,
+    value_category: isStock && filters.valueCategory !== 'all' ? filters.valueCategory : undefined,
     sort_by: sortBy as 'code' | 'name' | 'market_cap' | 'price' | 'change' | 'pe' | 'pb' | 'turnover',
     sort_order: sortOrder as 'asc' | 'desc',
   })

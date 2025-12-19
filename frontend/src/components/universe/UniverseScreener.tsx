@@ -57,6 +57,25 @@ export function UniverseScreener({
     updateFilter('search', '')
   }
 
+  const handleAssetTypeChange = (newType: 'stock' | 'etf') => {
+    if (newType === 'etf') {
+      // ETF only keeps common filters, reset stock-specific filters
+      onFiltersChange({
+        assetType: newType,
+        exchange: filters.exchange,
+        search: filters.search,
+        industryL1: 'all',
+        board: 'all',
+        sizeCategory: 'all',
+        volCategory: 'all',
+        valueCategory: 'all',
+        isSt: null,
+      })
+    } else {
+      updateFilter('assetType', newType)
+    }
+  }
+
   const clearAllFilters = () => {
     setSearchInput('')
     onFiltersChange({
@@ -153,7 +172,7 @@ export function UniverseScreener({
         {/* Asset Type Toggle */}
         <div className="flex gap-1 p-1 bg-muted rounded-lg">
           <button
-            onClick={() => updateFilter('assetType', 'stock')}
+            onClick={() => handleAssetTypeChange('stock')}
             className={cn(
               'flex items-center gap-1.5 px-3 py-1.5 text-sm rounded-md transition-colors',
               filters.assetType === 'stock'
@@ -165,7 +184,7 @@ export function UniverseScreener({
             股票
           </button>
           <button
-            onClick={() => updateFilter('assetType', 'etf')}
+            onClick={() => handleAssetTypeChange('etf')}
             className={cn(
               'flex items-center gap-1.5 px-3 py-1.5 text-sm rounded-md transition-colors',
               filters.assetType === 'etf'
