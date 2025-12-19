@@ -13,6 +13,17 @@ from workers.classification_tasks import (
     generate_classification_snapshot,
     daily_classification_update,
 )
+from workers.data_tasks import (
+    download_stock_data,
+    download_etf_data,
+    download_northbound_data,
+    download_market_cap_data,
+    import_stock_data,
+    import_etf_data,
+    daily_data_update,
+    check_data_status,
+    get_download_status,
+)
 
 
 def parse_redis_url(url: str) -> RedisSettings:
@@ -44,12 +55,24 @@ class WorkerSettings:
         calculate_market_regime,
         generate_classification_snapshot,
         daily_classification_update,
+        # Data tasks
+        download_stock_data,
+        download_etf_data,
+        download_northbound_data,
+        download_market_cap_data,
+        import_stock_data,
+        import_etf_data,
+        daily_data_update,
+        check_data_status,
+        get_download_status,
     ]
 
-    # Optional: Cron jobs
-    # cron_jobs = [
-    #     cron(calculate_daily_indicators, hour=1, minute=0),  # Run at 1:00 AM
-    # ]
+    # Cron jobs for automated data updates
+    # Note: Times are in UTC. For CST (UTC+8), 16:00 CST = 08:00 UTC
+    cron_jobs = [
+        # Daily data update at 16:30 CST (after market close)
+        cron(daily_data_update, hour=8, minute=30),
+    ]
 
     # Worker settings
     max_jobs = settings.max_concurrent_backtests

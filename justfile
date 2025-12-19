@@ -20,6 +20,18 @@ up:
 down:
     docker compose down
 
+# Destroy all Docker containers and images (DANGEROUS!)
+[confirm("This will DELETE all Docker containers and images for this project. Continue?")]
+destroy:
+    @echo "Stopping all containers..."
+    -docker compose down -v --remove-orphans
+    @echo "Removing project images..."
+    -docker rmi $(docker images -q 'v1-*' 2>/dev/null) 2>/dev/null || true
+    -docker rmi $(docker images -q '*quant*' 2>/dev/null) 2>/dev/null || true
+    @echo "Cleaning up dangling images..."
+    -docker image prune -f
+    @echo "Done! All project containers and images have been removed."
+
 # Restart all services
 restart:
     docker compose restart
@@ -32,17 +44,15 @@ status:
 setup: _ensure-env up
     @echo "Waiting for services to be healthy..."
     @sleep 5
-    just db-setup
+    just db-migrate
     @echo ""
     @echo "Setup complete! Access the app at http://localhost:3000"
+    @echo ""
+    @echo "Next step: Initialize data with 'just data-init'"
 
 # ==============================================================================
 # Database Commands
 # ==============================================================================
-
-# Initialize database (migrate + seed all)
-[group('db')]
-db-setup: db-migrate seed-all
 
 # Run database migrations + TimescaleDB setup
 [group('db')]
@@ -71,69 +81,10 @@ db-migrate-status:
     @echo "=== Migration History ==="
     docker compose exec api alembic history -v
 
-# Reset database (destructive!)
-[group('db')]
-[confirm("This will DELETE ALL DATA. Continue?")]
-db-reset:
-    docker compose exec api alembic downgrade base
-    just db-migrate
-    just seed-all
-
-# Show database statistics
-[group('db')]
-db-status:
-    docker compose exec api python cmd.py db status
-
-# Refresh TimescaleDB continuous aggregates
-[group('db')]
-db-refresh-caggs:
-    docker compose exec api python cmd.py db refresh-caggs
-
 # Open database console (psql)
 [group('db')]
 db-console:
     docker compose exec db psql -U quant -d quantdb
-
-# ==============================================================================
-# Seed Commands (Data Import)
-# ==============================================================================
-
-# Import all seed data (user + strategy + stocks)
-[group('seed')]
-seed-all: seed-user seed-strategy seed-stocks
-
-# Create default user
-[group('seed')]
-seed-user:
-    docker compose exec api python cmd.py seed user
-
-# Load default strategies
-[group('seed')]
-seed-strategy:
-    docker compose exec api python cmd.py seed strategy
-
-# Load sample stock data (built-in 15 stocks)
-[group('seed')]
-seed-stocks:
-    docker compose exec api python cmd.py seed stocks
-
-# Load stock data from external SQLite file
-[group('seed')]
-seed-stocks-file file:
-    @test -f "{{file}}" || (echo "Error: File not found: {{file}}" && exit 1)
-    @echo "Copying {{file}} to container..."
-    docker cp "{{file}}" quant_api:/tmp/data.db
-    @echo "Loading data..."
-    docker compose exec api python cmd.py seed stocks --source /tmp/data.db
-    @echo "Cleaning up..."
-    docker compose exec api rm /tmp/data.db
-    @echo "Done!"
-
-# Clear all stock data (for switching data source)
-[group('seed')]
-[confirm("This will clear all stock data. Continue?")]
-seed-stocks-clear:
-    docker compose exec api python cmd.py seed stocks --clear
 
 # ==============================================================================
 # Development Commands
@@ -202,6 +153,66 @@ test-backend *args='':
 [group('test')]
 test-coverage:
     docker compose exec api pytest --cov=app --cov-report=html
+
+# ==============================================================================
+# Data Management Commands (Unified CLI)
+# ==============================================================================
+
+# Initialize database with fixtures (user + market data + strategies, ~30s)
+[group('data')]
+data-init:
+    cd backend && source .venv/bin/activate && python -m scripts.data_cli init
+
+# Show comprehensive data status (PostgreSQL + cache)
+[group('data')]
+data-status:
+    cd backend && source .venv/bin/activate && python -m scripts.data_cli status
+
+# Create default system user
+[group('data')]
+data-seed-user:
+    cd backend && source .venv/bin/activate && python -m scripts.data_cli seed-user
+
+# Load default strategies
+[group('data')]
+data-seed-strategy:
+    cd backend && source .venv/bin/activate && python -m scripts.data_cli seed-strategy
+
+# Reset database (drop all tables + run migrations)
+[group('data')]
+[confirm("This will DELETE ALL DATA. Continue?")]
+data-db-reset:
+    cd backend && source .venv/bin/activate && python -m scripts.data_cli db-reset --force
+
+# Refresh TimescaleDB continuous aggregates
+[group('data')]
+data-db-refresh:
+    cd backend && source .venv/bin/activate && python -m scripts.data_cli db-refresh
+
+# Download data from external sources to cache/
+[group('data')]
+data-download *args='--recent 30':
+    cd backend && source .venv/bin/activate && python -m scripts.data_cli download {{args}}
+
+# Load data from cache/ to PostgreSQL
+[group('data')]
+data-load *args='--recent 30':
+    cd backend && source .venv/bin/activate && python -m scripts.data_cli load {{args}}
+
+# Incremental update (download + import today's data)
+[group('data')]
+data-update:
+    cd backend && source .venv/bin/activate && python -m scripts.data_cli update
+
+# Copy existing trading_data to cache/
+[group('data')]
+data-copy-cache source='../trading_data':
+    cd backend && source .venv/bin/activate && python -m scripts.data_cli copy-cache --source {{source}}
+
+# Generate fixture data from full dataset
+[group('data')]
+data-generate-fixtures source='../trading_data':
+    cd backend && source .venv/bin/activate && python -m scripts.data_cli generate-fixtures --source {{source}}
 
 # ==============================================================================
 # Internal Helpers

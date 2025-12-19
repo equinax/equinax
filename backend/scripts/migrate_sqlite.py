@@ -28,7 +28,6 @@ import asyncpg
 
 # Default paths
 SCRIPT_DIR = Path(__file__).parent
-SAMPLE_DATA_PATH = SCRIPT_DIR.parent / "examples" / "data" / "sample_data.db"
 DEFAULT_POSTGRES_URL = os.environ.get(
     "DATABASE_URL",
     "postgresql://quant:quant_dev_password@localhost:5432/quantdb"
@@ -365,25 +364,25 @@ def cli():
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 Examples:
-  # Use bundled sample data (15 stocks, ~3600 daily records)
-  python scripts/migrate_sqlite.py
-
-  # Use full external dataset
+  # Migrate from external dataset
   python scripts/migrate_sqlite.py --source /path/to/a_stock_2024.db
 
   # Custom database URL
-  python scripts/migrate_sqlite.py --database-url postgresql://user:pass@localhost:5432/mydb
+  python scripts/migrate_sqlite.py --source data.db --database-url postgresql://user:pass@localhost:5432/mydb
 
 Environment Variables:
   DATABASE_URL    PostgreSQL connection URL (can be overridden with --database-url)
+
+Note:
+  For quick data initialization, use: python -m scripts.data_cli init
         """
     )
 
     parser.add_argument(
         "--source", "-s",
         type=Path,
-        default=SAMPLE_DATA_PATH,
-        help=f"Path to SQLite database (default: bundled sample data)"
+        required=True,
+        help="Path to SQLite database"
     )
 
     parser.add_argument(

@@ -70,30 +70,17 @@ just
 | `just restart` | 重启服务 |
 | `just status` | 查看服务状态 |
 | `just setup` | 首次项目设置 |
+| `just destroy` | 销毁所有 Docker 容器和镜像（需确认） |
 
 ### 数据库命令
 
 | 命令 | 描述 |
 |------|------|
-| `just db-setup` | 完整数据库初始化（迁移 + 种子数据） |
-| `just db-migrate` | 运行数据库迁移 |
+| `just db-migrate` | 运行数据库迁移 + TimescaleDB 设置 |
 | `just db-migrate-new "msg"` | 创建新迁移 |
 | `just db-migrate-down` | 回滚一个版本 |
 | `just db-migrate-status` | 查看迁移状态 |
-| `just db-reset` | 重置数据库（需确认） |
-| `just db-status` | 查看数据统计 |
 | `just db-console` | 打开 psql 控制台 |
-
-### 种子数据命令
-
-| 命令 | 描述 |
-|------|------|
-| `just seed-all` | 导入所有种子数据 |
-| `just seed-user` | 创建默认用户 |
-| `just seed-strategy` | 加载默认策略 |
-| `just seed-stocks` | 加载示例股票数据（内置15只） |
-| `just seed-stocks-file FILE` | 从外部 SQLite 文件导入股票数据 |
-| `just seed-stocks-clear` | 清空股票数据 |
 
 ### 开发命令
 
@@ -117,35 +104,106 @@ just
 | `just test-backend` | 运行后端测试 |
 | `just test-coverage` | 运行测试并生成覆盖率报告 |
 
+### 数据管理命令（本地开发）
+
+这些命令统一管理所有数据：用户、策略、市场数据等。需要本地 Python 环境。
+
+| 命令 | 描述 |
+|------|------|
+| `just data-init` | 完整初始化（用户 + 策略 + 市场数据，~30秒） |
+| `just data-status` | 查看数据库数据状态 |
+| `just data-seed-user` | 创建默认系统用户 |
+| `just data-seed-strategy` | 加载默认策略 |
+| `just data-db-reset` | 重置数据库（需确认） |
+| `just data-db-refresh` | 刷新 TimescaleDB 连续聚合 |
+| `just data-download` | 从数据源下载数据到 cache/ |
+| `just data-load` | 从 cache/ 导入数据到 PostgreSQL |
+| `just data-update` | 增量更新今日数据 |
+| `just data-copy-cache` | 复制 trading_data/ 到 cache/ |
+| `just data-generate-fixtures` | 生成小样本 fixtures |
+
 ## 示例数据
 
-项目内置了精选的示例数据（`backend/examples/data/sample_data.db`），包含：
+项目内置了小样本数据（`backend/data/fixtures/`），用于快速开发调试：
 
-| 类型 | 股票 |
-|------|------|
-| 主要指数 | 上证综指、沪深300、深证成指、创业板指 |
-| 蓝筹股 | 贵州茅台、中国平安、平安银行、五粮液、宁德时代、比亚迪 |
-| 金融股 | 招商银行、工商银行 |
-| 消费/医药 | 美的集团、恒瑞医药、海康威视 |
+| 类型 | 数量 | 描述 |
+|------|------|------|
+| 股票 | 86只 | 沪深300/中证500/中证1000代表性股票 |
+| ETF | 18只 | 主要宽基ETF |
+| 指数成分 | 1,470条 | HS300/ZZ500/ZZ1000 |
+| 行业分类 | 31个 | 申万L1行业 |
 
-共 15 只股票，约 3,600 条日线数据（2024年全年）。
+### 快速初始化（开发用）
+
+```bash
+# 使用内置小样本，约30秒
+just data-init
+```
 
 ### 导入完整数据集
 
-如需完整数据（5,662只股票，136万条记录），请使用外部数据源：
+如需完整数据（5,000+股票，数百万条记录）：
 
 ```bash
-just seed-stocks-file /path/to/a_stock_2024.db
+# 方法1: 从现有 trading_data/ 复制（推荐）
+just data-copy-cache ../trading_data
+just data-load --full
+
+# 方法2: 从数据源下载（耗时数小时）
+just data-download --full
+just data-load --full
 ```
 
-### 切换数据源
+## 数据管理
 
-如需切换到不同的数据源，先清空现有数据：
+项目使用独立的数据管理模块管理市场数据（股票、ETF、指数成分、行业分类等）。
+
+### 快速开始（开发模式）
+
+使用内置小样本数据快速启动（约 30 秒）：
 
 ```bash
-just seed-stocks-clear
-just seed-stocks-file /path/to/new_data.db
+# 确保 Docker 服务已启动
+just up
+
+# 初始化数据库
+just data-init
+
+# 查看数据状态
+just data-status
 ```
+
+### 完整数据流程
+
+如需使用完整数据集：
+
+```bash
+# 方法 1: 使用现有 trading_data/ 数据（推荐）
+just data-copy-cache ../trading_data
+just data-load --full
+
+# 方法 2: 从数据源下载（耗时数小时）
+just data-download --full
+just data-load --full
+```
+
+### 日常更新
+
+```bash
+# 增量更新今日数据
+just data-update
+```
+
+### 数据模块结构
+
+```
+backend/data/
+├── downloads/     # 下载脚本 (AKShare/BaoStock)
+├── cache/         # SQLite 缓存 (~3GB, git-ignored)
+└── fixtures/      # 小样本数据 (~1.5MB, git-tracked)
+```
+
+详细文档见 `backend/data/README.md`。
 
 ## 前端开发
 
@@ -186,17 +244,17 @@ trader/
 │   ├── .env                # 本地开发配置 (gitignore)
 │   ├── app/
 │   │   ├── api/v1/         # API 路由
-│   │   ├── cli/            # CLI 命令 (db, seed)
 │   │   ├── db/models/      # 数据库模型
 │   │   ├── services/       # 业务逻辑
 │   │   └── domain/engine/  # Backtrader 集成
 │   ├── alembic/            # 数据库迁移
 │   │   └── versions/       # 迁移文件
-│   ├── workers/            # ARQ 任务
-│   ├── cmd.py              # CLI 入口
-│   └── examples/
-│       ├── data/           # 示例数据 + 默认策略
-│       └── strategies/     # 策略代码示例
+│   ├── data/               # 数据管理模块
+│   │   ├── downloads/      # 数据下载脚本
+│   │   ├── cache/          # SQLite 缓存 (git-ignored)
+│   │   └── fixtures/       # 小样本数据 + 默认策略
+│   ├── workers/            # ARQ 任务 (回测、分类、数据更新)
+│   └── scripts/            # 统一 CLI 脚本 (data_cli.py)
 ├── frontend/
 │   ├── .env                # 前端配置 (VITE_API_URL)
 │   ├── src/
@@ -243,25 +301,27 @@ CORS_ORIGINS=["http://localhost:3000","http://localhost:5173"]
 VITE_API_URL=http://localhost:8000/api
 ```
 
-## CLI 命令（容器内）
+## CLI 命令（本地开发）
 
-在容器内可以直接使用 Python CLI：
+所有 CLI 命令已统一到 `scripts/data_cli.py`，通过 `just data-*` 调用：
 
 ```bash
-# 进入容器
-just dev-shell
+# 查看所有数据命令
+just --list | grep data-
 
-# 数据库命令
-python cmd.py db reset          # 重置数据库
-python cmd.py db status         # 查看状态
+# 常用命令
+just data-init              # 完整初始化（用户 + 策略 + 市场数据）
+just data-status            # 查看数据状态
+just data-seed-user         # 创建默认用户
+just data-seed-strategy     # 加载默认策略
+just data-db-reset          # 重置数据库（需确认）
+just data-db-refresh        # 刷新连续聚合
 
-# 种子数据命令
-python cmd.py seed user         # 创建默认用户
-python cmd.py seed strategy     # 加载默认策略
-python cmd.py seed stocks       # 加载股票数据
-python cmd.py seed stocks --clear   # 清空股票数据
-python cmd.py seed stocks --source /path/to/data.db  # 从指定文件加载
-python cmd.py seed all          # 加载所有种子数据
+# 直接调用 CLI（本地开发）
+cd backend && source .venv/bin/activate
+python -m scripts.data_cli --help
+python -m scripts.data_cli status
+python -m scripts.data_cli init
 ```
 
 ## License

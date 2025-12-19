@@ -60,10 +60,14 @@ htmlcov/
 .tox/
 .nox/
 
-# Database (except sample data)
+# Database (except sample and fixtures data)
 *.db
 !backend/examples/data/sample_data.db
+!backend/data/fixtures/*.db
 *.sqlite3
+
+# Data cache (large downloaded files)
+backend/data/cache/
 
 # Logs
 logs/

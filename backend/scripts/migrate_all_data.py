@@ -135,14 +135,21 @@ async def migrate_stock_basic(
         exchange = determine_exchange(code)
         category = determine_category(code)
 
+        # Convert status to int (SQLite may store as string)
+        status_val = record.get("status")
+        if status_val is not None:
+            status_val = int(status_val)
+        else:
+            status_val = 1
+
         asset_records.append((
             code,
             record.get("code_name") or code,
             "STOCK",
             exchange,
-            parse_date(record.get("ipo_date")),
-            parse_date(record.get("out_date")),
-            record.get("status") or 1,
+            parse_date(record.get("ipo_date") or record.get("ipoDate")),
+            parse_date(record.get("out_date") or record.get("outDate")),
+            status_val,
             category,
         ))
 
@@ -319,6 +326,13 @@ async def migrate_etf_basic(
         code = record.get("code", "")
         exchange = determine_exchange(code)
 
+        # Convert status to int (SQLite may store as string)
+        status_val = record.get("status")
+        if status_val is not None:
+            status_val = int(status_val)
+        else:
+            status_val = 1
+
         asset_records.append((
             code,
             record.get("code_name") or record.get("name") or code,
@@ -326,7 +340,7 @@ async def migrate_etf_basic(
             exchange,
             parse_date(record.get("ipo_date") or record.get("list_date")),
             parse_date(record.get("out_date") or record.get("delist_date")),
-            record.get("status") or 1,
+            status_val,
             "ETF",
         ))
 
