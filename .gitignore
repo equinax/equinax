@@ -64,6 +64,7 @@ htmlcov/
 *.db
 !backend/examples/data/sample_data.db
 !backend/data/fixtures/*.db
+!backend/data/downloads/
 *.sqlite3
 
 # Data cache (large downloaded files)
