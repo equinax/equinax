@@ -155,67 +155,88 @@ test-coverage:
     docker compose exec api pytest --cov=app --cov-report=html
 
 # ==============================================================================
-# Data Management Commands (Unified CLI)
+# Data Management Commands (Docker-based)
 # ==============================================================================
 
 # Initialize database with fixtures (user + market data + strategies, ~30s)
 [group('data')]
 data-init:
-    cd backend && source .venv/bin/activate && \
-    DATABASE_URL="postgresql+asyncpg://quant:quant_dev_password@localhost:54321/quantdb" \
-    SECRET_KEY="dev-secret-key" \
-    python -m scripts.data_cli init
+    docker compose exec api python -m scripts.data_cli init
 
 # Show comprehensive data status (PostgreSQL + cache)
 [group('data')]
 data-status:
-    cd backend && source .venv/bin/activate && python -m scripts.data_cli status
+    docker compose exec api python -m scripts.data_cli status
 
 # Create default system user
 [group('data')]
 data-seed-user:
-    cd backend && source .venv/bin/activate && python -m scripts.data_cli seed-user
+    docker compose exec api python -m scripts.data_cli seed-user
 
 # Load default strategies
 [group('data')]
 data-seed-strategy:
-    cd backend && source .venv/bin/activate && python -m scripts.data_cli seed-strategy
+    docker compose exec api python -m scripts.data_cli seed-strategy
 
 # Reset database (drop all tables + run migrations)
 [group('data')]
 [confirm("This will DELETE ALL DATA. Continue?")]
 data-db-reset:
-    cd backend && source .venv/bin/activate && python -m scripts.data_cli db-reset --force
+    docker compose exec api python -m scripts.data_cli db-reset --force
 
 # Refresh TimescaleDB continuous aggregates
 [group('data')]
 data-db-refresh:
-    cd backend && source .venv/bin/activate && python -m scripts.data_cli db-refresh
+    docker compose exec api python -m scripts.data_cli db-refresh
 
-# Download data from external sources to cache/
+# Download data from external sources to data/cache/
+# Examples:
+#   just data-download                      # Download recent 30 days (default)
+#   just data-download indices              # Download index constituents
+#   just data-download northbound           # Download northbound holdings
+#   just data-download institutional        # Download institutional holdings
+#   just data-download market_cap           # Download market cap data
 [group('data')]
 data-download *args='--recent 30':
-    cd backend && source .venv/bin/activate && python -m scripts.data_cli download {{args}}
+    docker compose exec api python -m scripts.data_cli download {{args}}
 
-# Load data from cache/ to PostgreSQL
+# Load data from data/cache/ to PostgreSQL
+# Examples:
+#   just data-load                          # Load all data
+#   just data-load stocks --full            # Load all stock data
+#   just data-load --years 2024             # Load data for 2024 only
+#   just data-load market_cap --years 2024  # Load market cap for 2024
+#   just data-load northbound --full        # Load all northbound data
+#   just data-load institutional            # Load institutional holdings
 [group('data')]
-data-load *args='--recent 30':
-    cd backend && source .venv/bin/activate && python -m scripts.data_cli load {{args}}
+data-load *args='':
+    docker compose exec api python -m scripts.data_cli load {{args}}
 
 # Incremental update (download + import today's data)
 [group('data')]
 data-update:
-    cd backend && source .venv/bin/activate && python -m scripts.data_cli update
+    docker compose exec api python -m scripts.data_cli update
 
-# Copy existing trading_data to cache/
+# Copy SQLite files between directories
+# Example: just data-copy-cache --source /path/to/source
 [group('data')]
-data-copy-cache source='../trading_data':
-    cd backend && source .venv/bin/activate && python -m scripts.data_cli copy-cache --source {{source}}
+data-copy-cache *args='':
+    docker compose exec api python -m scripts.data_cli copy-cache {{args}}
 
-# Generate fixture data from full dataset
+# Generate fixture data from cache dataset
 [group('data')]
-data-generate-fixtures source='../trading_data':
-    cd backend && source .venv/bin/activate && python -m scripts.data_cli generate-fixtures --source {{source}}
+data-generate-fixtures *args='':
+    docker compose exec api python -m scripts.data_cli generate-fixtures {{args}}
+
+# Download fixture data from AKShare
+# Examples:
+#   just data-download-fixtures                    # Download all (market_cap, northbound, institutional)
+#   just data-download-fixtures market_cap         # Download market cap only
+#   just data-download-fixtures northbound         # Download northbound only
+#   just data-download-fixtures institutional      # Download institutional only
+[group('data')]
+data-download-fixtures *args='all':
+    docker compose exec api python -m scripts.download_fixtures {{args}}
 
 # ==============================================================================
 # Internal Helpers

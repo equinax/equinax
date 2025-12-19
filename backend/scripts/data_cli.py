@@ -12,7 +12,7 @@ All data operations in one place:
 - update      : Incremental update (today's data)
 - db-reset    : Reset database (drop all tables)
 - db-refresh  : Refresh continuous aggregates
-- copy-cache  : Copy trading_data to cache
+- copy-cache  : Copy cache data to another location
 - generate-fixtures: Create fixture files
 
 Usage:
@@ -46,7 +46,7 @@ BACKEND_DIR = Path(__file__).parent.parent
 DATA_DIR = BACKEND_DIR / "data"
 CACHE_DIR = DATA_DIR / "cache"
 FIXTURES_DIR = DATA_DIR / "fixtures"
-TRADING_DATA_DIR = Path("/Users/dan/Code/q/trading_data")
+# NOTE: All data storage now unified in CACHE_DIR (data/cache/)
 DEFAULT_STRATEGIES_PATH = FIXTURES_DIR / "default_strategies.json"
 
 # Default database URL
@@ -129,6 +129,169 @@ def get_sqlite_stats(db_path: Path) -> dict:
         return stats
     except Exception as e:
         return {"exists": True, "error": str(e)}
+
+
+async def _import_market_cap_fixture(pg_url: str, sqlite_path: Path) -> int:
+    """
+    Import market cap data from SQLite fixture to PostgreSQL indicator_valuation table.
+
+    SQLite table: stock_market_cap(code, date, total_mv, circ_mv)
+    PostgreSQL table: indicator_valuation(code, date, total_mv, circ_mv, ...)
+    """
+    import asyncpg
+
+    # Read from SQLite
+    conn_sqlite = sqlite3.connect(str(sqlite_path))
+    cursor = conn_sqlite.cursor()
+    cursor.execute("SELECT code, date, total_mv, circ_mv FROM stock_market_cap")
+    rows = cursor.fetchall()
+    conn_sqlite.close()
+
+    if not rows:
+        return 0
+
+    # Convert date strings to Python date objects
+    def parse_date(date_str):
+        return datetime.strptime(date_str, "%Y-%m-%d").date()
+
+    records = [(row[0], parse_date(row[1]), row[2], row[3]) for row in rows]
+
+    # Insert to PostgreSQL
+    pg_conn = await asyncpg.connect(pg_url)
+    try:
+        # Use ON CONFLICT to upsert - only update market cap fields
+        await pg_conn.executemany(
+            """
+            INSERT INTO indicator_valuation (code, date, total_mv, circ_mv)
+            VALUES ($1, $2, $3, $4)
+            ON CONFLICT (code, date) DO UPDATE SET
+                total_mv = COALESCE(EXCLUDED.total_mv, indicator_valuation.total_mv),
+                circ_mv = COALESCE(EXCLUDED.circ_mv, indicator_valuation.circ_mv)
+            """,
+            records
+        )
+        return len(records)
+    finally:
+        await pg_conn.close()
+
+
+async def _import_northbound_fixture(pg_url: str, sqlite_path: Path) -> int:
+    """
+    Import northbound holdings from SQLite fixture to PostgreSQL stock_microstructure table.
+
+    SQLite table: northbound_holdings(code, date, holding_ratio, holding_change)
+    PostgreSQL table: stock_microstructure(code, date, northbound_holding_ratio, northbound_holding_change, ...)
+    """
+    import asyncpg
+
+    # Read from SQLite
+    conn_sqlite = sqlite3.connect(str(sqlite_path))
+    cursor = conn_sqlite.cursor()
+    cursor.execute("SELECT code, date, holding_ratio, holding_change FROM northbound_holdings")
+    rows = cursor.fetchall()
+    conn_sqlite.close()
+
+    if not rows:
+        return 0
+
+    # Convert date strings to Python date objects
+    def parse_date(date_str):
+        return datetime.strptime(date_str, "%Y-%m-%d").date()
+
+    # Build records with all required boolean fields
+    records = [
+        (
+            row[0],                           # code
+            parse_date(row[1]),               # date
+            row[2],                           # northbound_holding_ratio
+            row[3],                           # northbound_holding_change
+            row[2] > 5.0 if row[2] else False,  # is_northbound_heavy
+            False,                            # is_institutional
+            False,                            # is_retail_hot
+            False,                            # is_main_controlled
+        )
+        for row in rows
+    ]
+
+    # Insert to PostgreSQL
+    pg_conn = await asyncpg.connect(pg_url)
+    try:
+        # Use ON CONFLICT to upsert - only update northbound fields
+        # Include all boolean fields to avoid NOT NULL constraint violations
+        await pg_conn.executemany(
+            """
+            INSERT INTO stock_microstructure (
+                code, date, northbound_holding_ratio, northbound_holding_change,
+                is_northbound_heavy, is_institutional, is_retail_hot, is_main_controlled
+            )
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+            ON CONFLICT (code, date) DO UPDATE SET
+                northbound_holding_ratio = COALESCE(EXCLUDED.northbound_holding_ratio, stock_microstructure.northbound_holding_ratio),
+                northbound_holding_change = COALESCE(EXCLUDED.northbound_holding_change, stock_microstructure.northbound_holding_change),
+                is_northbound_heavy = COALESCE(EXCLUDED.is_northbound_heavy, stock_microstructure.is_northbound_heavy)
+            """,
+            records
+        )
+        return len(records)
+    finally:
+        await pg_conn.close()
+
+
+async def _import_institutional_fixture(pg_url: str, sqlite_path: Path) -> int:
+    """
+    Import institutional holdings from SQLite fixture to PostgreSQL stock_microstructure table.
+
+    SQLite table: institutional_holdings(code, date, fund_holding_ratio, fund_holding_change)
+    PostgreSQL table: stock_microstructure(code, date, is_institutional, ...)
+    """
+    import asyncpg
+
+    # Read from SQLite
+    conn_sqlite = sqlite3.connect(str(sqlite_path))
+    cursor = conn_sqlite.cursor()
+    cursor.execute("SELECT code, date, fund_holding_ratio, fund_holding_change FROM institutional_holdings")
+    rows = cursor.fetchall()
+    conn_sqlite.close()
+
+    if not rows:
+        return 0
+
+    # Convert date strings to Python date objects
+    def parse_date(date_str):
+        return datetime.strptime(date_str, "%Y-%m-%d").date()
+
+    # Build records with all required boolean fields
+    # is_institutional = True when fund_holding_ratio > 10%
+    records = [
+        (
+            row[0],                           # code
+            parse_date(row[1]),               # date
+            row[2] > 10.0 if row[2] else False,  # is_institutional (high fund holding)
+            False,                            # is_northbound_heavy (preserve existing)
+            False,                            # is_retail_hot
+            False,                            # is_main_controlled
+        )
+        for row in rows
+    ]
+
+    # Insert to PostgreSQL
+    pg_conn = await asyncpg.connect(pg_url)
+    try:
+        # Use ON CONFLICT to upsert - only update institutional field
+        await pg_conn.executemany(
+            """
+            INSERT INTO stock_microstructure (
+                code, date, is_institutional, is_northbound_heavy, is_retail_hot, is_main_controlled
+            )
+            VALUES ($1, $2, $3, $4, $5, $6)
+            ON CONFLICT (code, date) DO UPDATE SET
+                is_institutional = COALESCE(EXCLUDED.is_institutional, stock_microstructure.is_institutional)
+            """,
+            records
+        )
+        return len(records)
+    finally:
+        await pg_conn.close()
 
 
 # =============================================================================
@@ -486,36 +649,81 @@ async def _init_database(database_url: str, force: bool) -> dict:
     pg_url = get_sync_pg_url(database_url)
 
     # 0. Create default user first
-    console.print("\n[0/6] Creating default user...")
+    console.print("\n[0/9] Creating default user...")
     user_result = await _create_default_user(database_url)
     results['user'] = 'created' if user_result == 0 else 'failed'
 
     # 1. Import stocks
     stock_db = FIXTURES_DIR / "sample_stocks.db"
     if stock_db.exists():
-        console.print("\n[1/6] Importing stock data...")
+        console.print("\n[1/9] Importing stock data...")
         stock_results = await migrate_stock_database(stock_db, pg_url)
         results['stocks'] = stock_results
         console.print(f"  Imported: {stock_results.get('stock_basic', 0)} stocks, {stock_results.get('daily_k_data', 0)} daily records")
     else:
-        console.print("\n[1/6] Skipping stocks (sample_stocks.db not found)")
+        console.print("\n[1/9] Skipping stocks (sample_stocks.db not found)")
         results['stocks'] = {}
 
     # 2. Import ETFs
     etf_db = FIXTURES_DIR / "sample_etfs.db"
     if etf_db.exists():
-        console.print("\n[2/6] Importing ETF data...")
+        console.print("\n[2/9] Importing ETF data...")
         etf_results = await migrate_etf_database(etf_db, pg_url)
         results['etfs'] = etf_results
         console.print(f"  Imported: {etf_results.get('etf_basic', 0)} ETFs, {etf_results.get('etf_daily', 0)} daily records")
     else:
-        console.print("\n[2/6] Skipping ETFs (sample_etfs.db not found)")
+        console.print("\n[2/9] Skipping ETFs (sample_etfs.db not found)")
         results['etfs'] = {}
 
-    # 3. Import index constituents
+    # 3. Import market cap data
+    market_cap_db = FIXTURES_DIR / "sample_market_cap.db"
+    if market_cap_db.exists():
+        console.print("\n[3/9] Importing market cap data...")
+        try:
+            market_cap_count = await _import_market_cap_fixture(pg_url, market_cap_db)
+            results['market_cap'] = market_cap_count
+            console.print(f"  Imported: {market_cap_count} market cap records")
+        except Exception as e:
+            console.print(f"  [yellow]Failed to import market cap: {e}[/yellow]")
+            results['market_cap'] = 0
+    else:
+        console.print("\n[3/9] Skipping market cap (sample_market_cap.db not found)")
+        results['market_cap'] = 0
+
+    # 4. Import northbound holdings data
+    northbound_db = FIXTURES_DIR / "sample_northbound.db"
+    if northbound_db.exists():
+        console.print("\n[4/9] Importing northbound holdings data...")
+        try:
+            northbound_count = await _import_northbound_fixture(pg_url, northbound_db)
+            results['northbound'] = northbound_count
+            console.print(f"  Imported: {northbound_count} northbound records")
+        except Exception as e:
+            console.print(f"  [yellow]Failed to import northbound: {e}[/yellow]")
+            results['northbound'] = 0
+    else:
+        console.print("\n[4/9] Skipping northbound (sample_northbound.db not found)")
+        results['northbound'] = 0
+
+    # 5. Import institutional holdings data
+    institutional_db = FIXTURES_DIR / "sample_institutional.db"
+    if institutional_db.exists():
+        console.print("\n[5/9] Importing institutional holdings data...")
+        try:
+            institutional_count = await _import_institutional_fixture(pg_url, institutional_db)
+            results['institutional'] = institutional_count
+            console.print(f"  Imported: {institutional_count} institutional records")
+        except Exception as e:
+            console.print(f"  [yellow]Failed to import institutional: {e}[/yellow]")
+            results['institutional'] = 0
+    else:
+        console.print("\n[5/9] Skipping institutional (sample_institutional.db not found)")
+        results['institutional'] = 0
+
+    # 6. Import index constituents (renamed from 5)
     index_db = FIXTURES_DIR / "sample_indices.db"
     if index_db.exists():
-        console.print("\n[3/6] Importing index constituents...")
+        console.print("\n[6/9] Importing index constituents...")
         pg_conn = await asyncpg.connect(pg_url)
         try:
             index_count = await import_index_constituents(index_db, pg_conn, force=force)
@@ -524,13 +732,13 @@ async def _init_database(database_url: str, force: bool) -> dict:
         finally:
             await pg_conn.close()
     else:
-        console.print("\n[3/6] Skipping indices (sample_indices.db not found)")
+        console.print("\n[6/9] Skipping indices (sample_indices.db not found)")
         results['indices'] = 0
 
-    # 4. Import industry classification
+    # 7. Import industry classification
     industry_db = FIXTURES_DIR / "sample_industries.db"
     if industry_db.exists():
-        console.print("\n[4/6] Importing industry classification...")
+        console.print("\n[7/9] Importing industry classification...")
         try:
             from scripts.import_sw_industry import import_industries_from_sqlite, update_stock_profile_industries
             from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession
@@ -559,11 +767,11 @@ async def _init_database(database_url: str, force: bool) -> dict:
             console.print(f"  [yellow]Skipped industry import: {e}[/yellow]")
             results['industries'] = {'error': str(e)}
     else:
-        console.print("\n[4/6] Skipping industries (sample_industries.db not found)")
+        console.print("\n[7/9] Skipping industries (sample_industries.db not found)")
         results['industries'] = {}
 
-    # 5. Calculate classification snapshot for the latest date in fixtures
-    console.print("\n[5/6] Calculating classification data...")
+    # 8. Calculate classification snapshot for the latest date in fixtures
+    console.print("\n[8/9] Calculating classification data...")
     try:
         from workers.classification_tasks import (
             calculate_structural_classification,
@@ -617,8 +825,8 @@ async def _init_database(database_url: str, force: bool) -> dict:
         traceback.print_exc()
         results['classification'] = {'error': str(e)}
 
-    # 6. Load default strategies
-    console.print("\n[6/6] Loading default strategies...")
+    # 8. Load default strategies
+    console.print("\n[9/9] Loading default strategies...")
     if DEFAULT_STRATEGIES_PATH.exists():
         await _load_strategies(database_url)
         results['strategies'] = 'loaded'
@@ -673,6 +881,8 @@ def init(
 
     stock_results = results.get('stocks', {})
     etf_results = results.get('etfs', {})
+    market_cap_count = results.get('market_cap', 0)
+    northbound_count = results.get('northbound', 0)
     index_count = results.get('indices', 0)
     industry_results = results.get('industries', {})
 
@@ -680,6 +890,8 @@ def init(
     console.print(f"  User: {results.get('user', 'unknown')}")
     console.print(f"  Stocks: {stock_results.get('stock_basic', 0)} symbols, {stock_results.get('daily_k_data', 0)} daily records")
     console.print(f"  ETFs: {etf_results.get('etf_basic', 0)} symbols, {etf_results.get('etf_daily', 0)} daily records")
+    console.print(f"  Market cap: {market_cap_count} records")
+    console.print(f"  Northbound: {northbound_count} records")
     console.print(f"  Index constituents: {index_count} records")
     console.print(f"  Industries: {industry_results.get('classifications', 0)} categories, {industry_results.get('mappings', 0)} mappings")
     console.print(f"  Strategies: {results.get('strategies', 'unknown')}")
@@ -829,60 +1041,339 @@ async def _get_pg_status(database_url: str) -> dict:
 
 @app.command()
 def download(
-    data_type: str = typer.Argument("all", help="Data type: stocks, etfs, indices, industries, northbound, institutional, all"),
+    data_type: str = typer.Argument("all", help="Data type: indices, industries, northbound, institutional, market_cap, all"),
     full: bool = typer.Option(False, "--full", help="Download full history"),
     recent: int = typer.Option(30, "--recent", "-r", help="Download recent N days"),
+    years: str = typer.Option(None, "--years", "-y", help="Years to download (comma-separated): 2023,2024,2025"),
 ):
     """
-    Download data from external sources to cache.
+    Download data from external sources to data/cache/.
+
+    Uses AKShare to download market data directly.
 
     Examples:
-        python -m scripts.data_cli download stocks --recent 30
+        python -m scripts.data_cli download indices
         python -m scripts.data_cli download all --full
+        python -m scripts.data_cli download market_cap --years 2024
+        python -m scripts.data_cli download northbound --recent 30
     """
-    console.print(f"\n[bold blue]Downloading {data_type} data...[/bold blue]\n")
+    console.print(f"\n[bold blue]Downloading {data_type} data to cache/...[/bold blue]\n")
 
+    # Ensure cache directory exists
     ensure_cache_dir()
 
+    # Parse years if provided
+    year_list = []
+    if years:
+        year_list = [int(y.strip()) for y in years.split(',')]
+        console.print(f"Target years: {year_list}")
+
     if data_type == "all":
-        types_to_download = ["stocks", "etfs", "indices", "industries", "northbound", "institutional"]
+        types_to_download = ["indices", "industries", "northbound", "institutional", "market_cap"]
     else:
         types_to_download = [data_type]
 
     for dtype in types_to_download:
         console.print(f"\n[cyan]Downloading {dtype}...[/cyan]")
 
-        # Map to download script
-        script_map = {
-            "stocks": "download_a_stock_data.py",
-            "etfs": "download_etf_data.py",
-            "indices": "download_index_constituents.py",
-            "industries": "download_industry_data.py",
-            "northbound": "download_northbound_holdings.py",
-            "institutional": "download_institutional_holdings.py",
-            "market_cap": "download_market_cap.py",
-        }
+        try:
+            if dtype == "indices":
+                count = _download_indices()
+                console.print(f"  [green]✓ Downloaded {count} index constituent records[/green]")
+            elif dtype == "industries":
+                count = _download_industries()
+                console.print(f"  [green]✓ Downloaded {count} industry records[/green]")
+            elif dtype == "northbound":
+                count = _download_northbound(recent=recent if not full else None)
+                console.print(f"  [green]✓ Downloaded {count} northbound records[/green]")
+            elif dtype == "institutional":
+                count = _download_institutional()
+                console.print(f"  [green]✓ Downloaded {count} institutional records[/green]")
+            elif dtype == "market_cap":
+                count = _download_market_cap()
+                console.print(f"  [green]✓ Downloaded {count} market cap records[/green]")
+            else:
+                console.print(f"  [yellow]Unknown data type: {dtype}[/yellow]")
+        except Exception as e:
+            console.print(f"  [red]✗ {dtype} download failed: {e}[/red]")
+            import traceback
+            traceback.print_exc()
 
-        if dtype not in script_map:
-            console.print(f"[yellow]Unknown data type: {dtype}[/yellow]")
-            continue
+    console.print("\n[bold green]Download complete![/bold green]")
+    console.print(f"Data saved to: {CACHE_DIR}\n")
 
-        # Check if script exists in downloads/ or trading_data/
-        script_name = script_map[dtype]
-        backend_script = DATA_DIR / "downloads" / script_name
-        trading_script = TRADING_DATA_DIR / script_name
 
-        if backend_script.exists():
-            console.print(f"  Using: {backend_script}")
-            # TODO: Run script
-        elif trading_script.exists():
-            console.print(f"  Using: {trading_script} (legacy)")
-            console.print(f"  [yellow]Hint: Migrate this script to backend/data/downloads/[/yellow]")
-            # TODO: Run script
-        else:
-            console.print(f"  [red]Script not found: {script_name}[/red]")
+def _download_indices() -> int:
+    """Download index constituents to cache/index_constituents.db"""
+    import akshare as ak
 
-    console.print("\n[bold green]Download complete![/bold green]\n")
+    db_path = CACHE_DIR / "index_constituents.db"
+    conn = sqlite3.connect(str(db_path))
+
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS index_constituents (
+            index_code TEXT NOT NULL,
+            stock_code TEXT NOT NULL,
+            stock_name TEXT,
+            weight REAL,
+            update_date TEXT,
+            PRIMARY KEY (index_code, stock_code)
+        )
+    """)
+
+    indices = {
+        "000300": "hs300",   # 沪深300
+        "000905": "zz500",   # 中证500
+        "000852": "zz1000",  # 中证1000
+        "000016": "sz50",    # 上证50
+        "399006": "cyb",     # 创业板指
+    }
+
+    total_count = 0
+    for code, name in indices.items():
+        try:
+            console.print(f"    Fetching {name} ({code})...")
+            df = ak.index_stock_cons(symbol=code)
+            if df is not None and not df.empty:
+                for _, row in df.iterrows():
+                    # Normalize stock code to sh.XXXXXX/sz.XXXXXX format
+                    stock_code = row.get('品种代码', row.get('股票代码', ''))
+                    if stock_code:
+                        if stock_code.startswith('6'):
+                            stock_code = f"sh.{stock_code}"
+                        else:
+                            stock_code = f"sz.{stock_code}"
+
+                    conn.execute("""
+                        INSERT OR REPLACE INTO index_constituents
+                        (index_code, stock_code, stock_name, weight, update_date)
+                        VALUES (?, ?, ?, ?, date('now'))
+                    """, (name, stock_code, row.get('品种名称', row.get('股票名称', '')), None))
+                total_count += len(df)
+        except Exception as e:
+            console.print(f"    [yellow]Warning: Failed to fetch {name}: {e}[/yellow]")
+
+    conn.commit()
+    conn.close()
+    return total_count
+
+
+def _download_industries() -> int:
+    """Download industry classification to cache/industry_classification.db"""
+    import akshare as ak
+
+    db_path = CACHE_DIR / "industry_classification.db"
+    conn = sqlite3.connect(str(db_path))
+
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS industry_classification (
+            code TEXT PRIMARY KEY,
+            name TEXT,
+            level INTEGER,
+            parent_code TEXT
+        )
+    """)
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS stock_industry_mapping (
+            stock_code TEXT NOT NULL,
+            industry_code TEXT NOT NULL,
+            PRIMARY KEY (stock_code, industry_code)
+        )
+    """)
+
+    try:
+        # Download industry list
+        console.print("    Fetching industry list...")
+        df = ak.stock_board_industry_name_em()
+        if df is not None and not df.empty:
+            for _, row in df.iterrows():
+                conn.execute("""
+                    INSERT OR REPLACE INTO industry_classification (code, name, level)
+                    VALUES (?, ?, 1)
+                """, (row['板块代码'], row['板块名称']))
+
+            conn.commit()
+            return len(df)
+    except Exception as e:
+        console.print(f"    [yellow]Warning: {e}[/yellow]")
+
+    conn.close()
+    return 0
+
+
+def _download_northbound(recent: int = None) -> int:
+    """Download northbound holdings to cache/northbound_holdings.db"""
+    import akshare as ak
+
+    db_path = CACHE_DIR / "northbound_holdings.db"
+    conn = sqlite3.connect(str(db_path))
+
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS northbound_holdings (
+            code TEXT NOT NULL,
+            date TEXT NOT NULL,
+            holding_shares REAL,
+            holding_ratio REAL,
+            holding_change REAL,
+            market_value REAL,
+            PRIMARY KEY (code, date)
+        )
+    """)
+
+    try:
+        console.print("    Fetching northbound holdings...")
+        df = ak.stock_hsgt_hold_stock_em()
+        if df is not None and not df.empty:
+            today = date.today().strftime("%Y-%m-%d")
+            count = 0
+            for _, row in df.iterrows():
+                stock_code = row.get('代码', '')
+                if stock_code:
+                    if stock_code.startswith('6'):
+                        stock_code = f"sh.{stock_code}"
+                    else:
+                        stock_code = f"sz.{stock_code}"
+
+                    conn.execute("""
+                        INSERT OR REPLACE INTO northbound_holdings
+                        (code, date, holding_shares, holding_ratio, holding_change, market_value)
+                        VALUES (?, ?, ?, ?, ?, ?)
+                    """, (
+                        stock_code,
+                        today,
+                        row.get('持股数量', 0),
+                        row.get('持股占比', 0),
+                        row.get('持股变动', 0),
+                        row.get('持股市值', 0),
+                    ))
+                    count += 1
+
+            conn.commit()
+            conn.close()
+            return count
+    except Exception as e:
+        console.print(f"    [yellow]Warning: {e}[/yellow]")
+
+    conn.close()
+    return 0
+
+
+def _download_institutional() -> int:
+    """Download institutional holdings to cache/institutional_holdings.db"""
+    import akshare as ak
+
+    db_path = CACHE_DIR / "institutional_holdings.db"
+    conn = sqlite3.connect(str(db_path))
+
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS institutional_holdings (
+            code TEXT NOT NULL,
+            report_date TEXT NOT NULL,
+            fund_count INTEGER,
+            holding_shares REAL,
+            holding_ratio REAL,
+            holding_change REAL,
+            market_value REAL,
+            PRIMARY KEY (code, report_date)
+        )
+    """)
+
+    try:
+        console.print("    Fetching institutional holdings (this may take a while)...")
+        # Get the latest quarter's fund holdings
+        df = ak.stock_report_fund_hold(symbol="全部")
+        if df is not None and not df.empty:
+            count = 0
+            for _, row in df.iterrows():
+                stock_code = row.get('代码', '')
+                if stock_code:
+                    if stock_code.startswith('6'):
+                        stock_code = f"sh.{stock_code}"
+                    else:
+                        stock_code = f"sz.{stock_code}"
+
+                    conn.execute("""
+                        INSERT OR REPLACE INTO institutional_holdings
+                        (code, report_date, fund_count, holding_shares, holding_ratio, holding_change, market_value)
+                        VALUES (?, ?, ?, ?, ?, ?, ?)
+                    """, (
+                        stock_code,
+                        str(row.get('报告期', '')),
+                        row.get('基金家数', 0),
+                        row.get('持股总数', 0),
+                        row.get('持股占流通股比', 0),
+                        row.get('持股变动', 0),
+                        row.get('持股市值', 0),
+                    ))
+                    count += 1
+
+            conn.commit()
+            conn.close()
+            return count
+    except Exception as e:
+        console.print(f"    [yellow]Warning: {e}[/yellow]")
+
+    conn.close()
+    return 0
+
+
+def _download_market_cap() -> int:
+    """Download market cap data to cache/market_cap.db"""
+    import akshare as ak
+
+    db_path = CACHE_DIR / "market_cap.db"
+    conn = sqlite3.connect(str(db_path))
+
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS stock_market_cap (
+            code TEXT NOT NULL,
+            date TEXT NOT NULL,
+            total_mv REAL,
+            circ_mv REAL,
+            PRIMARY KEY (code, date)
+        )
+    """)
+
+    try:
+        console.print("    Fetching market cap data...")
+        # Get real-time market data which includes market cap
+        df = ak.stock_zh_a_spot_em()
+        if df is not None and not df.empty:
+            today = date.today().strftime("%Y-%m-%d")
+            count = 0
+            for _, row in df.iterrows():
+                stock_code = row.get('代码', '')
+                if stock_code:
+                    if stock_code.startswith('6'):
+                        stock_code = f"sh.{stock_code}"
+                    else:
+                        stock_code = f"sz.{stock_code}"
+
+                    # Total market cap and circulating market cap (in 亿元)
+                    total_mv = row.get('总市值', 0)
+                    circ_mv = row.get('流通市值', 0)
+
+                    # Convert from yuan to 亿元 if needed
+                    if total_mv and total_mv > 1e10:
+                        total_mv = total_mv / 1e8
+                    if circ_mv and circ_mv > 1e10:
+                        circ_mv = circ_mv / 1e8
+
+                    conn.execute("""
+                        INSERT OR REPLACE INTO stock_market_cap
+                        (code, date, total_mv, circ_mv)
+                        VALUES (?, ?, ?, ?)
+                    """, (stock_code, today, total_mv, circ_mv))
+                    count += 1
+
+            conn.commit()
+            conn.close()
+            return count
+    except Exception as e:
+        console.print(f"    [yellow]Warning: {e}[/yellow]")
+
+    conn.close()
+    return 0
 
 
 # =============================================================================
@@ -892,17 +1383,20 @@ def download(
 
 @app.command()
 def load(
-    full: bool = typer.Option(False, "--full", help="Load all cached data"),
+    data_type: str = typer.Argument("all", help="Data type: stocks, etfs, indices, industries, northbound, institutional, market_cap, all"),
+    full: bool = typer.Option(False, "--full", help="Load all data"),
     recent: int = typer.Option(None, "--recent", "-r", help="Load recent N days only"),
-    source: str = typer.Option(None, "--source", "-s", help="Source directory (default: cache/)"),
+    years: str = typer.Option(None, "--years", "-y", help="Years to load (comma-separated): 2023,2024"),
+    source: str = typer.Option(None, "--source", "-s", help="Source directory (default: data/cache/)"),
     database_url: str = typer.Option(DEFAULT_DATABASE_URL, "--database", "-d", help="Database URL"),
 ):
     """
-    Load data from cache to PostgreSQL.
+    Load data from data/cache/ to PostgreSQL.
 
     Examples:
-        python -m scripts.data_cli load --full
-        python -m scripts.data_cli load --recent 30
+        python -m scripts.data_cli load stocks --full
+        python -m scripts.data_cli load all --recent 30
+        python -m scripts.data_cli load market_cap --years 2024
     """
     console.print("\n[bold blue]Loading data to PostgreSQL...[/bold blue]\n")
 
@@ -913,29 +1407,291 @@ def load(
         console.print("Run 'python -m scripts.data_cli download' first")
         raise typer.Exit(1)
 
+    # Parse years if provided
+    year_list = []
+    if years:
+        year_list = [y.strip() for y in years.split(',')]
+        console.print(f"Target years: {year_list}")
+
     # Find SQLite files
     db_files = list(source_dir.glob("*.db"))
     if not db_files:
         console.print(f"[yellow]No .db files found in {source_dir}[/yellow]")
         raise typer.Exit(1)
 
-    console.print(f"Found {len(db_files)} database files:")
-    for f in db_files:
+    console.print(f"Found {len(db_files)} database files in {source_dir}:")
+    for f in sorted(db_files):
         stats = get_sqlite_stats(f)
         size = stats.get("size_mb", 0)
         console.print(f"  - {f.name} ({size:.1f} MB)")
 
-    # Use existing migration scripts
-    console.print("\n[cyan]Running migration...[/cyan]")
+    if data_type == "all":
+        types_to_load = ["stocks", "etfs", "indices", "industries", "northbound", "institutional", "market_cap"]
+    else:
+        types_to_load = [data_type]
 
-    # TODO: Implement migration orchestration
-    # For now, provide instructions
-    console.print("\n[yellow]Manual migration commands:[/yellow]")
-    console.print(f"  python -m scripts.migrate_all_data --source-dir {source_dir} --type stock --all")
-    console.print(f"  python -m scripts.migrate_all_data --source-dir {source_dir} --type etf --all")
-    console.print(f"  python -m scripts.import_index_constituents --source-dir {source_dir}")
-    console.print(f"  python -m scripts.import_northbound_holdings --source-dir {source_dir}")
-    console.print(f"  python -m scripts.import_sw_industry --source-dir {source_dir}")
+    console.print(f"\n[cyan]Loading data types: {', '.join(types_to_load)}[/cyan]")
+
+    # Convert database URL for sync operations
+    pg_url = get_sync_pg_url(database_url)
+
+    for dtype in types_to_load:
+        console.print(f"\n[cyan]Loading {dtype}...[/cyan]")
+
+        if dtype == "stocks":
+            # Run migrate_all_data for stocks
+            cmd = [
+                "python", "-m", "scripts.migrate_all_data",
+                "--source-dir", str(source_dir),
+                "--type", "stock",
+                "-d", pg_url,
+            ]
+            if full:
+                cmd.append("--all")
+            console.print(f"  Command: {' '.join(cmd)}")
+            result = subprocess.run(cmd, cwd=str(BACKEND_DIR), capture_output=False)
+            if result.returncode == 0:
+                console.print(f"  [green]✓ stocks loaded[/green]")
+            else:
+                console.print(f"  [red]✗ stocks load failed[/red]")
+
+        elif dtype == "etfs":
+            # Run migrate_all_data for ETFs
+            cmd = [
+                "python", "-m", "scripts.migrate_all_data",
+                "--source-dir", str(source_dir),
+                "--type", "etf",
+                "-d", pg_url,
+            ]
+            if full:
+                cmd.append("--all")
+            console.print(f"  Command: {' '.join(cmd)}")
+            result = subprocess.run(cmd, cwd=str(BACKEND_DIR), capture_output=False)
+            if result.returncode == 0:
+                console.print(f"  [green]✓ etfs loaded[/green]")
+            else:
+                console.print(f"  [red]✗ etfs load failed[/red]")
+
+        elif dtype == "indices":
+            # Load index constituents
+            index_db = source_dir / "index_constituents.db"
+            if index_db.exists():
+                result = asyncio.run(_load_index_constituents(pg_url, index_db))
+                console.print(f"  [green]✓ indices loaded ({result} records)[/green]")
+            else:
+                console.print(f"  [yellow]⚠ index_constituents.db not found[/yellow]")
+
+        elif dtype == "industries":
+            # Load industry classification
+            industry_db = source_dir / "industry_classification.db"
+            if industry_db.exists():
+                cmd = [
+                    "python", "-m", "scripts.import_sw_industry",
+                    "--source", str(industry_db),
+                ]
+                console.print(f"  Command: {' '.join(cmd)}")
+                result = subprocess.run(cmd, cwd=str(BACKEND_DIR), capture_output=False)
+                if result.returncode == 0:
+                    console.print(f"  [green]✓ industries loaded[/green]")
+                else:
+                    console.print(f"  [red]✗ industries load failed[/red]")
+            else:
+                console.print(f"  [yellow]⚠ industry_classification.db not found[/yellow]")
+
+        elif dtype == "northbound":
+            # Load northbound holdings
+            northbound_db = source_dir / "northbound_holdings.db"
+            if northbound_db.exists():
+                result = asyncio.run(_load_northbound_from_source(pg_url, northbound_db, year_list))
+                console.print(f"  [green]✓ northbound loaded ({result} records)[/green]")
+            else:
+                console.print(f"  [yellow]⚠ northbound_holdings.db not found[/yellow]")
+
+        elif dtype == "institutional":
+            # Load institutional holdings
+            inst_db = source_dir / "institutional_holdings.db"
+            if inst_db.exists():
+                result = asyncio.run(_load_institutional_from_source(pg_url, inst_db, year_list))
+                console.print(f"  [green]✓ institutional loaded ({result} records)[/green]")
+            else:
+                console.print(f"  [yellow]⚠ institutional_holdings.db not found[/yellow]")
+
+        elif dtype == "market_cap":
+            # Load market cap data
+            market_cap_db = source_dir / "market_cap.db"
+            if market_cap_db.exists():
+                result = asyncio.run(_load_market_cap_from_source(pg_url, market_cap_db, year_list))
+                console.print(f"  [green]✓ market_cap loaded ({result} records)[/green]")
+            else:
+                console.print(f"  [yellow]⚠ market_cap.db not found[/yellow]")
+
+        else:
+            console.print(f"  [yellow]⚠ Unknown data type: {dtype}[/yellow]")
+
+    console.print("\n[bold green]Load complete![/bold green]\n")
+
+
+async def _load_index_constituents(pg_url: str, sqlite_path: Path) -> int:
+    """Load index constituents from SQLite to PostgreSQL."""
+    import asyncpg
+    from scripts.import_index_constituents import import_index_constituents
+
+    pg_conn = await asyncpg.connect(pg_url)
+    try:
+        count = await import_index_constituents(sqlite_path, pg_conn, force=True)
+        return count
+    finally:
+        await pg_conn.close()
+
+
+async def _load_market_cap_from_source(pg_url: str, sqlite_path: Path, years: list = None) -> int:
+    """Load market cap data from full SQLite database to PostgreSQL."""
+    import asyncpg
+
+    conn_sqlite = sqlite3.connect(str(sqlite_path))
+    cursor = conn_sqlite.cursor()
+
+    # Build query with year filter if provided
+    query = "SELECT code, date, total_mv, circ_mv FROM stock_market_cap"
+    if years:
+        year_conditions = " OR ".join([f"date LIKE '{y}%'" for y in years])
+        query += f" WHERE ({year_conditions})"
+
+    cursor.execute(query)
+    rows = cursor.fetchall()
+    conn_sqlite.close()
+
+    if not rows:
+        return 0
+
+    def parse_date(date_str):
+        return datetime.strptime(date_str, "%Y-%m-%d").date()
+
+    records = [(row[0], parse_date(row[1]), row[2], row[3]) for row in rows]
+
+    pg_conn = await asyncpg.connect(pg_url)
+    try:
+        await pg_conn.executemany(
+            """
+            INSERT INTO indicator_valuation (code, date, total_mv, circ_mv)
+            VALUES ($1, $2, $3, $4)
+            ON CONFLICT (code, date) DO UPDATE SET
+                total_mv = COALESCE(EXCLUDED.total_mv, indicator_valuation.total_mv),
+                circ_mv = COALESCE(EXCLUDED.circ_mv, indicator_valuation.circ_mv)
+            """,
+            records
+        )
+        return len(records)
+    finally:
+        await pg_conn.close()
+
+
+async def _load_northbound_from_source(pg_url: str, sqlite_path: Path, years: list = None) -> int:
+    """Load northbound holdings from full SQLite database to PostgreSQL."""
+    import asyncpg
+
+    conn_sqlite = sqlite3.connect(str(sqlite_path))
+    cursor = conn_sqlite.cursor()
+
+    # Build query with year filter if provided
+    query = "SELECT code, date, holding_ratio, holding_change FROM northbound_holdings"
+    if years:
+        year_conditions = " OR ".join([f"date LIKE '{y}%'" for y in years])
+        query += f" WHERE ({year_conditions})"
+
+    cursor.execute(query)
+    rows = cursor.fetchall()
+    conn_sqlite.close()
+
+    if not rows:
+        return 0
+
+    def parse_date(date_str):
+        return datetime.strptime(date_str, "%Y-%m-%d").date()
+
+    records = [
+        (
+            row[0],
+            parse_date(row[1]),
+            row[2],
+            row[3],
+            row[2] > 5.0 if row[2] else False,
+            False, False, False  # is_institutional, is_retail_hot, is_main_controlled
+        )
+        for row in rows
+    ]
+
+    pg_conn = await asyncpg.connect(pg_url)
+    try:
+        await pg_conn.executemany(
+            """
+            INSERT INTO stock_microstructure (
+                code, date, northbound_holding_ratio, northbound_holding_change,
+                is_northbound_heavy, is_institutional, is_retail_hot, is_main_controlled
+            )
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+            ON CONFLICT (code, date) DO UPDATE SET
+                northbound_holding_ratio = COALESCE(EXCLUDED.northbound_holding_ratio, stock_microstructure.northbound_holding_ratio),
+                northbound_holding_change = COALESCE(EXCLUDED.northbound_holding_change, stock_microstructure.northbound_holding_change),
+                is_northbound_heavy = COALESCE(EXCLUDED.is_northbound_heavy, stock_microstructure.is_northbound_heavy)
+            """,
+            records
+        )
+        return len(records)
+    finally:
+        await pg_conn.close()
+
+
+async def _load_institutional_from_source(pg_url: str, sqlite_path: Path, years: list = None) -> int:
+    """Load institutional holdings from full SQLite database to PostgreSQL."""
+    import asyncpg
+
+    conn_sqlite = sqlite3.connect(str(sqlite_path))
+    cursor = conn_sqlite.cursor()
+
+    # Build query with year filter if provided
+    query = "SELECT code, date, fund_holding_ratio, fund_holding_change FROM institutional_holdings"
+    if years:
+        year_conditions = " OR ".join([f"date LIKE '{y}%'" for y in years])
+        query += f" WHERE ({year_conditions})"
+
+    cursor.execute(query)
+    rows = cursor.fetchall()
+    conn_sqlite.close()
+
+    if not rows:
+        return 0
+
+    def parse_date(date_str):
+        return datetime.strptime(date_str, "%Y-%m-%d").date()
+
+    # is_institutional = True when fund_holding_ratio > 10%
+    records = [
+        (
+            row[0],
+            parse_date(row[1]),
+            row[2] > 10.0 if row[2] else False,  # is_institutional
+            False, False, False  # is_northbound_heavy, is_retail_hot, is_main_controlled
+        )
+        for row in rows
+    ]
+
+    pg_conn = await asyncpg.connect(pg_url)
+    try:
+        await pg_conn.executemany(
+            """
+            INSERT INTO stock_microstructure (
+                code, date, is_institutional, is_northbound_heavy, is_retail_hot, is_main_controlled
+            )
+            VALUES ($1, $2, $3, $4, $5, $6)
+            ON CONFLICT (code, date) DO UPDATE SET
+                is_institutional = COALESCE(EXCLUDED.is_institutional, stock_microstructure.is_institutional)
+            """,
+            records
+        )
+        return len(records)
+    finally:
+        await pg_conn.close()
 
 
 # =============================================================================
@@ -985,22 +1741,28 @@ def update(
 
 @app.command("copy-cache")
 def copy_cache(
-    source: str = typer.Option(str(TRADING_DATA_DIR), "--source", "-s", help="Source directory"),
+    source: str = typer.Option(None, "--source", "-s", help="Source directory to copy from"),
+    target: str = typer.Option(None, "--target", "-t", help="Target directory (default: data/cache/)"),
     force: bool = typer.Option(False, "--force", "-f", help="Overwrite existing files"),
 ):
     """
-    Copy existing SQLite files from trading_data to cache/.
+    Copy SQLite files between directories.
 
-    This migrates ~3GB of data without re-downloading.
+    This can migrate data without re-downloading.
     """
-    console.print("\n[bold blue]Copying SQLite files to cache...[/bold blue]\n")
+    console.print("\n[bold blue]Copying SQLite files...[/bold blue]\n")
+
+    if not source:
+        console.print("[red]Please specify --source directory[/red]")
+        raise typer.Exit(1)
 
     source_dir = Path(source)
     if not source_dir.exists():
         console.print(f"[red]Source directory not found: {source_dir}[/red]")
         raise typer.Exit(1)
 
-    ensure_cache_dir()
+    target_dir = Path(target) if target else CACHE_DIR
+    target_dir.mkdir(parents=True, exist_ok=True)
 
     # Find all .db files
     db_files = list(source_dir.glob("*.db"))
@@ -1019,7 +1781,7 @@ def copy_cache(
         task = progress.add_task("Copying...", total=len(db_files))
 
         for src_file in db_files:
-            dst_file = CACHE_DIR / src_file.name
+            dst_file = target_dir / src_file.name
             progress.update(task, description=f"Copying {src_file.name}...")
 
             if dst_file.exists() and not force:
@@ -1046,19 +1808,21 @@ def copy_cache(
 def generate_fixtures_cmd(
     stocks: int = typer.Option(100, "--stocks", "-s", help="Number of sample stocks"),
     days: int = typer.Option(30, "--days", "-d", help="Number of days of history"),
-    source: str = typer.Option(str(TRADING_DATA_DIR), "--source", help="Source data directory"),
+    source: str = typer.Option(None, "--source", help="Source data directory (default: data/cache/)"),
 ):
     """
-    Generate fixture files from full dataset.
+    Generate fixture files from cache dataset.
 
     Creates small sample databases (~5MB total) for development.
     """
     console.print("\n[bold blue]Generating fixture files...[/bold blue]\n")
 
+    source_dir = Path(source) if source else CACHE_DIR
+
     console.print(f"Parameters:")
     console.print(f"  Stocks: {stocks}")
     console.print(f"  Days: {days}")
-    console.print(f"  Source: {source}")
+    console.print(f"  Source: {source_dir}")
 
     FIXTURES_DIR.mkdir(parents=True, exist_ok=True)
 
@@ -1066,7 +1830,7 @@ def generate_fixtures_cmd(
     from scripts.generate_fixtures import generate_fixtures
 
     start_time = datetime.now()
-    result = generate_fixtures(stocks=stocks, days=days, source_dir=Path(source))
+    result = generate_fixtures(stocks=stocks, days=days, source_dir=source_dir)
     elapsed = (datetime.now() - start_time).total_seconds()
 
     console.print(f"\n[bold green]Fixtures generated successfully![/bold green]")
