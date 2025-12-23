@@ -12,8 +12,9 @@ from datetime import datetime, date
 import argparse
 import os
 
-# 数据库文件
+# 数据库文件（存放在 cache 目录）
 DB_FILE = "index_constituents.db"
+CACHE_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "cache")
 
 # 支持的指数
 SUPPORTED_INDICES = {
@@ -27,8 +28,9 @@ SUPPORTED_INDICES = {
 
 
 def get_db_path() -> str:
-    """获取数据库路径"""
-    return os.path.join(os.path.dirname(os.path.abspath(__file__)), DB_FILE)
+    """获取数据库路径（cache 目录）"""
+    os.makedirs(CACHE_DIR, exist_ok=True)
+    return os.path.join(CACHE_DIR, DB_FILE)
 
 
 def create_database(conn: sqlite3.Connection):
@@ -221,28 +223,62 @@ def save_to_database(conn: sqlite3.Connection, df: pd.DataFrame, effective_date:
     return count
 
 
-def download_all_indices(conn: sqlite3.Connection, indices: list = None):
+def has_index_data_for_date(conn: sqlite3.Connection, index_code: str, target_date: str, min_count: int = 50) -> bool:
+    """
+    检查指定日期是否已有足够的指数成分数据
+
+    Args:
+        conn: 数据库连接
+        index_code: 指数代码
+        target_date: 目标日期
+        min_count: 最少记录数阈值
+
+    Returns:
+        True if data exists and is sufficient
+    """
+    cursor = conn.cursor()
+    cursor.execute("""
+        SELECT COUNT(*) FROM index_constituents
+        WHERE index_code = ? AND effective_date = ?
+    """, (index_code, target_date))
+    count = cursor.fetchone()[0]
+    return count >= min_count
+
+
+def download_all_indices(conn: sqlite3.Connection, indices: list = None, force: bool = False):
     """
     下载所有指定指数的成分股
 
     Args:
         conn: 数据库连接
         indices: 要下载的指数列表，默认下载主要指数
+        force: 强制重新下载，忽略缓存
     """
     if indices is None:
         indices = ["000300", "000905", "000852"]  # 默认: 沪深300, 中证500, 中证1000
 
     effective_date = date.today().strftime('%Y-%m-%d')
     total_count = 0
+    skipped_count = 0
 
     for index_code in indices:
+        index_info = SUPPORTED_INDICES.get(index_code, {"name": index_code})
+
+        # 检查缓存
+        if not force and has_index_data_for_date(conn, index_code, effective_date):
+            print(f"[indices] {index_info['name']} ({index_code}) 今日已下载，跳过")
+            skipped_count += 1
+            continue
+
         df = download_index_constituents(index_code)
         if not df.empty:
             count = save_to_database(conn, df, effective_date)
             total_count += count
             print(f"  保存 {count} 条记录")
 
-    print(f"\n总计下载 {total_count} 条成分股记录")
+    if skipped_count > 0:
+        print(f"\n跳过 {skipped_count} 个已有数据的指数")
+    print(f"总计下载 {total_count} 条成分股记录")
     return total_count
 
 

@@ -70,10 +70,10 @@ export const BOARD_COLORS: Record<string, string> = {
 }
 
 export const BOARD_LABELS: Record<string, string> = {
-  MAIN: '主板',
-  GEM: '创业板',
-  STAR: '科创板',
-  BSE: '北交所',
+  MAIN: '主',
+  GEM: '创',
+  STAR: '科',
+  BSE: '北',
 }
 
 // Asset type colors
@@ -186,18 +186,20 @@ export function formatPriceChange(change: number | null | undefined): string {
   return `${sign}${change.toFixed(2)}%`
 }
 
-// Format market cap in 亿 units
+// Format market cap - input is already in 亿元 units
 export function formatMarketCap(cap: number | null | undefined): string {
   if (cap === null || cap === undefined) return '-'
-  // Assuming cap is in yuan, convert to 亿
-  const yi = cap / 100000000
-  if (yi >= 1000) {
-    return `${(yi / 1000).toFixed(1)}千亿`
+  // cap is already in 亿元 units from API
+  if (cap >= 10000) {
+    return `${(cap / 10000).toFixed(2)}万亿`
   }
-  if (yi >= 1) {
-    return `${yi.toFixed(1)}亿`
+  if (cap >= 1000) {
+    return `${(cap / 1000).toFixed(1)}千亿`
   }
-  return `${(cap / 10000).toFixed(1)}万`
+  if (cap >= 1) {
+    return `${cap.toFixed(0)}亿`
+  }
+  return `${(cap * 10000).toFixed(0)}万`
 }
 
 // Format number with locale

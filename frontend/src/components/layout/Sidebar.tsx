@@ -21,7 +21,7 @@ const navigation = [
   { name: '策略管理', href: '/strategies', icon: Code2 },
   { name: '回测执行', href: '/backtest', icon: PlayCircle },
   { name: '结果分析', href: '/results', icon: BarChart3 },
-  { name: '股票池', href: '/universe', icon: Database },
+  { name: '市场发现', href: '/universe', icon: Database },
 ]
 
 // 图标固定位置（居中于收缩后的宽度）

@@ -2,9 +2,12 @@
 
 Implements daily data update workflow:
 1. Download today's stock/ETF market data
-2. Download northbound holdings data
-3. Import data to PostgreSQL
-4. Trigger classification recalculation
+2. Import data to PostgreSQL (with circ_mv calculation)
+3. Trigger classification recalculation
+
+Note: northbound and market_cap download tasks have been removed
+(APIs only support current-day snapshots, not historical data).
+circ_mv is now calculated from amount/turnover during import.
 
 These tasks can be scheduled via cron or triggered manually.
 """
@@ -135,83 +138,6 @@ async def download_etf_data(ctx: Dict[str, Any], recent_days: int = 1) -> Dict[s
         return {"status": "error", "message": str(e)}
 
 
-async def download_northbound_data(ctx: Dict[str, Any]) -> Dict[str, Any]:
-    """Download today's northbound holdings data.
-
-    Returns:
-        Result dict with status
-    """
-    logger.info("Starting northbound holdings download")
-
-    script_path = DOWNLOADS_DIR / "download_northbound_holdings.py"
-    if not script_path.exists():
-        return {"status": "error", "message": f"Script not found: {script_path}"}
-
-    try:
-        result = subprocess.run(
-            [sys.executable, str(script_path), "--today"],
-            cwd=str(BACKEND_DIR),
-            capture_output=True,
-            text=True,
-            timeout=600,  # 10 min timeout
-        )
-
-        if result.returncode != 0:
-            logger.error(f"Northbound download failed: {result.stderr}")
-            return {"status": "error", "message": result.stderr[-500:] if result.stderr else "Unknown error"}
-
-        logger.info("Northbound data download completed")
-        return {"status": "success", "message": "Northbound data downloaded"}
-
-    except subprocess.TimeoutExpired:
-        return {"status": "error", "message": "Download timed out"}
-    except Exception as e:
-        logger.exception("Northbound download error")
-        return {"status": "error", "message": str(e)}
-
-
-async def download_market_cap_data(ctx: Dict[str, Any], target_date: Optional[str] = None) -> Dict[str, Any]:
-    """Download market cap data for a specific date or today.
-
-    Args:
-        ctx: ARQ context
-        target_date: Date in YYYY-MM-DD format, defaults to today
-
-    Returns:
-        Result dict with status
-    """
-    if target_date is None:
-        target_date = date.today().strftime("%Y-%m-%d")
-
-    logger.info(f"Starting market cap download for {target_date}")
-
-    script_path = DOWNLOADS_DIR / "download_market_cap.py"
-    if not script_path.exists():
-        return {"status": "error", "message": f"Script not found: {script_path}"}
-
-    try:
-        result = subprocess.run(
-            [sys.executable, str(script_path), "--date", target_date],
-            cwd=str(BACKEND_DIR),
-            capture_output=True,
-            text=True,
-            timeout=3600,  # 1 hour timeout (market cap downloads can be slow)
-        )
-
-        if result.returncode != 0:
-            logger.error(f"Market cap download failed: {result.stderr}")
-            return {"status": "error", "message": result.stderr[-500:] if result.stderr else "Unknown error"}
-
-        logger.info("Market cap data download completed")
-        return {"status": "success", "message": f"Market cap data downloaded for {target_date}"}
-
-    except subprocess.TimeoutExpired:
-        return {"status": "error", "message": "Download timed out"}
-    except Exception as e:
-        logger.exception("Market cap download error")
-        return {"status": "error", "message": str(e)}
-
-
 # =============================================================================
 # Import Tasks
 # =============================================================================
@@ -325,9 +251,8 @@ async def daily_data_update(ctx: Dict[str, Any]) -> Dict[str, Any]:
     Workflow:
     1. Download today's stock data
     2. Download today's ETF data
-    3. Download northbound holdings
-    4. Import to PostgreSQL
-    5. Trigger classification update
+    3. Import to PostgreSQL (with circ_mv calculation)
+    4. Trigger classification update
 
     Returns:
         Summary of all steps
@@ -341,32 +266,27 @@ async def daily_data_update(ctx: Dict[str, Any]) -> Dict[str, Any]:
     }
 
     # Step 1: Download stock data
-    logger.info("[1/5] Downloading stock data...")
+    logger.info("[1/4] Downloading stock data...")
     stock_dl = await download_stock_data(ctx, recent_days=1)
     results["steps"]["download_stocks"] = stock_dl
     if stock_dl.get("status") == "error":
         logger.warning(f"Stock download had issues: {stock_dl.get('message')}")
 
     # Step 2: Download ETF data
-    logger.info("[2/5] Downloading ETF data...")
+    logger.info("[2/4] Downloading ETF data...")
     etf_dl = await download_etf_data(ctx, recent_days=1)
     results["steps"]["download_etfs"] = etf_dl
 
-    # Step 3: Download northbound data
-    logger.info("[3/5] Downloading northbound data...")
-    nb_dl = await download_northbound_data(ctx)
-    results["steps"]["download_northbound"] = nb_dl
-
-    # Step 4: Import to PostgreSQL
-    logger.info("[4/5] Importing data to PostgreSQL...")
+    # Step 3: Import to PostgreSQL
+    logger.info("[3/4] Importing data to PostgreSQL...")
     stock_imp = await import_stock_data(ctx, recent_days=1)
     results["steps"]["import_stocks"] = stock_imp
 
     etf_imp = await import_etf_data(ctx, recent_days=1)
     results["steps"]["import_etfs"] = etf_imp
 
-    # Step 5: Trigger classification update
-    logger.info("[5/5] Triggering classification update...")
+    # Step 4: Trigger classification update
+    logger.info("[4/4] Triggering classification update...")
     try:
         from workers.classification_tasks import daily_classification_update
         classification_result = await daily_classification_update(ctx)
@@ -460,21 +380,6 @@ async def check_data_status(ctx: Dict[str, Any]) -> Dict[str, Any]:
         except Exception:
             status["industries"] = {"error": "Table may not exist"}
 
-        # Northbound holdings (if imported)
-        try:
-            result = await session.execute(text("""
-                SELECT COUNT(*), MAX(snapshot_date)
-                FROM stock_microstructure
-                WHERE is_northbound_heavy = true
-            """))
-            row = result.fetchone()
-            status["northbound_heavy"] = {
-                "count": row[0],
-                "latest_date": str(row[1]) if row[1] else None,
-            }
-        except Exception:
-            status["northbound_heavy"] = {"error": "Table may not exist"}
-
         return status
 
 
@@ -518,8 +423,6 @@ async def get_download_status(ctx: Dict[str, Any]) -> Dict[str, Any]:
 __all__ = [
     "download_stock_data",
     "download_etf_data",
-    "download_northbound_data",
-    "download_market_cap_data",
     "import_stock_data",
     "import_etf_data",
     "daily_data_update",

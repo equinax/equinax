@@ -119,7 +119,7 @@ export default function UniverseCockpitPage() {
     <div className="space-y-4">
       {/* Header */}
       <div>
-        <h1 className="text-2xl font-bold">股票池驾驶舱</h1>
+        <h1 className="text-2xl font-bold">市场发现</h1>
         <p className="text-muted-foreground text-sm">
           浏览和筛选股票、ETF数据
           {snapshot?.date && (

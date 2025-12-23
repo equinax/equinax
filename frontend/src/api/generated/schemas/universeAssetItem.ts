@@ -30,8 +30,8 @@ export interface UniverseAssetItem {
   exchange: string;
   industry_l1?: UniverseAssetItemIndustryL1;
   industry_l2?: UniverseAssetItemIndustryL2;
-  is_institutional?: boolean;
-  is_northbound_heavy?: boolean;
+  is_retail_hot?: boolean;
+  is_main_controlled?: boolean;
   is_st?: boolean;
   market_cap?: UniverseAssetItemMarketCap;
   name: string;

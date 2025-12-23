@@ -32,9 +32,16 @@ import akshare as ak
 import pandas as pd
 
 
-# Database path
+# Database path (存放在 cache 目录)
 SCRIPT_DIR = Path(__file__).parent
-DB_PATH = SCRIPT_DIR / "industry_classification.db"
+CACHE_DIR = SCRIPT_DIR.parent / "cache"
+DB_PATH = CACHE_DIR / "industry_classification.db"
+
+
+def get_db_path() -> Path:
+    """获取数据库路径（cache 目录）"""
+    CACHE_DIR.mkdir(parents=True, exist_ok=True)
+    return DB_PATH
 
 
 def create_database(db_path: Path) -> sqlite3.Connection:
@@ -94,8 +101,54 @@ def create_database(db_path: Path) -> sqlite3.Connection:
         ON stock_industry_mapping(classification_system)
     """)
 
+    # Download log table (for cache detection)
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS download_log (
+            classification_system TEXT PRIMARY KEY,
+            download_date TEXT NOT NULL,
+            industry_count INTEGER,
+            mapping_count INTEGER,
+            created_at TEXT DEFAULT CURRENT_TIMESTAMP
+        )
+    """)
+
     conn.commit()
     return conn
+
+
+def has_industry_data_for_today(conn: sqlite3.Connection, system: str) -> bool:
+    """
+    检查指定分类系统今日是否已下载数据
+
+    Args:
+        conn: 数据库连接
+        system: 分类系统 ('em' or 'sw')
+
+    Returns:
+        True if data was already downloaded today
+    """
+    today = date.today().isoformat()
+    cursor = conn.cursor()
+    cursor.execute("""
+        SELECT download_date FROM download_log
+        WHERE classification_system = ?
+    """, (system,))
+    row = cursor.fetchone()
+    if row and row[0] == today:
+        return True
+    return False
+
+
+def update_download_log(conn: sqlite3.Connection, system: str, industries: int, mappings: int):
+    """记录下载日志"""
+    today = date.today().isoformat()
+    cursor = conn.cursor()
+    cursor.execute("""
+        INSERT OR REPLACE INTO download_log
+        (classification_system, download_date, industry_count, mapping_count)
+        VALUES (?, ?, ?, ?)
+    """, (system, today, industries, mappings))
+    conn.commit()
 
 
 def normalize_stock_code(code: str) -> str:
@@ -126,18 +179,27 @@ def normalize_stock_code(code: str) -> str:
         return f"sz.{code_num}"
 
 
-def download_em_industries(conn: sqlite3.Connection) -> tuple[int, int]:
+def download_em_industries(conn: sqlite3.Connection, force: bool = False) -> tuple[int, int]:
     """Download EastMoney (东方财富) industry classification.
+
+    Args:
+        conn: SQLite connection
+        force: Force re-download even if data exists for today
 
     Returns:
         Tuple of (industries_count, mappings_count)
     """
+    # Check cache first
+    if not force and has_industry_data_for_today(conn, 'em'):
+        print("[industries] EM 行业分类今日已下载，跳过")
+        return 0, 0
+
     print("\n=== Downloading EastMoney Industry Classification ===\n")
 
     cursor = conn.cursor()
     today = date.today().isoformat()
 
-    # Clear existing EM data
+    # Clear existing EM data (only when actually downloading)
     cursor.execute("DELETE FROM stock_industry_mapping WHERE classification_system = 'em'")
     cursor.execute("DELETE FROM industry_classification WHERE classification_system = 'em'")
     conn.commit()
@@ -205,21 +267,31 @@ def download_em_industries(conn: sqlite3.Connection) -> tuple[int, int]:
         import traceback
         traceback.print_exc()
 
+    # Update download log
+    if industries_count > 0:
+        update_download_log(conn, 'em', industries_count, mappings_count)
+
     return industries_count, mappings_count
 
 
-def download_sw_industries(conn: sqlite3.Connection, levels: list = None) -> tuple[int, int]:
+def download_sw_industries(conn: sqlite3.Connection, levels: list = None, force: bool = False) -> tuple[int, int]:
     """Download Shenwan (申万) industry classification.
 
     Args:
         conn: SQLite connection
-        levels: List of levels to download [1, 2, 3], default [1]
+        levels: List of levels to download [1, 2, 3], default [1, 2, 3] (all levels)
+        force: Force re-download even if data exists for today
 
     Returns:
         Tuple of (industries_count, mappings_count)
     """
     if levels is None:
-        levels = [1]
+        levels = [1, 2, 3]  # Download all levels by default
+
+    # Check cache first
+    if not force and has_industry_data_for_today(conn, 'sw'):
+        print("[industries] SW 申万行业分类今日已下载，跳过")
+        return 0, 0
 
     print("\n=== Downloading Shenwan Industry Classification ===\n")
     print(f"Levels to download: {levels}")
@@ -227,7 +299,7 @@ def download_sw_industries(conn: sqlite3.Connection, levels: list = None) -> tup
     cursor = conn.cursor()
     today = date.today().isoformat()
 
-    # Clear existing SW data
+    # Clear existing SW data (only when actually downloading)
     cursor.execute("DELETE FROM stock_industry_mapping WHERE classification_system = 'sw'")
     cursor.execute("DELETE FROM industry_classification WHERE classification_system = 'sw'")
     conn.commit()
@@ -254,6 +326,11 @@ def download_sw_industries(conn: sqlite3.Connection, levels: list = None) -> tup
         mappings_count += l3_map
 
     conn.commit()
+
+    # Update download log
+    if industries_count > 0:
+        update_download_log(conn, 'sw', industries_count, mappings_count)
+
     return industries_count, mappings_count
 
 
@@ -424,14 +501,19 @@ def main():
     parser.add_argument(
         "--level", "-l",
         type=str,
-        default="1",
-        help="Shenwan industry levels to download, comma-separated (e.g., '1,2,3' for all levels, default: '1')"
+        default="1,2,3",
+        help="Shenwan industry levels to download, comma-separated (default: '1,2,3' for all levels)"
     )
     parser.add_argument(
         "--output", "-o",
         type=Path,
-        default=DB_PATH,
+        default=None,
         help=f"Output database path (default: {DB_PATH})"
+    )
+    parser.add_argument(
+        "--force", "-f",
+        action="store_true",
+        help="Force re-download even if data exists for today"
     )
 
     args = parser.parse_args()
@@ -441,23 +523,27 @@ def main():
     if not levels:
         levels = [1]
 
+    # Use the standard db path if not specified
+    db_path = args.output if args.output else get_db_path()
+
     print("=" * 60)
     print("Industry Classification Download")
     print("=" * 60)
-    print(f"Output database: {args.output}")
+    print(f"Output database: {db_path}")
     print(f"Classification system: {args.system}")
     print(f"Shenwan levels: {levels}")
+    print(f"Force re-download: {args.force}")
 
     # Create/open database
-    conn = create_database(args.output)
+    conn = create_database(db_path)
 
     try:
         if args.system in ("all", "em"):
-            em_industries, em_mappings = download_em_industries(conn)
+            em_industries, em_mappings = download_em_industries(conn, force=args.force)
             print(f"\nEastMoney: {em_industries} industries, {em_mappings} mappings")
 
         if args.system in ("all", "sw"):
-            sw_industries, sw_mappings = download_sw_industries(conn, levels=levels)
+            sw_industries, sw_mappings = download_sw_industries(conn, levels=levels, force=args.force)
             print(f"\nShenwan: {sw_industries} industries, {sw_mappings} mappings")
 
         show_summary(conn)

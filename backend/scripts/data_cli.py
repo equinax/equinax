@@ -1041,9 +1041,8 @@ async def _get_pg_status(database_url: str) -> dict:
 
 @app.command()
 def download(
-    data_type: str = typer.Argument("all", help="Data type: stocks, etfs, indices, industries, northbound, institutional, market_cap, all"),
+    data_type: str = typer.Argument("all", help="Data type: stocks, etfs, indices, industries, all"),
     full: bool = typer.Option(False, "--full", help="Download full history"),
-    recent: int = typer.Option(30, "--recent", "-r", help="Download recent N days"),
     years: str = typer.Option(None, "--years", "-y", help="Years to download (comma-separated): 2023,2024,2025"),
     mode: str = typer.Option("all", "--mode", "-m", help="Download mode for stocks/etfs: all, basic, daily, adjust"),
     force: bool = typer.Option(False, "--force", "-f", help="Force re-download even if data exists"),
@@ -1053,20 +1052,18 @@ def download(
 
     Uses data.downloads module with rate limiting and checkpoint support.
 
+    Note: market_cap is now calculated from daily K-line data (circ_mv = amount / turn).
+    northbound and institutional data downloads have been removed (unreliable APIs).
+
     Examples:
         python -m scripts.data_cli download stocks --years 2024
         python -m scripts.data_cli download etfs --years 2024
         python -m scripts.data_cli download indices
         python -m scripts.data_cli download all --full
-        python -m scripts.data_cli download market_cap --recent 30
-        python -m scripts.data_cli download northbound
     """
     from data.downloads import (
         download_stocks,
         download_etfs,
-        download_market_cap,
-        download_northbound,
-        download_institutional,
         download_indices,
         download_industries,
     )
@@ -1084,7 +1081,7 @@ def download(
 
     # Define all available downloaders
     if data_type == "all":
-        types_to_download = ["stocks", "etfs", "indices", "industries", "northbound", "institutional", "market_cap"]
+        types_to_download = ["stocks", "etfs", "indices", "industries"]
     else:
         types_to_download = [data_type]
 
@@ -1099,22 +1096,14 @@ def download(
                 count = download_etfs(years=year_list, mode=mode, force=force)
                 console.print(f"  [green]✓ Downloaded {count} ETF records[/green]")
             elif dtype == "indices":
-                count = download_indices()
+                count = download_indices(force=force)
                 console.print(f"  [green]✓ Downloaded {count} index constituent records[/green]")
             elif dtype == "industries":
-                count = download_industries()
+                count = download_industries(force=force)
                 console.print(f"  [green]✓ Downloaded {count} industry records[/green]")
-            elif dtype == "northbound":
-                count = download_northbound(today_only=not full)
-                console.print(f"  [green]✓ Downloaded {count} northbound records[/green]")
-            elif dtype == "institutional":
-                count = download_institutional()
-                console.print(f"  [green]✓ Downloaded {count} institutional records[/green]")
-            elif dtype == "market_cap":
-                count = download_market_cap(recent=recent, full_history=full)
-                console.print(f"  [green]✓ Downloaded {count} market cap records[/green]")
             else:
                 console.print(f"  [yellow]Unknown data type: {dtype}[/yellow]")
+                console.print(f"  [dim]Note: market_cap, northbound, institutional downloads are deprecated.[/dim]")
         except Exception as e:
             console.print(f"  [red]✗ {dtype} download failed: {e}[/red]")
             import traceback
@@ -1139,14 +1128,12 @@ def _check_cache_integrity(cache_dir: Path, data_types: list = None) -> dict:
         - files: dict - mapping of data types to file info
     """
     # Expected files for each data type
+    # Note: northbound, institutional, market_cap removed (deprecated)
     expected_files = {
         "stocks": {"pattern": "a_stock_*.db", "required": False},
         "etfs": {"pattern": "etf_*.db", "required": False},
         "indices": {"pattern": "index_constituents.db", "required": False},
         "industries": {"pattern": "industry_classification.db", "required": False},
-        "northbound": {"pattern": "northbound_holdings.db", "required": False},
-        "institutional": {"pattern": "institutional_holdings.db", "required": False},
-        "market_cap": {"pattern": "market_cap.db", "required": False},
     }
 
     # Filter to requested types
@@ -1200,9 +1187,8 @@ async def _get_pg_loaded_dates(pg_url: str, table: str) -> set:
 
 @app.command()
 def load(
-    data_type: str = typer.Argument("all", help="Data type: stocks, etfs, indices, industries, northbound, institutional, market_cap, all"),
+    data_type: str = typer.Argument("all", help="Data type: stocks, etfs, indices, industries, all"),
     full: bool = typer.Option(False, "--full", help="Load all data"),
-    recent: int = typer.Option(None, "--recent", "-r", help="Load recent N days only"),
     years: str = typer.Option(None, "--years", "-y", help="Years to load (comma-separated): 2023,2024"),
     source: str = typer.Option(None, "--source", "-s", help="Source directory (default: data/cache/)"),
     skip_check: bool = typer.Option(False, "--skip-check", help="Skip cache integrity check"),
@@ -1213,10 +1199,12 @@ def load(
 
     Checks cache integrity before loading and reports missing files.
 
+    Note: market_cap, northbound, institutional load commands are deprecated.
+    circ_mv is now calculated from daily K-line data during import.
+
     Examples:
         python -m scripts.data_cli load stocks --full
-        python -m scripts.data_cli load all --recent 30
-        python -m scripts.data_cli load market_cap --years 2024
+        python -m scripts.data_cli load all
         python -m scripts.data_cli load --years 2024  # Load all types for 2024
     """
     console.print("\n[bold blue]Loading data to PostgreSQL...[/bold blue]\n")
@@ -1236,7 +1224,7 @@ def load(
 
     # Determine types to load
     if data_type == "all":
-        types_to_load = ["stocks", "etfs", "indices", "industries", "northbound", "institutional", "market_cap"]
+        types_to_load = ["stocks", "etfs", "indices", "industries"]
     else:
         types_to_load = [data_type]
 
@@ -1278,37 +1266,78 @@ def load(
 
         if dtype == "stocks":
             # Run migrate_all_data for stocks
-            cmd = [
-                "python", "-m", "scripts.migrate_all_data",
-                "--source-dir", str(source_dir),
-                "--type", "stock",
-                "-d", pg_url,
-            ]
-            if full:
-                cmd.append("--all")
-            console.print(f"  Command: {' '.join(cmd)}")
-            result = subprocess.run(cmd, cwd=str(BACKEND_DIR), capture_output=False)
-            if result.returncode == 0:
-                console.print(f"  [green]✓ stocks loaded[/green]")
+            # Find stock db files for the specified years or all
+            if year_list:
+                # Load specific years
+                for year in year_list:
+                    db_file = source_dir / f"a_stock_{year}.db"
+                    if db_file.exists():
+                        cmd = [
+                            "python", "-m", "scripts.migrate_all_data",
+                            "--source", str(db_file),
+                            "--type", "stock",
+                            "-d", pg_url,
+                        ]
+                        console.print(f"  Command: {' '.join(cmd)}")
+                        result = subprocess.run(cmd, cwd=str(BACKEND_DIR), capture_output=False)
+                        if result.returncode == 0:
+                            console.print(f"  [green]✓ stocks {year} loaded[/green]")
+                        else:
+                            console.print(f"  [red]✗ stocks {year} load failed[/red]")
+                    else:
+                        console.print(f"  [yellow]⚠ a_stock_{year}.db not found[/yellow]")
             else:
-                console.print(f"  [red]✗ stocks load failed[/red]")
+                # Load all stock databases
+                cmd = [
+                    "python", "-m", "scripts.migrate_all_data",
+                    "--source-dir", str(source_dir),
+                    "--type", "stock",
+                    "-d", pg_url,
+                    "--all",
+                ]
+                console.print(f"  Command: {' '.join(cmd)}")
+                result = subprocess.run(cmd, cwd=str(BACKEND_DIR), capture_output=False)
+                if result.returncode == 0:
+                    console.print(f"  [green]✓ stocks loaded[/green]")
+                else:
+                    console.print(f"  [red]✗ stocks load failed[/red]")
 
         elif dtype == "etfs":
             # Run migrate_all_data for ETFs
-            cmd = [
-                "python", "-m", "scripts.migrate_all_data",
-                "--source-dir", str(source_dir),
-                "--type", "etf",
-                "-d", pg_url,
-            ]
-            if full:
-                cmd.append("--all")
-            console.print(f"  Command: {' '.join(cmd)}")
-            result = subprocess.run(cmd, cwd=str(BACKEND_DIR), capture_output=False)
-            if result.returncode == 0:
-                console.print(f"  [green]✓ etfs loaded[/green]")
+            if year_list:
+                # Load specific years
+                for year in year_list:
+                    db_file = source_dir / f"etf_{year}.db"
+                    if db_file.exists():
+                        cmd = [
+                            "python", "-m", "scripts.migrate_all_data",
+                            "--source", str(db_file),
+                            "--type", "etf",
+                            "-d", pg_url,
+                        ]
+                        console.print(f"  Command: {' '.join(cmd)}")
+                        result = subprocess.run(cmd, cwd=str(BACKEND_DIR), capture_output=False)
+                        if result.returncode == 0:
+                            console.print(f"  [green]✓ etfs {year} loaded[/green]")
+                        else:
+                            console.print(f"  [red]✗ etfs {year} load failed[/red]")
+                    else:
+                        console.print(f"  [yellow]⚠ etf_{year}.db not found[/yellow]")
             else:
-                console.print(f"  [red]✗ etfs load failed[/red]")
+                # Load all ETF databases
+                cmd = [
+                    "python", "-m", "scripts.migrate_all_data",
+                    "--source-dir", str(source_dir),
+                    "--type", "etf",
+                    "-d", pg_url,
+                    "--all",
+                ]
+                console.print(f"  Command: {' '.join(cmd)}")
+                result = subprocess.run(cmd, cwd=str(BACKEND_DIR), capture_output=False)
+                if result.returncode == 0:
+                    console.print(f"  [green]✓ etfs loaded[/green]")
+                else:
+                    console.print(f"  [red]✗ etfs load failed[/red]")
 
         elif dtype == "indices":
             # Load index constituents
@@ -1336,35 +1365,9 @@ def load(
             else:
                 console.print(f"  [yellow]⚠ industry_classification.db not found[/yellow]")
 
-        elif dtype == "northbound":
-            # Load northbound holdings
-            northbound_db = source_dir / "northbound_holdings.db"
-            if northbound_db.exists():
-                result = asyncio.run(_load_northbound_from_source(pg_url, northbound_db, year_list))
-                console.print(f"  [green]✓ northbound loaded ({result} records)[/green]")
-            else:
-                console.print(f"  [yellow]⚠ northbound_holdings.db not found[/yellow]")
-
-        elif dtype == "institutional":
-            # Load institutional holdings
-            inst_db = source_dir / "institutional_holdings.db"
-            if inst_db.exists():
-                result = asyncio.run(_load_institutional_from_source(pg_url, inst_db, year_list))
-                console.print(f"  [green]✓ institutional loaded ({result} records)[/green]")
-            else:
-                console.print(f"  [yellow]⚠ institutional_holdings.db not found[/yellow]")
-
-        elif dtype == "market_cap":
-            # Load market cap data
-            market_cap_db = source_dir / "market_cap.db"
-            if market_cap_db.exists():
-                result = asyncio.run(_load_market_cap_from_source(pg_url, market_cap_db, year_list))
-                console.print(f"  [green]✓ market_cap loaded ({result} records)[/green]")
-            else:
-                console.print(f"  [yellow]⚠ market_cap.db not found[/yellow]")
-
         else:
             console.print(f"  [yellow]⚠ Unknown data type: {dtype}[/yellow]")
+            console.print(f"  [dim]Note: market_cap, northbound, institutional loads are deprecated.[/dim]")
 
     console.print("\n[bold green]Load complete![/bold green]\n")
 

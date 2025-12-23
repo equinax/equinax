@@ -100,8 +100,8 @@ class UniverseAssetItem(BaseModel):
 
     # Flags
     is_st: bool = False
-    is_institutional: bool = False
-    is_northbound_heavy: bool = False
+    is_retail_hot: bool = False
+    is_main_controlled: bool = False
 
     class Config:
         from_attributes = True
@@ -304,12 +304,12 @@ async def get_universe_snapshot(
         .subquery()
     )
 
-    # Microstructure subquery (for institutional/northbound flags)
+    # Microstructure subquery (for retail/main-controlled flags)
     micro_subq = (
         select(
             StockMicrostructure.code,
-            StockMicrostructure.is_institutional,
-            StockMicrostructure.is_northbound_heavy,
+            StockMicrostructure.is_retail_hot,
+            StockMicrostructure.is_main_controlled,
         )
         .where(StockMicrostructure.date == latest_date)
         .subquery()
@@ -340,8 +340,8 @@ async def get_universe_snapshot(
             style_subq.c.vol_category,
             style_subq.c.value_category,
             style_subq.c.turnover_category,
-            micro_subq.c.is_institutional,
-            micro_subq.c.is_northbound_heavy,
+            micro_subq.c.is_retail_hot,
+            micro_subq.c.is_main_controlled,
         )
         .outerjoin(market_subq, AssetMeta.code == market_subq.c.code)
         .outerjoin(valuation_subq, AssetMeta.code == valuation_subq.c.code)
@@ -469,8 +469,8 @@ async def get_universe_snapshot(
             vol_category=vol_cat,
             value_category=value_cat,
             turnover_category=turnover_cat,
-            is_institutional=bool(row.is_institutional) if row.is_institutional else False,
-            is_northbound_heavy=bool(row.is_northbound_heavy) if row.is_northbound_heavy else False,
+            is_retail_hot=bool(row.is_retail_hot) if row.is_retail_hot else False,
+            is_main_controlled=bool(row.is_main_controlled) if row.is_main_controlled else False,
         ))
 
     return UniverseSnapshotResponse(

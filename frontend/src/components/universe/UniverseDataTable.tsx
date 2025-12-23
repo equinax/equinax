@@ -110,7 +110,7 @@ export function UniverseDataTable({
           const industry = getValue()
           if (!industry) return <span className="text-muted-foreground">-</span>
           return (
-            <Badge variant="outline" className="text-xs font-normal">
+            <Badge variant="outline" className="text-xs font-normal whitespace-nowrap">
               {industry}
             </Badge>
           )
@@ -213,7 +213,7 @@ export function UniverseDataTable({
           const size = getValue()
           if (!size) return <span className="text-muted-foreground">-</span>
           return (
-            <Badge className={cn('text-xs font-normal', getSizeColor(size))}>
+            <Badge className={cn('text-xs font-normal whitespace-nowrap', getSizeColor(size))}>
               {getSizeLabel(size)}
             </Badge>
           )
@@ -226,7 +226,7 @@ export function UniverseDataTable({
           const vol = getValue()
           if (!vol) return <span className="text-muted-foreground">-</span>
           return (
-            <Badge className={cn('text-xs font-normal', getVolColor(vol))}>
+            <Badge className={cn('text-xs font-normal whitespace-nowrap', getVolColor(vol))}>
               {getVolLabel(vol)}
             </Badge>
           )
@@ -239,7 +239,7 @@ export function UniverseDataTable({
           const value = getValue()
           if (!value) return <span className="text-muted-foreground">-</span>
           return (
-            <Badge className={cn('text-xs font-normal', getValueColor(value))}>
+            <Badge className={cn('text-xs font-normal whitespace-nowrap', getValueColor(value))}>
               {getValueLabel(value)}
             </Badge>
           )
@@ -315,33 +315,33 @@ export function UniverseDataTable({
         ),
         size: 70,
       }),
-      columnHelper.accessor('is_institutional', {
+      columnHelper.accessor('is_retail_hot', {
         header: () => (
           <Tooltip>
             <TooltipTrigger asChild>
               <Building2 className="h-4 w-4 mx-auto cursor-help" />
             </TooltipTrigger>
-            <TooltipContent>机构重仓</TooltipContent>
+            <TooltipContent>散户活跃</TooltipContent>
           </Tooltip>
         ),
         cell: ({ getValue }) =>
           getValue() ? (
-            <Building2 className="h-4 w-4 text-blue-500 mx-auto" />
+            <Building2 className="h-4 w-4 text-orange-500 mx-auto" />
           ) : null,
         size: 40,
       }),
-      columnHelper.accessor('is_northbound_heavy', {
+      columnHelper.accessor('is_main_controlled', {
         header: () => (
           <Tooltip>
             <TooltipTrigger asChild>
               <Landmark className="h-4 w-4 mx-auto cursor-help" />
             </TooltipTrigger>
-            <TooltipContent>北向重仓</TooltipContent>
+            <TooltipContent>主力控盘</TooltipContent>
           </Tooltip>
         ),
         cell: ({ getValue }) =>
           getValue() ? (
-            <Landmark className="h-4 w-4 text-amber-500 mx-auto" />
+            <Landmark className="h-4 w-4 text-purple-500 mx-auto" />
           ) : null,
         size: 40,
       }),

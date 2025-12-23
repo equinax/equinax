@@ -4,7 +4,7 @@ This module implements the "4+1" classification framework:
 1. Structural Classification (交易制度) - Board type, price limits, ST status
 2. Industry Classification (行业分类) - Shenwan industry classification
 3. Style Factors (风格因子) - Size, volatility, turnover, valuation, momentum
-4. Microstructure (微观结构) - Institutional holdings, northbound flows
+4. Microstructure (微观结构) - Trading patterns, retail activity, main player control
 +1. Market Regime (市场环境) - Bull/Bear/Range market conditions
 
 Plus a unified snapshot table for convenient queries.
@@ -275,8 +275,8 @@ class StockMicrostructure(Base):
     第四维度：微观结构
 
     This table is a TimescaleDB hypertable partitioned by date.
-    记录股票的机构持仓、北向资金持仓等微观结构信息。
-    更新频率：每日/每周
+    记录股票的交易微观结构信息（换手率特征、主力控盘、龙虎榜等）。
+    更新频率：每日
     """
 
     __tablename__ = "stock_microstructure"
@@ -284,19 +284,9 @@ class StockMicrostructure(Base):
     code: Mapped[str] = mapped_column(String(20), nullable=False)
     date: Mapped[date] = mapped_column(Date, nullable=False)
 
-    # Institutional holdings (机构持仓)
-    fund_holding_ratio: Mapped[Optional[Decimal]] = mapped_column(Numeric(8, 4), nullable=True)  # 公募基金持仓比例
-    fund_holding_change: Mapped[Optional[Decimal]] = mapped_column(Numeric(8, 4), nullable=True)  # 季度变化
-
-    # Northbound holdings (北向持仓)
-    northbound_holding_ratio: Mapped[Optional[Decimal]] = mapped_column(Numeric(8, 4), nullable=True)  # 北向持仓比例
-    northbound_holding_change: Mapped[Optional[Decimal]] = mapped_column(Numeric(8, 4), nullable=True)  # 日变化
-
-    # Classification flags
-    is_institutional: Mapped[bool] = mapped_column(Boolean, default=False)  # 机构重仓股
-    is_northbound_heavy: Mapped[bool] = mapped_column(Boolean, default=False)  # 北向重仓股
-    is_retail_hot: Mapped[bool] = mapped_column(Boolean, default=False)  # 散户热门股
-    is_main_controlled: Mapped[bool] = mapped_column(Boolean, default=False)  # 庄股嫌疑
+    # Classification flags (基于量价关系推断)
+    is_retail_hot: Mapped[bool] = mapped_column(Boolean, default=False)  # 散户热门股 (高换手)
+    is_main_controlled: Mapped[bool] = mapped_column(Boolean, default=False)  # 庄股嫌疑 (量价异常)
 
     # Dragon & Tiger (龙虎榜)
     dragon_tiger_count_20d: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)  # 20日龙虎榜次数
@@ -310,8 +300,6 @@ class StockMicrostructure(Base):
         PrimaryKeyConstraint("code", "date"),
         Index("idx_microstructure_date", "date"),
         Index("idx_microstructure_code", "code"),
-        Index("idx_microstructure_institutional", "is_institutional"),
-        Index("idx_microstructure_northbound", "is_northbound_heavy"),
     )
 
     def __repr__(self) -> str:
@@ -408,8 +396,8 @@ class StockClassificationSnapshot(Base):
     value_category: Mapped[Optional[str]] = mapped_column(String(20), nullable=True)
 
     # Dimension 4: Microstructure
-    is_institutional: Mapped[bool] = mapped_column(Boolean, default=False)
-    is_northbound_heavy: Mapped[bool] = mapped_column(Boolean, default=False)
+    is_retail_hot: Mapped[bool] = mapped_column(Boolean, default=False)
+    is_main_controlled: Mapped[bool] = mapped_column(Boolean, default=False)
 
     # +1: Market Regime
     market_regime: Mapped[Optional[str]] = mapped_column(String(20), nullable=True)

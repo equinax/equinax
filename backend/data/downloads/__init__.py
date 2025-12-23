@@ -4,16 +4,17 @@ Data Download Package
 提供统一的数据下载接口，供 data_cli.py 调用。
 
 Usage:
-    from data.downloads import download_stocks, download_market_cap
+    from data.downloads import download_stocks, download_etfs
 
 Scripts:
 - download_a_stock_data.py      - A股日线K线数据 (BaoStock)
 - download_etf_data.py          - ETF日线数据 (AKShare)
-- download_market_cap.py        - 市值数据 (AKShare)
 - download_index_constituents.py - 指数成分 (AKShare)
 - download_industry_data.py     - 行业分类 (AKShare)
-- download_northbound_holdings.py - 北向持仓 (AKShare)
-- download_institutional_holdings.py - 机构持仓 (AKShare)
+
+Note:
+- 市值数据 (circ_mv) 改为在导入 PostgreSQL 时自动计算: circ_mv = amount / (turn / 100)
+- 北向/机构持仓数据已取消 (API 只支持当日快照，不支持历史数据)
 """
 
 import sqlite3
@@ -130,114 +131,31 @@ def download_etfs(years: Optional[List[int]] = None, mode: str = 'all', force: b
     return total
 
 
-def download_market_cap(recent: int = 30, full_history: bool = False) -> int:
+def download_indices(indices: Optional[List[str]] = None, force: bool = False) -> int:
     """
-    下载市值数据
+    下载指数成分股（当前日期快照）
 
-    Args:
-        recent: 下载最近 N 天的数据
-        full_history: 是否下载完整历史
-
-    Returns:
-        下载的记录数
-    """
-    from .download_market_cap import download_recent_days, download_all_market_cap, create_database, get_db_path
-
-    db_path = get_db_path()
-    conn = sqlite3.connect(db_path)
-    create_database(conn)
-
-    try:
-        if full_history:
-            download_all_market_cap(conn, full_history=True)
-        else:
-            download_recent_days(conn, days=recent)
-
-        # 返回记录数
-        cursor = conn.cursor()
-        cursor.execute("SELECT COUNT(*) FROM stock_market_cap")
-        return cursor.fetchone()[0]
-    finally:
-        conn.close()
-
-
-def download_northbound(today_only: bool = True, start_date: str = None) -> int:
-    """
-    下载北向持仓数据
-
-    Args:
-        today_only: 只下载今天的数据
-        start_date: 历史数据开始日期 (如果 today_only=False)
-
-    Returns:
-        下载的记录数
-    """
-    from .download_northbound_holdings import download_today, download_history, create_database
-
-    db_path = CACHE_DIR / "northbound_holdings.db"
-    conn = sqlite3.connect(str(db_path))
-    create_database(conn)
-
-    try:
-        if today_only:
-            download_today(conn)
-        else:
-            download_history(conn, start_date=start_date)
-
-        cursor = conn.cursor()
-        cursor.execute("SELECT COUNT(*) FROM northbound_holdings")
-        return cursor.fetchone()[0]
-    finally:
-        conn.close()
-
-
-def download_institutional(quarters: Optional[List[str]] = None) -> int:
-    """
-    下载机构持仓数据
-
-    Args:
-        quarters: 季度列表，如 ['20240331', '20240630']，默认下载最新一期
-
-    Returns:
-        下载的记录数
-    """
-    from .download_institutional_holdings import download_latest, download_quarters, create_database
-
-    db_path = CACHE_DIR / "institutional_holdings.db"
-    conn = sqlite3.connect(str(db_path))
-    create_database(conn)
-
-    try:
-        if quarters:
-            download_quarters(conn, quarters=quarters)
-        else:
-            download_latest(conn)
-
-        cursor = conn.cursor()
-        cursor.execute("SELECT COUNT(*) FROM institutional_holdings")
-        return cursor.fetchone()[0]
-    finally:
-        conn.close()
-
-
-def download_indices(indices: Optional[List[str]] = None) -> int:
-    """
-    下载指数成分股
+    注意：指数成分数据只支持当前日期，不支持历史数据。
+    AKShare API 只能获取实时的指数成分股，无法获取历史任意日期的成分股。
+    --years 参数对此数据类型无效。
 
     Args:
         indices: 指数列表，如 ['000300', '000905']，默认下载全部主要指数
+        force: 是否强制重新下载
 
     Returns:
         下载的记录数
     """
     from .download_index_constituents import download_all_indices, create_database
 
+    print("[indices] 注意: 指数成分股只支持当前日期快照，--years 参数无效")
+
     db_path = CACHE_DIR / "index_constituents.db"
     conn = sqlite3.connect(str(db_path))
     create_database(conn)
 
     try:
-        download_all_indices(conn, indices=indices)
+        download_all_indices(conn, indices=indices, force=force)
 
         cursor = conn.cursor()
         cursor.execute("SELECT COUNT(*) FROM index_constituents")
@@ -246,9 +164,12 @@ def download_indices(indices: Optional[List[str]] = None) -> int:
         conn.close()
 
 
-def download_industries() -> int:
+def download_industries(force: bool = False) -> int:
     """
     下载行业分类数据
+
+    Args:
+        force: 是否强制重新下载（忽略缓存）
 
     Returns:
         下载的记录数
@@ -256,14 +177,14 @@ def download_industries() -> int:
     from .download_industry_data import download_em_industries, download_sw_industries, create_database
 
     db_path = CACHE_DIR / "industry_classification.db"
-    conn = sqlite3.connect(str(db_path))
-    create_database(conn)
+    # create_database 需要 Path，返回 conn
+    conn = create_database(db_path)
 
     try:
-        # 下载东方财富行业分类
-        download_em_industries(conn)
-        # 下载申万行业分类
-        download_sw_industries(conn)
+        # 下载东方财富行业分类（传递 force 参数，启用缓存检测）
+        download_em_industries(conn, force=force)
+        # 下载申万行业分类（传递 force 参数，启用缓存检测）
+        download_sw_industries(conn, force=force)
 
         cursor = conn.cursor()
         cursor.execute("SELECT COUNT(*) FROM industry_classification")
@@ -286,9 +207,6 @@ __all__ = [
     # 下载函数
     'download_stocks',
     'download_etfs',
-    'download_market_cap',
-    'download_northbound',
-    'download_institutional',
     'download_indices',
     'download_industries',
 ]

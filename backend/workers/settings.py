@@ -16,8 +16,6 @@ from workers.classification_tasks import (
 from workers.data_tasks import (
     download_stock_data,
     download_etf_data,
-    download_northbound_data,
-    download_market_cap_data,
     import_stock_data,
     import_etf_data,
     daily_data_update,
@@ -58,8 +56,6 @@ class WorkerSettings:
         # Data tasks
         download_stock_data,
         download_etf_data,
-        download_northbound_data,
-        download_market_cap_data,
         import_stock_data,
         import_etf_data,
         daily_data_update,

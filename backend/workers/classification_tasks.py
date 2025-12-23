@@ -96,16 +96,20 @@ def get_price_limit(board: BoardType, is_st: bool) -> tuple[Decimal, Decimal]:
 
 
 def categorize_size(market_cap: Optional[float], percentile: Optional[float]) -> Optional[SizeCategory]:
-    """Categorize stock by market cap."""
+    """Categorize stock by market cap.
+
+    Note: market_cap is in 亿元 units (from indicator_valuation.total_mv).
+    """
     if market_cap is None:
         return None
-    if market_cap >= 100_000_000_000:  # 1000亿
+    # market_cap is in 亿元 units
+    if market_cap >= 1000:  # >= 1000亿
         return SizeCategory.MEGA
-    elif market_cap >= 20_000_000_000:  # 200亿
+    elif market_cap >= 200:  # >= 200亿
         return SizeCategory.LARGE
-    elif market_cap >= 5_000_000_000:  # 50亿
+    elif market_cap >= 50:  # >= 50亿
         return SizeCategory.MID
-    elif market_cap >= 1_000_000_000:  # 10亿
+    elif market_cap >= 10:  # >= 10亿
         return SizeCategory.SMALL
     else:
         return SizeCategory.MICRO
