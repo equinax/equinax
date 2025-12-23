@@ -37,9 +37,21 @@ export type GetUniverseSnapshotApiV1UniverseSnapshotGetParams = {
    */
   turnover_category?: string | null;
   /**
-   * Industry L1 filter
+   * Industry L1 filter (SW)
    */
   industry_l1?: string | null;
+  /**
+   * Industry L2 filter (SW)
+   */
+  industry_l2?: string | null;
+  /**
+   * Industry L3 filter (SW)
+   */
+  industry_l3?: string | null;
+  /**
+   * Industry filter (EM/EastMoney)
+   */
+  em_industry?: string | null;
   /**
    * ST status filter
    */

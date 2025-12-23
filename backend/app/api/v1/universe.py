@@ -91,6 +91,8 @@ class UniverseAssetItem(BaseModel):
     board: Optional[str] = None
     industry_l1: Optional[str] = None
     industry_l2: Optional[str] = None
+    industry_l3: Optional[str] = None
+    em_industry: Optional[str] = None
 
     # Style factors
     size_category: Optional[str] = None
@@ -239,7 +241,10 @@ async def get_universe_snapshot(
     vol_category: Optional[str] = Query(default=None, description="Volatility: HIGH,NORMAL,LOW"),
     value_category: Optional[str] = Query(default=None, description="Value style: VALUE,NEUTRAL,GROWTH"),
     turnover_category: Optional[str] = Query(default=None, description="Turnover: HOT,NORMAL,DEAD"),
-    industry_l1: Optional[str] = Query(default=None, description="Industry L1 filter"),
+    industry_l1: Optional[str] = Query(default=None, description="Industry L1 filter (SW)"),
+    industry_l2: Optional[str] = Query(default=None, description="Industry L2 filter (SW)"),
+    industry_l3: Optional[str] = Query(default=None, description="Industry L3 filter (SW)"),
+    em_industry: Optional[str] = Query(default=None, description="Industry filter (EM/EastMoney)"),
     is_st: Optional[bool] = Query(default=None, description="ST status filter"),
 
     # Sorting
@@ -334,6 +339,8 @@ async def get_universe_snapshot(
             valuation_subq.c.is_st,
             StockProfile.sw_industry_l1.label("industry_l1"),
             StockProfile.sw_industry_l2.label("industry_l2"),
+            StockProfile.sw_industry_l3.label("industry_l3"),
+            StockProfile.em_industry,
             # Classification fields
             StockStructuralInfo.board,
             style_subq.c.size_category,
@@ -370,9 +377,17 @@ async def get_universe_snapshot(
             )
         )
 
-    # Apply industry filter
+    # Apply industry filters (SW)
     if industry_l1:
         query = query.where(StockProfile.sw_industry_l1 == industry_l1)
+    if industry_l2:
+        query = query.where(StockProfile.sw_industry_l2 == industry_l2)
+    if industry_l3:
+        query = query.where(StockProfile.sw_industry_l3 == industry_l3)
+
+    # Apply EM industry filter
+    if em_industry:
+        query = query.where(StockProfile.em_industry == em_industry)
 
     # Apply ST filter
     if is_st is not None:
@@ -462,6 +477,8 @@ async def get_universe_snapshot(
             pb_mrq=row.pb_mrq,
             industry_l1=row.industry_l1,
             industry_l2=row.industry_l2,
+            industry_l3=row.industry_l3,
+            em_industry=row.em_industry,
             is_st=bool(row.is_st) if row.is_st is not None else False,
             # Classification fields
             board=board_value,
@@ -587,6 +604,139 @@ async def get_industry_list(
         .order_by(StockProfile.sw_industry_l1)
     )
     return [row[0] for row in result.all()]
+
+
+class IndustryTreeItem(BaseModel):
+    """Industry tree item for cascading selection."""
+    name: str
+    level: int
+    stock_count: int
+    has_children: bool = False
+
+
+class IndustryTreeResponse(BaseModel):
+    """Industry tree response."""
+    system: str
+    parent: Optional[str] = None
+    items: List[IndustryTreeItem]
+
+
+@router.get("/industries/tree", response_model=IndustryTreeResponse)
+async def get_industry_tree(
+    system: str = Query(default="sw", description="Classification system: sw, em"),
+    parent: Optional[str] = Query(default=None, description="Parent industry name for SW L2/L3"),
+    level: int = Query(default=1, description="Industry level (1, 2, 3 for SW; always 1 for EM)"),
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    Get industry tree for cascading selection.
+
+    For SW (申万):
+    - level=1: Returns all L1 industries
+    - level=2 with parent: Returns L2 industries under the given L1
+    - level=3 with parent: Returns L3 industries under the given L2
+
+    For EM (东方财富):
+    - Returns flat list of all 86 industries (L1 only)
+    """
+    items = []
+
+    if system == "em":
+        # EM is flat structure, only L1
+        result = await db.execute(
+            select(
+                StockProfile.em_industry,
+                func.count().label("count")
+            )
+            .where(StockProfile.em_industry.isnot(None))
+            .group_by(StockProfile.em_industry)
+            .order_by(StockProfile.em_industry)
+        )
+        for row in result.all():
+            items.append(IndustryTreeItem(
+                name=row[0],
+                level=1,
+                stock_count=row[1],
+                has_children=False,
+            ))
+    else:
+        # SW hierarchical structure
+        if level == 1:
+            # Get all L1 industries
+            result = await db.execute(
+                select(
+                    StockProfile.sw_industry_l1,
+                    func.count().label("count")
+                )
+                .where(StockProfile.sw_industry_l1.isnot(None))
+                .group_by(StockProfile.sw_industry_l1)
+                .order_by(StockProfile.sw_industry_l1)
+            )
+            for row in result.all():
+                # Check if this L1 has L2 children
+                has_l2 = await db.execute(
+                    select(func.count())
+                    .where(StockProfile.sw_industry_l1 == row[0])
+                    .where(StockProfile.sw_industry_l2.isnot(None))
+                )
+                has_children = (has_l2.scalar() or 0) > 0
+                items.append(IndustryTreeItem(
+                    name=row[0],
+                    level=1,
+                    stock_count=row[1],
+                    has_children=has_children,
+                ))
+        elif level == 2 and parent:
+            # Get L2 industries under the given L1
+            result = await db.execute(
+                select(
+                    StockProfile.sw_industry_l2,
+                    func.count().label("count")
+                )
+                .where(StockProfile.sw_industry_l1 == parent)
+                .where(StockProfile.sw_industry_l2.isnot(None))
+                .group_by(StockProfile.sw_industry_l2)
+                .order_by(StockProfile.sw_industry_l2)
+            )
+            for row in result.all():
+                # Check if this L2 has L3 children
+                has_l3 = await db.execute(
+                    select(func.count())
+                    .where(StockProfile.sw_industry_l2 == row[0])
+                    .where(StockProfile.sw_industry_l3.isnot(None))
+                )
+                has_children = (has_l3.scalar() or 0) > 0
+                items.append(IndustryTreeItem(
+                    name=row[0],
+                    level=2,
+                    stock_count=row[1],
+                    has_children=has_children,
+                ))
+        elif level == 3 and parent:
+            # Get L3 industries under the given L2
+            result = await db.execute(
+                select(
+                    StockProfile.sw_industry_l3,
+                    func.count().label("count")
+                )
+                .where(StockProfile.sw_industry_l2 == parent)
+                .where(StockProfile.sw_industry_l3.isnot(None))
+                .group_by(StockProfile.sw_industry_l3)
+                .order_by(StockProfile.sw_industry_l3)
+            )
+            for row in result.all():
+                items.append(IndustryTreeItem(
+                    name=row[0],
+                    level=3,
+                    stock_count=row[1],
+                    has_children=False,
+                ))
+
+    return IndustryTreeResponse(
+        system=system,
+        parent=parent,
+        items=items,
+    )
 
 
 def _get_enum_value(val):

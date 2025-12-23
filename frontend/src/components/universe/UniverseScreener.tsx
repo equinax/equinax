@@ -9,12 +9,18 @@ import {
   stockCategoryGroups,
   etfCategoryGroups,
 } from './UniverseCategoryFilter'
+import { IndustryCascadeFilter } from './IndustryCascadeFilter'
 
 export interface UniverseFilters {
   assetType: 'stock' | 'etf'
   exchange: string
   search: string
+  // Industry filters (SW)
   industryL1: string
+  industryL2: string
+  industryL3: string
+  // Industry filter (EM)
+  emIndustry: string
   isSt: boolean | null
   board: string
   sizeCategory: string
@@ -25,7 +31,6 @@ export interface UniverseFilters {
 interface UniverseScreenerProps {
   filters: UniverseFilters
   onFiltersChange: (filters: UniverseFilters) => void
-  industries: string[]
   totalCount?: number
   isLoading?: boolean
 }
@@ -33,7 +38,6 @@ interface UniverseScreenerProps {
 export function UniverseScreener({
   filters,
   onFiltersChange,
-  industries,
   totalCount,
   isLoading: _isLoading,
 }: UniverseScreenerProps) {
@@ -65,6 +69,9 @@ export function UniverseScreener({
         exchange: filters.exchange,
         search: filters.search,
         industryL1: 'all',
+        industryL2: 'all',
+        industryL3: 'all',
+        emIndustry: 'all',
         board: 'all',
         sizeCategory: 'all',
         volCategory: 'all',
@@ -83,6 +90,9 @@ export function UniverseScreener({
       exchange: 'all',
       search: '',
       industryL1: 'all',
+      industryL2: 'all',
+      industryL3: 'all',
+      emIndustry: 'all',
       isSt: null,
       board: 'all',
       sizeCategory: 'all',
@@ -115,39 +125,27 @@ export function UniverseScreener({
     }
   }
 
-  // Build industry category group dynamically from API data
-  const industryCategoryGroup = useMemo(() => ({
-    id: 'industryL1',
-    label: '行业',
-    options: [
-      { value: 'all', label: '全部' },
-      ...industries.map((ind) => ({ value: ind, label: ind })),
-    ],
-  }), [industries])
-
   // Combine category groups based on asset type
+  // Note: Industry filters are handled separately by IndustryCascadeFilter
   const categoryGroups = useMemo(() => {
     if (filters.assetType === 'etf') {
       return etfCategoryGroups
     }
-
-    // For stocks, add industry group before other groups
-    const groups = [...stockCategoryGroups]
-    // Insert industry group after exchange
-    const exchangeIndex = groups.findIndex((g) => g.id === 'exchange')
-    groups.splice(exchangeIndex + 1, 0, industryCategoryGroup)
-    return groups
-  }, [filters.assetType, industryCategoryGroup])
+    // For stocks, use predefined groups (without industry - handled by cascade filter)
+    return stockCategoryGroups
+  }, [filters.assetType])
 
   const allSelectedValues = {
     ...selectedValues,
-    industryL1: filters.industryL1,
   }
 
   const hasActiveFilters =
     filters.exchange !== 'all' ||
     filters.search ||
     filters.industryL1 !== 'all' ||
+    filters.industryL2 !== 'all' ||
+    filters.industryL3 !== 'all' ||
+    filters.emIndustry !== 'all' ||
     filters.isSt !== null ||
     filters.board !== 'all' ||
     filters.sizeCategory !== 'all' ||
@@ -157,7 +155,10 @@ export function UniverseScreener({
   // Count active filters
   const activeFilterCount = [
     filters.exchange !== 'all',
+    filters.emIndustry !== 'all',
     filters.industryL1 !== 'all',
+    filters.industryL2 !== 'all',
+    filters.industryL3 !== 'all',
     filters.isSt !== null,
     filters.board !== 'all',
     filters.sizeCategory !== 'all',
@@ -268,7 +269,51 @@ export function UniverseScreener({
       {isExpanded && (
         <div className="relative">
           {/* Category Filter Grid */}
-          <div className="bg-muted/30 rounded-lg p-4 border">
+          <div className="bg-muted/30 rounded-lg p-4 border space-y-4">
+            {/* Industry Cascade Filter (stocks only) */}
+            {filters.assetType === 'stock' && (
+              <IndustryCascadeFilter
+                emIndustry={filters.emIndustry}
+                onEmIndustryChange={(value) => {
+                  // EM and SW are mutually exclusive - clear SW when selecting EM
+                  onFiltersChange({
+                    ...filters,
+                    emIndustry: value,
+                    industryL1: 'all',
+                    industryL2: 'all',
+                    industryL3: 'all',
+                  })
+                }}
+                swL1={filters.industryL1}
+                swL2={filters.industryL2}
+                swL3={filters.industryL3}
+                onSwL1Change={(value) => {
+                  // SW and EM are mutually exclusive - clear EM when selecting SW
+                  onFiltersChange({
+                    ...filters,
+                    emIndustry: 'all',
+                    industryL1: value,
+                    industryL2: 'all',
+                    industryL3: 'all',
+                  })
+                }}
+                onSwL2Change={(value) => {
+                  onFiltersChange({
+                    ...filters,
+                    industryL2: value,
+                    industryL3: 'all',
+                  })
+                }}
+                onSwL3Change={(value) => updateFilter('industryL3', value)}
+              />
+            )}
+
+            {/* Divider between industry and other filters */}
+            {filters.assetType === 'stock' && (
+              <div className="border-t border-border/50" />
+            )}
+
+            {/* Other category filters */}
             <UniverseCategoryFilter
               groups={categoryGroups}
               selectedValues={allSelectedValues}
@@ -302,10 +347,41 @@ export function UniverseScreener({
               </button>
             </Badge>
           )}
+          {filters.emIndustry !== 'all' && (
+            <Badge variant="secondary" className="gap-1">
+              EM: {filters.emIndustry}
+              <button onClick={() => updateFilter('emIndustry', 'all')}>
+                <X className="h-3 w-3" />
+              </button>
+            </Badge>
+          )}
           {filters.industryL1 !== 'all' && (
             <Badge variant="secondary" className="gap-1">
-              {filters.industryL1}
-              <button onClick={() => updateFilter('industryL1', 'all')}>
+              L1: {filters.industryL1}
+              <button onClick={() => {
+                updateFilter('industryL1', 'all')
+                updateFilter('industryL2', 'all')
+                updateFilter('industryL3', 'all')
+              }}>
+                <X className="h-3 w-3" />
+              </button>
+            </Badge>
+          )}
+          {filters.industryL2 !== 'all' && (
+            <Badge variant="secondary" className="gap-1">
+              L2: {filters.industryL2}
+              <button onClick={() => {
+                updateFilter('industryL2', 'all')
+                updateFilter('industryL3', 'all')
+              }}>
+                <X className="h-3 w-3" />
+              </button>
+            </Badge>
+          )}
+          {filters.industryL3 !== 'all' && (
+            <Badge variant="secondary" className="gap-1">
+              L3: {filters.industryL3}
+              <button onClick={() => updateFilter('industryL3', 'all')}>
                 <X className="h-3 w-3" />
               </button>
             </Badge>

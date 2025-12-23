@@ -6,7 +6,6 @@ import type { SortingState } from '@tanstack/react-table'
 import {
   useGetUniverseSnapshotApiV1UniverseSnapshotGet,
   useGetUniverseStatsApiV1UniverseStatsGet,
-  useGetIndustryListApiV1UniverseIndustriesGet,
 } from '@/api/generated/universe-cockpit/universe-cockpit'
 import { UniverseStatsBar } from '@/components/universe/UniverseStatsBar'
 import { UniverseScreener, type UniverseFilters } from '@/components/universe/UniverseScreener'
@@ -32,6 +31,9 @@ export default function UniverseCockpitPage() {
     exchange: 'all',
     search: '',
     industryL1: 'all',
+    industryL2: 'all',
+    industryL3: 'all',
+    emIndustry: 'all',
     isSt: null,
     board: 'all',
     sizeCategory: 'all',
@@ -67,9 +69,6 @@ export default function UniverseCockpitPage() {
     asset_type: filters.assetType,
   })
 
-  // Fetch industry list for dropdown
-  const { data: industries } = useGetIndustryListApiV1UniverseIndustriesGet()
-
   // Fetch universe snapshot with filters
   // Stock-specific filters are only sent when asset_type is 'stock'
   const isStock = filters.assetType === 'stock'
@@ -81,6 +80,9 @@ export default function UniverseCockpitPage() {
     search: filters.search || undefined,
     // Stock-specific filters only for stocks
     industry_l1: isStock && filters.industryL1 !== 'all' ? filters.industryL1 : undefined,
+    industry_l2: isStock && filters.industryL2 !== 'all' ? filters.industryL2 : undefined,
+    industry_l3: isStock && filters.industryL3 !== 'all' ? filters.industryL3 : undefined,
+    em_industry: isStock && filters.emIndustry !== 'all' ? filters.emIndustry : undefined,
     is_st: isStock && filters.isSt !== null ? filters.isSt : undefined,
     board: isStock && filters.board !== 'all' ? filters.board : undefined,
     size_category: isStock && filters.sizeCategory !== 'all' ? filters.sizeCategory : undefined,
@@ -140,7 +142,6 @@ export default function UniverseCockpitPage() {
           <UniverseScreener
             filters={filters}
             onFiltersChange={handleFiltersChange}
-            industries={industries || []}
             totalCount={snapshot?.total}
             isLoading={isLoadingSnapshot}
           />

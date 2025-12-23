@@ -11,9 +11,11 @@ import type {
   UseQueryResult,
 } from "@tanstack/react-query";
 import type {
+  GetIndustryTreeApiV1UniverseIndustriesTreeGetParams,
   GetUniverseSnapshotApiV1UniverseSnapshotGetParams,
   GetUniverseStatsApiV1UniverseStatsGetParams,
   HTTPValidationError,
+  IndustryTreeResponse,
   UniverseAssetDetail,
   UniverseSnapshotResponse,
   UniverseStatsResponse,
@@ -544,6 +546,223 @@ export const useGetIndustryListApiV1UniverseIndustriesGet = <
 }): UseQueryResult<TData, TError> & { queryKey: QueryKey } => {
   const queryOptions =
     getGetIndustryListApiV1UniverseIndustriesGetQueryOptions(options);
+
+  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
+    queryKey: QueryKey;
+  };
+
+  query.queryKey = queryOptions.queryKey;
+
+  return query;
+};
+
+/**
+ * Get industry tree for cascading selection.
+
+For SW (申万):
+- level=1: Returns all L1 industries
+- level=2 with parent: Returns L2 industries under the given L1
+- level=3 with parent: Returns L3 industries under the given L2
+
+For EM (东方财富):
+- Returns flat list of all 86 industries (L1 only)
+ * @summary Get Industry Tree
+ */
+export const getIndustryTreeApiV1UniverseIndustriesTreeGet = (
+  params?: GetIndustryTreeApiV1UniverseIndustriesTreeGetParams,
+  signal?: AbortSignal,
+) => {
+  return customInstance<IndustryTreeResponse>({
+    url: `/api/v1/universe/industries/tree`,
+    method: "GET",
+    params,
+    signal,
+  });
+};
+
+export const getGetIndustryTreeApiV1UniverseIndustriesTreeGetQueryKey = (
+  params?: GetIndustryTreeApiV1UniverseIndustriesTreeGetParams,
+) => {
+  return [
+    `/api/v1/universe/industries/tree`,
+    ...(params ? [params] : []),
+  ] as const;
+};
+
+export const getGetIndustryTreeApiV1UniverseIndustriesTreeGetInfiniteQueryOptions =
+  <
+    TData = InfiniteData<
+      Awaited<ReturnType<typeof getIndustryTreeApiV1UniverseIndustriesTreeGet>>,
+      GetIndustryTreeApiV1UniverseIndustriesTreeGetParams["page"]
+    >,
+    TError = HTTPValidationError,
+  >(
+    params?: GetIndustryTreeApiV1UniverseIndustriesTreeGetParams,
+    options?: {
+      query?: Partial<
+        UseInfiniteQueryOptions<
+          Awaited<
+            ReturnType<typeof getIndustryTreeApiV1UniverseIndustriesTreeGet>
+          >,
+          TError,
+          TData,
+          Awaited<
+            ReturnType<typeof getIndustryTreeApiV1UniverseIndustriesTreeGet>
+          >,
+          QueryKey,
+          GetIndustryTreeApiV1UniverseIndustriesTreeGetParams["page"]
+        >
+      >;
+    },
+  ) => {
+    const { query: queryOptions } = options ?? {};
+
+    const queryKey =
+      queryOptions?.queryKey ??
+      getGetIndustryTreeApiV1UniverseIndustriesTreeGetQueryKey(params);
+
+    const queryFn: QueryFunction<
+      Awaited<ReturnType<typeof getIndustryTreeApiV1UniverseIndustriesTreeGet>>,
+      QueryKey,
+      GetIndustryTreeApiV1UniverseIndustriesTreeGetParams["page"]
+    > = ({ signal, pageParam }) =>
+      getIndustryTreeApiV1UniverseIndustriesTreeGet(
+        { ...params, page: pageParam || params?.["page"] },
+        signal,
+      );
+
+    return { queryKey, queryFn, ...queryOptions } as UseInfiniteQueryOptions<
+      Awaited<ReturnType<typeof getIndustryTreeApiV1UniverseIndustriesTreeGet>>,
+      TError,
+      TData,
+      Awaited<ReturnType<typeof getIndustryTreeApiV1UniverseIndustriesTreeGet>>,
+      QueryKey,
+      GetIndustryTreeApiV1UniverseIndustriesTreeGetParams["page"]
+    > & { queryKey: QueryKey };
+  };
+
+export type GetIndustryTreeApiV1UniverseIndustriesTreeGetInfiniteQueryResult =
+  NonNullable<
+    Awaited<ReturnType<typeof getIndustryTreeApiV1UniverseIndustriesTreeGet>>
+  >;
+export type GetIndustryTreeApiV1UniverseIndustriesTreeGetInfiniteQueryError =
+  HTTPValidationError;
+
+/**
+ * @summary Get Industry Tree
+ */
+export const useGetIndustryTreeApiV1UniverseIndustriesTreeGetInfinite = <
+  TData = InfiniteData<
+    Awaited<ReturnType<typeof getIndustryTreeApiV1UniverseIndustriesTreeGet>>,
+    GetIndustryTreeApiV1UniverseIndustriesTreeGetParams["page"]
+  >,
+  TError = HTTPValidationError,
+>(
+  params?: GetIndustryTreeApiV1UniverseIndustriesTreeGetParams,
+  options?: {
+    query?: Partial<
+      UseInfiniteQueryOptions<
+        Awaited<
+          ReturnType<typeof getIndustryTreeApiV1UniverseIndustriesTreeGet>
+        >,
+        TError,
+        TData,
+        Awaited<
+          ReturnType<typeof getIndustryTreeApiV1UniverseIndustriesTreeGet>
+        >,
+        QueryKey,
+        GetIndustryTreeApiV1UniverseIndustriesTreeGetParams["page"]
+      >
+    >;
+  },
+): UseInfiniteQueryResult<TData, TError> & { queryKey: QueryKey } => {
+  const queryOptions =
+    getGetIndustryTreeApiV1UniverseIndustriesTreeGetInfiniteQueryOptions(
+      params,
+      options,
+    );
+
+  const query = useInfiniteQuery(queryOptions) as UseInfiniteQueryResult<
+    TData,
+    TError
+  > & { queryKey: QueryKey };
+
+  query.queryKey = queryOptions.queryKey;
+
+  return query;
+};
+
+export const getGetIndustryTreeApiV1UniverseIndustriesTreeGetQueryOptions = <
+  TData = Awaited<
+    ReturnType<typeof getIndustryTreeApiV1UniverseIndustriesTreeGet>
+  >,
+  TError = HTTPValidationError,
+>(
+  params?: GetIndustryTreeApiV1UniverseIndustriesTreeGetParams,
+  options?: {
+    query?: Partial<
+      UseQueryOptions<
+        Awaited<
+          ReturnType<typeof getIndustryTreeApiV1UniverseIndustriesTreeGet>
+        >,
+        TError,
+        TData
+      >
+    >;
+  },
+) => {
+  const { query: queryOptions } = options ?? {};
+
+  const queryKey =
+    queryOptions?.queryKey ??
+    getGetIndustryTreeApiV1UniverseIndustriesTreeGetQueryKey(params);
+
+  const queryFn: QueryFunction<
+    Awaited<ReturnType<typeof getIndustryTreeApiV1UniverseIndustriesTreeGet>>
+  > = ({ signal }) =>
+    getIndustryTreeApiV1UniverseIndustriesTreeGet(params, signal);
+
+  return { queryKey, queryFn, ...queryOptions } as UseQueryOptions<
+    Awaited<ReturnType<typeof getIndustryTreeApiV1UniverseIndustriesTreeGet>>,
+    TError,
+    TData
+  > & { queryKey: QueryKey };
+};
+
+export type GetIndustryTreeApiV1UniverseIndustriesTreeGetQueryResult =
+  NonNullable<
+    Awaited<ReturnType<typeof getIndustryTreeApiV1UniverseIndustriesTreeGet>>
+  >;
+export type GetIndustryTreeApiV1UniverseIndustriesTreeGetQueryError =
+  HTTPValidationError;
+
+/**
+ * @summary Get Industry Tree
+ */
+export const useGetIndustryTreeApiV1UniverseIndustriesTreeGet = <
+  TData = Awaited<
+    ReturnType<typeof getIndustryTreeApiV1UniverseIndustriesTreeGet>
+  >,
+  TError = HTTPValidationError,
+>(
+  params?: GetIndustryTreeApiV1UniverseIndustriesTreeGetParams,
+  options?: {
+    query?: Partial<
+      UseQueryOptions<
+        Awaited<
+          ReturnType<typeof getIndustryTreeApiV1UniverseIndustriesTreeGet>
+        >,
+        TError,
+        TData
+      >
+    >;
+  },
+): UseQueryResult<TData, TError> & { queryKey: QueryKey } => {
+  const queryOptions =
+    getGetIndustryTreeApiV1UniverseIndustriesTreeGetQueryOptions(
+      params,
+      options,
+    );
 
   const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
     queryKey: QueryKey;

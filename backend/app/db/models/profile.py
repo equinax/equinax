@@ -28,7 +28,10 @@ class StockProfile(Base):
         primary_key=True
     )
 
-    # 申万行业分类
+    # 东方财富行业分类 (扁平结构，只有一级)
+    em_industry: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)  # 东方财富行业
+
+    # 申万行业分类 (层级结构)
     sw_industry_l1: Mapped[Optional[str]] = mapped_column(String(50), nullable=True)  # 一级行业
     sw_industry_l2: Mapped[Optional[str]] = mapped_column(String(50), nullable=True)  # 二级行业
     sw_industry_l3: Mapped[Optional[str]] = mapped_column(String(50), nullable=True)  # 三级行业
@@ -54,6 +57,7 @@ class StockProfile(Base):
     )
 
     __table_args__ = (
+        Index("idx_stock_profile_em_industry", "em_industry"),
         Index("idx_stock_profile_sw_l1", "sw_industry_l1"),
         Index("idx_stock_profile_sw_l2", "sw_industry_l2"),
         Index("idx_stock_profile_province", "province"),

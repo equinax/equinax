@@ -249,7 +249,16 @@ async def migrate_daily_k_data(
             pcf = safe_decimal(record.get("pcfNcfTTM"))
             is_st = safe_int(record.get("isST"))
 
-            if any([pe_ttm, pb_mrq, ps_ttm, pcf, is_st]):
+            # Calculate circ_mv from amount and turn
+            # Formula: circ_mv = amount / (turn / 100) = amount * 100 / turn
+            amount = safe_decimal(record.get("amount"))
+            turn = safe_decimal(record.get("turn"))
+            circ_mv = None
+            if amount and turn and turn > 0:
+                # circ_mv in 元, convert to 亿元 for storage
+                circ_mv = safe_decimal((amount * 100 / turn) / 100000000)
+
+            if any([pe_ttm, pb_mrq, ps_ttm, pcf, is_st, circ_mv]):
                 valuation_batch.append((
                     record.get("code"),
                     parse_date(record.get("date")),
@@ -257,8 +266,8 @@ async def migrate_daily_k_data(
                     pb_mrq,
                     ps_ttm,
                     pcf,
-                    None,  # total_mv
-                    None,  # circ_mv
+                    circ_mv,  # total_mv (use circ_mv as approximation)
+                    circ_mv,  # circ_mv
                     is_st,
                 ))
 

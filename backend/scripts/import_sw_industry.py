@@ -30,8 +30,8 @@ from sqlalchemy import text, select, delete
 from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession
 from sqlalchemy.orm import sessionmaker
 
-# Add parent to path for imports
-sys.path.insert(0, "/Users/dan/Code/q/v1/backend")
+# Add parent to path for imports (works in both local and Docker environments)
+sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from app.config import settings
 from app.db.models.classification import IndustryClassification, StockIndustryMapping
@@ -173,6 +173,43 @@ async def import_industries_from_sqlite(
         sqlite_conn.close()
 
 
+async def update_stock_profile_em_industry(session: AsyncSession):
+    """Update stock_profile.em_industry from EM classification system.
+
+    EM (EastMoney) has flat structure (L1 only).
+    """
+    print("\n=== Updating Stock Profile EM Industry ===\n")
+
+    # Get all EM mappings with industry names
+    result = await session.execute(
+        select(StockIndustryMapping, IndustryClassification)
+        .join(IndustryClassification,
+              StockIndustryMapping.industry_code == IndustryClassification.industry_code)
+        .where(StockIndustryMapping.classification_system == "em")
+        .where(StockIndustryMapping.expire_date.is_(None))
+    )
+    mappings = result.all()
+    print(f"Found {len(mappings)} active EM industry mappings")
+
+    # Update stock_profile
+    updated = 0
+    for mapping, industry in mappings:
+        result = await session.execute(
+            text("""
+                UPDATE stock_profile
+                SET em_industry = :em_industry,
+                    updated_at = NOW()
+                WHERE code = :stock_code
+            """),
+            {"em_industry": industry.industry_name, "stock_code": mapping.stock_code}
+        )
+        if result.rowcount > 0:
+            updated += 1
+
+    await session.commit()
+    print(f"Updated {updated} stock profiles with EM industry")
+
+
 async def update_stock_profile_industries(session: AsyncSession):
     """Update stock_profile table with industry classification (L1, L2, L3).
 
@@ -245,7 +282,12 @@ async def main(source_db: Path, system: Optional[str] = None):
 
         # Update stock profiles with primary classification
         if industries > 0:
-            await update_stock_profile_industries(session)
+            # Update SW industries (L1/L2/L3) if not importing EM only
+            if system != "em":
+                await update_stock_profile_industries(session)
+            # Update EM industry if not importing SW only
+            if system != "sw":
+                await update_stock_profile_em_industry(session)
 
         print("\n" + "=" * 60)
         print("Import Summary")
