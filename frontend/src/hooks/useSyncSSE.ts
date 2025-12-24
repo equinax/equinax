@@ -94,6 +94,12 @@ export function useSyncSSE({
   const eventSourceRef = useRef<EventSource | null>(null)
   const queryClient = useQueryClient()
 
+  // Store callbacks in refs to avoid re-triggering effect when they change
+  const onJobCompleteRef = useRef(onJobComplete)
+  const onErrorRef = useRef(onError)
+  onJobCompleteRef.current = onJobComplete
+  onErrorRef.current = onError
+
   // Reset state when jobId changes
   const resetState = useCallback(() => {
     setSteps([])
@@ -172,7 +178,7 @@ export function useSyncSSE({
                 s.status !== 'complete' ? { ...s, status: 'complete' } : s
               )
             )
-            onJobComplete?.(data)
+            onJobCompleteRef.current?.(data)
             // Invalidate data sync queries to refresh data
             queryClient.invalidateQueries({
               queryKey: ['/api/v1/data-sync'],
@@ -191,7 +197,7 @@ export function useSyncSSE({
                 s.status === 'running' ? { ...s, status: 'error' } : s
               )
             )
-            onError?.(data)
+            onErrorRef.current?.(data)
             // Invalidate queries
             queryClient.invalidateQueries({
               queryKey: ['/api/v1/data-sync'],
@@ -216,7 +222,7 @@ export function useSyncSSE({
       eventSourceRef.current = null
       setIsConnected(false)
     }
-  }, [jobId, enabled, queryClient, onJobComplete, onError, resetState])
+  }, [jobId, enabled, queryClient, resetState])
 
   return {
     steps,
