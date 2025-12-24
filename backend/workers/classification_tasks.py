@@ -609,13 +609,15 @@ async def generate_classification_snapshot(
     session_maker = get_session_maker(database_url) if database_url else worker_session_maker
     async with session_maker() as db:
         # Join all classification data
+        # Note: is_retail_hot and is_main_controlled are placeholders for future microstructure analysis
+        # Currently we just set them to false since that analysis is not yet implemented
         snapshot_query = text("""
             INSERT INTO stock_classification_snapshot (
                 code, date,
                 board, structural_type, is_st, is_new,
                 industry_l1, industry_l2, industry_l3,
                 size_category, vol_category, turnover_category, value_category,
-                is_institutional, is_northbound_heavy,
+                is_retail_hot, is_main_controlled,
                 market_regime,
                 classification_tags
             )
@@ -633,8 +635,8 @@ async def generate_classification_snapshot(
                 sse.vol_category,
                 sse.turnover_category,
                 sse.value_category,
-                COALESCE(sm.is_institutional, false),
-                COALESCE(sm.is_northbound_heavy, false),
+                false,  -- is_retail_hot: placeholder, not yet implemented
+                false,  -- is_main_controlled: placeholder, not yet implemented
                 mr.regime,
                 jsonb_build_object(
                     'board', ssi.board,
@@ -648,7 +650,6 @@ async def generate_classification_snapshot(
             LEFT JOIN stock_structural_info ssi ON am.code = ssi.code
             LEFT JOIN stock_profile sp ON am.code = sp.code
             LEFT JOIN stock_style_exposure sse ON am.code = sse.code AND sse.date = :calc_date
-            LEFT JOIN stock_microstructure sm ON am.code = sm.code AND sm.date = :calc_date
             LEFT JOIN market_regime mr ON mr.date = :calc_date
             WHERE am.asset_type = 'STOCK' AND am.status = 1
             ON CONFLICT (code, date) DO UPDATE SET
@@ -663,8 +664,8 @@ async def generate_classification_snapshot(
                 vol_category = EXCLUDED.vol_category,
                 turnover_category = EXCLUDED.turnover_category,
                 value_category = EXCLUDED.value_category,
-                is_institutional = EXCLUDED.is_institutional,
-                is_northbound_heavy = EXCLUDED.is_northbound_heavy,
+                is_retail_hot = EXCLUDED.is_retail_hot,
+                is_main_controlled = EXCLUDED.is_main_controlled,
                 market_regime = EXCLUDED.market_regime,
                 classification_tags = EXCLUDED.classification_tags
         """)

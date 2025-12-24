@@ -30,8 +30,6 @@ import {
   ArrowDown,
   TrendingUp,
   TrendingDown,
-  Building2,
-  Landmark,
 } from 'lucide-react'
 import type { UniverseAssetItem } from '@/api/generated/schemas'
 import {
@@ -315,36 +313,9 @@ export function UniverseDataTable({
         ),
         size: 70,
       }),
-      columnHelper.accessor('is_retail_hot', {
-        header: () => (
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <Building2 className="h-4 w-4 mx-auto cursor-help" />
-            </TooltipTrigger>
-            <TooltipContent>散户活跃</TooltipContent>
-          </Tooltip>
-        ),
-        cell: ({ getValue }) =>
-          getValue() ? (
-            <Building2 className="h-4 w-4 text-orange-500 mx-auto" />
-          ) : null,
-        size: 40,
-      }),
-      columnHelper.accessor('is_main_controlled', {
-        header: () => (
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <Landmark className="h-4 w-4 mx-auto cursor-help" />
-            </TooltipTrigger>
-            <TooltipContent>主力控盘</TooltipContent>
-          </Tooltip>
-        ),
-        cell: ({ getValue }) =>
-          getValue() ? (
-            <Landmark className="h-4 w-4 text-purple-500 mx-auto" />
-          ) : null,
-        size: 40,
-      }),
+      // TODO: Microstructure columns hidden until volume-price analysis is implemented
+      // columnHelper.accessor('is_retail_hot', { ... }),  // 散户活跃
+      // columnHelper.accessor('is_main_controlled', { ... }),  // 主力控盘
     ],
     []
   )

@@ -104,6 +104,38 @@ def determine_category(code: str) -> str:
     return "其他"
 
 
+def determine_board_type(code: str) -> str:
+    """Determine board type (MAIN/GEM/STAR/BSE) from stock code."""
+    code_num = code.split('.')[-1] if '.' in code else code
+
+    if code_num.startswith('688'):
+        return "STAR"  # 科创板
+    elif code_num.startswith('30'):
+        return "GEM"   # 创业板
+    elif code_num.startswith('8') or code_num.startswith('4'):
+        return "BSE"   # 北交所
+    else:
+        return "MAIN"  # 主板 (60xxxx, 00xxxx)
+
+
+def get_price_limits(board: str, is_st: bool) -> tuple:
+    """Get price limit percentages based on board and ST status.
+
+    Returns (price_limit_up, price_limit_down)
+    """
+    if is_st:
+        return (Decimal("5"), Decimal("5"))  # ST stocks: ±5%
+
+    if board == "STAR":
+        return (Decimal("20"), Decimal("20"))  # 科创板: ±20%
+    elif board == "GEM":
+        return (Decimal("20"), Decimal("20"))  # 创业板: ±20%
+    elif board == "BSE":
+        return (Decimal("30"), Decimal("30"))  # 北交所: ±30%
+    else:
+        return (Decimal("10"), Decimal("10"))  # 主板: ±10%
+
+
 # =============================================================================
 # Stock Migration
 # =============================================================================
@@ -197,6 +229,111 @@ async def migrate_stock_basic(
 
     print(f"  Migrated {len(asset_records)} stock records to asset_meta + stock_profile")
     return len(asset_records)
+
+
+async def populate_stock_structural_info(
+    sqlite_conn: sqlite3.Connection,
+    pg_conn: asyncpg.Connection
+) -> int:
+    """Populate stock_structural_info table with board and structural type info.
+
+    This should be called after migrate_stock_basic and migrate_daily_k_data
+    since it needs ST status from indicator_valuation.
+    """
+    print("\nPopulating stock_structural_info...")
+
+    # Get all stocks from asset_meta (stocks only)
+    stocks = await pg_conn.fetch(
+        "SELECT code, list_date FROM asset_meta WHERE asset_type = 'STOCK'"
+    )
+
+    if not stocks:
+        print("  No stocks found in asset_meta")
+        return 0
+
+    print(f"  Found {len(stocks)} stocks")
+
+    # Get latest ST status for each stock from indicator_valuation
+    st_map = {}
+    st_records = await pg_conn.fetch("""
+        SELECT DISTINCT ON (code) code, is_st
+        FROM indicator_valuation
+        WHERE is_st IS NOT NULL
+        ORDER BY code, date DESC
+    """)
+    for r in st_records:
+        st_map[r['code']] = bool(r['is_st'])
+
+    print(f"  Found {len(st_map)} stocks with ST status info")
+
+    # Prepare structural info records
+    records = []
+    today = date.today()
+
+    for stock in stocks:
+        code = stock['code']
+        list_date = stock['list_date']
+
+        # Determine board
+        board = determine_board_type(code)
+
+        # Determine ST status
+        is_st = st_map.get(code, False)
+
+        # Determine if new stock (listed within 60 days)
+        is_new = False
+        if list_date:
+            days_since_ipo = (today - list_date).days
+            is_new = days_since_ipo <= 60
+
+        # Determine structural type
+        if is_st:
+            structural_type = "ST"
+        elif is_new:
+            structural_type = "NEW"
+        else:
+            structural_type = "NORMAL"
+
+        # Get price limits
+        limit_up, limit_down = get_price_limits(board, is_st)
+
+        records.append((
+            code,
+            board,
+            structural_type,
+            limit_up,
+            limit_down,
+            is_st,
+            is_new,
+            False,  # is_suspended
+            list_date,
+            None,  # st_date
+        ))
+
+    # Insert/update stock_structural_info
+    await pg_conn.executemany(
+        """
+        INSERT INTO stock_structural_info (
+            code, board, structural_type, price_limit_up, price_limit_down,
+            is_st, is_new, is_suspended, list_date, st_date
+        )
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+        ON CONFLICT (code) DO UPDATE SET
+            board = EXCLUDED.board,
+            structural_type = EXCLUDED.structural_type,
+            price_limit_up = EXCLUDED.price_limit_up,
+            price_limit_down = EXCLUDED.price_limit_down,
+            is_st = EXCLUDED.is_st,
+            is_new = EXCLUDED.is_new,
+            is_suspended = EXCLUDED.is_suspended,
+            list_date = COALESCE(EXCLUDED.list_date, stock_structural_info.list_date),
+            updated_at = CURRENT_TIMESTAMP
+        """,
+        records,
+    )
+
+    print(f"  Populated {len(records)} stock_structural_info records")
+    return len(records)
 
 
 async def migrate_daily_k_data(
@@ -570,6 +707,8 @@ async def migrate_stock_database(source_path: Path, postgres_url: str) -> Dict[s
             results['stock_basic'] = await migrate_stock_basic(sqlite_conn, pg_conn)
             results['daily_k_data'] = await migrate_daily_k_data(sqlite_conn, pg_conn)
             results['adjust_factor'] = await migrate_adjust_factor(sqlite_conn, pg_conn)
+            # Populate structural info after basic data is migrated
+            results['structural_info'] = await populate_stock_structural_info(sqlite_conn, pg_conn)
         finally:
             await pg_conn.close()
     finally:

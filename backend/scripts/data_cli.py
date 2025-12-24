@@ -648,37 +648,72 @@ async def _init_database(database_url: str, force: bool) -> dict:
     # Convert asyncpg URL format
     pg_url = get_sync_pg_url(database_url)
 
-    # 0. Create default user first
-    console.print("\n[0/9] Creating default user...")
+    # Clear market data tables first (fixture init should start fresh)
+    console.print("\n[0/10] Clearing existing market data...")
+    pg_conn = await asyncpg.connect(pg_url)
+    try:
+        # Tables to clear (order matters due to foreign keys)
+        # Clear in reverse dependency order
+        tables_to_clear = [
+            "stock_style_exposure",
+            "stock_structural_info",
+            "stock_microstructure",
+            "classification_snapshot",
+            "market_regime",
+            "stock_industry_mapping",
+            "industry_classification",
+            "indicator_valuation",
+            "northbound_holding",
+            "institutional_holding",
+            "index_constituent",
+            "market_daily",
+            "stock_profile",
+            "asset_meta",
+        ]
+        for table in tables_to_clear:
+            try:
+                count = await pg_conn.fetchval(f"SELECT COUNT(*) FROM {table}")
+                if count > 0:
+                    await pg_conn.execute(f"TRUNCATE TABLE {table} CASCADE")
+                    console.print(f"  Cleared {table} ({count} records)")
+            except Exception as e:
+                # Table might not exist yet
+                pass
+        console.print("  [green]Market data cleared[/green]")
+    finally:
+        await pg_conn.close()
+
+    # 1. Create default user first
+    console.print("\n[1/10] Creating default user...")
     user_result = await _create_default_user(database_url)
     results['user'] = 'created' if user_result == 0 else 'failed'
 
-    # 1. Import stocks
+    # 2. Import stocks
     stock_db = FIXTURES_DIR / "sample_stocks.db"
     if stock_db.exists():
-        console.print("\n[1/9] Importing stock data...")
+        console.print("\n[2/10] Importing stock data...")
         stock_results = await migrate_stock_database(stock_db, pg_url)
         results['stocks'] = stock_results
         console.print(f"  Imported: {stock_results.get('stock_basic', 0)} stocks, {stock_results.get('daily_k_data', 0)} daily records")
     else:
-        console.print("\n[1/9] Skipping stocks (sample_stocks.db not found)")
+        console.print("\n[2/10] Skipping stocks (sample_stocks.db not found)")
         results['stocks'] = {}
 
-    # 2. Import ETFs
+    # 3. Import ETFs
     etf_db = FIXTURES_DIR / "sample_etfs.db"
     if etf_db.exists():
-        console.print("\n[2/9] Importing ETF data...")
+        console.print("\n[3/10] Importing ETF data...")
         etf_results = await migrate_etf_database(etf_db, pg_url)
         results['etfs'] = etf_results
         console.print(f"  Imported: {etf_results.get('etf_basic', 0)} ETFs, {etf_results.get('etf_daily', 0)} daily records")
     else:
-        console.print("\n[2/9] Skipping ETFs (sample_etfs.db not found)")
+        console.print("\n[3/10] Skipping ETFs (sample_etfs.db not found)")
         results['etfs'] = {}
 
-    # 3. Import market cap data
+    # 4. Import market cap data
     market_cap_db = FIXTURES_DIR / "sample_market_cap.db"
     if market_cap_db.exists():
-        console.print("\n[3/9] Importing market cap data...")
+        console.print("\n[4/10] Importing market cap data...")
         try:
             market_cap_count = await _import_market_cap_fixture(pg_url, market_cap_db)
             results['market_cap'] = market_cap_count
@@ -687,13 +722,13 @@ async def _init_database(database_url: str, force: bool) -> dict:
             console.print(f"  [yellow]Failed to import market cap: {e}[/yellow]")
             results['market_cap'] = 0
     else:
-        console.print("\n[3/9] Skipping market cap (sample_market_cap.db not found)")
+        console.print("\n[4/10] Skipping market cap (sample_market_cap.db not found)")
         results['market_cap'] = 0
 
-    # 4. Import northbound holdings data
+    # 5. Import northbound holdings data
     northbound_db = FIXTURES_DIR / "sample_northbound.db"
     if northbound_db.exists():
-        console.print("\n[4/9] Importing northbound holdings data...")
+        console.print("\n[5/10] Importing northbound holdings data...")
         try:
             northbound_count = await _import_northbound_fixture(pg_url, northbound_db)
             results['northbound'] = northbound_count
@@ -702,13 +737,13 @@ async def _init_database(database_url: str, force: bool) -> dict:
             console.print(f"  [yellow]Failed to import northbound: {e}[/yellow]")
             results['northbound'] = 0
     else:
-        console.print("\n[4/9] Skipping northbound (sample_northbound.db not found)")
+        console.print("\n[5/10] Skipping northbound (sample_northbound.db not found)")
         results['northbound'] = 0
 
-    # 5. Import institutional holdings data
+    # 6. Import institutional holdings data
     institutional_db = FIXTURES_DIR / "sample_institutional.db"
     if institutional_db.exists():
-        console.print("\n[5/9] Importing institutional holdings data...")
+        console.print("\n[6/10] Importing institutional holdings data...")
         try:
             institutional_count = await _import_institutional_fixture(pg_url, institutional_db)
             results['institutional'] = institutional_count
@@ -717,13 +752,13 @@ async def _init_database(database_url: str, force: bool) -> dict:
             console.print(f"  [yellow]Failed to import institutional: {e}[/yellow]")
             results['institutional'] = 0
     else:
-        console.print("\n[5/9] Skipping institutional (sample_institutional.db not found)")
+        console.print("\n[6/10] Skipping institutional (sample_institutional.db not found)")
         results['institutional'] = 0
 
-    # 6. Import index constituents (renamed from 5)
+    # 7. Import index constituents
     index_db = FIXTURES_DIR / "sample_indices.db"
     if index_db.exists():
-        console.print("\n[6/9] Importing index constituents...")
+        console.print("\n[7/10] Importing index constituents...")
         pg_conn = await asyncpg.connect(pg_url)
         try:
             index_count = await import_index_constituents(index_db, pg_conn, force=force)
@@ -732,13 +767,13 @@ async def _init_database(database_url: str, force: bool) -> dict:
         finally:
             await pg_conn.close()
     else:
-        console.print("\n[6/9] Skipping indices (sample_indices.db not found)")
+        console.print("\n[7/10] Skipping indices (sample_indices.db not found)")
         results['indices'] = 0
 
-    # 7. Import industry classification
+    # 8. Import industry classification
     industry_db = FIXTURES_DIR / "sample_industries.db"
     if industry_db.exists():
-        console.print("\n[7/9] Importing industry classification...")
+        console.print("\n[8/10] Importing industry classification...")
         try:
             from scripts.import_sw_industry import import_industries_from_sqlite, update_stock_profile_industries
             from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession
@@ -767,11 +802,11 @@ async def _init_database(database_url: str, force: bool) -> dict:
             console.print(f"  [yellow]Skipped industry import: {e}[/yellow]")
             results['industries'] = {'error': str(e)}
     else:
-        console.print("\n[7/9] Skipping industries (sample_industries.db not found)")
+        console.print("\n[8/10] Skipping industries (sample_industries.db not found)")
         results['industries'] = {}
 
-    # 8. Calculate classification snapshot for the latest date in fixtures
-    console.print("\n[8/9] Calculating classification data...")
+    # 9. Calculate classification snapshot for the latest date in fixtures
+    console.print("\n[9/10] Calculating classification data...")
     try:
         from workers.classification_tasks import (
             calculate_structural_classification,
@@ -825,8 +860,8 @@ async def _init_database(database_url: str, force: bool) -> dict:
         traceback.print_exc()
         results['classification'] = {'error': str(e)}
 
-    # 8. Load default strategies
-    console.print("\n[9/9] Loading default strategies...")
+    # 10. Load default strategies
+    console.print("\n[10/10] Loading default strategies...")
     if DEFAULT_STRATEGIES_PATH.exists():
         await _load_strategies(database_url)
         results['strategies'] = 'loaded'
@@ -1368,6 +1403,20 @@ def load(
         else:
             console.print(f"  [yellow]⚠ Unknown data type: {dtype}[/yellow]")
             console.print(f"  [dim]Note: market_cap, northbound, institutional loads are deprecated.[/dim]")
+
+    # After loading stocks, run classification computations
+    if "stocks" in types_to_load:
+        console.print("\n[cyan]Computing classifications (size/vol/value categories)...[/cyan]")
+        cmd = [
+            "python", "-m", "scripts.compute_classifications",
+            "--database-url", pg_url,
+        ]
+        console.print(f"  Command: {' '.join(cmd)}")
+        result = subprocess.run(cmd, cwd=str(BACKEND_DIR), capture_output=False)
+        if result.returncode == 0:
+            console.print(f"  [green]✓ classifications computed[/green]")
+        else:
+            console.print(f"  [yellow]⚠ classifications computation failed (non-critical)[/yellow]")
 
     console.print("\n[bold green]Load complete![/bold green]\n")
 
