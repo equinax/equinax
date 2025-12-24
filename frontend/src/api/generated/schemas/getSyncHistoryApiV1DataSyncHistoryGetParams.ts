@@ -3,4 +3,5 @@
 
 export type GetSyncHistoryApiV1DataSyncHistoryGetParams = {
   limit?: number;
+  offset?: number;
 };

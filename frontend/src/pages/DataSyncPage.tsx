@@ -14,29 +14,24 @@ import {
   TrendingUp,
   Info,
   XCircle,
+  Calendar,
 } from 'lucide-react'
 import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from '@/components/ui/table'
-import {
   useGetSyncStatusApiV1DataSyncStatusGet,
-  useGetSyncHistoryApiV1DataSyncHistoryGet,
   useTriggerSyncApiV1DataSyncTriggerPost,
   useGetActiveSyncJobApiV1DataSyncActiveGet,
+  useAnalyzeSyncRequirementsApiV1DataSyncAnalyzeGet,
+  useGetSyncJobDetailApiV1DataSyncJobJobIdDetailGet,
 } from '@/api/generated/data-sync/data-sync'
-import { useSyncSSE, type SyncStep } from '@/hooks/useSyncSSE'
-import type { DataTableStatus, SyncHistoryItem, HealthDeduction } from '@/api/generated/schemas'
+import { useSyncSSE, type SyncStep, type EventLogEntry } from '@/hooks/useSyncSSE'
+import type { DataTableStatus, HealthDeduction } from '@/api/generated/schemas'
 import {
   Tooltip,
   TooltipContent,
   TooltipProvider,
   TooltipTrigger,
 } from '@/components/ui/tooltip'
+import { SyncHistoryPanel } from '@/components/sync'
 
 // Helper to format date
 function formatDateTime(dateStr: string | null | undefined): string {
@@ -131,6 +126,31 @@ export default function DataSyncPage() {
     }
   }, [activeJob])
 
+  // Fetch job detail for recovery (includes event_log)
+  const { data: jobDetail } = useGetSyncJobDetailApiV1DataSyncJobJobIdDetailGet(
+    currentJobId ?? '',
+    {
+      query: {
+        enabled: !!currentJobId,
+        staleTime: Infinity, // Don't refetch, SSE will handle updates
+      },
+    }
+  )
+
+  // Convert job detail event_log to EventLogEntry format
+  const initialEventLog: EventLogEntry[] | undefined = jobDetail?.event_log?.map((e) => ({
+    type: e.type,
+    timestamp: e.timestamp,
+    data: e.data as Record<string, unknown>,
+  }))
+
+  // Pre-sync analysis
+  const { data: analysis, refetch: refetchAnalysis } = useAnalyzeSyncRequirementsApiV1DataSyncAnalyzeGet({
+    query: {
+      refetchInterval: 60000, // Refresh every minute
+    },
+  })
+
   // Use generated React Query hooks
   const {
     data: status,
@@ -143,15 +163,6 @@ export default function DataSyncPage() {
     },
   })
 
-  const { data: history = [], refetch: refetchHistory } = useGetSyncHistoryApiV1DataSyncHistoryGet(
-    { limit: 10 },
-    {
-      query: {
-        refetchInterval: 30000,
-      },
-    }
-  )
-
   // SSE for real-time sync progress
   const {
     steps: syncSteps,
@@ -159,15 +170,17 @@ export default function DataSyncPage() {
     overallProgress,
     isConnected: sseConnected,
     error: sseError,
+    isRecovered,
   } = useSyncSSE({
     jobId: currentJobId,
     enabled: !!currentJobId,
+    initialEventLog,
     onJobComplete: () => {
       // Job finished, refresh data and clear job ID after a short delay
       setTimeout(() => {
         setCurrentJobId(null)
         refetch()
-        refetchHistory()
+        refetchAnalysis()
       }, 1500)
     },
     onError: () => {
@@ -175,7 +188,7 @@ export default function DataSyncPage() {
       setTimeout(() => {
         setCurrentJobId(null)
         refetch()
-        refetchHistory()
+        refetchAnalysis()
       }, 3000)
     },
   })
@@ -239,6 +252,30 @@ export default function DataSyncPage() {
         </div>
       ) : null}
 
+      {/* Data Analysis Card - Shows before sync */}
+      {!currentJobId && analysis && (
+        <Card className={analysis.needs_sync ? 'border-amber-500/30 bg-amber-500/5' : 'border-green-500/30 bg-green-500/5'}>
+          <CardContent className="py-4">
+            <div className="flex items-center gap-3">
+              <Calendar className={`h-5 w-5 ${analysis.needs_sync ? 'text-amber-500' : 'text-green-500'}`} />
+              <div className="flex-1">
+                <p className={`font-medium ${analysis.needs_sync ? 'text-amber-500' : 'text-green-500'}`}>
+                  {analysis.message}
+                </p>
+                <p className="text-xs text-muted-foreground mt-0.5">
+                  最新数据: {analysis.latest_data_date || '无'} | 今日: {analysis.today}
+                </p>
+              </div>
+              {analysis.needs_sync && (
+                <div className="text-xs text-amber-500/80 bg-amber-500/10 px-2 py-1 rounded">
+                  需更新 {analysis.days_to_update} 天
+                </div>
+              )}
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
       {/* Active Sync Progress Card with SSE */}
       {currentJobId && (
         <Card className="border-blue-500/50 bg-blue-500/5">
@@ -246,12 +283,20 @@ export default function DataSyncPage() {
             <CardTitle className="flex items-center gap-2 text-blue-500">
               <Loader2 className="h-5 w-5 animate-spin" />
               Sync in Progress
-              {sseConnected && (
-                <span className="ml-auto text-xs font-normal text-green-500 flex items-center gap-1">
-                  <span className="h-2 w-2 rounded-full bg-green-500 animate-pulse" />
-                  Live
-                </span>
-              )}
+              <div className="ml-auto flex items-center gap-2">
+                {isRecovered && (
+                  <span className="text-xs font-normal text-amber-500 flex items-center gap-1">
+                    <Info className="h-3 w-3" />
+                    已恢复
+                  </span>
+                )}
+                {sseConnected && (
+                  <span className="text-xs font-normal text-green-500 flex items-center gap-1">
+                    <span className="h-2 w-2 rounded-full bg-green-500 animate-pulse" />
+                    Live
+                  </span>
+                )}
+              </div>
             </CardTitle>
             <CardDescription>
               {currentMessage || 'Connecting to sync job...'}
@@ -268,26 +313,36 @@ export default function DataSyncPage() {
                 <Progress value={overallProgress} className="h-2" />
               </div>
 
-              {/* Step-by-step progress */}
+              {/* Step-by-step progress with details */}
               {syncSteps.length > 0 && (
                 <div className="space-y-2">
                   {syncSteps.map((step: SyncStep) => (
                     <div key={step.id} className="flex items-center gap-3 text-sm">
                       {step.status === 'running' && (
-                        <Loader2 className="h-4 w-4 animate-spin text-blue-500" />
+                        <Loader2 className="h-4 w-4 animate-spin text-blue-500 flex-shrink-0" />
                       )}
                       {step.status === 'complete' && (
-                        <CheckCircle className="h-4 w-4 text-green-500" />
+                        <CheckCircle className="h-4 w-4 text-green-500 flex-shrink-0" />
                       )}
                       {step.status === 'pending' && (
-                        <Clock className="h-4 w-4 text-muted-foreground" />
+                        <Clock className="h-4 w-4 text-muted-foreground flex-shrink-0" />
                       )}
                       {step.status === 'error' && (
-                        <XCircle className="h-4 w-4 text-red-500" />
+                        <XCircle className="h-4 w-4 text-red-500 flex-shrink-0" />
                       )}
                       <span className={step.status === 'running' ? 'font-medium text-blue-500' : step.status === 'complete' ? 'text-muted-foreground' : ''}>
                         {step.name}
                       </span>
+                      {/* Show detailed info for completed steps */}
+                      {step.status === 'complete' && (step.records_count !== undefined || step.duration_seconds !== undefined) && (
+                        <span className="text-xs text-muted-foreground ml-auto">
+                          {step.records_count !== undefined && `${step.records_count} 条`}
+                          {step.duration_seconds !== undefined && ` (${step.duration_seconds}s)`}
+                          {step.detail && (
+                            <span className="text-green-500/70 ml-1">- {step.detail}</span>
+                          )}
+                        </span>
+                      )}
                     </div>
                   ))}
                 </div>
@@ -362,52 +417,8 @@ export default function DataSyncPage() {
         ))}
       </div>
 
-      {/* Sync History */}
-      <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <Clock className="h-5 w-5" />
-            Sync History
-          </CardTitle>
-          <CardDescription>Recent synchronization operations</CardDescription>
-        </CardHeader>
-        <CardContent>
-          {history.length === 0 ? (
-            <p className="text-muted-foreground text-center py-8">No sync history</p>
-          ) : (
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Time</TableHead>
-                  <TableHead>Type</TableHead>
-                  <TableHead>Status</TableHead>
-                  <TableHead>Duration</TableHead>
-                  <TableHead className="text-right">Records</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {history.map((item: SyncHistoryItem) => (
-                  <TableRow key={item.id}>
-                    <TableCell className="font-medium">
-                      {formatDateTime(item.started_at)}
-                    </TableCell>
-                    <TableCell>{item.sync_type}</TableCell>
-                    <TableCell>
-                      <StatusBadge status={item.status} />
-                    </TableCell>
-                    <TableCell>
-                      {item.duration_seconds ? `${item.duration_seconds.toFixed(1)}s` : '-'}
-                    </TableCell>
-                    <TableCell className="text-right">
-                      {(item.records_imported ?? 0).toLocaleString()}
-                    </TableCell>
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
-          )}
-        </CardContent>
-      </Card>
+      {/* Sync History - Using new panel with slide animation */}
+      <SyncHistoryPanel />
 
       {/* CLI Commands Help */}
       <Card>

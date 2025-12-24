@@ -7,6 +7,8 @@
  * - step_complete: Individual step completions
  * - job_complete: Job completion notification
  * - error: Error events
+ *
+ * Supports recovery from event log when reconnecting.
  */
 
 import { useEffect, useRef, useState, useCallback } from 'react'
@@ -17,6 +19,9 @@ export interface SyncStep {
   name: string
   progress: number
   status: 'pending' | 'running' | 'complete' | 'error'
+  records_count?: number
+  duration_seconds?: number
+  detail?: string
 }
 
 export interface PlanEvent {
@@ -43,6 +48,9 @@ export interface StepCompleteEvent {
   status?: string
   message?: string
   records_imported?: number
+  records_count?: number
+  duration_seconds?: number
+  detail?: string
   timestamp: string
 }
 
@@ -52,6 +60,8 @@ export interface JobCompleteEvent {
   status: 'success' | 'failed'
   progress: number
   records_imported?: number
+  records_classified?: number
+  duration_seconds?: number
   message: string
   timestamp: string
 }
@@ -65,9 +75,17 @@ export interface ErrorEvent {
 
 export type SyncSSEEvent = PlanEvent | ProgressEvent | StepCompleteEvent | JobCompleteEvent | ErrorEvent
 
+// Event log entry from API (for recovery)
+export interface EventLogEntry {
+  type: string
+  timestamp: string
+  data: Record<string, unknown>
+}
+
 export interface UseSyncSSEOptions {
   jobId: string | null
   enabled?: boolean
+  initialEventLog?: EventLogEntry[]
   onJobComplete?: (event: JobCompleteEvent) => void
   onError?: (event: ErrorEvent) => void
 }
@@ -78,11 +96,13 @@ export interface UseSyncSSEReturn {
   overallProgress: number
   isConnected: boolean
   error: string | null
+  isRecovered: boolean
 }
 
 export function useSyncSSE({
   jobId,
   enabled = true,
+  initialEventLog,
   onJobComplete,
   onError,
 }: UseSyncSSEOptions): UseSyncSSEReturn {
@@ -91,8 +111,10 @@ export function useSyncSSE({
   const [overallProgress, setOverallProgress] = useState(0)
   const [isConnected, setIsConnected] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [isRecovered, setIsRecovered] = useState(false)
   const eventSourceRef = useRef<EventSource | null>(null)
   const queryClient = useQueryClient()
+  const recoveredRef = useRef(false)
 
   // Store callbacks in refs to avoid re-triggering effect when they change
   const onJobCompleteRef = useRef(onJobComplete)
@@ -100,14 +122,125 @@ export function useSyncSSE({
   onJobCompleteRef.current = onJobComplete
   onErrorRef.current = onError
 
+  // Process a single event (used for both live SSE and recovery)
+  const processEvent = useCallback((data: SyncSSEEvent, isFromRecovery = false) => {
+    switch (data.type) {
+      case 'plan':
+        // Initialize steps from plan
+        setSteps(
+          data.steps.map((s) => ({
+            id: s.id,
+            name: s.name,
+            progress: s.progress,
+            status: 'pending',
+          }))
+        )
+        setCurrentMessage(data.message)
+        setOverallProgress(0)
+        break
+
+      case 'progress':
+        // Update current step to running
+        setSteps((prev) =>
+          prev.map((s) =>
+            s.id === data.step ? { ...s, status: 'running' } : s
+          )
+        )
+        setCurrentMessage(data.message)
+        setOverallProgress(data.progress)
+        break
+
+      case 'step_complete': {
+        // Mark step as complete with detailed info
+        const stepData = data as StepCompleteEvent
+        setSteps((prev) =>
+          prev.map((s) =>
+            s.id === stepData.step
+              ? {
+                  ...s,
+                  status: 'complete',
+                  records_count: stepData.records_count,
+                  duration_seconds: stepData.duration_seconds,
+                  detail: stepData.detail,
+                }
+              : s
+          )
+        )
+        if (stepData.message) {
+          setCurrentMessage(stepData.message)
+        }
+        break
+      }
+
+      case 'job_complete':
+        setOverallProgress(100)
+        setCurrentMessage(data.message)
+        // Mark all remaining steps as complete
+        setSteps((prev) =>
+          prev.map((s) =>
+            s.status !== 'complete' ? { ...s, status: 'complete' } : s
+          )
+        )
+        if (!isFromRecovery) {
+          onJobCompleteRef.current?.(data)
+          // Invalidate data sync queries to refresh data
+          queryClient.invalidateQueries({
+            queryKey: ['/api/v1/data-sync'],
+          })
+        }
+        break
+
+      case 'error':
+        setError(data.message)
+        setCurrentMessage(data.message)
+        // Mark current running step as error
+        setSteps((prev) =>
+          prev.map((s) =>
+            s.status === 'running' ? { ...s, status: 'error' } : s
+          )
+        )
+        if (!isFromRecovery) {
+          onErrorRef.current?.(data)
+          // Invalidate queries
+          queryClient.invalidateQueries({
+            queryKey: ['/api/v1/data-sync'],
+          })
+        }
+        break
+    }
+  }, [queryClient])
+
   // Reset state when jobId changes
   const resetState = useCallback(() => {
     setSteps([])
     setCurrentMessage(null)
     setOverallProgress(0)
     setError(null)
+    setIsRecovered(false)
+    recoveredRef.current = false
   }, [])
 
+  // Recovery effect: replay events from initialEventLog
+  useEffect(() => {
+    if (!initialEventLog || initialEventLog.length === 0 || recoveredRef.current) {
+      return
+    }
+
+    // Replay all events to restore state
+    for (const entry of initialEventLog) {
+      const event = {
+        type: entry.type,
+        ...entry.data,
+        timestamp: entry.timestamp,
+      } as SyncSSEEvent
+      processEvent(event, true)
+    }
+
+    recoveredRef.current = true
+    setIsRecovered(true)
+  }, [initialEventLog, processEvent])
+
+  // SSE connection effect
   useEffect(() => {
     if (!enabled || !jobId) {
       resetState()
@@ -130,81 +263,12 @@ export function useSyncSSE({
     eventSource.onmessage = (event) => {
       try {
         const data = JSON.parse(event.data) as SyncSSEEvent
+        processEvent(data, false)
 
-        switch (data.type) {
-          case 'plan':
-            // Initialize steps from plan
-            setSteps(
-              data.steps.map((s) => ({
-                id: s.id,
-                name: s.name,
-                progress: s.progress,
-                status: 'pending',
-              }))
-            )
-            setCurrentMessage(data.message)
-            setOverallProgress(0)
-            break
-
-          case 'progress':
-            // Update current step to running
-            setSteps((prev) =>
-              prev.map((s) =>
-                s.id === data.step ? { ...s, status: 'running' } : s
-              )
-            )
-            setCurrentMessage(data.message)
-            setOverallProgress(data.progress)
-            break
-
-          case 'step_complete':
-            // Mark step as complete
-            setSteps((prev) =>
-              prev.map((s) =>
-                s.id === data.step ? { ...s, status: 'complete' } : s
-              )
-            )
-            if (data.message) {
-              setCurrentMessage(data.message)
-            }
-            break
-
-          case 'job_complete':
-            setOverallProgress(100)
-            setCurrentMessage(data.message)
-            // Mark all remaining steps as complete
-            setSteps((prev) =>
-              prev.map((s) =>
-                s.status !== 'complete' ? { ...s, status: 'complete' } : s
-              )
-            )
-            onJobCompleteRef.current?.(data)
-            // Invalidate data sync queries to refresh data
-            queryClient.invalidateQueries({
-              queryKey: ['/api/v1/data-sync'],
-            })
-            // Close the connection - job is done
-            eventSource.close()
-            setIsConnected(false)
-            break
-
-          case 'error':
-            setError(data.message)
-            setCurrentMessage(data.message)
-            // Mark current running step as error
-            setSteps((prev) =>
-              prev.map((s) =>
-                s.status === 'running' ? { ...s, status: 'error' } : s
-              )
-            )
-            onErrorRef.current?.(data)
-            // Invalidate queries
-            queryClient.invalidateQueries({
-              queryKey: ['/api/v1/data-sync'],
-            })
-            eventSource.close()
-            setIsConnected(false)
-            break
+        // Close connection on terminal events
+        if (data.type === 'job_complete' || data.type === 'error') {
+          eventSource.close()
+          setIsConnected(false)
         }
       } catch (e) {
         console.error('SSE parse error:', e)
@@ -222,7 +286,7 @@ export function useSyncSSE({
       eventSourceRef.current = null
       setIsConnected(false)
     }
-  }, [jobId, enabled, queryClient, resetState])
+  }, [jobId, enabled, queryClient, resetState, processEvent])
 
   return {
     steps,
@@ -230,5 +294,6 @@ export function useSyncSSE({
     overallProgress,
     isConnected,
     error,
+    isRecovered,
   }
 }

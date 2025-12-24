@@ -91,6 +91,49 @@ class DataCompletenessResponse(BaseModel):
     missing_dates: List[str] = []
 
 
+class SyncAnalysis(BaseModel):
+    """Pre-sync data analysis."""
+    latest_data_date: Optional[str] = None
+    today: str
+    days_to_update: int
+    needs_sync: bool
+    message: str
+
+
+class SyncEventLog(BaseModel):
+    """Single event log entry."""
+    type: str
+    timestamp: str
+    data: dict
+
+
+class SyncJobDetail(BaseModel):
+    """Detailed sync job info including event log."""
+    id: str
+    sync_type: str
+    status: str
+    started_at: datetime
+    completed_at: Optional[datetime] = None
+    duration_seconds: Optional[float] = None
+    records_downloaded: int = 0
+    records_imported: int = 0
+    records_classified: int = 0
+    error_message: Optional[str] = None
+    event_log: List[SyncEventLog] = Field(default_factory=list)
+    steps_summary: Optional[dict] = None
+
+    class Config:
+        from_attributes = True
+
+
+class PaginatedSyncHistory(BaseModel):
+    """Paginated sync history response."""
+    items: List[SyncHistoryItem]
+    total: int
+    limit: int
+    offset: int
+
+
 # ============================================
 # API Endpoints
 # ============================================
@@ -253,24 +296,31 @@ async def trigger_sync(
     )
 
 
-@router.get("/history", response_model=List[SyncHistoryItem])
+@router.get("/history", response_model=PaginatedSyncHistory)
 async def get_sync_history(
-    limit: int = 20,
+    limit: int = 10,
+    offset: int = 0,
     db: AsyncSession = Depends(get_db),
 ):
     """
-    Get sync history.
+    Get paginated sync history.
 
-    Returns the most recent sync operations.
+    Returns the most recent sync operations with pagination.
     """
+    # Get total count
+    count_result = await db.execute(select(func.count(SyncHistory.id)))
+    total = count_result.scalar() or 0
+
+    # Get paginated items
     result = await db.execute(
         select(SyncHistory)
         .order_by(desc(SyncHistory.started_at))
         .limit(limit)
+        .offset(offset)
     )
     rows = result.scalars().all()
 
-    return [
+    items = [
         SyncHistoryItem(
             id=row.id,
             sync_type=row.sync_type,
@@ -285,6 +335,13 @@ async def get_sync_history(
         )
         for row in rows
     ]
+
+    return PaginatedSyncHistory(
+        items=items,
+        total=total,
+        limit=limit,
+        offset=offset,
+    )
 
 
 @router.get("/job/{job_id}", response_model=SyncHistoryItem)
@@ -427,4 +484,105 @@ async def get_data_completeness(
         earliest_date=earliest,
         latest_date=latest,
         missing_dates=[],
+    )
+
+
+@router.get("/analyze", response_model=SyncAnalysis)
+async def analyze_sync_requirements(
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    Analyze what data needs to be synced.
+
+    Returns details about current data state and what would be updated.
+    Shows message like "当前最新数据日期是 2025-12-23，需要更新 1 天".
+    """
+    from datetime import date
+
+    today = date.today()
+    today_str = today.strftime("%Y-%m-%d")
+
+    # Get latest data date from market_daily
+    result = await db.execute(
+        select(func.max(MarketDaily.date))
+    )
+    latest_date = result.scalar()
+    latest_date_str = str(latest_date) if latest_date else None
+
+    # Calculate days to update
+    if latest_date:
+        days_diff = (today - latest_date).days
+        needs_sync = days_diff > 0
+
+        if days_diff == 0:
+            message = f"数据已是最新 ({latest_date_str})，无需同步"
+        elif days_diff == 1:
+            message = f"当前最新数据日期是 {latest_date_str}，需要更新 1 天数据"
+        else:
+            message = f"当前最新数据日期是 {latest_date_str}，需要更新 {days_diff} 天数据"
+    else:
+        days_diff = 0
+        needs_sync = True
+        message = "数据库为空，需要进行完整数据同步"
+
+    return SyncAnalysis(
+        latest_data_date=latest_date_str,
+        today=today_str,
+        days_to_update=days_diff,
+        needs_sync=needs_sync,
+        message=message,
+    )
+
+
+@router.get("/job/{job_id}/detail", response_model=SyncJobDetail)
+async def get_sync_job_detail(
+    job_id: str,
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    Get detailed sync job info including event log.
+
+    Used for:
+    1. Progress recovery when SSE reconnects
+    2. Viewing history logs
+    """
+    result = await db.execute(
+        select(SyncHistory).where(SyncHistory.id == job_id)
+    )
+    job = result.scalar_one_or_none()
+
+    if not job:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Sync job {job_id} not found",
+        )
+
+    # Extract event_log from details
+    event_log = []
+    steps_summary = None
+    if job.details:
+        event_log_raw = job.details.get("event_log", [])
+        event_log = [
+            SyncEventLog(
+                type=e.get("type", "unknown"),
+                timestamp=e.get("timestamp", ""),
+                data=e.get("data", {}),
+            )
+            for e in event_log_raw
+        ]
+        steps_summary = job.details.get("steps")
+
+    return SyncJobDetail(
+        id=job.id,
+        sync_type=job.sync_type,
+        status=job.status,
+        started_at=job.started_at,
+        completed_at=job.completed_at,
+        duration_seconds=float(job.duration_seconds) if job.duration_seconds else None,
+        records_downloaded=job.records_downloaded,
+        records_imported=job.records_imported,
+        records_classified=job.records_classified,
+        error_message=job.error_message,
+        event_log=event_log,
+        steps_summary=steps_summary,
     )
