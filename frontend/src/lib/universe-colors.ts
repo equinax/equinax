@@ -44,7 +44,7 @@ export const VALUE_COLORS: Record<string, string> = {
 
 export const VALUE_LABELS: Record<string, string> = {
   VALUE: '价值',
-  NEUTRAL: '中性',
+  NEUTRAL: '均衡',
   GROWTH: '成长',
 }
 

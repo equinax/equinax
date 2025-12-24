@@ -1405,13 +1405,20 @@ def load(
             console.print(f"  [dim]Note: market_cap, northbound, institutional loads are deprecated.[/dim]")
 
     # After loading stocks, run classification computations
+    # IMPORTANT: Frontend API always queries based on the LATEST date in market_daily
+    # So we ONLY need to compute classifications for the database's overall latest date
+    # (not for each loaded year's latest date)
     if "stocks" in types_to_load:
         console.print("\n[cyan]Computing classifications (size/vol/value categories)...[/cyan]")
+
+        # Always compute for the database's OVERALL latest trading date
+        # This is because the frontend uses: SELECT MAX(date) FROM market_daily
+        # and then joins stock_style_exposure WHERE date == latest_date
         cmd = [
             "python", "-m", "scripts.compute_classifications",
             "--database-url", pg_url,
         ]
-        console.print(f"  Command: {' '.join(cmd)}")
+        console.print(f"  Computing for database's latest trading date...")
         result = subprocess.run(cmd, cwd=str(BACKEND_DIR), capture_output=False)
         if result.returncode == 0:
             console.print(f"  [green]✓ classifications computed[/green]")

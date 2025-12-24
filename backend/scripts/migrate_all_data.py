@@ -395,7 +395,9 @@ async def migrate_daily_k_data(
                 # circ_mv in 元, convert to 亿元 for storage
                 circ_mv = safe_decimal((amount * 100 / turn) / 100000000)
 
-            if any([pe_ttm, pb_mrq, ps_ttm, pcf, is_st, circ_mv]):
+            # Insert record if circ_mv exists OR any valuation field exists
+            # Priority: circ_mv (computed from amount/turn) is the most important for market cap display
+            if circ_mv is not None or any([pe_ttm, pb_mrq, ps_ttm, pcf, is_st]):
                 valuation_batch.append((
                     record.get("code"),
                     parse_date(record.get("date")),
@@ -419,12 +421,20 @@ async def migrate_daily_k_data(
         )
 
         # Insert indicator_valuation batch
+        # Use DO UPDATE to ensure circ_mv and other fields get updated if new data is available
         if valuation_batch:
             await pg_conn.executemany(
                 """
                 INSERT INTO indicator_valuation (code, date, pe_ttm, pb_mrq, ps_ttm, pcf_ncf_ttm, total_mv, circ_mv, is_st)
                 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
-                ON CONFLICT (code, date) DO NOTHING
+                ON CONFLICT (code, date) DO UPDATE SET
+                    pe_ttm = COALESCE(EXCLUDED.pe_ttm, indicator_valuation.pe_ttm),
+                    pb_mrq = COALESCE(EXCLUDED.pb_mrq, indicator_valuation.pb_mrq),
+                    ps_ttm = COALESCE(EXCLUDED.ps_ttm, indicator_valuation.ps_ttm),
+                    pcf_ncf_ttm = COALESCE(EXCLUDED.pcf_ncf_ttm, indicator_valuation.pcf_ncf_ttm),
+                    total_mv = COALESCE(EXCLUDED.total_mv, indicator_valuation.total_mv),
+                    circ_mv = COALESCE(EXCLUDED.circ_mv, indicator_valuation.circ_mv),
+                    is_st = COALESCE(EXCLUDED.is_st, indicator_valuation.is_st)
                 """,
                 valuation_batch,
             )

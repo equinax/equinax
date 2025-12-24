@@ -266,9 +266,14 @@ async def get_universe_snapshot(
     value_list = parse_list_param(value_category)
     turnover_list = parse_list_param(turnover_category)
 
-    # Get latest trading date from market_daily
+    # Get latest trading date from market_daily for the requested asset_type
+    # This ensures stocks and ETFs don't interfere with each other's date calculation
+    # Note: asset_type.value is lowercase ('stock'/'etf') but DB stores uppercase ('STOCK'/'ETF')
     latest_date_result = await db.execute(
         select(func.max(MarketDaily.date))
+        .select_from(MarketDaily)
+        .join(AssetMeta, MarketDaily.code == AssetMeta.code)
+        .where(AssetMeta.asset_type == asset_type.value.upper())
     )
     latest_date = latest_date_result.scalar()
 
