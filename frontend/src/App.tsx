@@ -10,6 +10,7 @@ import ResultDetailPage from '@/pages/ResultDetailPage'
 import TechnicalAnalysisPage from '@/pages/TechnicalAnalysisPage'
 import UniverseCockpitPage from '@/pages/UniverseCockpitPage'
 import SettingsPage from '@/pages/SettingsPage'
+import DataSyncPage from '@/pages/DataSyncPage'
 
 function App() {
   return (
@@ -26,6 +27,7 @@ function App() {
           <Route path="analysis/:jobId/:resultId" element={<TechnicalAnalysisPage />} />
           <Route path="universe" element={<UniverseCockpitPage />} />
           <Route path="settings" element={<SettingsPage />} />
+          <Route path="data-sync" element={<DataSyncPage />} />
         </Route>
       </Routes>
     </ThemeProvider>

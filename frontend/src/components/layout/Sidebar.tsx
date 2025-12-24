@@ -7,6 +7,7 @@ import {
   PlayCircle,
   BarChart3,
   Database,
+  RefreshCw,
   Settings,
 } from 'lucide-react'
 import {
@@ -22,6 +23,7 @@ const navigation = [
   { name: '回测执行', href: '/backtest', icon: PlayCircle },
   { name: '结果分析', href: '/results', icon: BarChart3 },
   { name: '市场发现', href: '/universe', icon: Database },
+  { name: '数据同步', href: '/data-sync', icon: RefreshCw },
 ]
 
 // 图标固定位置（居中于收缩后的宽度）

@@ -22,6 +22,10 @@ from workers.data_tasks import (
     check_data_status,
     get_download_status,
 )
+from workers.index_tasks import (
+    calculate_index_industry_composition,
+    daily_index_update,
+)
 
 
 def parse_redis_url(url: str) -> RedisSettings:
@@ -61,6 +65,9 @@ class WorkerSettings:
         daily_data_update,
         check_data_status,
         get_download_status,
+        # Index tasks
+        calculate_index_industry_composition,
+        daily_index_update,
     ]
 
     # Cron jobs for automated data updates
@@ -68,6 +75,9 @@ class WorkerSettings:
     cron_jobs = [
         # Daily data update at 16:30 CST (after market close)
         cron(daily_data_update, hour=8, minute=30),
+        # Weekly index composition update on Sunday at 22:00 CST (14:00 UTC)
+        # Updates industry weights based on current constituent stocks
+        cron(daily_index_update, weekday=6, hour=14, minute=0),
     ]
 
     # Worker settings

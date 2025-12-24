@@ -118,3 +118,62 @@ class ETFProfile(Base):
 
     def __repr__(self) -> str:
         return f"<ETFProfile(code={self.code}, type={self.etf_type})>"
+
+
+class IndexProfile(Base):
+    """
+    指数扩展信息表
+
+    存储指数特有的静态信息，包括行业分布（通过成分股聚合计算）
+    与 AssetMeta 通过 code 关联
+    """
+
+    __tablename__ = "index_profile"
+
+    code: Mapped[str] = mapped_column(
+        String(20),
+        ForeignKey("asset_meta.code", ondelete="CASCADE"),
+        primary_key=True
+    )
+
+    # 指数元数据
+    short_name: Mapped[Optional[str]] = mapped_column(String(20), nullable=True)  # hs300, zz500
+    index_type: Mapped[Optional[str]] = mapped_column(String(50), nullable=True)  # broad_based, sector, theme
+    constituent_count: Mapped[int] = mapped_column(BigInteger, default=0)
+
+    # 行业分布 (JSONB)
+    # 结构: {
+    #   "sw_l1": {"银行": 0.15, "非银金融": 0.12, ...},
+    #   "sw_l2": {"股份制银行": 0.08, ...},
+    #   "em": {"银行": 0.15, ...},
+    #   "computation_date": "2024-12-24",
+    #   "total_weight_covered": 0.95
+    # }
+    industry_composition: Mapped[Optional[dict]] = mapped_column(JSONB, nullable=True)
+
+    # 行业集中度指标
+    top_industry_l1: Mapped[Optional[str]] = mapped_column(String(50), nullable=True)
+    top_industry_weight: Mapped[Optional[Decimal]] = mapped_column(Numeric(8, 4), nullable=True)
+    herfindahl_index: Mapped[Optional[Decimal]] = mapped_column(Numeric(8, 6), nullable=True)  # 行业集中度
+
+    composition_updated_at: Mapped[Optional[datetime]] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        server_default=func.now(),
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        server_default=func.now(),
+        onupdate=func.now(),
+    )
+
+    __table_args__ = (
+        Index("idx_index_profile_type", "index_type"),
+        Index("idx_index_profile_top_industry", "top_industry_l1"),
+    )
+
+    def __repr__(self) -> str:
+        return f"<IndexProfile(code={self.code}, type={self.index_type})>"

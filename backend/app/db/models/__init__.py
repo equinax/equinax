@@ -12,7 +12,8 @@ from app.db.models.asset import (
     IndicatorETF,
     AdjustFactor,
 )
-from app.db.models.profile import StockProfile, ETFProfile
+from app.db.models.profile import StockProfile, ETFProfile, IndexProfile
+from app.db.models.sync import SyncHistory
 
 from app.db.models.indicator import TechnicalIndicator, FundamentalIndicator
 from app.db.models.strategy import Strategy, StrategyVersion
@@ -49,6 +50,8 @@ __all__ = [
     "AdjustFactor",
     "StockProfile",
     "ETFProfile",
+    "IndexProfile",
+    "SyncHistory",
     # Other models
     "TechnicalIndicator",
     "FundamentalIndicator",

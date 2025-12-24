@@ -71,7 +71,7 @@ services:
     networks:
       - quant_network
 
-  # ARQ Worker for background tasks
+  # ARQ Worker for background tasks (data sync, classification, index calculation)
   worker:
     build:
       context: ./backend
@@ -82,12 +82,27 @@ services:
     volumes:
       - ./backend/app:/app/app:cached
       - ./backend/workers:/app/workers:cached
+      - ./backend/scripts:/app/scripts:cached
+      - ./backend/data:/app/data:cached
+      - worker_logs:/app/logs
     depends_on:
       db:
         condition: service_healthy
       redis:
         condition: service_healthy
     command: arq workers.settings.WorkerSettings
+    healthcheck:
+      test: ["CMD", "python", "-c", "import redis; redis.Redis('redis').ping()"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    deploy:
+      resources:
+        limits:
+          cpus: '2.0'
+          memory: 2G
+    restart: unless-stopped
+    stop_grace_period: 30s
     networks:
       - quant_network
 
@@ -137,6 +152,7 @@ volumes:
   redis_data:
   frontend_node_modules:
   metabase_data:
+  worker_logs:
 
 networks:
   quant_network:
