@@ -12,6 +12,7 @@ function StatusBadge({ status }: { status: string }) {
     running: 'bg-blue-500/10 text-blue-500',
     queued: 'bg-yellow-500/10 text-yellow-500',
     failed: 'bg-red-500/10 text-red-500',
+    skipped: 'bg-gray-500/10 text-gray-500',
   }
 
   return (
@@ -21,14 +22,14 @@ function StatusBadge({ status }: { status: string }) {
   )
 }
 
-// Event log item component
+// Event log item component - single row: icon | message | timestamp
 function EventLogItem({ event }: { event: { type: string; timestamp: string; data: Record<string, unknown> } }) {
   const icons: Record<string, React.ReactNode> = {
-    plan: <Clock className="h-4 w-4 text-gray-500" />,
-    progress: <Loader2 className="h-4 w-4 text-blue-500" />,
-    step_complete: <CheckCircle className="h-4 w-4 text-green-500" />,
-    job_complete: <CheckCircle className="h-4 w-4 text-green-600" />,
-    error: <XCircle className="h-4 w-4 text-red-500" />,
+    plan: <Clock className="h-3.5 w-3.5 text-gray-500" />,
+    progress: <Loader2 className="h-3.5 w-3.5 text-blue-500" />,
+    step_complete: <CheckCircle className="h-3.5 w-3.5 text-green-500" />,
+    job_complete: <CheckCircle className="h-3.5 w-3.5 text-green-600" />,
+    error: <XCircle className="h-3.5 w-3.5 text-red-500" />,
   }
 
   const message = (event.data?.message as string) || event.type
@@ -36,21 +37,22 @@ function EventLogItem({ event }: { event: { type: string; timestamp: string; dat
   const durationSeconds = event.data?.duration_seconds as number | undefined
   const detail = event.data?.detail as string | undefined
 
+  // Build detail suffix
+  const detailParts: string[] = []
+  if (recordsCount !== undefined) detailParts.push(`${recordsCount}条`)
+  if (durationSeconds !== undefined) detailParts.push(`${durationSeconds}s`)
+  const detailSuffix = detailParts.length > 0 ? ` (${detailParts.join(', ')})` : ''
+
   return (
-    <div className="flex items-start gap-3 text-sm py-2 border-b border-border/50 last:border-0">
-      <div className="mt-0.5">{icons[event.type] || <Info className="h-4 w-4 text-gray-400" />}</div>
-      <div className="flex-1 min-w-0">
-        <div className="font-medium truncate">{message}</div>
-        <div className="text-xs text-muted-foreground">
-          {new Date(event.timestamp).toLocaleTimeString('zh-CN')}
-        </div>
-        {(recordsCount !== undefined || durationSeconds !== undefined || detail) && (
-          <div className="text-xs text-muted-foreground mt-0.5">
-            {recordsCount !== undefined && <span>{recordsCount} 条</span>}
-            {durationSeconds !== undefined && <span className="ml-2">({durationSeconds}s)</span>}
-            {detail && <span className="ml-2 text-green-500/80">- {detail}</span>}
-          </div>
-        )}
+    <div className="flex items-center gap-2 text-xs py-1.5 border-b border-border/30 last:border-0">
+      <div className="flex-shrink-0">{icons[event.type] || <Info className="h-3.5 w-3.5 text-gray-400" />}</div>
+      <div className="flex-1 min-w-0 truncate">
+        <span>{message}</span>
+        {detailSuffix && <span className="text-muted-foreground">{detailSuffix}</span>}
+        {detail && <span className="text-green-500/70 ml-1">- {detail}</span>}
+      </div>
+      <div className="flex-shrink-0 text-muted-foreground tabular-nums">
+        {new Date(event.timestamp).toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit', second: '2-digit' })}
       </div>
     </div>
   )

@@ -612,36 +612,52 @@ async def api_triggered_sync(ctx: Dict[str, Any], sync_record_id: str) -> Dict[s
                 "message": f"导入ETF数据: {etf_count} 条 ({step_duration:.1f}s)",
             }, session, sync_record)
 
-            # Step 5: Classification update
+            # Step 5: Classification update (conditional - only if new data was imported)
             step_start = datetime.now()
-            await _publish_and_persist("progress", sync_record_id, {
-                "step": "classification",
-                "progress": 90,
-                "message": "正在更新股票分类...",
-            }, session, sync_record)
 
-            classification_result = {"status": "success", "message": "No changes"}
-            try:
-                from workers.classification_tasks import daily_classification_update
-                classification_result = await daily_classification_update(ctx)
-            except Exception as e:
-                classification_result = {"status": "error", "message": str(e)}
+            if records_imported > 0:
+                await _publish_and_persist("progress", sync_record_id, {
+                    "step": "classification",
+                    "progress": 90,
+                    "message": "正在更新股票分类...",
+                }, session, sync_record)
 
-            sync_record.details["steps"]["classification"] = classification_result
-            step_duration = (datetime.now() - step_start).total_seconds()
+                classification_result = {"status": "success", "message": "No changes"}
+                try:
+                    from workers.classification_tasks import daily_classification_update
+                    classification_result = await daily_classification_update(ctx)
+                except Exception as e:
+                    classification_result = {"status": "error", "message": str(e)}
 
-            class_count = classification_result.get("updated_count", 0)
-            records_classified = class_count
-            class_detail = classification_result.get("message", "")
+                sync_record.details["steps"]["classification"] = classification_result
+                step_duration = (datetime.now() - step_start).total_seconds()
 
-            await _publish_and_persist("step_complete", sync_record_id, {
-                "step": "classification",
-                "status": classification_result.get("status", "success"),
-                "records_count": class_count,
-                "duration_seconds": round(step_duration, 1),
-                "detail": class_detail,
-                "message": f"更新分类: {class_count} 条 ({step_duration:.1f}s)",
-            }, session, sync_record)
+                class_count = classification_result.get("updated_count", 0)
+                records_classified = class_count
+                class_detail = classification_result.get("message", "")
+
+                await _publish_and_persist("step_complete", sync_record_id, {
+                    "step": "classification",
+                    "status": classification_result.get("status", "success"),
+                    "records_count": class_count,
+                    "duration_seconds": round(step_duration, 1),
+                    "detail": class_detail,
+                    "message": f"更新分类: {class_count} 条 ({step_duration:.1f}s)",
+                }, session, sync_record)
+            else:
+                # Skip classification when no new data was imported
+                classification_result = {"status": "skipped", "message": "无新数据，跳过分类更新"}
+                sync_record.details["steps"]["classification"] = classification_result
+                step_duration = (datetime.now() - step_start).total_seconds()
+
+                await _publish_and_persist("step_complete", sync_record_id, {
+                    "step": "classification",
+                    "status": "skipped",
+                    "records_count": 0,
+                    "duration_seconds": round(step_duration, 1),
+                    "detail": "无新数据导入",
+                    "message": "更新分类: 跳过 (无新数据)",
+                }, session, sync_record)
 
             # Update sync record with success
             total_duration = (datetime.now() - start_time).total_seconds()

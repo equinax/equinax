@@ -96,6 +96,7 @@ function StatusBadge({ status }: { status: string }) {
     running: 'bg-blue-500/10 text-blue-500',
     queued: 'bg-yellow-500/10 text-yellow-500',
     failed: 'bg-red-500/10 text-red-500',
+    skipped: 'bg-gray-500/10 text-gray-500',
     OK: 'bg-green-500/10 text-green-500',
     Empty: 'bg-yellow-500/10 text-yellow-500',
     Error: 'bg-red-500/10 text-red-500',
@@ -114,8 +115,8 @@ export default function DataSyncPage() {
   // Check for active job on mount (task recovery) using generated hook
   const { data: activeJob } = useGetActiveSyncJobApiV1DataSyncActiveGet({
     query: {
-      // Only run once on mount
-      staleTime: Infinity,
+      staleTime: 30000,
+      refetchOnMount: 'always', // Always refetch on mount for navigation recovery
     },
   })
 
@@ -132,7 +133,8 @@ export default function DataSyncPage() {
     {
       query: {
         enabled: !!currentJobId,
-        staleTime: Infinity, // Don't refetch, SSE will handle updates
+        staleTime: 30000,
+        refetchOnMount: 'always', // Always refetch on mount for navigation recovery
       },
     }
   )

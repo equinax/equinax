@@ -33,6 +33,7 @@ function StatusBadge({ status }: { status: string }) {
     running: 'bg-blue-500/10 text-blue-500',
     queued: 'bg-yellow-500/10 text-yellow-500',
     failed: 'bg-red-500/10 text-red-500',
+    skipped: 'bg-gray-500/10 text-gray-500',
   }
 
   return (
