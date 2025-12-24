@@ -21,6 +21,7 @@ from workers.data_tasks import (
     daily_data_update,
     check_data_status,
     get_download_status,
+    api_triggered_sync,
 )
 from workers.index_tasks import (
     calculate_index_industry_composition,
@@ -65,6 +66,7 @@ class WorkerSettings:
         daily_data_update,
         check_data_status,
         get_download_status,
+        api_triggered_sync,
         # Index tasks
         calculate_index_industry_composition,
         daily_index_update,

@@ -25,6 +25,7 @@ from sqlalchemy import select, func, text
 from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession, async_sessionmaker
 
 from app.config import settings
+from app.core.redis_pubsub import publish_data_sync_event
 
 logger = logging.getLogger(__name__)
 
@@ -335,8 +336,8 @@ async def check_data_status(ctx: Dict[str, Any]) -> Dict[str, Any]:
         result = await session.execute(text("""
             SELECT
                 COUNT(DISTINCT code) as stock_count,
-                MIN(trade_date) as min_date,
-                MAX(trade_date) as max_date,
+                MIN(date) as min_date,
+                MAX(date) as max_date,
                 COUNT(*) as record_count
             FROM market_daily
             WHERE code LIKE 'sh.%' OR code LIKE 'sz.%'
@@ -352,8 +353,8 @@ async def check_data_status(ctx: Dict[str, Any]) -> Dict[str, Any]:
         result = await session.execute(text("""
             SELECT
                 COUNT(DISTINCT code) as etf_count,
-                MIN(trade_date) as min_date,
-                MAX(trade_date) as max_date
+                MIN(date) as min_date,
+                MAX(date) as max_date
             FROM market_daily
             WHERE code LIKE 'etf.%'
         """))
@@ -419,6 +420,193 @@ async def get_download_status(ctx: Dict[str, Any]) -> Dict[str, Any]:
     }
 
 
+# =============================================================================
+# API-triggered Sync Task
+# =============================================================================
+
+async def api_triggered_sync(ctx: Dict[str, Any], sync_record_id: str) -> Dict[str, Any]:
+    """API-triggered sync task that updates SyncHistory record.
+
+    This task is enqueued when user clicks "Sync Now" in the UI.
+    It runs the daily_data_update workflow and updates the corresponding
+    SyncHistory record with progress and results.
+
+    Args:
+        ctx: ARQ context
+        sync_record_id: UUID of the SyncHistory record to update
+
+    Returns:
+        Result dict with status and summary
+    """
+    from app.db.models.sync import SyncHistory
+
+    logger.info(f"Starting API-triggered sync: {sync_record_id}")
+    start_time = datetime.now()
+
+    async with worker_session_maker() as session:
+        # Get the sync record
+        result = await session.execute(
+            select(SyncHistory).where(SyncHistory.id == sync_record_id)
+        )
+        sync_record = result.scalar_one_or_none()
+
+        if not sync_record:
+            logger.error(f"SyncHistory record not found: {sync_record_id}")
+            return {"status": "error", "message": "Record not found"}
+
+        # Update status to running
+        sync_record.status = "running"
+        sync_record.started_at = start_time
+        await session.commit()
+
+        try:
+            # Publish plan event with steps
+            await publish_data_sync_event("plan", sync_record_id, {
+                "steps": [
+                    {"id": "download_stocks", "name": "下载股票数据"},
+                    {"id": "download_etfs", "name": "下载ETF数据"},
+                    {"id": "import_stocks", "name": "导入股票数据"},
+                    {"id": "import_etfs", "name": "导入ETF数据"},
+                    {"id": "classification", "name": "更新分类"},
+                ],
+                "message": "准备开始数据同步...",
+            })
+
+            records_downloaded = 0
+            records_imported = 0
+            sync_result = {"steps": {}}
+
+            # Step 1: Download stock data
+            await publish_data_sync_event("progress", sync_record_id, {
+                "step": "download_stocks",
+                "progress": 10,
+                "message": "正在下载股票日线数据...",
+            })
+            stock_dl = await download_stock_data(ctx, recent_days=1)
+            sync_result["steps"]["download_stocks"] = stock_dl
+            await publish_data_sync_event("step_complete", sync_record_id, {
+                "step": "download_stocks",
+                "status": stock_dl.get("status"),
+                "message": stock_dl.get("message", "股票数据下载完成"),
+            })
+
+            # Step 2: Download ETF data
+            await publish_data_sync_event("progress", sync_record_id, {
+                "step": "download_etfs",
+                "progress": 25,
+                "message": "正在下载ETF数据...",
+            })
+            etf_dl = await download_etf_data(ctx, recent_days=1)
+            sync_result["steps"]["download_etfs"] = etf_dl
+            await publish_data_sync_event("step_complete", sync_record_id, {
+                "step": "download_etfs",
+                "status": etf_dl.get("status"),
+                "message": "ETF数据下载完成",
+            })
+
+            # Step 3: Import stock data
+            await publish_data_sync_event("progress", sync_record_id, {
+                "step": "import_stocks",
+                "progress": 50,
+                "message": "正在导入股票数据到数据库...",
+            })
+            stock_imp = await import_stock_data(ctx, recent_days=1)
+            sync_result["steps"]["import_stocks"] = stock_imp
+            if stock_imp.get("results") and isinstance(stock_imp["results"], dict):
+                records_imported += stock_imp["results"].get("total_market_daily", 0)
+            await publish_data_sync_event("step_complete", sync_record_id, {
+                "step": "import_stocks",
+                "status": stock_imp.get("status"),
+                "records_imported": records_imported,
+                "message": f"股票数据导入完成: {records_imported}条",
+            })
+
+            # Step 4: Import ETF data
+            await publish_data_sync_event("progress", sync_record_id, {
+                "step": "import_etfs",
+                "progress": 75,
+                "message": "正在导入ETF数据到数据库...",
+            })
+            etf_imp = await import_etf_data(ctx, recent_days=1)
+            sync_result["steps"]["import_etfs"] = etf_imp
+            if etf_imp.get("results") and isinstance(etf_imp["results"], dict):
+                records_imported += etf_imp["results"].get("total_market_daily", 0)
+            await publish_data_sync_event("step_complete", sync_record_id, {
+                "step": "import_etfs",
+                "status": etf_imp.get("status"),
+                "records_imported": records_imported,
+                "message": f"ETF数据导入完成",
+            })
+
+            # Step 5: Classification update
+            await publish_data_sync_event("progress", sync_record_id, {
+                "step": "classification",
+                "progress": 90,
+                "message": "正在更新股票分类...",
+            })
+            try:
+                from workers.classification_tasks import daily_classification_update
+                classification_result = await daily_classification_update(ctx)
+                sync_result["steps"]["classification"] = classification_result
+            except Exception as e:
+                sync_result["steps"]["classification"] = {"status": "error", "message": str(e)}
+            await publish_data_sync_event("step_complete", sync_record_id, {
+                "step": "classification",
+                "status": sync_result["steps"]["classification"].get("status", "success"),
+                "message": "分类更新完成",
+            })
+
+            # Update sync record with success
+            sync_record.status = "success"
+            sync_record.completed_at = datetime.now()
+            sync_record.duration_seconds = (datetime.now() - start_time).total_seconds()
+            sync_record.records_downloaded = records_downloaded
+            sync_record.records_imported = records_imported
+            sync_record.details = sync_result
+
+            await session.commit()
+
+            # Publish completion event
+            await publish_data_sync_event("job_complete", sync_record_id, {
+                "status": "success",
+                "progress": 100,
+                "records_imported": records_imported,
+                "duration_seconds": sync_record.duration_seconds,
+                "message": "数据同步完成!",
+            })
+
+            logger.info(f"API-triggered sync completed: {sync_record_id}")
+            return {
+                "status": "success",
+                "sync_record_id": sync_record_id,
+                "duration_seconds": sync_record.duration_seconds,
+                "records_imported": records_imported,
+            }
+
+        except Exception as e:
+            logger.exception(f"API-triggered sync failed: {sync_record_id}")
+
+            # Publish error event
+            await publish_data_sync_event("error", sync_record_id, {
+                "status": "failed",
+                "message": str(e),
+            })
+
+            # Update sync record with failure
+            sync_record.status = "failed"
+            sync_record.completed_at = datetime.now()
+            sync_record.duration_seconds = (datetime.now() - start_time).total_seconds()
+            sync_record.error_message = str(e)
+
+            await session.commit()
+
+            return {
+                "status": "error",
+                "sync_record_id": sync_record_id,
+                "message": str(e),
+            }
+
+
 # Export all tasks for registration
 __all__ = [
     "download_stock_data",
@@ -428,4 +616,5 @@ __all__ = [
     "daily_data_update",
     "check_data_status",
     "get_download_status",
+    "api_triggered_sync",
 ]

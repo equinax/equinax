@@ -121,3 +121,6 @@ docker compose exec api python -m scripts.import_sw_industry           # All
 docker compose exec api python -m scripts.import_sw_industry --system sw  # SW only
 docker compose exec api python -m scripts.import_sw_industry --system em  # EM only
 ```
+
+## 注意
+在前端永远不要直接使用 fetch 来调用 rest 接口, 而是要通过 api:generate 之后,从 src/api/generated 里面去调用

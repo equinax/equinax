@@ -7,7 +7,8 @@ from datetime import datetime
 from typing import List, Optional
 from decimal import Decimal
 
-from fastapi import APIRouter, Depends, HTTPException, status, BackgroundTasks
+from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 from sqlalchemy import select, func, desc
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -15,6 +16,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.db.session import get_db
 from app.db.models.asset import AssetMeta, AssetType, MarketDaily
 from app.db.models.sync import SyncHistory
+from app.core.redis_pubsub import subscribe_data_sync_events
 
 router = APIRouter()
 
@@ -29,6 +31,13 @@ class DataTableStatus(BaseModel):
     record_count: int
     date_range: Optional[str] = None
     status: str = "OK"
+
+
+class HealthDeduction(BaseModel):
+    """Health score deduction item."""
+    table: str
+    reason: str
+    points: int
 
 
 class SyncHistoryItem(BaseModel):
@@ -51,6 +60,7 @@ class SyncHistoryItem(BaseModel):
 class DataSyncStatusResponse(BaseModel):
     """Full data sync status response."""
     health_score: int = Field(ge=0, le=100, description="Overall health percentage")
+    health_deductions: List[HealthDeduction] = Field(default_factory=list, description="Health score deduction breakdown")
     last_sync: Optional[SyncHistoryItem] = None
     next_scheduled: str = "Daily 16:30 CST"
     tables: List[DataTableStatus]
@@ -125,9 +135,9 @@ async def get_sync_status(
     try:
         result = await db.execute(
             select(
-                func.count(MarketDaily.id).label('count'),
-                func.min(MarketDaily.trade_date).label('min_date'),
-                func.max(MarketDaily.trade_date).label('max_date'),
+                func.count(MarketDaily.code).label('count'),
+                func.min(MarketDaily.date).label('min_date'),
+                func.max(MarketDaily.date).label('max_date'),
             )
         )
         row = result.first()
@@ -141,12 +151,23 @@ async def get_sync_status(
     except Exception:
         tables.append(DataTableStatus(name="Market Daily", record_count=0, status="Error"))
 
-    # Calculate health score
+    # Calculate health score with deduction breakdown
     health_score = 100
+    health_deductions: List[HealthDeduction] = []
     for t in tables:
         if t.status == "Empty":
+            health_deductions.append(HealthDeduction(
+                table=t.name,
+                reason="表数据为空",
+                points=-20,
+            ))
             health_score -= 20
         elif t.status == "Error":
+            health_deductions.append(HealthDeduction(
+                table=t.name,
+                reason="查询出错",
+                points=-10,
+            ))
             health_score -= 10
     health_score = max(0, health_score)
 
@@ -177,6 +198,7 @@ async def get_sync_status(
 
     return DataSyncStatusResponse(
         health_score=health_score,
+        health_deductions=health_deductions,
         last_sync=last_sync,
         tables=tables,
         missing_dates_count=0,
@@ -187,7 +209,6 @@ async def get_sync_status(
 @router.post("/trigger", response_model=TriggerSyncResponse)
 async def trigger_sync(
     request: TriggerSyncRequest,
-    background_tasks: BackgroundTasks,
     db: AsyncSession = Depends(get_db),
 ):
     """
@@ -196,6 +217,7 @@ async def trigger_sync(
     This enqueues a sync job to the ARQ worker queue.
     """
     from uuid import uuid4
+    from app.core.arq import get_arq_pool
 
     job_id = str(uuid4())
 
@@ -209,9 +231,20 @@ async def trigger_sync(
     db.add(sync_record)
     await db.commit()
 
-    # TODO: Enqueue to ARQ worker
-    # For now, return immediately with queued status
-    # In production: await arq_redis.enqueue_job('daily_data_update')
+    # Enqueue to ARQ worker
+    try:
+        arq_pool = await get_arq_pool()
+        await arq_pool.enqueue_job("api_triggered_sync", job_id)
+    except Exception as e:
+        # If ARQ is not available, update record to failed
+        sync_record.status = "failed"
+        sync_record.error_message = f"Failed to enqueue: {str(e)}"
+        await db.commit()
+        return TriggerSyncResponse(
+            job_id=job_id,
+            status="failed",
+            message=f"Failed to enqueue sync job: {str(e)}",
+        )
 
     return TriggerSyncResponse(
         job_id=job_id,
@@ -254,6 +287,109 @@ async def get_sync_history(
     ]
 
 
+@router.get("/job/{job_id}", response_model=SyncHistoryItem)
+async def get_sync_job(
+    job_id: str,
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    Get the status of a specific sync job.
+
+    Use this endpoint to poll for job progress after triggering a sync.
+    """
+    result = await db.execute(
+        select(SyncHistory).where(SyncHistory.id == job_id)
+    )
+    row = result.scalar_one_or_none()
+
+    if not row:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Sync job {job_id} not found",
+        )
+
+    return SyncHistoryItem(
+        id=row.id,
+        sync_type=row.sync_type,
+        status=row.status,
+        started_at=row.started_at,
+        completed_at=row.completed_at,
+        duration_seconds=float(row.duration_seconds) if row.duration_seconds else None,
+        records_downloaded=row.records_downloaded,
+        records_imported=row.records_imported,
+        records_classified=row.records_classified,
+        error_message=row.error_message,
+    )
+
+
+@router.get("/active", response_model=Optional[SyncHistoryItem])
+async def get_active_sync_job(
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    Get the current active sync job if one exists.
+
+    Returns the most recent queued or running job, or null if no active job.
+    Use this to restore UI state when navigating back to the page.
+    """
+    result = await db.execute(
+        select(SyncHistory)
+        .where(SyncHistory.status.in_(["queued", "running"]))
+        .order_by(desc(SyncHistory.started_at))
+        .limit(1)
+    )
+    row = result.scalar_one_or_none()
+
+    if not row:
+        return None
+
+    return SyncHistoryItem(
+        id=row.id,
+        sync_type=row.sync_type,
+        status=row.status,
+        started_at=row.started_at,
+        completed_at=row.completed_at,
+        duration_seconds=float(row.duration_seconds) if row.duration_seconds else None,
+        records_downloaded=row.records_downloaded,
+        records_imported=row.records_imported,
+        records_classified=row.records_classified,
+        error_message=row.error_message,
+    )
+
+
+@router.get("/job/{job_id}/events")
+async def stream_sync_events(
+    job_id: str,
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    Stream real-time sync events via Server-Sent Events (SSE).
+
+    Subscribe to progress updates for a specific sync job.
+    Events include: plan, progress, step_complete, job_complete, error.
+    """
+    # Verify job exists
+    result = await db.execute(
+        select(SyncHistory).where(SyncHistory.id == job_id)
+    )
+    job = result.scalar_one_or_none()
+    if not job:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Sync job {job_id} not found",
+        )
+
+    return StreamingResponse(
+        subscribe_data_sync_events(job_id),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "Connection": "keep-alive",
+            "X-Accel-Buffering": "no",
+        }
+    )
+
+
 @router.get("/completeness", response_model=DataCompletenessResponse)
 async def get_data_completeness(
     db: AsyncSession = Depends(get_db),
@@ -270,9 +406,9 @@ async def get_data_completeness(
     # Get date range and trading days
     date_result = await db.execute(
         select(
-            func.count(func.distinct(MarketDaily.trade_date)).label('days'),
-            func.min(MarketDaily.trade_date).label('min_date'),
-            func.max(MarketDaily.trade_date).label('max_date'),
+            func.count(func.distinct(MarketDaily.date)).label('days'),
+            func.min(MarketDaily.date).label('min_date'),
+            func.max(MarketDaily.date).label('max_date'),
         )
     )
     date_row = date_result.first()

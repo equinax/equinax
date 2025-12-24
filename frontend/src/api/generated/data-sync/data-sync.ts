@@ -16,6 +16,7 @@ import type {
 import type {
   DataCompletenessResponse,
   DataSyncStatusResponse,
+  GetActiveSyncJobApiV1DataSyncActiveGet200,
   GetSyncHistoryApiV1DataSyncHistoryGetParams,
   HTTPValidationError,
   SyncHistoryItem,
@@ -427,6 +428,530 @@ export const useGetSyncHistoryApiV1DataSyncHistoryGet = <
     params,
     options,
   );
+
+  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
+    queryKey: QueryKey;
+  };
+
+  query.queryKey = queryOptions.queryKey;
+
+  return query;
+};
+
+/**
+ * Get the status of a specific sync job.
+
+Use this endpoint to poll for job progress after triggering a sync.
+ * @summary Get Sync Job
+ */
+export const getSyncJobApiV1DataSyncJobJobIdGet = (
+  jobId: string,
+  signal?: AbortSignal,
+) => {
+  return customInstance<SyncHistoryItem>({
+    url: `/api/v1/data-sync/job/${jobId}`,
+    method: "GET",
+    signal,
+  });
+};
+
+export const getGetSyncJobApiV1DataSyncJobJobIdGetQueryKey = (
+  jobId: string,
+) => {
+  return [`/api/v1/data-sync/job/${jobId}`] as const;
+};
+
+export const getGetSyncJobApiV1DataSyncJobJobIdGetInfiniteQueryOptions = <
+  TData = InfiniteData<
+    Awaited<ReturnType<typeof getSyncJobApiV1DataSyncJobJobIdGet>>
+  >,
+  TError = HTTPValidationError,
+>(
+  jobId: string,
+  options?: {
+    query?: Partial<
+      UseInfiniteQueryOptions<
+        Awaited<ReturnType<typeof getSyncJobApiV1DataSyncJobJobIdGet>>,
+        TError,
+        TData
+      >
+    >;
+  },
+) => {
+  const { query: queryOptions } = options ?? {};
+
+  const queryKey =
+    queryOptions?.queryKey ??
+    getGetSyncJobApiV1DataSyncJobJobIdGetQueryKey(jobId);
+
+  const queryFn: QueryFunction<
+    Awaited<ReturnType<typeof getSyncJobApiV1DataSyncJobJobIdGet>>
+  > = ({ signal }) => getSyncJobApiV1DataSyncJobJobIdGet(jobId, signal);
+
+  return {
+    queryKey,
+    queryFn,
+    enabled: !!jobId,
+    ...queryOptions,
+  } as UseInfiniteQueryOptions<
+    Awaited<ReturnType<typeof getSyncJobApiV1DataSyncJobJobIdGet>>,
+    TError,
+    TData
+  > & { queryKey: QueryKey };
+};
+
+export type GetSyncJobApiV1DataSyncJobJobIdGetInfiniteQueryResult = NonNullable<
+  Awaited<ReturnType<typeof getSyncJobApiV1DataSyncJobJobIdGet>>
+>;
+export type GetSyncJobApiV1DataSyncJobJobIdGetInfiniteQueryError =
+  HTTPValidationError;
+
+/**
+ * @summary Get Sync Job
+ */
+export const useGetSyncJobApiV1DataSyncJobJobIdGetInfinite = <
+  TData = InfiniteData<
+    Awaited<ReturnType<typeof getSyncJobApiV1DataSyncJobJobIdGet>>
+  >,
+  TError = HTTPValidationError,
+>(
+  jobId: string,
+  options?: {
+    query?: Partial<
+      UseInfiniteQueryOptions<
+        Awaited<ReturnType<typeof getSyncJobApiV1DataSyncJobJobIdGet>>,
+        TError,
+        TData
+      >
+    >;
+  },
+): UseInfiniteQueryResult<TData, TError> & { queryKey: QueryKey } => {
+  const queryOptions =
+    getGetSyncJobApiV1DataSyncJobJobIdGetInfiniteQueryOptions(jobId, options);
+
+  const query = useInfiniteQuery(queryOptions) as UseInfiniteQueryResult<
+    TData,
+    TError
+  > & { queryKey: QueryKey };
+
+  query.queryKey = queryOptions.queryKey;
+
+  return query;
+};
+
+export const getGetSyncJobApiV1DataSyncJobJobIdGetQueryOptions = <
+  TData = Awaited<ReturnType<typeof getSyncJobApiV1DataSyncJobJobIdGet>>,
+  TError = HTTPValidationError,
+>(
+  jobId: string,
+  options?: {
+    query?: Partial<
+      UseQueryOptions<
+        Awaited<ReturnType<typeof getSyncJobApiV1DataSyncJobJobIdGet>>,
+        TError,
+        TData
+      >
+    >;
+  },
+) => {
+  const { query: queryOptions } = options ?? {};
+
+  const queryKey =
+    queryOptions?.queryKey ??
+    getGetSyncJobApiV1DataSyncJobJobIdGetQueryKey(jobId);
+
+  const queryFn: QueryFunction<
+    Awaited<ReturnType<typeof getSyncJobApiV1DataSyncJobJobIdGet>>
+  > = ({ signal }) => getSyncJobApiV1DataSyncJobJobIdGet(jobId, signal);
+
+  return {
+    queryKey,
+    queryFn,
+    enabled: !!jobId,
+    ...queryOptions,
+  } as UseQueryOptions<
+    Awaited<ReturnType<typeof getSyncJobApiV1DataSyncJobJobIdGet>>,
+    TError,
+    TData
+  > & { queryKey: QueryKey };
+};
+
+export type GetSyncJobApiV1DataSyncJobJobIdGetQueryResult = NonNullable<
+  Awaited<ReturnType<typeof getSyncJobApiV1DataSyncJobJobIdGet>>
+>;
+export type GetSyncJobApiV1DataSyncJobJobIdGetQueryError = HTTPValidationError;
+
+/**
+ * @summary Get Sync Job
+ */
+export const useGetSyncJobApiV1DataSyncJobJobIdGet = <
+  TData = Awaited<ReturnType<typeof getSyncJobApiV1DataSyncJobJobIdGet>>,
+  TError = HTTPValidationError,
+>(
+  jobId: string,
+  options?: {
+    query?: Partial<
+      UseQueryOptions<
+        Awaited<ReturnType<typeof getSyncJobApiV1DataSyncJobJobIdGet>>,
+        TError,
+        TData
+      >
+    >;
+  },
+): UseQueryResult<TData, TError> & { queryKey: QueryKey } => {
+  const queryOptions = getGetSyncJobApiV1DataSyncJobJobIdGetQueryOptions(
+    jobId,
+    options,
+  );
+
+  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
+    queryKey: QueryKey;
+  };
+
+  query.queryKey = queryOptions.queryKey;
+
+  return query;
+};
+
+/**
+ * Get the current active sync job if one exists.
+
+Returns the most recent queued or running job, or null if no active job.
+Use this to restore UI state when navigating back to the page.
+ * @summary Get Active Sync Job
+ */
+export const getActiveSyncJobApiV1DataSyncActiveGet = (
+  signal?: AbortSignal,
+) => {
+  return customInstance<GetActiveSyncJobApiV1DataSyncActiveGet200>({
+    url: `/api/v1/data-sync/active`,
+    method: "GET",
+    signal,
+  });
+};
+
+export const getGetActiveSyncJobApiV1DataSyncActiveGetQueryKey = () => {
+  return [`/api/v1/data-sync/active`] as const;
+};
+
+export const getGetActiveSyncJobApiV1DataSyncActiveGetInfiniteQueryOptions = <
+  TData = InfiniteData<
+    Awaited<ReturnType<typeof getActiveSyncJobApiV1DataSyncActiveGet>>
+  >,
+  TError = unknown,
+>(options?: {
+  query?: Partial<
+    UseInfiniteQueryOptions<
+      Awaited<ReturnType<typeof getActiveSyncJobApiV1DataSyncActiveGet>>,
+      TError,
+      TData
+    >
+  >;
+}) => {
+  const { query: queryOptions } = options ?? {};
+
+  const queryKey =
+    queryOptions?.queryKey ??
+    getGetActiveSyncJobApiV1DataSyncActiveGetQueryKey();
+
+  const queryFn: QueryFunction<
+    Awaited<ReturnType<typeof getActiveSyncJobApiV1DataSyncActiveGet>>
+  > = ({ signal }) => getActiveSyncJobApiV1DataSyncActiveGet(signal);
+
+  return { queryKey, queryFn, ...queryOptions } as UseInfiniteQueryOptions<
+    Awaited<ReturnType<typeof getActiveSyncJobApiV1DataSyncActiveGet>>,
+    TError,
+    TData
+  > & { queryKey: QueryKey };
+};
+
+export type GetActiveSyncJobApiV1DataSyncActiveGetInfiniteQueryResult =
+  NonNullable<
+    Awaited<ReturnType<typeof getActiveSyncJobApiV1DataSyncActiveGet>>
+  >;
+export type GetActiveSyncJobApiV1DataSyncActiveGetInfiniteQueryError = unknown;
+
+/**
+ * @summary Get Active Sync Job
+ */
+export const useGetActiveSyncJobApiV1DataSyncActiveGetInfinite = <
+  TData = InfiniteData<
+    Awaited<ReturnType<typeof getActiveSyncJobApiV1DataSyncActiveGet>>
+  >,
+  TError = unknown,
+>(options?: {
+  query?: Partial<
+    UseInfiniteQueryOptions<
+      Awaited<ReturnType<typeof getActiveSyncJobApiV1DataSyncActiveGet>>,
+      TError,
+      TData
+    >
+  >;
+}): UseInfiniteQueryResult<TData, TError> & { queryKey: QueryKey } => {
+  const queryOptions =
+    getGetActiveSyncJobApiV1DataSyncActiveGetInfiniteQueryOptions(options);
+
+  const query = useInfiniteQuery(queryOptions) as UseInfiniteQueryResult<
+    TData,
+    TError
+  > & { queryKey: QueryKey };
+
+  query.queryKey = queryOptions.queryKey;
+
+  return query;
+};
+
+export const getGetActiveSyncJobApiV1DataSyncActiveGetQueryOptions = <
+  TData = Awaited<ReturnType<typeof getActiveSyncJobApiV1DataSyncActiveGet>>,
+  TError = unknown,
+>(options?: {
+  query?: Partial<
+    UseQueryOptions<
+      Awaited<ReturnType<typeof getActiveSyncJobApiV1DataSyncActiveGet>>,
+      TError,
+      TData
+    >
+  >;
+}) => {
+  const { query: queryOptions } = options ?? {};
+
+  const queryKey =
+    queryOptions?.queryKey ??
+    getGetActiveSyncJobApiV1DataSyncActiveGetQueryKey();
+
+  const queryFn: QueryFunction<
+    Awaited<ReturnType<typeof getActiveSyncJobApiV1DataSyncActiveGet>>
+  > = ({ signal }) => getActiveSyncJobApiV1DataSyncActiveGet(signal);
+
+  return { queryKey, queryFn, ...queryOptions } as UseQueryOptions<
+    Awaited<ReturnType<typeof getActiveSyncJobApiV1DataSyncActiveGet>>,
+    TError,
+    TData
+  > & { queryKey: QueryKey };
+};
+
+export type GetActiveSyncJobApiV1DataSyncActiveGetQueryResult = NonNullable<
+  Awaited<ReturnType<typeof getActiveSyncJobApiV1DataSyncActiveGet>>
+>;
+export type GetActiveSyncJobApiV1DataSyncActiveGetQueryError = unknown;
+
+/**
+ * @summary Get Active Sync Job
+ */
+export const useGetActiveSyncJobApiV1DataSyncActiveGet = <
+  TData = Awaited<ReturnType<typeof getActiveSyncJobApiV1DataSyncActiveGet>>,
+  TError = unknown,
+>(options?: {
+  query?: Partial<
+    UseQueryOptions<
+      Awaited<ReturnType<typeof getActiveSyncJobApiV1DataSyncActiveGet>>,
+      TError,
+      TData
+    >
+  >;
+}): UseQueryResult<TData, TError> & { queryKey: QueryKey } => {
+  const queryOptions =
+    getGetActiveSyncJobApiV1DataSyncActiveGetQueryOptions(options);
+
+  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
+    queryKey: QueryKey;
+  };
+
+  query.queryKey = queryOptions.queryKey;
+
+  return query;
+};
+
+/**
+ * Stream real-time sync events via Server-Sent Events (SSE).
+
+Subscribe to progress updates for a specific sync job.
+Events include: plan, progress, step_complete, job_complete, error.
+ * @summary Stream Sync Events
+ */
+export const streamSyncEventsApiV1DataSyncJobJobIdEventsGet = (
+  jobId: string,
+  signal?: AbortSignal,
+) => {
+  return customInstance<unknown>({
+    url: `/api/v1/data-sync/job/${jobId}/events`,
+    method: "GET",
+    signal,
+  });
+};
+
+export const getStreamSyncEventsApiV1DataSyncJobJobIdEventsGetQueryKey = (
+  jobId: string,
+) => {
+  return [`/api/v1/data-sync/job/${jobId}/events`] as const;
+};
+
+export const getStreamSyncEventsApiV1DataSyncJobJobIdEventsGetInfiniteQueryOptions =
+  <
+    TData = InfiniteData<
+      Awaited<ReturnType<typeof streamSyncEventsApiV1DataSyncJobJobIdEventsGet>>
+    >,
+    TError = HTTPValidationError,
+  >(
+    jobId: string,
+    options?: {
+      query?: Partial<
+        UseInfiniteQueryOptions<
+          Awaited<
+            ReturnType<typeof streamSyncEventsApiV1DataSyncJobJobIdEventsGet>
+          >,
+          TError,
+          TData
+        >
+      >;
+    },
+  ) => {
+    const { query: queryOptions } = options ?? {};
+
+    const queryKey =
+      queryOptions?.queryKey ??
+      getStreamSyncEventsApiV1DataSyncJobJobIdEventsGetQueryKey(jobId);
+
+    const queryFn: QueryFunction<
+      Awaited<ReturnType<typeof streamSyncEventsApiV1DataSyncJobJobIdEventsGet>>
+    > = ({ signal }) =>
+      streamSyncEventsApiV1DataSyncJobJobIdEventsGet(jobId, signal);
+
+    return {
+      queryKey,
+      queryFn,
+      enabled: !!jobId,
+      ...queryOptions,
+    } as UseInfiniteQueryOptions<
+      Awaited<
+        ReturnType<typeof streamSyncEventsApiV1DataSyncJobJobIdEventsGet>
+      >,
+      TError,
+      TData
+    > & { queryKey: QueryKey };
+  };
+
+export type StreamSyncEventsApiV1DataSyncJobJobIdEventsGetInfiniteQueryResult =
+  NonNullable<
+    Awaited<ReturnType<typeof streamSyncEventsApiV1DataSyncJobJobIdEventsGet>>
+  >;
+export type StreamSyncEventsApiV1DataSyncJobJobIdEventsGetInfiniteQueryError =
+  HTTPValidationError;
+
+/**
+ * @summary Stream Sync Events
+ */
+export const useStreamSyncEventsApiV1DataSyncJobJobIdEventsGetInfinite = <
+  TData = InfiniteData<
+    Awaited<ReturnType<typeof streamSyncEventsApiV1DataSyncJobJobIdEventsGet>>
+  >,
+  TError = HTTPValidationError,
+>(
+  jobId: string,
+  options?: {
+    query?: Partial<
+      UseInfiniteQueryOptions<
+        Awaited<
+          ReturnType<typeof streamSyncEventsApiV1DataSyncJobJobIdEventsGet>
+        >,
+        TError,
+        TData
+      >
+    >;
+  },
+): UseInfiniteQueryResult<TData, TError> & { queryKey: QueryKey } => {
+  const queryOptions =
+    getStreamSyncEventsApiV1DataSyncJobJobIdEventsGetInfiniteQueryOptions(
+      jobId,
+      options,
+    );
+
+  const query = useInfiniteQuery(queryOptions) as UseInfiniteQueryResult<
+    TData,
+    TError
+  > & { queryKey: QueryKey };
+
+  query.queryKey = queryOptions.queryKey;
+
+  return query;
+};
+
+export const getStreamSyncEventsApiV1DataSyncJobJobIdEventsGetQueryOptions = <
+  TData = Awaited<
+    ReturnType<typeof streamSyncEventsApiV1DataSyncJobJobIdEventsGet>
+  >,
+  TError = HTTPValidationError,
+>(
+  jobId: string,
+  options?: {
+    query?: Partial<
+      UseQueryOptions<
+        Awaited<
+          ReturnType<typeof streamSyncEventsApiV1DataSyncJobJobIdEventsGet>
+        >,
+        TError,
+        TData
+      >
+    >;
+  },
+) => {
+  const { query: queryOptions } = options ?? {};
+
+  const queryKey =
+    queryOptions?.queryKey ??
+    getStreamSyncEventsApiV1DataSyncJobJobIdEventsGetQueryKey(jobId);
+
+  const queryFn: QueryFunction<
+    Awaited<ReturnType<typeof streamSyncEventsApiV1DataSyncJobJobIdEventsGet>>
+  > = ({ signal }) =>
+    streamSyncEventsApiV1DataSyncJobJobIdEventsGet(jobId, signal);
+
+  return {
+    queryKey,
+    queryFn,
+    enabled: !!jobId,
+    ...queryOptions,
+  } as UseQueryOptions<
+    Awaited<ReturnType<typeof streamSyncEventsApiV1DataSyncJobJobIdEventsGet>>,
+    TError,
+    TData
+  > & { queryKey: QueryKey };
+};
+
+export type StreamSyncEventsApiV1DataSyncJobJobIdEventsGetQueryResult =
+  NonNullable<
+    Awaited<ReturnType<typeof streamSyncEventsApiV1DataSyncJobJobIdEventsGet>>
+  >;
+export type StreamSyncEventsApiV1DataSyncJobJobIdEventsGetQueryError =
+  HTTPValidationError;
+
+/**
+ * @summary Stream Sync Events
+ */
+export const useStreamSyncEventsApiV1DataSyncJobJobIdEventsGet = <
+  TData = Awaited<
+    ReturnType<typeof streamSyncEventsApiV1DataSyncJobJobIdEventsGet>
+  >,
+  TError = HTTPValidationError,
+>(
+  jobId: string,
+  options?: {
+    query?: Partial<
+      UseQueryOptions<
+        Awaited<
+          ReturnType<typeof streamSyncEventsApiV1DataSyncJobJobIdEventsGet>
+        >,
+        TError,
+        TData
+      >
+    >;
+  },
+): UseQueryResult<TData, TError> & { queryKey: QueryKey } => {
+  const queryOptions =
+    getStreamSyncEventsApiV1DataSyncJobJobIdEventsGetQueryOptions(
+      jobId,
+      options,
+    );
 
   const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
     queryKey: QueryKey;

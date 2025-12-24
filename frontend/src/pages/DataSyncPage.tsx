@@ -1,3 +1,4 @@
+import { useState, useEffect } from 'react'
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Progress } from '@/components/ui/progress'
@@ -11,6 +12,8 @@ import {
   Activity,
   HardDrive,
   TrendingUp,
+  Info,
+  XCircle,
 } from 'lucide-react'
 import {
   Table,
@@ -24,8 +27,16 @@ import {
   useGetSyncStatusApiV1DataSyncStatusGet,
   useGetSyncHistoryApiV1DataSyncHistoryGet,
   useTriggerSyncApiV1DataSyncTriggerPost,
+  useGetActiveSyncJobApiV1DataSyncActiveGet,
 } from '@/api/generated/data-sync/data-sync'
-import type { DataTableStatus, SyncHistoryItem } from '@/api/generated/schemas'
+import { useSyncSSE, type SyncStep } from '@/hooks/useSyncSSE'
+import type { DataTableStatus, SyncHistoryItem, HealthDeduction } from '@/api/generated/schemas'
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from '@/components/ui/tooltip'
 
 // Helper to format date
 function formatDateTime(dateStr: string | null | undefined): string {
@@ -39,20 +50,47 @@ function formatDateTime(dateStr: string | null | undefined): string {
   })
 }
 
-// Health badge component
-function HealthBadge({ score }: { score: number }) {
+// Health badge component with deductions tooltip
+function HealthBadge({ score, deductions }: { score: number; deductions?: HealthDeduction[] }) {
   const color = score >= 90 ? 'text-green-500' : score >= 70 ? 'text-yellow-500' : 'text-red-500'
   const bgColor = score >= 90 ? 'bg-green-500/10' : score >= 70 ? 'bg-yellow-500/10' : 'bg-red-500/10'
 
-  return (
-    <div className={`inline-flex items-center gap-2 px-3 py-1 rounded-full ${bgColor}`}>
+  const badge = (
+    <div className={`inline-flex items-center gap-2 px-3 py-1 rounded-full ${bgColor} cursor-help`}>
       {score >= 90 ? (
         <CheckCircle className={`h-4 w-4 ${color}`} />
       ) : (
         <AlertCircle className={`h-4 w-4 ${color}`} />
       )}
       <span className={`font-semibold ${color}`}>{score}%</span>
+      {deductions && deductions.length > 0 && (
+        <Info className="h-3 w-3 text-muted-foreground" />
+      )}
     </div>
+  )
+
+  if (!deductions || deductions.length === 0) {
+    return badge
+  }
+
+  return (
+    <Tooltip>
+      <TooltipTrigger asChild>{badge}</TooltipTrigger>
+      <TooltipContent side="bottom" className="max-w-xs">
+        <div className="space-y-1">
+          <p className="font-medium text-sm">健康分数明细</p>
+          <p className="text-xs text-muted-foreground">基础分数: 100</p>
+          {deductions.map((d, i) => (
+            <p key={i} className="text-xs text-red-400">
+              {d.table}: {d.reason} ({d.points})
+            </p>
+          ))}
+          <p className="text-xs font-medium border-t pt-1 mt-1">
+            最终分数: {score}
+          </p>
+        </div>
+      </TooltipContent>
+    </Tooltip>
   )
 }
 
@@ -76,6 +114,23 @@ function StatusBadge({ status }: { status: string }) {
 }
 
 export default function DataSyncPage() {
+  const [currentJobId, setCurrentJobId] = useState<string | null>(null)
+
+  // Check for active job on mount (task recovery) using generated hook
+  const { data: activeJob } = useGetActiveSyncJobApiV1DataSyncActiveGet({
+    query: {
+      // Only run once on mount
+      staleTime: Infinity,
+    },
+  })
+
+  // Set currentJobId when activeJob is loaded
+  useEffect(() => {
+    if (activeJob && (activeJob.status === 'queued' || activeJob.status === 'running')) {
+      setCurrentJobId(activeJob.id)
+    }
+  }, [activeJob])
+
   // Use generated React Query hooks
   const {
     data: status,
@@ -88,7 +143,7 @@ export default function DataSyncPage() {
     },
   })
 
-  const { data: history = [] } = useGetSyncHistoryApiV1DataSyncHistoryGet(
+  const { data: history = [], refetch: refetchHistory } = useGetSyncHistoryApiV1DataSyncHistoryGet(
     { limit: 10 },
     {
       query: {
@@ -97,6 +152,34 @@ export default function DataSyncPage() {
     }
   )
 
+  // SSE for real-time sync progress
+  const {
+    steps: syncSteps,
+    currentMessage,
+    overallProgress,
+    isConnected: sseConnected,
+    error: sseError,
+  } = useSyncSSE({
+    jobId: currentJobId,
+    enabled: !!currentJobId,
+    onJobComplete: () => {
+      // Job finished, refresh data and clear job ID after a short delay
+      setTimeout(() => {
+        setCurrentJobId(null)
+        refetch()
+        refetchHistory()
+      }, 1500)
+    },
+    onError: () => {
+      // On error, also clear after delay
+      setTimeout(() => {
+        setCurrentJobId(null)
+        refetch()
+        refetchHistory()
+      }, 3000)
+    },
+  })
+
   const triggerSyncMutation = useTriggerSyncApiV1DataSyncTriggerPost()
 
   // Handle sync trigger
@@ -104,13 +187,18 @@ export default function DataSyncPage() {
     triggerSyncMutation.mutate(
       { data: { sync_type: 'daily', force: false } },
       {
-        onSuccess: () => {
-          // Refresh after a short delay
-          setTimeout(() => refetch(), 1000)
+        onSuccess: (response) => {
+          // Start polling the job
+          setCurrentJobId(response.job_id)
         },
       }
     )
   }
+
+  // Determine if sync is in progress
+  const isSyncing = Boolean(
+    triggerSyncMutation.isPending || currentJobId
+  )
 
   if (isLoading && !status) {
     return (
@@ -121,6 +209,7 @@ export default function DataSyncPage() {
   }
 
   return (
+    <TooltipProvider>
     <div className="space-y-6">
       {/* Page header */}
       <div className="flex items-center justify-between">
@@ -133,21 +222,87 @@ export default function DataSyncPage() {
             <RefreshCw className={`h-4 w-4 mr-2 ${isLoading ? 'animate-spin' : ''}`} />
             Refresh
           </Button>
-          <Button onClick={handleSync} disabled={triggerSyncMutation.isPending}>
-            {triggerSyncMutation.isPending ? (
+          <Button onClick={handleSync} disabled={isSyncing}>
+            {isSyncing ? (
               <Loader2 className="h-4 w-4 mr-2 animate-spin" />
             ) : (
               <Activity className="h-4 w-4 mr-2" />
             )}
-            Sync Now
+            {isSyncing ? 'Syncing...' : 'Sync Now'}
           </Button>
         </div>
       </div>
 
-      {error && (
+      {error ? (
         <div className="bg-red-500/10 border border-red-500/20 rounded-lg p-4 text-red-500">
           Failed to load sync status
         </div>
+      ) : null}
+
+      {/* Active Sync Progress Card with SSE */}
+      {currentJobId && (
+        <Card className="border-blue-500/50 bg-blue-500/5">
+          <CardHeader className="pb-2">
+            <CardTitle className="flex items-center gap-2 text-blue-500">
+              <Loader2 className="h-5 w-5 animate-spin" />
+              Sync in Progress
+              {sseConnected && (
+                <span className="ml-auto text-xs font-normal text-green-500 flex items-center gap-1">
+                  <span className="h-2 w-2 rounded-full bg-green-500 animate-pulse" />
+                  Live
+                </span>
+              )}
+            </CardTitle>
+            <CardDescription>
+              {currentMessage || 'Connecting to sync job...'}
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <div className="space-y-4">
+              {/* Overall Progress */}
+              <div>
+                <div className="flex justify-between text-sm mb-1">
+                  <span className="text-muted-foreground">Overall Progress</span>
+                  <span className="font-medium">{overallProgress}%</span>
+                </div>
+                <Progress value={overallProgress} className="h-2" />
+              </div>
+
+              {/* Step-by-step progress */}
+              {syncSteps.length > 0 && (
+                <div className="space-y-2">
+                  {syncSteps.map((step: SyncStep) => (
+                    <div key={step.id} className="flex items-center gap-3 text-sm">
+                      {step.status === 'running' && (
+                        <Loader2 className="h-4 w-4 animate-spin text-blue-500" />
+                      )}
+                      {step.status === 'complete' && (
+                        <CheckCircle className="h-4 w-4 text-green-500" />
+                      )}
+                      {step.status === 'pending' && (
+                        <Clock className="h-4 w-4 text-muted-foreground" />
+                      )}
+                      {step.status === 'error' && (
+                        <XCircle className="h-4 w-4 text-red-500" />
+                      )}
+                      <span className={step.status === 'running' ? 'font-medium text-blue-500' : step.status === 'complete' ? 'text-muted-foreground' : ''}>
+                        {step.name}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              {/* SSE Error */}
+              {sseError && (
+                <div className="text-sm text-red-400 flex items-center gap-2">
+                  <AlertCircle className="h-4 w-4" />
+                  {sseError}
+                </div>
+              )}
+            </div>
+          </CardContent>
+        </Card>
       )}
 
       {/* Health Score Card */}
@@ -158,7 +313,7 @@ export default function DataSyncPage() {
               <Database className="h-5 w-5" />
               System Health
             </span>
-            {status && <HealthBadge score={status.health_score} />}
+            {status && <HealthBadge score={status.health_score} deductions={status.health_deductions} />}
           </CardTitle>
         </CardHeader>
         <CardContent>
@@ -194,7 +349,7 @@ export default function DataSyncPage() {
                   <HardDrive className="h-4 w-4 text-muted-foreground" />
                   {table.name}
                 </span>
-                <StatusBadge status={table.status} />
+                <StatusBadge status={table.status ?? 'Unknown'} />
               </CardTitle>
             </CardHeader>
             <CardContent>
@@ -244,7 +399,7 @@ export default function DataSyncPage() {
                       {item.duration_seconds ? `${item.duration_seconds.toFixed(1)}s` : '-'}
                     </TableCell>
                     <TableCell className="text-right">
-                      {item.records_imported.toLocaleString()}
+                      {(item.records_imported ?? 0).toLocaleString()}
                     </TableCell>
                   </TableRow>
                 ))}
@@ -281,5 +436,6 @@ export default function DataSyncPage() {
         </CardContent>
       </Card>
     </div>
+    </TooltipProvider>
   )
 }
