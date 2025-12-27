@@ -628,11 +628,21 @@ async def api_triggered_sync(ctx: Dict[str, Any], sync_record_id: str) -> Dict[s
                 await _publish_and_persist("progress", sync_record_id, {
                     "step": "sync_etfs",
                     "progress": 60,
-                    "message": "正在同步ETF数据 (批量模式)...",
+                    "message": "正在同步ETF数据...",
                 }, session, sync_record)
 
+                # ETF 进度回调
+                async def etf_progress_callback(message: str, progress: int, detail: dict):
+                    """将 ETF 同步进度实时推送到 SSE"""
+                    await _publish_only("progress", sync_record_id, {
+                        "step": "sync_etfs",
+                        "progress": progress,
+                        "message": message,
+                        "detail": detail,
+                    })
+
                 try:
-                    etf_result = await sync_etfs_batch(session)
+                    etf_result = await sync_etfs_batch(session, etf_progress_callback)
                     sync_record.details["steps"]["sync_etfs"] = etf_result
                     step_duration = (datetime.now() - step_start).total_seconds()
 

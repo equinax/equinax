@@ -656,6 +656,7 @@ async def sync_stocks_batch(
 async def backfill_etf_history(
     session: AsyncSession,
     missing_days: List[date],
+    progress_callback: Callable[[str, int, Dict], Any] = None,
 ) -> Dict[str, Any]:
     """
     并行下载 ETF 历史数据
@@ -665,6 +666,7 @@ async def backfill_etf_history(
     Args:
         session: 数据库会话
         missing_days: 需要补全的交易日列表
+        progress_callback: 进度回调函数 (message, progress_pct, detail) -> awaitable
 
     Returns:
         补全结果
@@ -693,7 +695,7 @@ async def backfill_etf_history(
 
     loop = asyncio.get_event_loop()
 
-    # 使用线程池并行下载（ETF 数量少，用更多线程）
+    # 使用线程池并行下载
     with ThreadPoolExecutor(max_workers=PARALLEL_WORKERS) as executor:
         futures = [
             loop.run_in_executor(
@@ -710,8 +712,23 @@ async def backfill_etf_history(
                 all_records.extend(records)
                 completed_count += 1
 
-                if completed_count % 100 == 0 or completed_count == total_etfs:
-                    logger.info(f"ETF 下载进度 [{completed_count}/{total_etfs}]")
+                # 每个 ETF 都更新进度
+                if completed_count % PROGRESS_REPORT_INTERVAL == 0 or completed_count == total_etfs:
+                    # 进度: 60-75% 区间给 ETF
+                    overall_pct = 60 + (completed_count / total_etfs) * 15
+                    msg = f"ETF 下载中 [{completed_count}/{total_etfs}]"
+
+                    if completed_count % 100 == 0 or completed_count == total_etfs:
+                        logger.info(msg)
+
+                    if progress_callback:
+                        await progress_callback(msg, int(overall_pct), {
+                            "action": "etf_backfill_progress",
+                            "etfs_done": completed_count,
+                            "etfs_total": total_etfs,
+                            "days_count": len(missing_days),
+                            "date_range": f"{start_date} ~ {end_date}",
+                        })
 
     # 批量写入
     if all_records:
@@ -729,12 +746,16 @@ async def backfill_etf_history(
     }
 
 
-async def sync_etfs_batch(session: AsyncSession) -> Dict[str, Any]:
+async def sync_etfs_batch(
+    session: AsyncSession,
+    progress_callback: Callable[[str, int, Dict], Any] = None,
+) -> Dict[str, Any]:
     """
     同步 ETF 数据 - 使用历史 API（更稳定）
 
     Args:
         session: 数据库会话
+        progress_callback: 进度回调函数 (message, progress_pct, detail) -> awaitable
 
     Returns:
         同步结果
@@ -756,7 +777,7 @@ async def sync_etfs_batch(session: AsyncSession) -> Dict[str, Any]:
     missing_days = get_trading_days_between(pg_max_date, latest_trading_day) if pg_max_date else [latest_trading_day]
 
     # 3. 使用历史 API 并行下载（比 fund_etf_spot_em 更稳定）
-    result = await backfill_etf_history(session, missing_days)
+    result = await backfill_etf_history(session, missing_days, progress_callback)
 
     return {
         "status": result.get("status", "success"),
