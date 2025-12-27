@@ -1,4 +1,5 @@
 import { useState, useMemo } from 'react'
+import { useNavigate } from 'react-router-dom'
 import { Card, CardContent, CardHeader } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { ChevronLeft, ChevronRight } from 'lucide-react'
@@ -10,7 +11,6 @@ import {
 import { UniverseStatsBar } from '@/components/universe/UniverseStatsBar'
 import { UniverseScreener, type UniverseFilters } from '@/components/universe/UniverseScreener'
 import { UniverseDataTable } from '@/components/universe/UniverseDataTable'
-import { UniverseDetailDrawer } from '@/components/universe/UniverseDetailDrawer'
 
 // Map frontend sorting to backend sort_by parameter
 const sortFieldMap: Record<string, string> = {
@@ -25,6 +25,8 @@ const sortFieldMap: Record<string, string> = {
 }
 
 export default function UniverseCockpitPage() {
+  const navigate = useNavigate()
+
   // Filter state
   const [filters, setFilters] = useState<UniverseFilters>({
     assetType: 'stock',
@@ -47,10 +49,6 @@ export default function UniverseCockpitPage() {
 
   // Sorting state
   const [sorting, setSorting] = useState<SortingState>([])
-
-  // Drawer state
-  const [selectedCode, setSelectedCode] = useState<string | null>(null)
-  const [isDrawerOpen, setIsDrawerOpen] = useState(false)
 
   // Compute sort parameters
   const sortBy = useMemo(() => {
@@ -104,15 +102,9 @@ export default function UniverseCockpitPage() {
     setPage(1)
   }
 
-  // Handle row click
+  // Handle row click - navigate to detail page
   const handleRowClick = (code: string) => {
-    setSelectedCode(code)
-    setIsDrawerOpen(true)
-  }
-
-  // Handle drawer close
-  const handleDrawerClose = () => {
-    setIsDrawerOpen(false)
+    navigate(`/universe/${code}`)
   }
 
   const totalPages = snapshot?.pages || 1
@@ -154,7 +146,6 @@ export default function UniverseCockpitPage() {
             sorting={sorting}
             onSortingChange={handleSortingChange}
             onRowClick={handleRowClick}
-            selectedCode={selectedCode}
           />
 
           {/* Pagination */}
@@ -187,13 +178,6 @@ export default function UniverseCockpitPage() {
           )}
         </CardContent>
       </Card>
-
-      {/* Detail Drawer */}
-      <UniverseDetailDrawer
-        code={selectedCode}
-        open={isDrawerOpen}
-        onClose={handleDrawerClose}
-      />
     </div>
   )
 }

@@ -9,6 +9,7 @@ import ResultsPage from '@/pages/ResultsPage'
 import ResultDetailPage from '@/pages/ResultDetailPage'
 import TechnicalAnalysisPage from '@/pages/TechnicalAnalysisPage'
 import UniverseCockpitPage from '@/pages/UniverseCockpitPage'
+import UniverseDetailPage from '@/pages/UniverseDetailPage'
 import SettingsPage from '@/pages/SettingsPage'
 import DataSyncPage from '@/pages/DataSyncPage'
 
@@ -26,6 +27,7 @@ function App() {
           <Route path="results/:jobId" element={<ResultDetailPage />} />
           <Route path="analysis/:jobId/:resultId" element={<TechnicalAnalysisPage />} />
           <Route path="universe" element={<UniverseCockpitPage />} />
+          <Route path="universe/:code" element={<UniverseDetailPage />} />
           <Route path="settings" element={<SettingsPage />} />
           <Route path="data-sync" element={<DataSyncPage />} />
         </Route>
