@@ -617,10 +617,86 @@ export const useGetSyncJobApiV1DataSyncJobJobIdGet = <
 };
 
 /**
+ * Cancel a running or queued sync job.
+
+This marks the job as cancelled in the database.
+Note: This does NOT actually stop the worker process - it just updates the status.
+ * @summary Cancel Sync Job
+ */
+export const cancelSyncJobApiV1DataSyncCancelJobIdPost = (jobId: string) => {
+  return customInstance<unknown>({
+    url: `/api/v1/data-sync/cancel/${jobId}`,
+    method: "POST",
+  });
+};
+
+export const getCancelSyncJobApiV1DataSyncCancelJobIdPostMutationOptions = <
+  TError = HTTPValidationError,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof cancelSyncJobApiV1DataSyncCancelJobIdPost>>,
+    TError,
+    { jobId: string },
+    TContext
+  >;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof cancelSyncJobApiV1DataSyncCancelJobIdPost>>,
+  TError,
+  { jobId: string },
+  TContext
+> => {
+  const { mutation: mutationOptions } = options ?? {};
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof cancelSyncJobApiV1DataSyncCancelJobIdPost>>,
+    { jobId: string }
+  > = (props) => {
+    const { jobId } = props ?? {};
+
+    return cancelSyncJobApiV1DataSyncCancelJobIdPost(jobId);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type CancelSyncJobApiV1DataSyncCancelJobIdPostMutationResult =
+  NonNullable<
+    Awaited<ReturnType<typeof cancelSyncJobApiV1DataSyncCancelJobIdPost>>
+  >;
+
+export type CancelSyncJobApiV1DataSyncCancelJobIdPostMutationError =
+  HTTPValidationError;
+
+/**
+ * @summary Cancel Sync Job
+ */
+export const useCancelSyncJobApiV1DataSyncCancelJobIdPost = <
+  TError = HTTPValidationError,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof cancelSyncJobApiV1DataSyncCancelJobIdPost>>,
+    TError,
+    { jobId: string },
+    TContext
+  >;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof cancelSyncJobApiV1DataSyncCancelJobIdPost>>,
+  TError,
+  { jobId: string },
+  TContext
+> => {
+  const mutationOptions =
+    getCancelSyncJobApiV1DataSyncCancelJobIdPostMutationOptions(options);
+
+  return useMutation(mutationOptions);
+};
+/**
  * Get the current active sync job if one exists.
 
 Returns the most recent queued or running job, or null if no active job.
-Use this to restore UI state when navigating back to the page.
+Also detects and marks stale tasks (running > 60 minutes) automatically.
  * @summary Get Active Sync Job
  */
 export const getActiveSyncJobApiV1DataSyncActiveGet = (

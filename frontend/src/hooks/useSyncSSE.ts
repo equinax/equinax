@@ -22,6 +22,7 @@ export interface SyncStep {
   records_count?: number
   duration_seconds?: number
   detail?: string
+  runningMessage?: string  // Real-time progress message for running steps
 }
 
 export interface PlanEvent {
@@ -140,10 +141,12 @@ export function useSyncSSE({
         break
 
       case 'progress':
-        // Update current step to running
+        // Update current step to running with progress message
         setSteps((prev) =>
           prev.map((s) =>
-            s.id === data.step ? { ...s, status: 'running' } : s
+            s.id === data.step
+              ? { ...s, status: 'running', runningMessage: data.message }
+              : s
           )
         )
         setCurrentMessage(data.message)

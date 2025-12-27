@@ -54,23 +54,26 @@ worker_session_maker = async_sessionmaker(
 # =============================================================================
 
 async def download_stock_data(ctx: Dict[str, Any], recent_days: int = 1) -> Dict[str, Any]:
-    """Download recent stock market data using AKShare.
+    """Download stock market data using incremental update mode.
+
+    The download script will check for outdated stocks and only download
+    data for those that need updating.
 
     Args:
         ctx: ARQ context
-        recent_days: Number of recent days to download (default: 1 for today only)
+        recent_days: Number of recent days to check (default: 1)
 
     Returns:
         Result dict with status and counts
     """
-    logger.info(f"Starting stock data download for recent {recent_days} days")
+    logger.info(f"Starting stock data download (recent={recent_days})")
 
     script_path = DOWNLOADS_DIR / "download_a_stock_data.py"
     if not script_path.exists():
         return {"status": "error", "message": f"Script not found: {script_path}"}
 
     try:
-        # Run download script
+        # Run download script with --recent for incremental update
         result = subprocess.run(
             [sys.executable, str(script_path), "--recent", str(recent_days)],
             cwd=str(BACKEND_DIR),
@@ -101,22 +104,26 @@ async def download_stock_data(ctx: Dict[str, Any], recent_days: int = 1) -> Dict
 
 
 async def download_etf_data(ctx: Dict[str, Any], recent_days: int = 1) -> Dict[str, Any]:
-    """Download recent ETF market data using AKShare.
+    """Download ETF market data using incremental update mode.
+
+    The download script will check for outdated ETFs and only download
+    data for those that need updating.
 
     Args:
         ctx: ARQ context
-        recent_days: Number of recent days to download
+        recent_days: Number of recent days to check (default: 1)
 
     Returns:
         Result dict with status
     """
-    logger.info(f"Starting ETF data download for recent {recent_days} days")
+    logger.info(f"Starting ETF data download (recent={recent_days})")
 
     script_path = DOWNLOADS_DIR / "download_etf_data.py"
     if not script_path.exists():
         return {"status": "error", "message": f"Script not found: {script_path}"}
 
     try:
+        # Run download script with --recent for incremental update
         result = subprocess.run(
             [sys.executable, str(script_path), "--recent", str(recent_days)],
             cwd=str(BACKEND_DIR),
@@ -268,14 +275,14 @@ async def daily_data_update(ctx: Dict[str, Any]) -> Dict[str, Any]:
 
     # Step 1: Download stock data
     logger.info("[1/4] Downloading stock data...")
-    stock_dl = await download_stock_data(ctx, recent_days=1)
+    stock_dl = await download_stock_data(ctx)
     results["steps"]["download_stocks"] = stock_dl
     if stock_dl.get("status") == "error":
         logger.warning(f"Stock download had issues: {stock_dl.get('message')}")
 
     # Step 2: Download ETF data
     logger.info("[2/4] Downloading ETF data...")
-    etf_dl = await download_etf_data(ctx, recent_days=1)
+    etf_dl = await download_etf_data(ctx)
     results["steps"]["download_etfs"] = etf_dl
 
     # Step 3: Import to PostgreSQL
@@ -424,6 +431,11 @@ async def get_download_status(ctx: Dict[str, Any]) -> Dict[str, Any]:
 # API-triggered Sync Task
 # =============================================================================
 
+async def _publish_only(event_type: str, job_id: str, data: dict) -> None:
+    """Publish SSE event to Redis only (no database persist)."""
+    await publish_data_sync_event(event_type, job_id, data)
+
+
 async def _publish_and_persist(
     event_type: str,
     job_id: str,
@@ -458,8 +470,13 @@ async def api_triggered_sync(ctx: Dict[str, Any], sync_record_id: str) -> Dict[s
     """API-triggered sync task that updates SyncHistory record.
 
     This task is enqueued when user clicks "Sync Now" in the UI.
-    It runs the daily_data_update workflow and updates the corresponding
-    SyncHistory record with progress and results.
+    Uses batch API to fetch all market data in one call, then directly
+    writes to PostgreSQL, skipping SQLite cache for maximum speed.
+
+    Optimized flow (3 steps instead of 5):
+    1. check_update → Check if PG data is up to date
+    2. sync_data → Batch fetch from akshare → Direct PG insert
+    3. classification → Update classifications
 
     Args:
         ctx: ARQ context
@@ -470,8 +487,16 @@ async def api_triggered_sync(ctx: Dict[str, Any], sync_record_id: str) -> Dict[s
     """
     from app.db.models.sync import SyncHistory
     from sqlalchemy.orm.attributes import flag_modified
+    from workers.batch_sync import (
+        sync_stocks_batch,
+        sync_etfs_batch,
+        sync_indices_batch,
+        get_pg_max_date,
+        get_pg_index_max_date,
+        get_latest_trading_day,
+    )
 
-    logger.info(f"Starting API-triggered sync: {sync_record_id}")
+    logger.info(f"Starting API-triggered sync (batch mode): {sync_record_id}")
     start_time = datetime.now()
 
     async with worker_session_maker() as session:
@@ -492,125 +517,220 @@ async def api_triggered_sync(ctx: Dict[str, Any], sync_record_id: str) -> Dict[s
         await session.commit()
 
         try:
-            # Publish plan event with steps
+            # Publish plan event with optimized steps
             await _publish_and_persist("plan", sync_record_id, {
                 "steps": [
-                    {"id": "download_stocks", "name": "下载股票数据"},
-                    {"id": "download_etfs", "name": "下载ETF数据"},
-                    {"id": "import_stocks", "name": "导入股票数据"},
-                    {"id": "import_etfs", "name": "导入ETF数据"},
+                    {"id": "check_update", "name": "检查数据状态"},
+                    {"id": "sync_stocks", "name": "同步股票数据"},
+                    {"id": "sync_etfs", "name": "同步ETF数据"},
+                    {"id": "sync_indices", "name": "同步指数数据"},
                     {"id": "classification", "name": "更新分类"},
                 ],
-                "message": "准备开始数据同步...",
+                "message": "准备开始数据同步 (批量模式)...",
             }, session, sync_record)
 
-            records_downloaded = 0
             records_imported = 0
             records_classified = 0
 
-            # Step 1: Download stock data
+            # Step 1: Check if update is needed
             step_start = datetime.now()
             await _publish_and_persist("progress", sync_record_id, {
-                "step": "download_stocks",
-                "progress": 10,
-                "message": "正在下载股票日线数据...",
+                "step": "check_update",
+                "progress": 5,
+                "message": "正在检查数据状态...",
             }, session, sync_record)
 
-            stock_dl = await download_stock_data(ctx, recent_days=1)
-            sync_record.details["steps"]["download_stocks"] = stock_dl
+            pg_stock_date = await get_pg_max_date(session, 'stock')
+            pg_etf_date = await get_pg_max_date(session, 'etf')
+            pg_index_date = await get_pg_index_max_date(session)
+            latest_trading_day = get_latest_trading_day()
+
+            check_result = {
+                "pg_stock_date": str(pg_stock_date) if pg_stock_date else None,
+                "pg_etf_date": str(pg_etf_date) if pg_etf_date else None,
+                "pg_index_date": str(pg_index_date) if pg_index_date else None,
+                "latest_trading_day": str(latest_trading_day),
+                "stock_needs_update": pg_stock_date is None or pg_stock_date < latest_trading_day,
+                "etf_needs_update": pg_etf_date is None or pg_etf_date < latest_trading_day,
+                "index_needs_update": pg_index_date is None or pg_index_date < latest_trading_day,
+            }
+            sync_record.details["steps"]["check_update"] = check_result
             step_duration = (datetime.now() - step_start).total_seconds()
+
+            needs_update = check_result["stock_needs_update"] or check_result["etf_needs_update"] or check_result["index_needs_update"]
+            check_message = f"PG股票: {pg_stock_date}, ETF: {pg_etf_date}, 指数: {pg_index_date}, 最近交易日: {latest_trading_day}"
 
             await _publish_and_persist("step_complete", sync_record_id, {
-                "step": "download_stocks",
-                "status": stock_dl.get("status"),
+                "step": "check_update",
+                "status": "success",
                 "records_count": 0,
                 "duration_seconds": round(step_duration, 1),
-                "detail": stock_dl.get("message", ""),
-                "message": f"下载股票数据: 完成 ({step_duration:.1f}s)",
+                "detail": check_message,
+                "message": f"数据状态检查完成 ({step_duration:.1f}s)",
             }, session, sync_record)
 
-            # Step 2: Download ETF data
+            # Step 2: Sync stock data (batch mode with progress callback)
             step_start = datetime.now()
-            await _publish_and_persist("progress", sync_record_id, {
-                "step": "download_etfs",
-                "progress": 25,
-                "message": "正在下载ETF数据...",
-            }, session, sync_record)
-
-            etf_dl = await download_etf_data(ctx, recent_days=1)
-            sync_record.details["steps"]["download_etfs"] = etf_dl
-            step_duration = (datetime.now() - step_start).total_seconds()
-
-            await _publish_and_persist("step_complete", sync_record_id, {
-                "step": "download_etfs",
-                "status": etf_dl.get("status"),
-                "records_count": 0,
-                "duration_seconds": round(step_duration, 1),
-                "detail": etf_dl.get("message", ""),
-                "message": f"下载ETF数据: 完成 ({step_duration:.1f}s)",
-            }, session, sync_record)
-
-            # Step 3: Import stock data
-            step_start = datetime.now()
-            await _publish_and_persist("progress", sync_record_id, {
-                "step": "import_stocks",
-                "progress": 50,
-                "message": "正在导入股票数据到数据库...",
-            }, session, sync_record)
-
-            stock_imp = await import_stock_data(ctx, recent_days=1)
-            sync_record.details["steps"]["import_stocks"] = stock_imp
-            step_duration = (datetime.now() - step_start).total_seconds()
-
             stock_count = 0
-            stock_detail = ""
-            if stock_imp.get("results") and isinstance(stock_imp["results"], dict):
-                stock_count = stock_imp["results"].get("total_market_daily", 0)
-                records_imported += stock_count
-                new_count = stock_imp["results"].get("new_records", 0)
-                updated_count = stock_imp["results"].get("updated_records", 0)
-                if new_count or updated_count:
-                    stock_detail = f"新增 {new_count}, 更新 {updated_count}"
 
-            await _publish_and_persist("step_complete", sync_record_id, {
-                "step": "import_stocks",
-                "status": stock_imp.get("status"),
-                "records_count": stock_count,
-                "duration_seconds": round(step_duration, 1),
-                "detail": stock_detail,
-                "message": f"导入股票数据: {stock_count} 条 ({step_duration:.1f}s)",
-            }, session, sync_record)
+            if check_result["stock_needs_update"]:
+                await _publish_and_persist("progress", sync_record_id, {
+                    "step": "sync_stocks",
+                    "progress": 20,
+                    "message": "正在同步股票数据...",
+                }, session, sync_record)
 
-            # Step 4: Import ETF data
+                # 定义进度回调函数 (仅推送到 SSE，不持久化到数据库)
+                async def stock_progress_callback(message: str, progress: int, detail: dict):
+                    """将同步进度实时推送到 SSE (不写入数据库，避免频繁IO)"""
+                    await _publish_only("progress", sync_record_id, {
+                        "step": "sync_stocks",
+                        "progress": progress,
+                        "message": message,
+                        "detail": detail,
+                    })
+
+                stock_result = await sync_stocks_batch(session, stock_progress_callback)
+                sync_record.details["steps"]["sync_stocks"] = stock_result
+                step_duration = (datetime.now() - step_start).total_seconds()
+
+                if stock_result.get("status") == "success":
+                    stock_count = stock_result.get("market_daily_count", 0)
+                    records_imported += stock_count
+
+                await _publish_and_persist("step_complete", sync_record_id, {
+                    "step": "sync_stocks",
+                    "status": stock_result.get("status"),
+                    "records_count": stock_count,
+                    "duration_seconds": round(step_duration, 1),
+                    "detail": stock_result.get("message", ""),
+                    "message": f"同步股票数据: {stock_count} 条 ({step_duration:.1f}s)",
+                }, session, sync_record)
+            else:
+                sync_record.details["steps"]["sync_stocks"] = {"status": "skip", "message": "数据已是最新"}
+                step_duration = (datetime.now() - step_start).total_seconds()
+
+                await _publish_and_persist("step_complete", sync_record_id, {
+                    "step": "sync_stocks",
+                    "status": "skip",
+                    "records_count": 0,
+                    "duration_seconds": round(step_duration, 1),
+                    "detail": "数据已是最新",
+                    "message": f"同步股票数据: 跳过 (已是最新)",
+                }, session, sync_record)
+
+            # Step 3: Sync ETF data (batch mode) - with error isolation
             step_start = datetime.now()
-            await _publish_and_persist("progress", sync_record_id, {
-                "step": "import_etfs",
-                "progress": 75,
-                "message": "正在导入ETF数据到数据库...",
-            }, session, sync_record)
-
-            etf_imp = await import_etf_data(ctx, recent_days=1)
-            sync_record.details["steps"]["import_etfs"] = etf_imp
-            step_duration = (datetime.now() - step_start).total_seconds()
-
             etf_count = 0
-            etf_detail = ""
-            if etf_imp.get("results") and isinstance(etf_imp["results"], dict):
-                etf_count = etf_imp["results"].get("total_market_daily", 0)
-                records_imported += etf_count
-                new_count = etf_imp["results"].get("new_records", 0)
-                updated_count = etf_imp["results"].get("updated_records", 0)
-                if new_count or updated_count:
-                    etf_detail = f"新增 {new_count}, 更新 {updated_count}"
+            step_errors = []
 
-            await _publish_and_persist("step_complete", sync_record_id, {
-                "step": "import_etfs",
-                "status": etf_imp.get("status"),
-                "records_count": etf_count,
-                "duration_seconds": round(step_duration, 1),
-                "detail": etf_detail,
-                "message": f"导入ETF数据: {etf_count} 条 ({step_duration:.1f}s)",
-            }, session, sync_record)
+            if check_result["etf_needs_update"]:
+                await _publish_and_persist("progress", sync_record_id, {
+                    "step": "sync_etfs",
+                    "progress": 60,
+                    "message": "正在同步ETF数据 (批量模式)...",
+                }, session, sync_record)
+
+                try:
+                    etf_result = await sync_etfs_batch(session)
+                    sync_record.details["steps"]["sync_etfs"] = etf_result
+                    step_duration = (datetime.now() - step_start).total_seconds()
+
+                    if etf_result.get("status") == "success":
+                        etf_count = etf_result.get("market_daily_count", 0)
+                        records_imported += etf_count
+
+                    await _publish_and_persist("step_complete", sync_record_id, {
+                        "step": "sync_etfs",
+                        "status": etf_result.get("status"),
+                        "records_count": etf_count,
+                        "duration_seconds": round(step_duration, 1),
+                        "detail": etf_result.get("message", ""),
+                        "message": f"同步ETF数据: {etf_count} 条 ({step_duration:.1f}s)",
+                    }, session, sync_record)
+                except Exception as e:
+                    step_duration = (datetime.now() - step_start).total_seconds()
+                    error_msg = f"ETF同步失败: {str(e)}"
+                    step_errors.append(error_msg)
+                    logger.warning(f"ETF sync failed (continuing with other steps): {e}")
+                    sync_record.details["steps"]["sync_etfs"] = {"status": "error", "message": error_msg}
+
+                    await _publish_and_persist("step_complete", sync_record_id, {
+                        "step": "sync_etfs",
+                        "status": "error",
+                        "records_count": 0,
+                        "duration_seconds": round(step_duration, 1),
+                        "detail": error_msg,
+                        "message": f"同步ETF数据: 失败 ({step_duration:.1f}s)",
+                    }, session, sync_record)
+            else:
+                sync_record.details["steps"]["sync_etfs"] = {"status": "skip", "message": "数据已是最新"}
+                step_duration = (datetime.now() - step_start).total_seconds()
+
+                await _publish_and_persist("step_complete", sync_record_id, {
+                    "step": "sync_etfs",
+                    "status": "skip",
+                    "records_count": 0,
+                    "duration_seconds": round(step_duration, 1),
+                    "detail": "数据已是最新",
+                    "message": f"同步ETF数据: 跳过 (已是最新)",
+                }, session, sync_record)
+
+            # Step 4: Sync index data (batch mode) - with error isolation
+            step_start = datetime.now()
+            index_count = 0
+
+            if check_result["index_needs_update"]:
+                await _publish_and_persist("progress", sync_record_id, {
+                    "step": "sync_indices",
+                    "progress": 75,
+                    "message": "正在同步指数数据 (批量模式)...",
+                }, session, sync_record)
+
+                try:
+                    index_result = await sync_indices_batch(session)
+                    sync_record.details["steps"]["sync_indices"] = index_result
+                    step_duration = (datetime.now() - step_start).total_seconds()
+
+                    if index_result.get("status") == "success":
+                        index_count = index_result.get("market_daily_count", 0)
+                        records_imported += index_count
+
+                    await _publish_and_persist("step_complete", sync_record_id, {
+                        "step": "sync_indices",
+                        "status": index_result.get("status"),
+                        "records_count": index_count,
+                        "duration_seconds": round(step_duration, 1),
+                        "detail": index_result.get("message", ""),
+                        "message": f"同步指数数据: {index_count} 条 ({step_duration:.1f}s)",
+                    }, session, sync_record)
+                except Exception as e:
+                    step_duration = (datetime.now() - step_start).total_seconds()
+                    error_msg = f"指数同步失败: {str(e)}"
+                    step_errors.append(error_msg)
+                    logger.warning(f"Index sync failed (continuing with other steps): {e}")
+                    sync_record.details["steps"]["sync_indices"] = {"status": "error", "message": error_msg}
+
+                    await _publish_and_persist("step_complete", sync_record_id, {
+                        "step": "sync_indices",
+                        "status": "error",
+                        "records_count": 0,
+                        "duration_seconds": round(step_duration, 1),
+                        "detail": error_msg,
+                        "message": f"同步指数数据: 失败 ({step_duration:.1f}s)",
+                    }, session, sync_record)
+            else:
+                sync_record.details["steps"]["sync_indices"] = {"status": "skip", "message": "数据已是最新"}
+                step_duration = (datetime.now() - step_start).total_seconds()
+
+                await _publish_and_persist("step_complete", sync_record_id, {
+                    "step": "sync_indices",
+                    "status": "skip",
+                    "records_count": 0,
+                    "duration_seconds": round(step_duration, 1),
+                    "detail": "数据已是最新",
+                    "message": f"同步指数数据: 跳过 (已是最新)",
+                }, session, sync_record)
 
             # Step 5: Classification update (conditional - only if new data was imported)
             step_start = datetime.now()
@@ -659,33 +779,45 @@ async def api_triggered_sync(ctx: Dict[str, Any], sync_record_id: str) -> Dict[s
                     "message": "更新分类: 跳过 (无新数据)",
                 }, session, sync_record)
 
-            # Update sync record with success
+            # Update sync record with success (or partial success if some steps failed)
             total_duration = (datetime.now() - start_time).total_seconds()
-            sync_record.status = "success"
+
+            # Determine final status based on step errors
+            if step_errors:
+                final_status = "partial"  # Some steps failed
+                final_message = f"数据同步部分完成! 导入 {records_imported} 条记录. 失败步骤: {'; '.join(step_errors)}"
+            else:
+                final_status = "success"
+                final_message = f"数据同步完成! 共导入 {records_imported} 条记录"
+
+            sync_record.status = final_status
             sync_record.completed_at = datetime.now()
             sync_record.duration_seconds = total_duration
-            sync_record.records_downloaded = records_downloaded
+            sync_record.records_downloaded = records_imported  # In batch mode, download and import are combined
             sync_record.records_imported = records_imported
             sync_record.records_classified = records_classified
+            if step_errors:
+                sync_record.error_message = "; ".join(step_errors)
             flag_modified(sync_record, "details")
             await session.commit()
 
             # Publish completion event
             await _publish_and_persist("job_complete", sync_record_id, {
-                "status": "success",
+                "status": final_status,
                 "progress": 100,
                 "records_imported": records_imported,
                 "records_classified": records_classified,
                 "duration_seconds": round(total_duration, 1),
-                "message": f"数据同步完成! 共导入 {records_imported} 条记录",
+                "message": final_message,
             }, session, sync_record)
 
-            logger.info(f"API-triggered sync completed: {sync_record_id}")
+            logger.info(f"API-triggered sync completed ({final_status}): {sync_record_id}")
             return {
-                "status": "success",
+                "status": final_status,
                 "sync_record_id": sync_record_id,
                 "duration_seconds": total_duration,
                 "records_imported": records_imported,
+                "step_errors": step_errors if step_errors else None,
             }
 
         except Exception as e:

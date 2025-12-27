@@ -22,6 +22,7 @@ import {
   useGetActiveSyncJobApiV1DataSyncActiveGet,
   useAnalyzeSyncRequirementsApiV1DataSyncAnalyzeGet,
   useGetSyncJobDetailApiV1DataSyncJobJobIdDetailGet,
+  useCancelSyncJobApiV1DataSyncCancelJobIdPost,
 } from '@/api/generated/data-sync/data-sync'
 import { useSyncSSE, type SyncStep, type EventLogEntry } from '@/hooks/useSyncSSE'
 import type { DataTableStatus, HealthDeduction } from '@/api/generated/schemas'
@@ -97,6 +98,8 @@ function StatusBadge({ status }: { status: string }) {
     queued: 'bg-yellow-500/10 text-yellow-500',
     failed: 'bg-red-500/10 text-red-500',
     skipped: 'bg-gray-500/10 text-gray-500',
+    stale: 'bg-orange-500/10 text-orange-500',
+    cancelled: 'bg-gray-500/10 text-gray-500',
     OK: 'bg-green-500/10 text-green-500',
     Empty: 'bg-yellow-500/10 text-yellow-500',
     Error: 'bg-red-500/10 text-red-500',
@@ -196,6 +199,22 @@ export default function DataSyncPage() {
   })
 
   const triggerSyncMutation = useTriggerSyncApiV1DataSyncTriggerPost()
+  const cancelSyncMutation = useCancelSyncJobApiV1DataSyncCancelJobIdPost()
+
+  // Handle cancel sync
+  const handleCancelSync = () => {
+    if (!currentJobId) return
+    cancelSyncMutation.mutate(
+      { jobId: currentJobId },
+      {
+        onSuccess: () => {
+          setCurrentJobId(null)
+          refetch()
+          refetchAnalysis()
+        },
+      }
+    )
+  }
 
   // Handle sync trigger
   const handleSync = () => {
@@ -298,6 +317,20 @@ export default function DataSyncPage() {
                     Live
                   </span>
                 )}
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={handleCancelSync}
+                  disabled={cancelSyncMutation.isPending}
+                  className="text-red-500 border-red-500/30 hover:bg-red-500/10"
+                >
+                  {cancelSyncMutation.isPending ? (
+                    <Loader2 className="h-3 w-3 animate-spin mr-1" />
+                  ) : (
+                    <XCircle className="h-3 w-3 mr-1" />
+                  )}
+                  取消
+                </Button>
               </div>
             </CardTitle>
             <CardDescription>
@@ -335,6 +368,12 @@ export default function DataSyncPage() {
                       <span className={step.status === 'running' ? 'font-medium text-blue-500' : step.status === 'complete' ? 'text-muted-foreground' : ''}>
                         {step.name}
                       </span>
+                      {/* Show real-time progress for running steps */}
+                      {step.status === 'running' && step.runningMessage && (
+                        <span className="text-xs text-blue-400 ml-auto animate-pulse">
+                          {step.runningMessage}
+                        </span>
+                      )}
                       {/* Show detailed info for completed steps */}
                       {step.status === 'complete' && (step.records_count !== undefined || step.duration_seconds !== undefined) && (
                         <span className="text-xs text-muted-foreground ml-auto">

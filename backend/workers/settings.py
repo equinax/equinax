@@ -1,7 +1,7 @@
 """ARQ Worker settings and configuration."""
 
 from arq.connections import RedisSettings
-from arq import cron
+from arq import cron, func
 
 from app.config import settings
 from workers.backtest_tasks import run_backtest_job, run_single_backtest
@@ -66,7 +66,8 @@ class WorkerSettings:
         daily_data_update,
         check_data_status,
         get_download_status,
-        api_triggered_sync,
+        # api_triggered_sync has 60min timeout for historical backfill
+        func(api_triggered_sync, timeout=3600),
         # Index tasks
         calculate_index_industry_composition,
         daily_index_update,

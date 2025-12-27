@@ -379,6 +379,46 @@ async def get_sync_job(
     )
 
 
+@router.post("/cancel/{job_id}")
+async def cancel_sync_job(
+    job_id: str,
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    Cancel a running or queued sync job.
+
+    This marks the job as cancelled in the database.
+    Note: This does NOT actually stop the worker process - it just updates the status.
+    """
+    result = await db.execute(
+        select(SyncHistory).where(SyncHistory.id == job_id)
+    )
+    job = result.scalar_one_or_none()
+
+    if not job:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Sync job {job_id} not found",
+        )
+
+    if job.status not in ("running", "queued"):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Cannot cancel job with status: {job.status}",
+        )
+
+    job.status = "cancelled"
+    job.completed_at = datetime.now()
+    job.error_message = "Manually cancelled by user"
+    await db.commit()
+
+    return {"status": "cancelled", "job_id": job_id, "message": "Sync job cancelled"}
+
+
+# Stale task detection threshold (minutes)
+STALE_THRESHOLD_MINUTES = 60
+
+
 @router.get("/active", response_model=Optional[SyncHistoryItem])
 async def get_active_sync_job(
     db: AsyncSession = Depends(get_db),
@@ -387,8 +427,10 @@ async def get_active_sync_job(
     Get the current active sync job if one exists.
 
     Returns the most recent queued or running job, or null if no active job.
-    Use this to restore UI state when navigating back to the page.
+    Also detects and marks stale tasks (running > 60 minutes) automatically.
     """
+    from datetime import timedelta
+
     result = await db.execute(
         select(SyncHistory)
         .where(SyncHistory.status.in_(["queued", "running"]))
@@ -399,6 +441,20 @@ async def get_active_sync_job(
 
     if not row:
         return None
+
+    # Check for stale task
+    if row.status == "running" and row.started_at:
+        # Handle timezone-aware datetime
+        now = datetime.now()
+        started = row.started_at.replace(tzinfo=None) if row.started_at.tzinfo else row.started_at
+        running_time = now - started
+
+        if running_time > timedelta(minutes=STALE_THRESHOLD_MINUTES):
+            # Mark as stale
+            row.status = "stale"
+            row.completed_at = datetime.now()
+            row.error_message = f"Task exceeded {STALE_THRESHOLD_MINUTES} minutes timeout - marked as stale"
+            await db.commit()
 
     return SyncHistoryItem(
         id=row.id,

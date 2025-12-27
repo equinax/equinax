@@ -184,6 +184,27 @@ def get_downloaded_daily_codes(conn: sqlite3.Connection) -> set:
     return {row[0] for row in cursor.fetchall()}
 
 
+def get_outdated_daily_codes(conn: sqlite3.Connection, target_date: str) -> set:
+    """获取日线数据未更新到目标日期的证券代码
+
+    Args:
+        conn: 数据库连接
+        target_date: 目标日期 (YYYY-MM-DD)
+
+    Returns:
+        需要更新的证券代码集合
+    """
+    cursor = conn.cursor()
+    # 获取每只股票的最新日期，筛选出落后于目标日期的
+    cursor.execute("""
+        SELECT code, MAX(date) as max_date
+        FROM daily_k_data
+        GROUP BY code
+        HAVING max_date < ?
+    """, (target_date,))
+    return {row[0] for row in cursor.fetchall()}
+
+
 def get_downloaded_adjust_codes(conn: sqlite3.Connection) -> set:
     """获取已有复权因子的证券代码"""
     cursor = conn.cursor()
@@ -282,18 +303,26 @@ def download_daily_data(conn: sqlite3.Connection, stocks: list, start_date: str,
     """下载日线数据（支持增量）"""
     cursor = conn.cursor()
 
-    # 获取已下载的代码
-    existing_codes = get_downloaded_daily_codes(conn) if skip_existing else set()
+    if skip_existing:
+        # 获取已下载的代码
+        existing_codes = get_downloaded_daily_codes(conn)
+        # 获取数据落后的代码（需要更新）
+        outdated_codes = get_outdated_daily_codes(conn, end_date)
 
-    # 过滤需要下载的
-    to_download = [s for s in stocks if s['code'] not in existing_codes]
+        # 需要下载的：1) 完全没有的  2) 数据落后的
+        new_codes = {s['code'] for s in stocks} - existing_codes
+        to_download = [s for s in stocks if s['code'] in new_codes or s['code'] in outdated_codes]
 
-    if not to_download:
-        print(f"\n日线数据已全部下载完成 ({len(existing_codes)} 只证券)")
-        return []
+        if not to_download:
+            print(f"\n日线数据已全部更新完成 ({len(existing_codes)} 只证券，数据已到 {end_date})")
+            return []
 
-    print(f"\n正在下载 {start_date} 至 {end_date} 日线数据...")
-    print(f"已有 {len(existing_codes)} 只, 待下载 {len(to_download)} 只")
+        print(f"\n正在下载 {start_date} 至 {end_date} 日线数据...")
+        print(f"已有 {len(existing_codes)} 只, 新增 {len(new_codes)} 只, 待更新 {len(outdated_codes)} 只")
+    else:
+        to_download = stocks
+        print(f"\n正在下载 {start_date} 至 {end_date} 日线数据...")
+        print(f"强制模式: 下载全部 {len(to_download)} 只")
 
     total_records = 0
     failed_stocks = []
@@ -578,6 +607,7 @@ def parse_args():
     parser = argparse.ArgumentParser(description='A股日线数据下载工具（多年版）')
     parser.add_argument('--year', type=int, help='下载指定年份 (2020-2025)')
     parser.add_argument('--years', type=str, help='下载多个年份，逗号分隔 (如: 2020,2021,2022)')
+    parser.add_argument('--recent', type=int, help='增量更新模式: 更新最近 N 天内有数据缺失的股票')
     parser.add_argument('--mode', choices=['all', 'basic', 'daily', 'adjust', 'retry', 'status'],
                         default='all', help='下载模式: all=全部, basic=基本信息, daily=日线, adjust=复权因子, retry=重试失败, status=查看状态')
     parser.add_argument('--force', action='store_true', help='强制重新下载（忽略已有数据）')
@@ -585,8 +615,177 @@ def parse_args():
     return parser.parse_args()
 
 
+def download_recent(recent_days: int, delay: float = 0.05):
+    """增量更新模式：只下载数据落后的股票
+
+    Args:
+        recent_days: 检查最近 N 天的数据
+        delay: 请求间隔
+    """
+    global REQUEST_DELAY
+    REQUEST_DELAY = delay
+
+    year = date.today().year
+    end_date = date.today().strftime("%Y-%m-%d")
+    start_date = f"{year}-01-01"
+    db_path = get_db_path(year)
+
+    print("\n" + "=" * 60)
+    print(f"A股增量更新模式")
+    print(f"数据库: {db_path}")
+    print("=" * 60)
+
+    # 检查数据库是否存在
+    if not os.path.exists(db_path):
+        print(f"数据库 {db_path} 不存在，请先运行 --year {year} 下载完整数据")
+        return
+
+    conn = sqlite3.connect(db_path, timeout=30)  # 30秒超时防止锁定
+
+    # 获取数据库中的最新日期
+    cursor = conn.cursor()
+    cursor.execute("SELECT MAX(date) FROM daily_k_data")
+    db_max_date = cursor.fetchone()[0]
+
+    if not db_max_date:
+        print("数据库中没有日线数据")
+        conn.close()
+        return
+
+    print(f"数据库最新日期: {db_max_date}")
+    print(f"目标更新日期: {end_date}")
+
+    # 获取需要更新的股票（数据落后于数据库最新日期的）
+    try:
+        outdated_codes = get_outdated_daily_codes(conn, db_max_date)
+    except sqlite3.OperationalError as e:
+        print(f"数据库访问错误: {e}")
+        print("可能有其他进程正在使用数据库，请稍后重试")
+        conn.close()
+        return
+
+    if not outdated_codes:
+        print(f"\n所有股票数据已是最新 (最新日期: {db_max_date})")
+        # 检查是否需要从数据源获取更新的数据
+        print("正在检查数据源是否有更新...")
+        conn.close()
+
+        # 尝试下载一只股票看看有没有新数据
+        lg = bs.login()
+        if lg.error_code != '0':
+            print(f"登录失败: {lg.error_msg}")
+            return
+
+        rs = bs.query_history_k_data_plus(
+            code="sh.000001",
+            fields="date",
+            start_date=db_max_date,
+            end_date=end_date,
+            frequency="d"
+        )
+        new_dates = []
+        while rs.next():
+            d = rs.get_row_data()[0]
+            if d > db_max_date:
+                new_dates.append(d)
+        bs.logout()
+
+        if not new_dates:
+            print(f"数据源也没有新数据 (最新: {db_max_date})")
+            return
+        else:
+            print(f"数据源有新数据: {new_dates}")
+            # 重新连接并下载所有股票的新数据
+            conn = sqlite3.connect(db_path, timeout=30)
+            # 所有股票都需要更新
+            cursor = conn.cursor()
+            cursor.execute("SELECT DISTINCT code FROM daily_k_data")
+            outdated_codes = {row[0] for row in cursor.fetchall()}
+
+    print(f"\n发现 {len(outdated_codes)} 只股票数据需要更新")
+
+    # 登录 baostock
+    lg = bs.login()
+    if lg.error_code != '0':
+        print(f"登录失败: {lg.error_msg}")
+        conn.close()
+        return
+    print(f"登录成功: {lg.error_msg}")
+
+    try:
+        cursor = conn.cursor()
+        total_records = 0
+        failed_stocks = []
+
+        # 下载需要更新的股票
+        for i, code in enumerate(tqdm(list(outdated_codes), desc="更新日线数据")):
+            try:
+                rs = bs.query_history_k_data_plus(
+                    code=code,
+                    fields=DAILY_FIELDS,
+                    start_date=start_date,
+                    end_date=end_date,
+                    frequency="d",
+                    adjustflag="3"
+                )
+
+                if rs.error_code != '0':
+                    failed_stocks.append(code)
+                    time.sleep(REQUEST_DELAY)
+                    continue
+
+                batch = []
+                while rs.next():
+                    row = rs.get_row_data()
+                    batch.append((
+                        row[0], row[1],
+                        safe_float(row[2]), safe_float(row[3]),
+                        safe_float(row[4]), safe_float(row[5]),
+                        safe_float(row[6]), safe_float(row[7]),
+                        safe_float(row[8]), safe_float(row[9]),
+                        safe_int(row[10]), safe_float(row[11]),
+                        safe_float(row[12]), safe_float(row[13]),
+                        safe_float(row[14]), safe_float(row[15]),
+                        safe_int(row[16])
+                    ))
+
+                if batch:
+                    cursor.executemany("""
+                        INSERT OR REPLACE INTO daily_k_data
+                        (date, code, open, high, low, close, preclose, volume, amount,
+                         turn, tradestatus, pctChg, peTTM, pbMRQ, psTTM, pcfNcfTTM, isST)
+                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    """, batch)
+                    total_records += len(batch)
+
+                time.sleep(REQUEST_DELAY)
+
+                if (i + 1) % 100 == 0:
+                    conn.commit()
+                    time.sleep(BATCH_DELAY)
+
+            except Exception as e:
+                failed_stocks.append(code)
+                continue
+
+        conn.commit()
+        print(f"\n更新完成: 共更新 {total_records} 条记录")
+        if failed_stocks:
+            print(f"失败: {len(failed_stocks)} 只")
+
+    finally:
+        conn.close()
+        bs.logout()
+        print("已登出 baostock")
+
+
 def main():
     args = parse_args()
+
+    # 增量更新模式
+    if args.recent is not None:
+        download_recent(args.recent, args.delay)
+        return
 
     # 确定要下载的年份
     years_to_download = []
@@ -598,10 +797,11 @@ def main():
         years_to_download = [args.year]
     else:
         # 默认下载所有年份 (跳过2024，因为已下载)
-        print("未指定年份，请使用 --year 或 --years 参数")
+        print("未指定年份，请使用 --year, --years 或 --recent 参数")
         print("示例:")
         print("  python download_a_stock_data.py --year 2023")
         print("  python download_a_stock_data.py --years 2020,2021,2022,2023,2025")
+        print("  python download_a_stock_data.py --recent 1  # 增量更新")
         print("  python download_a_stock_data.py --mode status --years 2020,2021,2022,2023,2024,2025")
         return
 

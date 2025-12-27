@@ -9,6 +9,7 @@ import { Loader2, CheckCircle, Clock, Info, XCircle, AlertCircle } from 'lucide-
 function StatusBadge({ status }: { status: string }) {
   const styles: Record<string, string> = {
     success: 'bg-green-500/10 text-green-500',
+    partial: 'bg-orange-500/10 text-orange-500',
     running: 'bg-blue-500/10 text-blue-500',
     queued: 'bg-yellow-500/10 text-yellow-500',
     failed: 'bg-red-500/10 text-red-500',
@@ -35,7 +36,9 @@ function EventLogItem({ event }: { event: { type: string; timestamp: string; dat
   const message = (event.data?.message as string) || event.type
   const recordsCount = event.data?.records_count as number | undefined
   const durationSeconds = event.data?.duration_seconds as number | undefined
-  const detail = event.data?.detail as string | undefined
+  // detail can be string or object, only render if it's a string
+  const rawDetail = event.data?.detail
+  const detail = typeof rawDetail === 'string' ? rawDetail : undefined
 
   // Build detail suffix
   const detailParts: string[] = []
@@ -92,11 +95,15 @@ export function SyncJobDetailView({ jobId }: SyncJobDetailViewProps) {
         </div>
         <div>
           <span className="text-muted-foreground">耗时: </span>
-          <span className="font-medium">{data.duration_seconds?.toFixed(1)}s</span>
+          <span className="font-medium">
+            {data.duration_seconds != null ? `${data.duration_seconds.toFixed(1)}s` : '-'}
+          </span>
         </div>
         <div>
           <span className="text-muted-foreground">导入: </span>
-          <span className="font-medium">{data.records_imported?.toLocaleString()} 条</span>
+          <span className="font-medium">
+            {data.records_imported != null ? `${data.records_imported.toLocaleString()} 条` : '-'}
+          </span>
         </div>
       </div>
 
