@@ -397,7 +397,18 @@ def transform_stock_data(df: pd.DataFrame, trading_date: date) -> Tuple[List[Dic
         # indicator_valuation 记录
         # 市值单位转换: akshare 返回的是元，需要转为亿元 (/100000000)
         total_mv = safe_decimal(row.get('总市值'))
-        circ_mv = safe_decimal(row.get('流通市值'))
+        circ_mv_raw = safe_decimal(row.get('流通市值'))
+
+        # 优先使用 akshare 返回的流通市值，如果没有则从 amount/turn 计算
+        # Formula: circ_mv = amount / (turn / 100) = amount * 100 / turn
+        amount = safe_decimal(row.get('成交额'))
+        turn = safe_decimal(row.get('换手率'))
+        if circ_mv_raw:
+            circ_mv = Decimal(str(circ_mv_raw / 100000000))  # 转为亿元
+        elif amount and turn and turn > 0:
+            circ_mv = Decimal(str((float(amount) * 100 / float(turn)) / 100000000))
+        else:
+            circ_mv = None
 
         valuation_record = {
             'code': code,
@@ -407,7 +418,7 @@ def transform_stock_data(df: pd.DataFrame, trading_date: date) -> Tuple[List[Dic
             'ps_ttm': None,  # akshare spot 不提供
             'pcf_ncf_ttm': None,  # akshare spot 不提供
             'total_mv': Decimal(str(total_mv / 100000000)) if total_mv else None,
-            'circ_mv': Decimal(str(circ_mv / 100000000)) if circ_mv else None,
+            'circ_mv': circ_mv,
             # 从名称判断 ST 状态
             'is_st': 1 if 'ST' in str(row.get('名称', '')) else 0,
         }
@@ -904,7 +915,7 @@ def transform_history_data(df: pd.DataFrame) -> Tuple[List[Dict], List[Dict]]:
     return market_daily_records, valuation_records
 
 
-def _fetch_stock_history_sync(code: str, start_str: str, end_str: str, missing_days_set: set) -> List[Dict]:
+def _fetch_stock_history_sync(code: str, start_str: str, end_str: str, missing_days_set: set) -> Tuple[List[Dict], List[Dict]]:
     """
     同步下载单只股票的历史数据（供并行调用）
 
@@ -915,11 +926,12 @@ def _fetch_stock_history_sync(code: str, start_str: str, end_str: str, missing_d
         missing_days_set: 需要的日期集合
 
     Returns:
-        市场数据记录列表
+        Tuple of (market_records, valuation_records)
     """
     import akshare as ak
 
-    records = []
+    market_records = []
+    valuation_records = []
     try:
         df = ak.stock_zh_a_hist(
             symbol=code,
@@ -930,13 +942,17 @@ def _fetch_stock_history_sync(code: str, start_str: str, end_str: str, missing_d
         )
 
         if df is not None and not df.empty:
+            db_code = convert_stock_code(code)
             for _, row in df.iterrows():
                 row_date = pd.to_datetime(row['日期']).date()
                 if row_date not in missing_days_set:
                     continue
 
-                records.append({
-                    'code': convert_stock_code(code),
+                amount = safe_decimal(row.get('成交额'))
+                turn = safe_decimal(row.get('换手率'))
+
+                market_records.append({
+                    'code': db_code,
                     'date': row_date,
                     'open': safe_decimal(row.get('开盘')),
                     'high': safe_decimal(row.get('最高')),
@@ -944,15 +960,28 @@ def _fetch_stock_history_sync(code: str, start_str: str, end_str: str, missing_d
                     'close': safe_decimal(row.get('收盘')),
                     'preclose': None,
                     'volume': safe_int(row.get('成交量')),
-                    'amount': safe_decimal(row.get('成交额')),
-                    'turn': safe_decimal(row.get('换手率')),
+                    'amount': amount,
+                    'turn': turn,
                     'pct_chg': safe_decimal(row.get('涨跌幅')),
                     'trade_status': 1,
+                })
+
+                # 计算 circ_mv: circ_mv = amount * 100 / turn (转为亿元)
+                circ_mv = None
+                if amount and turn and turn > 0:
+                    circ_mv = Decimal(str((float(amount) * 100 / float(turn)) / 100000000))
+
+                valuation_records.append({
+                    'code': db_code,
+                    'date': row_date,
+                    'total_mv': circ_mv,  # 使用 circ_mv 作为 total_mv 近似值
+                    'circ_mv': circ_mv,
+                    'is_st': 0,  # 历史数据无法判断 ST
                 })
     except Exception:
         pass  # 静默处理失败
 
-    return records
+    return market_records, valuation_records
 
 
 async def backfill_stock_history_with_progress(
@@ -966,6 +995,7 @@ async def backfill_stock_history_with_progress(
     优化策略：
     1. 每只股票只调用一次 API，一次性下载所有缺失日期
     2. 使用线程池并行下载，提高速度 10 倍
+    3. 同时保存 market_daily 和 indicator_valuation 数据
 
     Args:
         session: 数据库会话
@@ -997,7 +1027,9 @@ async def backfill_stock_history_with_progress(
     logger.info(f"Found {total_stocks} stocks to backfill ({len(missing_days)} days, {PARALLEL_WORKERS} workers)")
 
     total_records = 0
+    total_valuation_records = 0
     all_market_records = []
+    all_valuation_records = []
     completed_count = 0
     lock = asyncio.Lock()
 
@@ -1006,7 +1038,7 @@ async def backfill_stock_history_with_progress(
 
     async def process_batch(batch_codes: List[str], batch_start_idx: int):
         """处理一批股票的下载"""
-        nonlocal completed_count, all_market_records, total_records
+        nonlocal completed_count, all_market_records, all_valuation_records, total_records
 
         with ThreadPoolExecutor(max_workers=PARALLEL_WORKERS) as executor:
             # 并行下载这批股票
@@ -1020,9 +1052,10 @@ async def backfill_stock_history_with_progress(
             ]
 
             for i, future in enumerate(asyncio.as_completed(futures)):
-                records = await future
+                market_records, valuation_records = await future
                 async with lock:
-                    all_market_records.extend(records)
+                    all_market_records.extend(market_records)
+                    all_valuation_records.extend(valuation_records)
                     completed_count += 1
 
                     # 进度报告
@@ -1054,21 +1087,33 @@ async def backfill_stock_history_with_progress(
             count = await batch_insert_market_daily(session, all_market_records)
             total_records += count
             all_market_records = []
-            await session.commit()
-            logger.info(f"Batch committed: {count} records (total: {total_records})")
+
+        if all_valuation_records:
+            val_count = await batch_insert_valuation(session, all_valuation_records)
+            total_valuation_records += val_count
+            all_valuation_records = []
+
+        await session.commit()
+        logger.info(f"Batch committed: {total_records} market, {total_valuation_records} valuation records")
 
     # 写入剩余记录
     if all_market_records:
         count = await batch_insert_market_daily(session, all_market_records)
         total_records += count
-        await session.commit()
 
-    logger.info(f"Backfill complete: {total_records} records for {len(missing_days)} days")
+    if all_valuation_records:
+        val_count = await batch_insert_valuation(session, all_valuation_records)
+        total_valuation_records += val_count
+
+    await session.commit()
+
+    logger.info(f"Backfill complete: {total_records} market, {total_valuation_records} valuation records for {len(missing_days)} days")
 
     return {
         "status": "success",
         "message": f"补全了 {len(missing_days)} 个交易日的数据",
         "records": total_records,
+        "valuation_records": total_valuation_records,
         "days_backfilled": len(missing_days),
     }
 
@@ -1205,7 +1250,8 @@ def _fetch_index_history_sync(index_code: str, start_str: str, end_str: str, mis
                     'low': safe_decimal(row.get('low')),
                     'close': safe_decimal(row.get('close')),
                     'preclose': None,
-                    'volume': safe_int(row.get('volume')),
+                    # akshare stock_zh_index_daily_em 返回的成交量单位是"手"，需要转为"股" (*100)
+                    'volume': safe_int(row.get('volume')) * 100 if row.get('volume') else None,
                     'amount': safe_decimal(row.get('amount')),
                     'turn': None,
                     'pct_chg': None,
@@ -1343,11 +1389,22 @@ def transform_index_history(df: pd.DataFrame, index_code: str) -> List[Dict]:
 
 async def get_pg_index_max_date(session: AsyncSession) -> Optional[date]:
     """
-    获取 PostgreSQL 中指数的最新数据日期
+    获取所有指数中最小的最大日期，确保所有指数都被同步到相同日期。
+
+    使用 MIN(MAX(date)) 策略：
+    - 对每个指数取其最大日期
+    - 然后取所有指数中最小的那个日期
+    - 这样可以确保所有指数都被同步，而不是只检查 sh.000001
     """
     query = text("""
-        SELECT MAX(date) FROM market_daily
-        WHERE code = 'sh.000001'
+        SELECT MIN(max_date) as min_max_date
+        FROM (
+            SELECT code, MAX(date) as max_date
+            FROM market_daily
+            WHERE code LIKE 'sh.0%' OR code LIKE 'sz.39%'
+            GROUP BY code
+            HAVING COUNT(*) > 10
+        ) sub
     """)
     result = await session.execute(query)
     return result.scalar()
