@@ -1131,6 +1131,92 @@ def fetch_all_indices_batch() -> Tuple[pd.DataFrame, date]:
         raise ValueError("Failed to fetch any index data")
 
 
+def get_index_list() -> List[str]:
+    """
+    获取全部指数代码列表
+
+    Returns:
+        指数代码列表 (akshare格式，如 ['sh000001', 'sz399001', ...])
+    """
+    import akshare as ak
+
+    logger.info("Fetching index list...")
+    codes = []
+
+    try:
+        # 上证系列指数
+        df_sh = ak.stock_zh_index_spot_em(symbol='上证系列指数')
+        for code in df_sh['代码'].tolist():
+            codes.append(f"sh{str(code).zfill(6)}")
+        logger.info(f"Found {len(df_sh)} Shanghai indices")
+    except Exception as e:
+        logger.warning(f"Failed to get Shanghai index list: {e}")
+
+    try:
+        # 深证系列指数
+        df_sz = ak.stock_zh_index_spot_em(symbol='深证系列指数')
+        for code in df_sz['代码'].tolist():
+            codes.append(f"sz{str(code).zfill(6)}")
+        logger.info(f"Found {len(df_sz)} Shenzhen indices")
+    except Exception as e:
+        logger.warning(f"Failed to get Shenzhen index list: {e}")
+
+    logger.info(f"Total indices: {len(codes)}")
+    return codes
+
+
+def _fetch_index_history_sync(index_code: str, start_str: str, end_str: str, missing_days_set: set) -> List[Dict]:
+    """
+    同步下载单个指数的历史数据（供并行调用）
+
+    Args:
+        index_code: 指数代码 (akshare格式，如 'sh000001')
+        start_str: 开始日期 YYYYMMDD
+        end_str: 结束日期 YYYYMMDD
+        missing_days_set: 需要的日期集合
+
+    Returns:
+        市场数据记录列表
+    """
+    import akshare as ak
+
+    records = []
+    try:
+        df = ak.stock_zh_index_daily_em(
+            symbol=index_code,
+            start_date=start_str,
+            end_date=end_str
+        )
+
+        if df is not None and not df.empty:
+            # 转换代码格式: sh000001 -> sh.000001
+            db_code = f"{index_code[:2]}.{index_code[2:]}"
+
+            for _, row in df.iterrows():
+                row_date = pd.to_datetime(row['date']).date()
+                if row_date not in missing_days_set:
+                    continue
+
+                records.append({
+                    'code': db_code,
+                    'date': row_date,
+                    'open': safe_decimal(row.get('open')),
+                    'high': safe_decimal(row.get('high')),
+                    'low': safe_decimal(row.get('low')),
+                    'close': safe_decimal(row.get('close')),
+                    'preclose': None,
+                    'volume': safe_int(row.get('volume')),
+                    'amount': safe_decimal(row.get('amount')),
+                    'turn': None,
+                    'pct_chg': None,
+                    'trade_status': 1,
+                })
+    except Exception:
+        pass  # 静默处理失败
+
+    return records
+
+
 def fetch_index_history(index_code: str, start_date: date, end_date: date) -> pd.DataFrame:
     """
     获取单个指数的历史数据
@@ -1267,12 +1353,107 @@ async def get_pg_index_max_date(session: AsyncSession) -> Optional[date]:
     return result.scalar()
 
 
-async def sync_indices_batch(session: AsyncSession) -> Dict[str, Any]:
+async def backfill_index_history(
+    session: AsyncSession,
+    missing_days: List[date],
+    progress_callback: Callable[[str, int, Dict], Any] = None,
+) -> Dict[str, Any]:
     """
-    同步指数数据
+    并行下载指数历史数据
 
     Args:
         session: 数据库会话
+        missing_days: 需要补全的交易日列表
+        progress_callback: 进度回调函数
+
+    Returns:
+        补全结果
+    """
+    if not missing_days:
+        return {"status": "skip", "message": "没有需要补全的日期", "records": 0}
+
+    # 计算日期范围
+    start_date = min(missing_days)
+    end_date = max(missing_days)
+    start_str = start_date.strftime('%Y%m%d')
+    end_str = end_date.strftime('%Y%m%d')
+    missing_days_set = set(missing_days)
+
+    logger.info(f"Starting index backfill for {len(missing_days)} days: {start_date} to {end_date}")
+
+    # 获取指数列表
+    index_codes = get_index_list()
+    total_indices = len(index_codes)
+    logger.info(f"Found {total_indices} indices to backfill")
+
+    total_records = 0
+    all_records = []
+    completed_count = 0
+    lock = asyncio.Lock()
+
+    loop = asyncio.get_event_loop()
+
+    # 使用线程池并行下载
+    with ThreadPoolExecutor(max_workers=PARALLEL_WORKERS) as executor:
+        futures = [
+            loop.run_in_executor(
+                executor,
+                _fetch_index_history_sync,
+                code, start_str, end_str, missing_days_set
+            )
+            for code in index_codes
+        ]
+
+        for future in asyncio.as_completed(futures):
+            records = await future
+            async with lock:
+                all_records.extend(records)
+                completed_count += 1
+
+                # 每个指数都更新进度
+                if completed_count % PROGRESS_REPORT_INTERVAL == 0 or completed_count == total_indices:
+                    # 进度: 75-90% 区间给指数
+                    overall_pct = 75 + (completed_count / total_indices) * 15
+                    msg = f"指数下载中 [{completed_count}/{total_indices}]"
+
+                    if completed_count % 50 == 0 or completed_count == total_indices:
+                        logger.info(msg)
+
+                    if progress_callback:
+                        await progress_callback(msg, int(overall_pct), {
+                            "action": "index_backfill_progress",
+                            "indices_done": completed_count,
+                            "indices_total": total_indices,
+                            "days_count": len(missing_days),
+                            "date_range": f"{start_date} ~ {end_date}",
+                        })
+
+    # 批量写入
+    if all_records:
+        count = await batch_insert_market_daily(session, all_records)
+        total_records = count
+        await session.commit()
+
+    logger.info(f"Index backfill complete: {total_records} records for {len(missing_days)} days")
+
+    return {
+        "status": "success",
+        "message": f"指数补全了 {len(missing_days)} 个交易日的数据",
+        "records": total_records,
+        "days_backfilled": len(missing_days),
+    }
+
+
+async def sync_indices_batch(
+    session: AsyncSession,
+    progress_callback: Callable[[str, int, Dict], Any] = None,
+) -> Dict[str, Any]:
+    """
+    同步指数数据 - 使用历史 API（更稳定）
+
+    Args:
+        session: 数据库会话
+        progress_callback: 进度回调函数
 
     Returns:
         同步结果
@@ -1290,18 +1471,42 @@ async def sync_indices_batch(session: AsyncSession) -> Dict[str, Any]:
             "records": 0,
         }
 
-    # 2. 检查是否需要补全历史数据
+    # 2. 计算缺失的交易日
+    missing_days = get_trading_days_between(pg_max_date, latest_trading_day) if pg_max_date else [latest_trading_day]
+
+    # 3. 使用历史 API 并行下载所有指数
+    result = await backfill_index_history(session, missing_days, progress_callback)
+
+    return {
+        "status": result.get("status", "success"),
+        "message": f"指数数据同步完成",
+        "trading_date": str(latest_trading_day),
+        "market_daily_count": result.get("records", 0),
+        "total_indices": result.get("records", 0),
+    }
+
+
+async def _old_sync_indices_batch(session: AsyncSession) -> Dict[str, Any]:
+    """
+    旧版同步指数数据（保留备用）
+    """
+    pg_max_date = await get_pg_index_max_date(session)
+    latest_trading_day = get_latest_trading_day()
+
+    if pg_max_date and pg_max_date >= latest_trading_day:
+        return {
+            "status": "skip",
+            "message": f"指数数据已是最新",
+            "records": 0,
+        }
+
     missing_days = []
     if pg_max_date:
         missing_days = get_trading_days_between(pg_max_date, latest_trading_day)
 
     total_records = 0
 
-    # 3. 如果有缺失的历史数据，使用历史 API 补全主要指数
     if len(missing_days) > 1:
-        logger.info(f"Need to backfill {len(missing_days)} days of index data")
-
-        # 补全主要指数的历史数据
         main_indices = ['sh000001', 'sh000300', 'sz399001', 'sz399006']
 
         for index_code in main_indices:

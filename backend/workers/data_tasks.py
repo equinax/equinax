@@ -694,11 +694,21 @@ async def api_triggered_sync(ctx: Dict[str, Any], sync_record_id: str) -> Dict[s
                 await _publish_and_persist("progress", sync_record_id, {
                     "step": "sync_indices",
                     "progress": 75,
-                    "message": "正在同步指数数据 (批量模式)...",
+                    "message": "正在同步指数数据...",
                 }, session, sync_record)
 
+                # 指数进度回调
+                async def index_progress_callback(message: str, progress: int, detail: dict):
+                    """将指数同步进度实时推送到 SSE"""
+                    await _publish_only("progress", sync_record_id, {
+                        "step": "sync_indices",
+                        "progress": progress,
+                        "message": message,
+                        "detail": detail,
+                    })
+
                 try:
-                    index_result = await sync_indices_batch(session)
+                    index_result = await sync_indices_batch(session, index_progress_callback)
                     sync_record.details["steps"]["sync_indices"] = index_result
                     step_duration = (datetime.now() - step_start).total_seconds()
 
