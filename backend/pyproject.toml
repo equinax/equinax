@@ -24,6 +24,9 @@ dependencies = [
     "pandas>=2.1.4",
     "numpy>=1.26.3",
 
+    # High-performance data processing
+    "polars>=0.20.0",
+
     # Technical analysis (ta library uses pure Python)
     "ta>=0.11.0",
 

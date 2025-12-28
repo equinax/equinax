@@ -9,6 +9,7 @@ import {
   Database,
   RefreshCw,
   Settings,
+  Radar,
 } from 'lucide-react'
 import {
   Tooltip,
@@ -22,6 +23,7 @@ const navigation = [
   { name: '策略管理', href: '/strategies', icon: Code2 },
   { name: '回测执行', href: '/backtest', icon: PlayCircle },
   { name: '结果分析', href: '/results', icon: BarChart3 },
+  { name: 'Alpha Radar', href: '/alpha-radar', icon: Radar },
   { name: '市场发现', href: '/universe', icon: Database },
   { name: '数据同步', href: '/data-sync', icon: RefreshCw },
 ]

@@ -2,7 +2,19 @@
 
 from fastapi import APIRouter
 
-from app.api.v1 import strategies, backtests, stocks, auth, stats, pools, analytics, universe, indices, data_sync
+from app.api.v1 import (
+    strategies,
+    backtests,
+    stocks,
+    auth,
+    stats,
+    pools,
+    analytics,
+    universe,
+    indices,
+    data_sync,
+    alpha_radar,
+)
 
 api_router = APIRouter()
 
@@ -17,3 +29,4 @@ api_router.include_router(analytics.router, prefix="/analytics", tags=["Analytic
 api_router.include_router(universe.router, prefix="/universe", tags=["Universe Cockpit"])
 api_router.include_router(indices.router, prefix="/indices", tags=["Indices"])
 api_router.include_router(data_sync.router, prefix="/data-sync", tags=["Data Sync"])
+api_router.include_router(alpha_radar.router, prefix="/alpha-radar", tags=["Alpha Radar"])

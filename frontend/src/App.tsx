@@ -12,6 +12,7 @@ import UniverseCockpitPage from '@/pages/UniverseCockpitPage'
 import UniverseDetailPage from '@/pages/UniverseDetailPage'
 import SettingsPage from '@/pages/SettingsPage'
 import DataSyncPage from '@/pages/DataSyncPage'
+import AlphaRadarPage from '@/pages/AlphaRadarPage'
 
 function App() {
   return (
@@ -30,6 +31,7 @@ function App() {
           <Route path="universe/:code" element={<UniverseDetailPage />} />
           <Route path="settings" element={<SettingsPage />} />
           <Route path="data-sync" element={<DataSyncPage />} />
+          <Route path="alpha-radar" element={<AlphaRadarPage />} />
         </Route>
       </Routes>
     </ThemeProvider>
