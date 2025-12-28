@@ -5,7 +5,7 @@ import {
   ChevronLeft,
   ChevronRight,
 } from 'lucide-react'
-import { format, subDays, startOfMonth, isSameDay, getDate } from 'date-fns'
+import { format, subDays, startOfMonth, isSameDay, getDate, getMonth } from 'date-fns'
 import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
 import { cn } from '@/lib/utils'
@@ -46,6 +46,23 @@ function getMarketChangeStyle(change: number | null | undefined): React.CSSPrope
 
   return {
     backgroundColor: `hsl(var(${cssVar}) / ${opacity}%)`,
+  }
+}
+
+// Selected state: stronger saturation background
+function getSelectedStyle(change: number | null | undefined): React.CSSProperties {
+  if (change === null || change === undefined || change === 0) {
+    // Neutral selected - use primary color
+    return {
+      backgroundColor: `hsl(var(--primary))`,
+    }
+  }
+
+  // 涨红跌绿: full saturation for selected
+  const cssVar = change > 0 ? '--profit' : '--loss'
+
+  return {
+    backgroundColor: `hsl(var(${cssVar}))`,
   }
 }
 
@@ -132,7 +149,7 @@ export function TimeController({
 
   return (
     <Card className="p-2">
-      <div className="flex items-center gap-2">
+      <div className="flex items-center gap-1">
         {/* Mode Toggle */}
         <div className="flex items-center p-0.5 bg-muted rounded-md shrink-0">
           <Button
@@ -161,8 +178,6 @@ export function TimeController({
           </Button>
         </div>
 
-        <div className="h-4 w-px bg-border shrink-0" />
-
         {mode === 'snapshot' ? (
           <>
             {/* Previous page button */}
@@ -176,45 +191,60 @@ export function TimeController({
               <ChevronLeft className="h-4 w-4" />
             </Button>
 
-            {/* Day Cells - Heatmap Style - Fill entire width */}
-            <div className="flex-1 grid gap-0.5 overflow-hidden" style={{ gridTemplateColumns: `repeat(${DAYS_TO_SHOW}, 1fr)` }}>
-              {visibleDays.map((day) => {
-                const dateStr = format(day, 'yyyy-MM-dd')
-                const dayInfo = dateInfoMap.get(dateStr)
-                const isTradingDay = dayInfo?.isTradingDay ?? false
-                const marketChange = dayInfo?.marketChange ?? null
-                const isSelected = selectedDate ? isSameDay(selectedDate, day) : isSameDay(day, today)
-                const isToday = isSameDay(day, today)
-                const dayNum = getDate(day)
+            {/* Day Cells - Heatmap Style - Fill entire width - no gap with arrows */}
+            <div className="flex-1 relative -mx-1">
+              {/* Date cells row */}
+              <div className="grid h-full" style={{ gridTemplateColumns: `repeat(${DAYS_TO_SHOW}, 1fr)` }}>
+                {visibleDays.map((day) => {
+                  const dateStr = format(day, 'yyyy-MM-dd')
+                  const dayInfo = dateInfoMap.get(dateStr)
+                  const isTradingDay = dayInfo?.isTradingDay ?? false
+                  const marketChange = dayInfo?.marketChange ?? null
+                  const isSelected = selectedDate ? isSameDay(selectedDate, day) : isSameDay(day, today)
+                  const isToday = isSameDay(day, today)
+                  const dayNum = getDate(day)
+                  const isFirstOfMonth = dayNum === 1
+                  const isFirstOfYear = isFirstOfMonth && getMonth(day) === 0
 
-                const marketStyle = isTradingDay ? getMarketChangeStyle(marketChange) : undefined
+                  const marketStyle = isTradingDay ? getMarketChangeStyle(marketChange) : undefined
 
-                return (
-                  <button
-                    key={day.toISOString()}
-                    onClick={() => isTradingDay && onDateChange(day)}
-                    disabled={!isTradingDay}
-                    style={marketStyle}
-                    className={cn(
-                      'aspect-square rounded-sm text-[10px] font-medium transition-all',
-                      'flex items-center justify-center min-w-0',
-                      // Non-trading day style
-                      !isTradingDay && 'bg-muted/30 text-muted-foreground/40 cursor-not-allowed',
-                      // Trading day without market change (flat/平盘)
-                      isTradingDay && !marketStyle && 'bg-muted/50',
-                      // Hover for trading days
-                      isTradingDay && 'hover:ring-1 hover:ring-primary/50',
-                      // Selected state - prominent ring
-                      isSelected && isTradingDay && 'ring-2 ring-primary ring-offset-1 ring-offset-background font-semibold z-10',
-                      // Today indicator (if not selected)
-                      !isSelected && isToday && isTradingDay && 'ring-1 ring-primary/30',
-                    )}
-                    title={`${format(day, 'yyyy-MM-dd (EEEE)')}${isTradingDay ? (marketChange !== null ? ` ${marketChange > 0 ? '+' : ''}${marketChange.toFixed(2)}%` : '') : ' (非交易日)'}`}
-                  >
-                    {dayNum}
-                  </button>
-                )
-              })}
+                  // For selected state: stronger saturation background + light text
+                  const selectedStyle = isSelected && isTradingDay ? getSelectedStyle(marketChange) : undefined
+
+                  return (
+                    <div key={day.toISOString()} className="relative flex items-center">
+                      <button
+                        onClick={() => isTradingDay && onDateChange(day)}
+                        disabled={!isTradingDay}
+                        style={selectedStyle || marketStyle}
+                        className={cn(
+                          'w-full aspect-square text-[10px] font-medium transition-all',
+                          'flex items-center justify-center',
+                          // Non-trading day style
+                          !isTradingDay && 'bg-muted/30 text-muted-foreground/40 cursor-not-allowed',
+                          // Trading day without market change (flat/平盘)
+                          isTradingDay && !marketStyle && !selectedStyle && 'bg-muted/50',
+                          // Hover for trading days
+                          isTradingDay && 'hover:brightness-110',
+                          // Selected state - light text
+                          isSelected && isTradingDay && 'text-white font-semibold',
+                          // Today indicator (if not selected)
+                          !isSelected && isToday && isTradingDay && 'ring-1 ring-primary/50 ring-inset',
+                        )}
+                        title={`${format(day, 'yyyy-MM-dd (EEEE)')}${isTradingDay ? (marketChange !== null ? ` ${marketChange > 0 ? '+' : ''}${marketChange.toFixed(2)}%` : '') : ' (非交易日)'}`}
+                      >
+                        {dayNum}
+                      </button>
+                      {/* Month label - positioned absolutely below */}
+                      {isFirstOfMonth && (
+                        <span className="absolute -bottom-3 left-0 text-[8px] text-muted-foreground whitespace-nowrap">
+                          {isFirstOfYear ? format(day, 'yy/M') : format(day, 'M月')}
+                        </span>
+                      )}
+                    </div>
+                  )
+                })}
+              </div>
             </div>
 
             {/* Next page button */}
