@@ -36,11 +36,9 @@ PARALLEL_WORKERS = 10
 # 交易日检测
 # =============================================================================
 
-def get_latest_trading_day() -> date:
+def _fetch_latest_trading_day_from_baostock() -> date:
     """
-    获取最近的交易日（今天或之前）
-
-    通过 baostock 查询交易日历，返回最近的交易日。
+    从 baostock 获取最近的交易日（内部函数，不带缓存）
     """
     import baostock as bs
 
@@ -73,6 +71,51 @@ def get_latest_trading_day() -> date:
 
     finally:
         bs.logout()
+
+
+def get_latest_trading_day() -> date:
+    """
+    获取最近的交易日（今天或之前）
+
+    使用 Redis 缓存，每天只查询一次 baostock。
+    缓存 key 为当天日期，过期时间为当天结束。
+    """
+    import redis
+    from datetime import datetime
+    import os
+
+    today = date.today()
+    cache_key = f"latest_trading_day:{today.isoformat()}"
+
+    # 获取 Redis 连接
+    redis_url = os.environ.get("REDIS_URL", "redis://localhost:6379/0")
+
+    try:
+        r = redis.from_url(redis_url, decode_responses=True)
+
+        # 尝试从缓存获取
+        cached = r.get(cache_key)
+        if cached:
+            logger.debug(f"Using cached latest trading day: {cached}")
+            return date.fromisoformat(cached)
+
+        # 缓存未命中，从 baostock 获取
+        latest_trading_day = _fetch_latest_trading_day_from_baostock()
+
+        # 计算到今天结束的秒数
+        now = datetime.now()
+        end_of_day = datetime(now.year, now.month, now.day, 23, 59, 59)
+        ttl_seconds = int((end_of_day - now).total_seconds()) + 1
+
+        # 缓存结果
+        r.setex(cache_key, ttl_seconds, latest_trading_day.isoformat())
+        logger.info(f"Cached latest trading day: {latest_trading_day} (TTL: {ttl_seconds}s)")
+
+        return latest_trading_day
+
+    except redis.RedisError as e:
+        logger.warning(f"Redis error, falling back to direct baostock call: {e}")
+        return _fetch_latest_trading_day_from_baostock()
 
 
 def get_trading_days_between(start_date: date, end_date: date) -> List[date]:
