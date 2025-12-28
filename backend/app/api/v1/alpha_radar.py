@@ -56,6 +56,13 @@ class ValuationLevel(str, Enum):
 # Time Controller Schemas
 # ============================================
 
+class CalendarDayInfo(BaseModel):
+    """Calendar day information for heatmap display."""
+    date: datetime.date
+    is_trading_day: bool
+    market_change: Optional[float] = Field(default=None, description="上证指数涨跌幅 (%)")
+
+
 class TimeControllerRequest(BaseModel):
     """Request schema for time controller."""
     mode: TimeMode = TimeMode.SNAPSHOT
@@ -270,6 +277,57 @@ async def resolve_time_controller(
             earliest_available_date=earliest_date,
             latest_available_date=latest_date,
         )
+
+
+@router.get("/calendar", response_model=List[CalendarDayInfo])
+async def get_calendar(
+    start_date: datetime.date = Query(..., description="Start date for calendar range"),
+    end_date: datetime.date = Query(..., description="End date for calendar range"),
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    Get calendar data for date heatmap display.
+
+    Returns each day in the range with:
+    - is_trading_day: Whether the date is a trading day
+    - market_change: 上证指数涨跌幅 (%) for trading days, None for non-trading days
+    """
+    from sqlalchemy import text
+    from datetime import timedelta
+
+    # Query 上证指数 (sh.000001) data for the date range
+    result = await db.execute(
+        text("""
+            SELECT date, pct_chg
+            FROM market_daily
+            WHERE code = 'sh.000001'
+              AND date >= :start_date
+              AND date <= :end_date
+            ORDER BY date
+        """),
+        {"start_date": start_date, "end_date": end_date}
+    )
+    trading_data = {row[0]: row[1] for row in result.fetchall()}
+
+    # Generate all dates in range and mark trading days
+    calendar_days = []
+    current_date = start_date
+    while current_date <= end_date:
+        if current_date in trading_data:
+            calendar_days.append(CalendarDayInfo(
+                date=current_date,
+                is_trading_day=True,
+                market_change=float(trading_data[current_date]) if trading_data[current_date] is not None else None,
+            ))
+        else:
+            calendar_days.append(CalendarDayInfo(
+                date=current_date,
+                is_trading_day=False,
+                market_change=None,
+            ))
+        current_date += timedelta(days=1)
+
+    return calendar_days
 
 
 @router.get("/dashboard", response_model=DashboardResponse)

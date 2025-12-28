@@ -12,4 +12,5 @@ export const AssetTypeFilter = {
   all: "all",
   stock: "stock",
   etf: "etf",
+  index: "index",
 } as const;

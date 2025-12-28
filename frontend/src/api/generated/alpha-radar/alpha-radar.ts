@@ -14,7 +14,9 @@ import type {
   UseQueryResult,
 } from "@tanstack/react-query";
 import type {
+  CalendarDayInfo,
   DashboardResponse,
+  GetCalendarApiV1AlphaRadarCalendarGetParams,
   GetDashboardApiV1AlphaRadarDashboardGetParams,
   GetScreenerApiV1AlphaRadarScreenerGetParams,
   HTTPValidationError,
@@ -120,6 +122,196 @@ export const useResolveTimeControllerApiV1AlphaRadarTimeControllerPost = <
 
   return useMutation(mutationOptions);
 };
+/**
+ * Get calendar data for date heatmap display.
+
+Returns each day in the range with:
+- is_trading_day: Whether the date is a trading day
+- market_change: 上证指数涨跌幅 (%) for trading days, None for non-trading days
+ * @summary Get Calendar
+ */
+export const getCalendarApiV1AlphaRadarCalendarGet = (
+  params: GetCalendarApiV1AlphaRadarCalendarGetParams,
+  signal?: AbortSignal,
+) => {
+  return customInstance<CalendarDayInfo[]>({
+    url: `/api/v1/alpha-radar/calendar`,
+    method: "GET",
+    params,
+    signal,
+  });
+};
+
+export const getGetCalendarApiV1AlphaRadarCalendarGetQueryKey = (
+  params: GetCalendarApiV1AlphaRadarCalendarGetParams,
+) => {
+  return [`/api/v1/alpha-radar/calendar`, ...(params ? [params] : [])] as const;
+};
+
+export const getGetCalendarApiV1AlphaRadarCalendarGetInfiniteQueryOptions = <
+  TData = InfiniteData<
+    Awaited<ReturnType<typeof getCalendarApiV1AlphaRadarCalendarGet>>,
+    GetCalendarApiV1AlphaRadarCalendarGetParams["page"]
+  >,
+  TError = HTTPValidationError,
+>(
+  params: GetCalendarApiV1AlphaRadarCalendarGetParams,
+  options?: {
+    query?: Partial<
+      UseInfiniteQueryOptions<
+        Awaited<ReturnType<typeof getCalendarApiV1AlphaRadarCalendarGet>>,
+        TError,
+        TData,
+        Awaited<ReturnType<typeof getCalendarApiV1AlphaRadarCalendarGet>>,
+        QueryKey,
+        GetCalendarApiV1AlphaRadarCalendarGetParams["page"]
+      >
+    >;
+  },
+) => {
+  const { query: queryOptions } = options ?? {};
+
+  const queryKey =
+    queryOptions?.queryKey ??
+    getGetCalendarApiV1AlphaRadarCalendarGetQueryKey(params);
+
+  const queryFn: QueryFunction<
+    Awaited<ReturnType<typeof getCalendarApiV1AlphaRadarCalendarGet>>,
+    QueryKey,
+    GetCalendarApiV1AlphaRadarCalendarGetParams["page"]
+  > = ({ signal, pageParam }) =>
+    getCalendarApiV1AlphaRadarCalendarGet(
+      { ...params, page: pageParam || params?.["page"] },
+      signal,
+    );
+
+  return { queryKey, queryFn, ...queryOptions } as UseInfiniteQueryOptions<
+    Awaited<ReturnType<typeof getCalendarApiV1AlphaRadarCalendarGet>>,
+    TError,
+    TData,
+    Awaited<ReturnType<typeof getCalendarApiV1AlphaRadarCalendarGet>>,
+    QueryKey,
+    GetCalendarApiV1AlphaRadarCalendarGetParams["page"]
+  > & { queryKey: QueryKey };
+};
+
+export type GetCalendarApiV1AlphaRadarCalendarGetInfiniteQueryResult =
+  NonNullable<
+    Awaited<ReturnType<typeof getCalendarApiV1AlphaRadarCalendarGet>>
+  >;
+export type GetCalendarApiV1AlphaRadarCalendarGetInfiniteQueryError =
+  HTTPValidationError;
+
+/**
+ * @summary Get Calendar
+ */
+export const useGetCalendarApiV1AlphaRadarCalendarGetInfinite = <
+  TData = InfiniteData<
+    Awaited<ReturnType<typeof getCalendarApiV1AlphaRadarCalendarGet>>,
+    GetCalendarApiV1AlphaRadarCalendarGetParams["page"]
+  >,
+  TError = HTTPValidationError,
+>(
+  params: GetCalendarApiV1AlphaRadarCalendarGetParams,
+  options?: {
+    query?: Partial<
+      UseInfiniteQueryOptions<
+        Awaited<ReturnType<typeof getCalendarApiV1AlphaRadarCalendarGet>>,
+        TError,
+        TData,
+        Awaited<ReturnType<typeof getCalendarApiV1AlphaRadarCalendarGet>>,
+        QueryKey,
+        GetCalendarApiV1AlphaRadarCalendarGetParams["page"]
+      >
+    >;
+  },
+): UseInfiniteQueryResult<TData, TError> & { queryKey: QueryKey } => {
+  const queryOptions =
+    getGetCalendarApiV1AlphaRadarCalendarGetInfiniteQueryOptions(
+      params,
+      options,
+    );
+
+  const query = useInfiniteQuery(queryOptions) as UseInfiniteQueryResult<
+    TData,
+    TError
+  > & { queryKey: QueryKey };
+
+  query.queryKey = queryOptions.queryKey;
+
+  return query;
+};
+
+export const getGetCalendarApiV1AlphaRadarCalendarGetQueryOptions = <
+  TData = Awaited<ReturnType<typeof getCalendarApiV1AlphaRadarCalendarGet>>,
+  TError = HTTPValidationError,
+>(
+  params: GetCalendarApiV1AlphaRadarCalendarGetParams,
+  options?: {
+    query?: Partial<
+      UseQueryOptions<
+        Awaited<ReturnType<typeof getCalendarApiV1AlphaRadarCalendarGet>>,
+        TError,
+        TData
+      >
+    >;
+  },
+) => {
+  const { query: queryOptions } = options ?? {};
+
+  const queryKey =
+    queryOptions?.queryKey ??
+    getGetCalendarApiV1AlphaRadarCalendarGetQueryKey(params);
+
+  const queryFn: QueryFunction<
+    Awaited<ReturnType<typeof getCalendarApiV1AlphaRadarCalendarGet>>
+  > = ({ signal }) => getCalendarApiV1AlphaRadarCalendarGet(params, signal);
+
+  return { queryKey, queryFn, ...queryOptions } as UseQueryOptions<
+    Awaited<ReturnType<typeof getCalendarApiV1AlphaRadarCalendarGet>>,
+    TError,
+    TData
+  > & { queryKey: QueryKey };
+};
+
+export type GetCalendarApiV1AlphaRadarCalendarGetQueryResult = NonNullable<
+  Awaited<ReturnType<typeof getCalendarApiV1AlphaRadarCalendarGet>>
+>;
+export type GetCalendarApiV1AlphaRadarCalendarGetQueryError =
+  HTTPValidationError;
+
+/**
+ * @summary Get Calendar
+ */
+export const useGetCalendarApiV1AlphaRadarCalendarGet = <
+  TData = Awaited<ReturnType<typeof getCalendarApiV1AlphaRadarCalendarGet>>,
+  TError = HTTPValidationError,
+>(
+  params: GetCalendarApiV1AlphaRadarCalendarGetParams,
+  options?: {
+    query?: Partial<
+      UseQueryOptions<
+        Awaited<ReturnType<typeof getCalendarApiV1AlphaRadarCalendarGet>>,
+        TError,
+        TData
+      >
+    >;
+  },
+): UseQueryResult<TData, TError> & { queryKey: QueryKey } => {
+  const queryOptions = getGetCalendarApiV1AlphaRadarCalendarGetQueryOptions(
+    params,
+    options,
+  );
+
+  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
+    queryKey: QueryKey;
+  };
+
+  query.queryKey = queryOptions.queryKey;
+
+  return query;
+};
+
 /**
  * Get market regime dashboard with 4 key metrics.
 
