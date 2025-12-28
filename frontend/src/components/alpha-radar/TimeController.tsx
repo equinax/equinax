@@ -1,16 +1,19 @@
-import { useMemo, useState, useRef, useCallback } from 'react'
+import { useMemo, useState, useRef, useCallback, useEffect } from 'react'
 import {
   Calendar,
   CalendarRange,
   ChevronLeft,
   ChevronRight,
 } from 'lucide-react'
-import { format, subDays, startOfMonth, isSameDay, getDate, getMonth } from 'date-fns'
+import { format, subDays, startOfMonth, isSameDay, getDate, getMonth, differenceInDays, parseISO, isAfter } from 'date-fns'
 import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
 import { cn } from '@/lib/utils'
-import type { TimeMode } from '@/api/generated/schemas'
-import { useGetCalendarApiV1AlphaRadarCalendarGet } from '@/api/generated/alpha-radar/alpha-radar'
+import type { TimeMode, CalendarDayInfo } from '@/api/generated/schemas'
+import {
+  useGetCalendarApiV1AlphaRadarCalendarGet,
+  useResolveTimeControllerApiV1AlphaRadarTimeControllerPost,
+} from '@/api/generated/alpha-radar/alpha-radar'
 
 interface TimeControllerProps {
   mode: TimeMode
@@ -76,6 +79,11 @@ function getSelectedStyle(change: number | null | undefined): React.CSSPropertie
   }
 }
 
+// Initial load batch size in days
+const INITIAL_LOAD_DAYS = 365
+const LOAD_MORE_DAYS = 365
+const LOAD_THRESHOLD_DAYS = 30 // Load more when this many days from boundary
+
 export function TimeController({
   mode,
   onModeChange,
@@ -84,10 +92,16 @@ export function TimeController({
   dateRange,
   onDateRangeChange,
 }: TimeControllerProps) {
-  const today = new Date()
+  const today = useMemo(() => new Date(), [])
 
   // Scroll offset in pixels (positive = showing earlier dates)
   const [scrollOffset, setScrollOffset] = useState(0)
+
+  // Track how far back we've loaded calendar data
+  const [loadedStartDate, setLoadedStartDate] = useState(() => subDays(today, INITIAL_LOAD_DAYS))
+
+  // Accumulated calendar data from all loads
+  const [allCalendarData, setAllCalendarData] = useState<CalendarDayInfo[]>([])
 
   // Drag state
   const dragRef = useRef<{
@@ -102,11 +116,42 @@ export function TimeController({
   const containerRef = useRef<HTMLDivElement>(null)
   const animationRef = useRef<number | null>(null)
 
+  // Get earliest available date from backend
+  const { mutate: fetchTimeController, data: timeControllerData } = useResolveTimeControllerApiV1AlphaRadarTimeControllerPost()
+
+  // Fetch time controller info on mount to get earliest_available_date
+  useEffect(() => {
+    fetchTimeController({ data: { mode: 'snapshot' } })
+  }, [fetchTimeController])
+
+  // Parse earliest available date
+  const earliestAvailableDate = useMemo(() => {
+    if (!timeControllerData?.earliest_available_date) return null
+    return parseISO(timeControllerData.earliest_available_date)
+  }, [timeControllerData])
+
   // Get cell width for calculations
   const getCellWidth = useCallback(() => {
     if (!containerRef.current) return 24
     return containerRef.current.offsetWidth / DAYS_TO_SHOW
   }, [])
+
+  // Calculate total available days (from today to earliest available date)
+  const totalAvailableDays = useMemo(() => {
+    if (!earliestAvailableDate) return INITIAL_LOAD_DAYS
+    return differenceInDays(today, earliestAvailableDate)
+  }, [earliestAvailableDate, today])
+
+  // Maximum scroll offset based on actual data availability
+  const maxScrollOffset = useMemo(() => {
+    const cellWidth = getCellWidth()
+    return Math.max(0, (totalAvailableDays - DAYS_TO_SHOW) * cellWidth)
+  }, [getCellWidth, totalAvailableDays])
+
+  // Clamp scroll offset to valid range
+  const clampOffset = useCallback((offset: number) => {
+    return Math.max(0, Math.min(offset, maxScrollOffset))
+  }, [maxScrollOffset])
 
   // Calculate days offset from scroll position
   const daysOffset = useMemo(() => {
@@ -115,91 +160,157 @@ export function TimeController({
   }, [scrollOffset, getCellWidth])
 
   // Sub-pixel offset for smooth visual scrolling
-  // Positive scroll offset means showing earlier dates, so we translate left (negative)
   const subPixelOffset = useMemo(() => {
     const cellWidth = getCellWidth()
     return (scrollOffset % cellWidth)
   }, [scrollOffset, getCellWidth])
 
-  // Calculate date range for calendar API - load extra days for smooth scrolling
-  const calendarParams = useMemo(() => {
-    const buffer = 30 // Extra days to load for smooth scrolling
-    const endDate = subDays(today, Math.max(0, daysOffset - buffer))
-    const startDate = subDays(today, daysOffset + DAYS_TO_SHOW + buffer)
-    return {
-      start_date: format(startDate, 'yyyy-MM-dd'),
-      end_date: format(endDate, 'yyyy-MM-dd'),
-    }
-  }, [daysOffset])
+  // Initial calendar data load
+  const initialCalendarParams = useMemo(() => ({
+    start_date: format(subDays(today, INITIAL_LOAD_DAYS), 'yyyy-MM-dd'),
+    end_date: format(today, 'yyyy-MM-dd'),
+  }), [today])
 
-  // Fetch calendar data
-  const { data: calendarData } = useGetCalendarApiV1AlphaRadarCalendarGet(calendarParams)
+  const { data: initialCalendarData } = useGetCalendarApiV1AlphaRadarCalendarGet(initialCalendarParams, {
+    query: {
+      staleTime: 1000 * 60 * 60,
+      gcTime: 1000 * 60 * 60 * 2,
+    },
+  })
+
+  // Calculate dynamic load params when approaching boundary
+  const shouldLoadMore = useMemo(() => {
+    if (!earliestAvailableDate) return false
+    // Check if we're approaching the boundary of loaded data
+    const daysFromLoadedStart = differenceInDays(today, loadedStartDate)
+    const currentViewStart = daysOffset + DAYS_TO_SHOW
+    return currentViewStart > daysFromLoadedStart - LOAD_THRESHOLD_DAYS &&
+      isAfter(loadedStartDate, earliestAvailableDate)
+  }, [daysOffset, loadedStartDate, earliestAvailableDate, today])
+
+  // Load more params
+  const loadMoreParams = useMemo(() => {
+    if (!shouldLoadMore || !earliestAvailableDate) return null
+    // Load another batch, but don't go past earliest available
+    const newStartDate = subDays(loadedStartDate, LOAD_MORE_DAYS)
+    const actualStartDate = isAfter(newStartDate, earliestAvailableDate) ? newStartDate : earliestAvailableDate
+    return {
+      start_date: format(actualStartDate, 'yyyy-MM-dd'),
+      end_date: format(subDays(loadedStartDate, 1), 'yyyy-MM-dd'),
+    }
+  }, [shouldLoadMore, loadedStartDate, earliestAvailableDate])
+
+  // Fetch more data when needed
+  const { data: moreCalendarData } = useGetCalendarApiV1AlphaRadarCalendarGet(
+    loadMoreParams ?? { start_date: '', end_date: '' },
+    {
+      query: {
+        enabled: !!loadMoreParams,
+        staleTime: 1000 * 60 * 60,
+        gcTime: 1000 * 60 * 60 * 2,
+      },
+    }
+  )
+
+  // Merge initial data
+  useEffect(() => {
+    if (initialCalendarData && allCalendarData.length === 0) {
+      setAllCalendarData(initialCalendarData)
+    }
+  }, [initialCalendarData, allCalendarData.length])
+
+  // Merge additional data when loaded
+  useEffect(() => {
+    if (moreCalendarData && moreCalendarData.length > 0 && loadMoreParams) {
+      setAllCalendarData(prev => {
+        // Prepend new data (older dates) to existing data
+        const existingDates = new Set(prev.map(d => d.date))
+        const newData = moreCalendarData.filter(d => !existingDates.has(d.date))
+        return [...newData, ...prev]
+      })
+      // Update loaded start date
+      setLoadedStartDate(parseISO(loadMoreParams.start_date))
+    }
+  }, [moreCalendarData, loadMoreParams])
 
   // Build date map for quick lookup
   const dateInfoMap = useMemo(() => {
     const map = new Map<string, { isTradingDay: boolean; marketChange: number | null }>()
-    if (calendarData) {
-      for (const day of calendarData) {
-        map.set(day.date, {
-          isTradingDay: day.is_trading_day,
-          marketChange: day.market_change ?? null,
-        })
-      }
+    for (const day of allCalendarData) {
+      map.set(day.date, {
+        isTradingDay: day.is_trading_day,
+        marketChange: day.market_change ?? null,
+      })
     }
     return map
-  }, [calendarData])
+  }, [allCalendarData])
 
   // Generate days array based on scroll offset
+  // Render one extra day on each side for smooth scrolling without gaps
   const visibleDays = useMemo(() => {
     const days: Date[] = []
     const endDate = subDays(today, daysOffset)
-    for (let i = DAYS_TO_SHOW - 1; i >= 0; i--) {
-      days.push(subDays(endDate, i))
+    // Start one day earlier (extra on left), end one day later (extra on right, but clamped to today)
+    for (let i = DAYS_TO_SHOW; i >= -1; i--) {
+      const day = subDays(endDate, i)
+      // Don't add future dates
+      if (day <= today) {
+        days.push(day)
+      }
     }
     return days
   }, [daysOffset])
 
   // Smooth scroll with momentum animation
-  const animateMomentum = useCallback((velocity: number, isDraggingActive: boolean) => {
+  const animateMomentum = useCallback((initialVelocity: number, isDraggingActive: boolean) => {
     const friction = 0.95
     const minVelocity = 0.5
+    let velocity = initialVelocity
+    let shouldStop = false
 
     const animate = () => {
-      if (Math.abs(velocity) < minVelocity) {
+      if (Math.abs(velocity) < minVelocity || shouldStop) {
         animationRef.current = null
         return
       }
 
-      if (isDraggingActive) {
-        // For active day dragging - momentum continues in drag direction
-        // Positive velocity (was dragging right) → continue selecting later dates
-        // Handled by the decay - selection stays where it was dragged to
-      } else {
+      if (!isDraggingActive) {
         // For timeline scrolling, update scroll offset
-        // Positive velocity (was dragging right) → continue showing earlier dates (increase offset)
-        setScrollOffset(prev => Math.max(0, prev + velocity))
+        setScrollOffset(prev => {
+          const newOffset = clampOffset(prev + velocity)
+          // Stop momentum if we hit a boundary
+          if (newOffset === prev || newOffset === 0 || newOffset === maxScrollOffset) {
+            shouldStop = true
+          }
+          return newOffset
+        })
       }
 
       velocity *= friction
-      animationRef.current = requestAnimationFrame(() => animate())
+      if (!shouldStop) {
+        animationRef.current = requestAnimationFrame(animate)
+      } else {
+        animationRef.current = null
+      }
     }
 
     animate()
-  }, [getCellWidth, selectedDate, today, dateInfoMap, onDateChange])
+  }, [clampOffset, maxScrollOffset])
 
   // Navigate to previous page (earlier dates)
   const handlePrevPage = () => {
     const cellWidth = getCellWidth()
-    setScrollOffset(prev => prev + cellWidth * 15)
+    setScrollOffset(prev => clampOffset(prev + cellWidth * 15))
   }
 
   // Navigate to next page (more recent dates)
   const handleNextPage = () => {
     const cellWidth = getCellWidth()
-    setScrollOffset(prev => Math.max(0, prev - cellWidth * 15))
+    setScrollOffset(prev => clampOffset(prev - cellWidth * 15))
   }
 
-  // Check if we can go to next page (already at most recent)
+  // Check navigation availability
+  const canGoPrev = scrollOffset < maxScrollOffset
   const canGoNext = scrollOffset > 0
 
   // Handle drag start
@@ -267,9 +378,9 @@ export function TimeController({
       // Drag right (positive deltaX) → show earlier dates (increase offset)
       // Drag left (negative deltaX) → show more recent dates (decrease offset)
       const newOffset = dragRef.current.startScrollOffset + deltaX
-      setScrollOffset(Math.max(0, newOffset))
+      setScrollOffset(clampOffset(newOffset))
     }
-  }, [visibleDays, dateInfoMap, onDateChange, getCellWidth])
+  }, [visibleDays, dateInfoMap, onDateChange, getCellWidth, clampOffset])
 
   // Handle drag end with momentum
   const handleDragEnd = useCallback(() => {
@@ -343,6 +454,7 @@ export function TimeController({
               size="icon"
               className="h-7 w-7 shrink-0"
               onClick={handlePrevPage}
+              disabled={!canGoPrev}
               title="更早日期"
             >
               <ChevronLeft className="h-4 w-4" />
@@ -358,12 +470,12 @@ export function TimeController({
               onTouchMove={handleDragMove}
               onTouchEnd={handleDragEnd}
             >
-              {/* Date cells row */}
+              {/* Date cells row - use fixed cell width for smooth scrolling */}
+              {/* Start with extra day off-screen left, then slide in as scrollOffset increases */}
               <div
-                className="grid h-full transition-transform duration-75"
+                className="flex h-full transition-transform duration-75"
                 style={{
-                  gridTemplateColumns: `repeat(${DAYS_TO_SHOW}, 1fr)`,
-                  transform: `translateX(${subPixelOffset}px)`,
+                  transform: `translateX(calc(${subPixelOffset}px - ${100 / DAYS_TO_SHOW}%))`,
                 }}
               >
                 {visibleDays.map((day) => {
@@ -383,7 +495,11 @@ export function TimeController({
                   const selectedStyle = isSelected && isTradingDay ? getSelectedStyle(marketChange) : undefined
 
                   return (
-                    <div key={day.toISOString()} className="relative flex items-center">
+                    <div
+                      key={day.toISOString()}
+                      className="relative flex items-center shrink-0 "
+                      style={{ width: `${100 / DAYS_TO_SHOW}%` }}
+                    >
                       <button
                         onClick={() => isTradingDay && onDateChange(day)}
                         onMouseDown={(e) => handleDragStart(e, isSelected)}
