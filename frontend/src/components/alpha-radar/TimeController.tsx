@@ -49,20 +49,30 @@ function getMarketChangeStyle(change: number | null | undefined): React.CSSPrope
   }
 }
 
-// Selected state: stronger saturation background
+// Selected state: glass morphism effect
 function getSelectedStyle(change: number | null | undefined): React.CSSProperties {
+  // Base glass effect
+  const glassBase: React.CSSProperties = {
+    backdropFilter: 'blur(8px) saturate(180%)',
+    WebkitBackdropFilter: 'blur(8px) saturate(180%)',
+    boxShadow: '0 4px 16px rgba(0, 0, 0, 0.15), inset 0 1px 1px rgba(255, 255, 255, 0.3)',
+    border: '1px solid rgba(255, 255, 255, 0.2)',
+  }
+
   if (change === null || change === undefined || change === 0) {
-    // Neutral selected - use primary color
+    // Neutral selected - tinted glass
     return {
-      backgroundColor: `hsl(var(--primary))`,
+      ...glassBase,
+      backgroundColor: 'hsl(var(--primary) / 70%)',
     }
   }
 
-  // 涨红跌绿: full saturation for selected
+  // 涨红跌绿: tinted glass with profit/loss color
   const cssVar = change > 0 ? '--profit' : '--loss'
 
   return {
-    backgroundColor: `hsl(var(${cssVar}))`,
+    ...glassBase,
+    backgroundColor: `hsl(var(${cssVar}) / 75%)`,
   }
 }
 
@@ -226,8 +236,8 @@ export function TimeController({
                           isTradingDay && !marketStyle && !selectedStyle && 'bg-muted/50',
                           // Hover for trading days
                           isTradingDay && 'hover:brightness-110',
-                          // Selected state - light text
-                          isSelected && isTradingDay && 'text-white font-semibold',
+                          // Selected state - glass effect + taller
+                          isSelected && isTradingDay && 'text-white font-semibold !aspect-auto !h-[120%] !-my-[10%] z-10 rounded-sm',
                           // Today indicator (if not selected)
                           !isSelected && isToday && isTradingDay && 'ring-1 ring-primary/50 ring-inset',
                         )}
