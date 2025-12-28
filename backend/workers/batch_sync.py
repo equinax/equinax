@@ -1760,12 +1760,14 @@ async def batch_insert_adjust_factors(
     return len(records)
 
 
-def _fetch_adjust_factor_sync(code: str, start_date: str) -> List[Dict]:
+def _fetch_adjust_factor_batch(codes: List[str], start_date: str) -> List[Dict]:
     """
-    同步获取单只股票的复权因子（供并行调用）
+    批量获取复权因子（使用单个 baostock 会话）
+
+    baostock 不是线程安全的，所以使用单线程顺序处理。
 
     Args:
-        code: 股票代码 (sh.xxxxxx 或 sz.xxxxxx 格式)
+        codes: 股票代码列表 (sh.xxxxxx 或 sz.xxxxxx 格式)
         start_date: 开始日期 YYYY-MM-DD
 
     Returns:
@@ -1773,31 +1775,36 @@ def _fetch_adjust_factor_sync(code: str, start_date: str) -> List[Dict]:
     """
     import baostock as bs
 
-    records = []
+    all_records = []
     try:
         lg = bs.login()
         if lg.error_code != '0':
-            return records
+            logger.error(f"baostock login failed: {lg.error_msg}")
+            return all_records
 
-        rs = bs.query_adjust_factor(code=code, start_date=start_date)
+        for code in codes:
+            try:
+                rs = bs.query_adjust_factor(code=code, start_date=start_date)
 
-        while (rs.error_code == '0') and rs.next():
-            row = rs.get_row_data()
-            # row: [code, dividOperateDate, foreAdjustFactor, backAdjustFactor, adjustFactor]
-            if len(row) >= 5:
-                records.append({
-                    'code': row[0],
-                    'divid_operate_date': date.fromisoformat(row[1]),
-                    'fore_adjust_factor': Decimal(row[2]) if row[2] else None,
-                    'back_adjust_factor': Decimal(row[3]) if row[3] else None,
-                    'adjust_factor': Decimal(row[4]) if row[4] else None,
-                })
+                while (rs.error_code == '0') and rs.next():
+                    row = rs.get_row_data()
+                    # row: [code, dividOperateDate, foreAdjustFactor, backAdjustFactor, adjustFactor]
+                    if len(row) >= 5:
+                        all_records.append({
+                            'code': row[0],
+                            'divid_operate_date': date.fromisoformat(row[1]),
+                            'fore_adjust_factor': Decimal(row[2]) if row[2] else None,
+                            'back_adjust_factor': Decimal(row[3]) if row[3] else None,
+                            'adjust_factor': Decimal(row[4]) if row[4] else None,
+                        })
+            except Exception as e:
+                logger.debug(f"Failed to fetch adjust factor for {code}: {e}")
 
         bs.logout()
     except Exception as e:
-        logger.debug(f"Failed to fetch adjust factor for {code}: {e}")
+        logger.error(f"baostock session error: {e}")
 
-    return records
+    return all_records
 
 
 async def sync_adjust_factors(
@@ -1851,54 +1858,35 @@ async def sync_adjust_factors(
     logger.info(f"Fetching adjust factors from {start_date}")
 
     total_records = 0
-    all_records = []
-    completed_count = 0
-    lock = asyncio.Lock()
-
     loop = asyncio.get_event_loop()
 
-    async def process_batch(batch_codes: List[str]):
-        """处理一批股票的下载"""
-        nonlocal completed_count, all_records, total_records
-
-        with ThreadPoolExecutor(max_workers=PARALLEL_WORKERS) as executor:
-            futures = [
-                loop.run_in_executor(
-                    executor,
-                    _fetch_adjust_factor_sync,
-                    code, start_date
-                )
-                for code in batch_codes
-            ]
-
-            for future in asyncio.as_completed(futures):
-                records = await future
-                async with lock:
-                    all_records.extend(records)
-                    completed_count += 1
-
-                    if completed_count % 100 == 0 or completed_count == total_stocks:
-                        pct = int(completed_count / total_stocks * 100)
-                        logger.info(f"Adjust factor progress: {completed_count}/{total_stocks}")
-
-                        if progress_callback:
-                            await progress_callback(
-                                f"复权因子 [{completed_count}/{total_stocks}]",
-                                pct,
-                                {"action": "adjust_factor_progress", "done": completed_count}
-                            )
-
-    # 分批处理
-    batch_size = 500
+    # 分批处理 - 使用单线程顺序处理以避免 baostock 线程安全问题
+    batch_size = 200  # 每批处理的股票数
     for batch_start in range(0, total_stocks, batch_size):
         batch_codes = stock_codes[batch_start:batch_start + batch_size]
-        await process_batch(batch_codes)
+        batch_end = min(batch_start + batch_size, total_stocks)
 
-        # 每批处理完后写入数据库
-        if all_records:
-            count = await batch_insert_adjust_factors(session, all_records)
+        # 在线程池中执行同步代码
+        records = await loop.run_in_executor(
+            None,
+            _fetch_adjust_factor_batch,
+            batch_codes, start_date
+        )
+
+        # 写入数据库
+        if records:
+            count = await batch_insert_adjust_factors(session, records)
             total_records += count
-            all_records = []
+
+        pct = int(batch_end / total_stocks * 100)
+        logger.info(f"Adjust factor progress: {batch_end}/{total_stocks} ({len(records)} records)")
+
+        if progress_callback:
+            await progress_callback(
+                f"复权因子 [{batch_end}/{total_stocks}]",
+                pct,
+                {"action": "adjust_factor_progress", "done": batch_end}
+            )
 
     await session.commit()
 
