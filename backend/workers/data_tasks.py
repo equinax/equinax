@@ -491,6 +491,7 @@ async def api_triggered_sync(ctx: Dict[str, Any], sync_record_id: str) -> Dict[s
         sync_stocks_batch,
         sync_etfs_batch,
         sync_indices_batch,
+        sync_adjust_factors,
         get_pg_max_date,
         get_pg_index_max_date,
         get_latest_trading_day,
@@ -791,6 +792,55 @@ async def api_triggered_sync(ctx: Dict[str, Any], sync_record_id: str) -> Dict[s
                     "duration_seconds": round(step_duration, 1),
                     "detail": "无新数据导入",
                     "message": "更新分类: 跳过 (无新数据)",
+                }, session, sync_record)
+
+            # Step 6: Adjust factor sync (for backtesting)
+            step_start = datetime.now()
+            adjust_factor_count = 0
+
+            await _publish_and_persist("progress", sync_record_id, {
+                "step": "adjust_factors",
+                "progress": 95,
+                "message": "正在同步复权因子...",
+            }, session, sync_record)
+
+            async def adjust_progress_callback(message: str, progress: int, detail: Dict):
+                await _publish_and_persist("progress", sync_record_id, {
+                    "step": "adjust_factors",
+                    "progress": 95 + int(progress * 0.04),  # 95-99%
+                    "message": message,
+                    "detail": detail,
+                })
+
+            try:
+                adjust_result = await sync_adjust_factors(session, adjust_progress_callback)
+                sync_record.details["steps"]["adjust_factors"] = adjust_result
+                step_duration = (datetime.now() - step_start).total_seconds()
+
+                adjust_factor_count = adjust_result.get("records", 0)
+
+                await _publish_and_persist("step_complete", sync_record_id, {
+                    "step": "adjust_factors",
+                    "status": adjust_result.get("status"),
+                    "records_count": adjust_factor_count,
+                    "duration_seconds": round(step_duration, 1),
+                    "detail": adjust_result.get("message", ""),
+                    "message": f"同步复权因子: {adjust_factor_count} 条 ({step_duration:.1f}s)",
+                }, session, sync_record)
+            except Exception as e:
+                step_duration = (datetime.now() - step_start).total_seconds()
+                error_msg = f"复权因子同步失败: {str(e)}"
+                step_errors.append(error_msg)
+                logger.warning(f"Adjust factor sync failed (continuing): {e}")
+                sync_record.details["steps"]["adjust_factors"] = {"status": "error", "message": error_msg}
+
+                await _publish_and_persist("step_complete", sync_record_id, {
+                    "step": "adjust_factors",
+                    "status": "error",
+                    "records_count": 0,
+                    "duration_seconds": round(step_duration, 1),
+                    "detail": error_msg,
+                    "message": f"同步复权因子: 失败 ({step_duration:.1f}s)",
                 }, session, sync_record)
 
             # Update sync record with success (or partial success if some steps failed)

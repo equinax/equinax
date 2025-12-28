@@ -127,7 +127,7 @@ async def compute_classifications_for_date(
     """Compute all classifications for a given date."""
     print(f"\nComputing classifications for {target_date}...")
 
-    # Get all stocks with market data for this date
+    # Get all stocks with market data for this date (excluding indices and ETFs)
     stocks = await pg_conn.fetch("""
         SELECT
             m.code,
@@ -137,9 +137,11 @@ async def compute_classifications_for_date(
             v.circ_mv,
             v.pe_ttm
         FROM market_daily m
+        JOIN asset_meta am ON m.code = am.code
         LEFT JOIN indicator_valuation v ON m.code = v.code AND m.date = v.date
         WHERE m.date = $1
-          AND (m.code LIKE 'sh.%' OR m.code LIKE 'sz.%')
+          AND am.asset_type = 'STOCK'
+          AND am.status = 1
     """, target_date)
 
     if not stocks:

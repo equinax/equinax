@@ -13,7 +13,7 @@ from decimal import Decimal
 from typing import Optional, Dict, Any, List, Tuple, Callable
 
 import pandas as pd
-from sqlalchemy import text
+from sqlalchemy import text, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 logger = logging.getLogger(__name__)
@@ -653,6 +653,20 @@ async def sync_stocks_batch(
         if backfill_result.get("status") == "success":
             total_market_count = backfill_result.get("records", 0)
             messages.append(f"补全 {len(missing_days)} 天: {total_market_count} 条")
+
+        # 补充获取最新一天的 PE/PB 数据（历史 API 不返回 PE/PB）
+        if latest_trading_day in missing_days:
+            if progress_callback:
+                await progress_callback("补充获取 PE/PB 数据...", 95, {
+                    "action": "fetch_pe_pb",
+                })
+            logger.info(f"Fetching PE/PB data for {latest_trading_day} from spot API...")
+            df, _ = fetch_all_stocks_batch()
+            _, valuation_records = transform_stock_data(df, latest_trading_day)
+            valuation_count = await batch_insert_valuation(session, valuation_records)
+            total_valuation_count = valuation_count
+            logger.info(f"Updated {valuation_count} valuation records with PE/PB")
+            await session.commit()
 
     return {
         "status": "success",
@@ -1581,6 +1595,9 @@ async def calculate_index_pct_chg(session: AsyncSession) -> int:
     Returns:
         更新的记录数
     """
+    # 设置 TimescaleDB 元组解压限制为无限，避免大批量更新时出错
+    await session.execute(text("SET timescaledb.max_tuples_decompressed_per_dml_transaction = 0"))
+
     sql = text("""
         UPDATE market_daily m
         SET pct_chg = ROUND(
@@ -1703,4 +1720,193 @@ async def _old_sync_indices_batch(session: AsyncSession) -> Dict[str, Any]:
         "market_daily_count": total_records,
         "total_indices": len(df),
         "days_backfilled": len(missing_days) if missing_days else 0,
+    }
+
+
+# =============================================================================
+# 复权因子同步
+# =============================================================================
+
+async def batch_insert_adjust_factors(
+    session: AsyncSession,
+    records: List[Dict],
+) -> int:
+    """
+    批量插入复权因子数据 (upsert)
+
+    Args:
+        session: 数据库会话
+        records: 复权因子记录列表
+
+    Returns:
+        插入/更新的记录数
+    """
+    if not records:
+        return 0
+
+    from app.db.models.asset import AdjustFactor
+    from sqlalchemy.dialects.postgresql import insert
+
+    stmt = insert(AdjustFactor).values(records)
+    stmt = stmt.on_conflict_do_update(
+        index_elements=['code', 'divid_operate_date'],
+        set_={
+            'fore_adjust_factor': stmt.excluded.fore_adjust_factor,
+            'back_adjust_factor': stmt.excluded.back_adjust_factor,
+            'adjust_factor': stmt.excluded.adjust_factor,
+        }
+    )
+    await session.execute(stmt)
+    return len(records)
+
+
+def _fetch_adjust_factor_sync(code: str, start_date: str) -> List[Dict]:
+    """
+    同步获取单只股票的复权因子（供并行调用）
+
+    Args:
+        code: 股票代码 (sh.xxxxxx 或 sz.xxxxxx 格式)
+        start_date: 开始日期 YYYY-MM-DD
+
+    Returns:
+        复权因子记录列表
+    """
+    import baostock as bs
+
+    records = []
+    try:
+        lg = bs.login()
+        if lg.error_code != '0':
+            return records
+
+        rs = bs.query_adjust_factor(code=code, start_date=start_date)
+
+        while (rs.error_code == '0') and rs.next():
+            row = rs.get_row_data()
+            # row: [code, dividOperateDate, foreAdjustFactor, backAdjustFactor, adjustFactor]
+            if len(row) >= 5:
+                records.append({
+                    'code': row[0],
+                    'divid_operate_date': date.fromisoformat(row[1]),
+                    'fore_adjust_factor': Decimal(row[2]) if row[2] else None,
+                    'back_adjust_factor': Decimal(row[3]) if row[3] else None,
+                    'adjust_factor': Decimal(row[4]) if row[4] else None,
+                })
+
+        bs.logout()
+    except Exception as e:
+        logger.debug(f"Failed to fetch adjust factor for {code}: {e}")
+
+    return records
+
+
+async def sync_adjust_factors(
+    session: AsyncSession,
+    progress_callback: Callable[[str, int, Dict], Any] = None,
+) -> Dict[str, Any]:
+    """
+    同步复权因子数据
+
+    使用 baostock query_adjust_factor 接口获取复权因子，
+    用于计算复权价格进行回测。
+
+    Args:
+        session: 数据库会话
+        progress_callback: 进度回调函数
+
+    Returns:
+        同步结果
+    """
+    from app.db.models.asset import AssetMeta, AssetType
+
+    # 获取所有股票代码
+    stocks_query = select(AssetMeta.code).where(
+        AssetMeta.asset_type == AssetType.STOCK,
+        AssetMeta.status == 1
+    )
+    stocks_result = await session.execute(stocks_query)
+    stock_codes = [row[0] for row in stocks_result]
+
+    if not stock_codes:
+        return {"status": "skip", "message": "没有股票需要同步", "records": 0}
+
+    total_stocks = len(stock_codes)
+    logger.info(f"Starting adjust factor sync for {total_stocks} stocks")
+
+    if progress_callback:
+        await progress_callback("开始同步复权因子...", 0, {
+            "action": "adjust_factor_start",
+            "total_stocks": total_stocks,
+        })
+
+    # 获取数据库中已有的最新复权日期
+    max_date_query = text("""
+        SELECT MAX(divid_operate_date) FROM adjust_factor
+    """)
+    result = await session.execute(max_date_query)
+    max_date = result.scalar()
+
+    # 如果有历史数据，从最新日期开始；否则从 2020-01-01 开始
+    start_date = (max_date - timedelta(days=30)).strftime('%Y-%m-%d') if max_date else '2020-01-01'
+    logger.info(f"Fetching adjust factors from {start_date}")
+
+    total_records = 0
+    all_records = []
+    completed_count = 0
+    lock = asyncio.Lock()
+
+    loop = asyncio.get_event_loop()
+
+    async def process_batch(batch_codes: List[str]):
+        """处理一批股票的下载"""
+        nonlocal completed_count, all_records, total_records
+
+        with ThreadPoolExecutor(max_workers=PARALLEL_WORKERS) as executor:
+            futures = [
+                loop.run_in_executor(
+                    executor,
+                    _fetch_adjust_factor_sync,
+                    code, start_date
+                )
+                for code in batch_codes
+            ]
+
+            for future in asyncio.as_completed(futures):
+                records = await future
+                async with lock:
+                    all_records.extend(records)
+                    completed_count += 1
+
+                    if completed_count % 100 == 0 or completed_count == total_stocks:
+                        pct = int(completed_count / total_stocks * 100)
+                        logger.info(f"Adjust factor progress: {completed_count}/{total_stocks}")
+
+                        if progress_callback:
+                            await progress_callback(
+                                f"复权因子 [{completed_count}/{total_stocks}]",
+                                pct,
+                                {"action": "adjust_factor_progress", "done": completed_count}
+                            )
+
+    # 分批处理
+    batch_size = 500
+    for batch_start in range(0, total_stocks, batch_size):
+        batch_codes = stock_codes[batch_start:batch_start + batch_size]
+        await process_batch(batch_codes)
+
+        # 每批处理完后写入数据库
+        if all_records:
+            count = await batch_insert_adjust_factors(session, all_records)
+            total_records += count
+            all_records = []
+
+    await session.commit()
+
+    logger.info(f"Adjust factor sync complete: {total_records} records")
+
+    return {
+        "status": "success",
+        "message": f"复权因子同步完成",
+        "records": total_records,
+        "stocks_processed": total_stocks,
     }
