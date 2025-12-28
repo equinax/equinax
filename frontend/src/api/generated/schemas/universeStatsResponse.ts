@@ -15,6 +15,7 @@ export interface UniverseStatsResponse {
   by_size_category?: UniverseStatsResponseBySizeCategory;
   market_regime?: UniverseStatsResponseMarketRegime;
   total_etfs: number;
+  total_indices?: number;
   total_stocks: number;
   trading_date?: UniverseStatsResponseTradingDate;
 }

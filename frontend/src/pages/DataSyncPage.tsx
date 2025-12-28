@@ -284,7 +284,7 @@ export default function DataSyncPage() {
                   {analysis.message}
                 </p>
                 <p className="text-xs text-muted-foreground mt-0.5">
-                  最新数据: {analysis.latest_data_date || '无'} | 今日: {analysis.today}
+                  最新数据: {analysis.latest_data_date || '无'} | 最近交易日: {analysis.latest_trading_day || analysis.today}
                 </p>
               </div>
               {analysis.needs_sync && (

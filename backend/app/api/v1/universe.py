@@ -138,6 +138,7 @@ class UniverseStatsResponse(BaseModel):
     """Schema for universe statistics."""
     total_stocks: int
     total_etfs: int
+    total_indices: int = 0
     trading_date: Optional[datetime.date] = None
     by_size_category: dict[str, int] = Field(default_factory=dict)
     by_board: dict[str, int] = Field(default_factory=dict)
@@ -536,6 +537,12 @@ async def get_universe_stats(
     )
     total_etfs = etf_count_result.scalar() or 0
 
+    # Count Indices
+    index_count_result = await db.execute(
+        select(func.count()).where(AssetMeta.asset_type == AssetType.INDEX)
+    )
+    total_indices = index_count_result.scalar() or 0
+
     # Count by board (from StockStructuralInfo)
     board_result = await db.execute(
         select(StockStructuralInfo.board, func.count())
@@ -592,6 +599,7 @@ async def get_universe_stats(
     return UniverseStatsResponse(
         total_stocks=total_stocks,
         total_etfs=total_etfs,
+        total_indices=total_indices,
         trading_date=latest_date,
         by_size_category=by_size_category,
         by_board=by_board,

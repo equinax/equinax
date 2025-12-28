@@ -94,6 +94,7 @@ class DataCompletenessResponse(BaseModel):
 class SyncAnalysis(BaseModel):
     """Pre-sync data analysis."""
     latest_data_date: Optional[str] = None
+    latest_trading_day: Optional[str] = None
     today: str
     days_to_update: int
     needs_sync: bool
@@ -551,12 +552,18 @@ async def analyze_sync_requirements(
     Analyze what data needs to be synced.
 
     Returns details about current data state and what would be updated.
+    Compares with latest trading day (not today) to account for weekends/holidays.
     Shows message like "当前最新数据日期是 2025-12-23，需要更新 1 天".
     """
     from datetime import date
+    from workers.batch_sync import get_latest_trading_day, get_trading_days_between
 
     today = date.today()
     today_str = today.strftime("%Y-%m-%d")
+
+    # Get latest trading day (accounting for weekends/holidays)
+    latest_trading_day = get_latest_trading_day()
+    latest_trading_day_str = latest_trading_day.strftime("%Y-%m-%d")
 
     # Get latest data date from market_daily
     result = await db.execute(
@@ -565,17 +572,25 @@ async def analyze_sync_requirements(
     latest_date = result.scalar()
     latest_date_str = str(latest_date) if latest_date else None
 
-    # Calculate days to update
+    # Calculate trading days to update (not calendar days)
     if latest_date:
-        days_diff = (today - latest_date).days
-        needs_sync = days_diff > 0
-
-        if days_diff == 0:
+        if latest_date >= latest_trading_day:
+            # Data is up to date
+            days_diff = 0
+            needs_sync = False
             message = f"数据已是最新 ({latest_date_str})，无需同步"
-        elif days_diff == 1:
-            message = f"当前最新数据日期是 {latest_date_str}，需要更新 1 天数据"
         else:
-            message = f"当前最新数据日期是 {latest_date_str}，需要更新 {days_diff} 天数据"
+            # Get the actual trading days that need updating
+            missing_days = get_trading_days_between(latest_date, latest_trading_day)
+            days_diff = len(missing_days)
+            needs_sync = days_diff > 0
+
+            if days_diff == 0:
+                message = f"数据已是最新 ({latest_date_str})，无需同步"
+            elif days_diff == 1:
+                message = f"当前最新数据日期是 {latest_date_str}，需要更新 1 个交易日数据"
+            else:
+                message = f"当前最新数据日期是 {latest_date_str}，需要更新 {days_diff} 个交易日数据"
     else:
         days_diff = 0
         needs_sync = True
@@ -583,6 +598,7 @@ async def analyze_sync_requirements(
 
     return SyncAnalysis(
         latest_data_date=latest_date_str,
+        latest_trading_day=latest_trading_day_str,
         today=today_str,
         days_to_update=days_diff,
         needs_sync=needs_sync,

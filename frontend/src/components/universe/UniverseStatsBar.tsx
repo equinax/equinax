@@ -1,7 +1,7 @@
 import { Card, CardContent } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { Skeleton } from '@/components/ui/skeleton'
-import { TrendingUp, TrendingDown, Activity, Building2 } from 'lucide-react'
+import { TrendingUp, TrendingDown, Activity, Building2, BarChart3 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import type { UniverseStatsResponse } from '@/api/generated/schemas'
 import { getRegimeColor, getRegimeLabel } from '@/lib/universe-colors'
@@ -14,8 +14,8 @@ interface UniverseStatsBarProps {
 export function UniverseStatsBar({ stats, isLoading }: UniverseStatsBarProps) {
   if (isLoading) {
     return (
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-        {Array.from({ length: 4 }).map((_, i) => (
+      <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
+        {Array.from({ length: 5 }).map((_, i) => (
           <Card key={i}>
             <CardContent className="p-4">
               <Skeleton className="h-4 w-16 mb-2" />
@@ -35,7 +35,7 @@ export function UniverseStatsBar({ stats, isLoading }: UniverseStatsBarProps) {
     .slice(0, 3)
 
   return (
-    <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+    <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
       {/* Total Stocks */}
       <Card>
         <CardContent className="p-4">
@@ -65,6 +65,23 @@ export function UniverseStatsBar({ stats, isLoading }: UniverseStatsBarProps) {
             </div>
             <div className="h-10 w-10 rounded-full bg-violet-100 dark:bg-violet-900/30 flex items-center justify-center">
               <Activity className="h-5 w-5 text-violet-600 dark:text-violet-400" />
+            </div>
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* Total Indices */}
+      <Card>
+        <CardContent className="p-4">
+          <div className="flex items-center justify-between">
+            <div>
+              <p className="text-xs text-muted-foreground">指数总数</p>
+              <p className="text-2xl font-bold mt-1">
+                {(stats.total_indices || 0).toLocaleString()}
+              </p>
+            </div>
+            <div className="h-10 w-10 rounded-full bg-orange-100 dark:bg-orange-900/30 flex items-center justify-center">
+              <BarChart3 className="h-5 w-5 text-orange-600 dark:text-orange-400" />
             </div>
           </div>
         </CardContent>

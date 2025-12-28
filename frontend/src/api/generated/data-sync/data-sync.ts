@@ -1217,6 +1217,7 @@ export const useGetDataCompletenessApiV1DataSyncCompletenessGet = <
  * Analyze what data needs to be synced.
 
 Returns details about current data state and what would be updated.
+Compares with latest trading day (not today) to account for weekends/holidays.
 Shows message like "当前最新数据日期是 2025-12-23，需要更新 1 天".
  * @summary Analyze Sync Requirements
  */
