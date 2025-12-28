@@ -24,6 +24,7 @@ import {
   formatMarketCap,
   formatPrice,
   formatRatio,
+  formatTurnover,
 } from '@/lib/universe-colors'
 
 interface UniverseDetailDrawerProps {
@@ -150,21 +151,21 @@ export function UniverseDetailDrawer({ code, open, onClose }: UniverseDetailDraw
                 <div className="text-right">
                   <p className={cn(
                     'text-2xl font-bold font-mono',
-                    getPriceChangeColor(Number(detail.change_pct))
+                    getPriceChangeColor(detail.change_pct)
                   )}>
-                    {formatPrice(Number(detail.price))}
+                    {formatPrice(detail.price)}
                   </p>
                   <div className={cn(
                     'flex items-center justify-end gap-1',
-                    getPriceChangeColor(Number(detail.change_pct))
+                    getPriceChangeColor(detail.change_pct)
                   )}>
-                    {Number(detail.change_pct) > 0 ? (
+                    {detail.change_pct != null && Number(detail.change_pct) > 0 ? (
                       <TrendingUp className="h-4 w-4" />
-                    ) : Number(detail.change_pct) < 0 ? (
+                    ) : detail.change_pct != null && Number(detail.change_pct) < 0 ? (
                       <TrendingDown className="h-4 w-4" />
                     ) : null}
                     <span className="font-mono">
-                      {formatPriceChange(Number(detail.change_pct))}
+                      {formatPriceChange(detail.change_pct)}
                     </span>
                   </div>
                   <p className="text-xs text-muted-foreground mt-1">
@@ -236,8 +237,8 @@ export function UniverseDetailDrawer({ code, open, onClose }: UniverseDetailDraw
                   <div className="space-y-1">
                     <p className="text-xs text-muted-foreground">动量因子</p>
                     <div className="flex gap-2 text-sm font-mono">
-                      <span className={getPriceChangeColor(Number(detail.momentum_20d))}>
-                        20D: {formatPriceChange(Number(detail.momentum_20d))}
+                      <span className={getPriceChangeColor(detail.momentum_20d)}>
+                        20D: {formatPriceChange(detail.momentum_20d)}
                       </span>
                     </div>
                   </div>
@@ -258,9 +259,9 @@ export function UniverseDetailDrawer({ code, open, onClose }: UniverseDetailDraw
                     <p className="text-sm font-medium">
                       {detail.is_institutional ? '是' : '否'}
                     </p>
-                    {detail.fund_holding_ratio && (
+                    {detail.fund_holding_ratio != null && (
                       <p className="text-xs text-muted-foreground">
-                        {(Number(detail.fund_holding_ratio) * 100).toFixed(2)}%
+                        {(parseFloat(String(detail.fund_holding_ratio)) * 100).toFixed(2)}%
                       </p>
                     )}
                   </div>
@@ -270,9 +271,9 @@ export function UniverseDetailDrawer({ code, open, onClose }: UniverseDetailDraw
                     <p className="text-sm font-medium">
                       {detail.is_northbound_heavy ? '是' : '否'}
                     </p>
-                    {detail.northbound_holding_ratio && (
+                    {detail.northbound_holding_ratio != null && (
                       <p className="text-xs text-muted-foreground">
-                        {(Number(detail.northbound_holding_ratio) * 100).toFixed(2)}%
+                        {(parseFloat(String(detail.northbound_holding_ratio)) * 100).toFixed(2)}%
                       </p>
                     )}
                   </div>
@@ -297,37 +298,37 @@ export function UniverseDetailDrawer({ code, open, onClose }: UniverseDetailDraw
                   <div>
                     <p className="text-xs text-muted-foreground">市值</p>
                     <p className="text-sm font-mono font-medium">
-                      {formatMarketCap(detail.market_cap as number | null)}
+                      {formatMarketCap(detail.market_cap)}
                     </p>
                   </div>
                   <div>
                     <p className="text-xs text-muted-foreground">PE (TTM)</p>
                     <p className="text-sm font-mono font-medium">
-                      {formatRatio(Number(detail.pe_ttm))}
+                      {formatRatio(detail.pe_ttm)}
                     </p>
                   </div>
                   <div>
                     <p className="text-xs text-muted-foreground">PB (MRQ)</p>
                     <p className="text-sm font-mono font-medium">
-                      {formatRatio(Number(detail.pb_mrq))}
+                      {formatRatio(detail.pb_mrq)}
                     </p>
                   </div>
                   <div>
                     <p className="text-xs text-muted-foreground">流通市值</p>
                     <p className="text-sm font-mono font-medium">
-                      {formatMarketCap(detail.circ_mv as number | null)}
+                      {formatMarketCap(detail.circ_mv)}
                     </p>
                   </div>
                   <div>
                     <p className="text-xs text-muted-foreground">PS (TTM)</p>
                     <p className="text-sm font-mono font-medium">
-                      {formatRatio(Number(detail.ps_ttm))}
+                      {formatRatio(detail.ps_ttm)}
                     </p>
                   </div>
                   <div>
                     <p className="text-xs text-muted-foreground">换手率</p>
                     <p className="text-sm font-mono font-medium">
-                      {detail.turnover ? `${Number(detail.turnover).toFixed(2)}%` : '-'}
+                      {formatTurnover(detail.turnover)}
                     </p>
                   </div>
                 </div>

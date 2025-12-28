@@ -141,7 +141,7 @@ export function UniverseDataTable({
         ),
         cell: ({ getValue }) => (
           <span className="font-mono text-sm text-right block">
-            {formatPrice(Number(getValue()))}
+            {formatPrice(getValue())}
           </span>
         ),
         size: 80,
@@ -163,15 +163,16 @@ export function UniverseDataTable({
           </button>
         ),
         cell: ({ getValue }) => {
-          const change = Number(getValue())
+          const rawValue = getValue()
+          const numValue = rawValue != null ? parseFloat(String(rawValue)) : null
           return (
-            <div className={cn('font-mono text-sm text-right flex items-center justify-end gap-1', getPriceChangeColor(change))}>
-              {change > 0 ? (
+            <div className={cn('font-mono text-sm text-right flex items-center justify-end gap-1', getPriceChangeColor(rawValue))}>
+              {numValue != null && !isNaN(numValue) && numValue > 0 ? (
                 <TrendingUp className="h-3 w-3" />
-              ) : change < 0 ? (
+              ) : numValue != null && !isNaN(numValue) && numValue < 0 ? (
                 <TrendingDown className="h-3 w-3" />
               ) : null}
-              {formatPriceChange(change)}
+              {formatPriceChange(rawValue)}
             </div>
           )
         },
@@ -195,7 +196,7 @@ export function UniverseDataTable({
         ),
         cell: ({ getValue }) => (
           <span className="font-mono text-sm text-right block">
-            {formatMarketCap(getValue() as number | null)}
+            {formatMarketCap(getValue())}
           </span>
         ),
         size: 80,
@@ -257,7 +258,7 @@ export function UniverseDataTable({
         ),
         cell: ({ getValue }) => (
           <span className="font-mono text-sm text-right block">
-            {formatRatio(Number(getValue()))}
+            {formatRatio(getValue())}
           </span>
         ),
         size: 60,
@@ -280,7 +281,7 @@ export function UniverseDataTable({
         ),
         cell: ({ getValue }) => (
           <span className="font-mono text-sm text-right block">
-            {formatRatio(Number(getValue()))}
+            {formatRatio(getValue())}
           </span>
         ),
         size: 60,
@@ -303,7 +304,7 @@ export function UniverseDataTable({
         ),
         cell: ({ getValue }) => (
           <span className="font-mono text-sm text-right block">
-            {formatTurnover(Number(getValue()))}
+            {formatTurnover(getValue())}
           </span>
         ),
         size: 70,

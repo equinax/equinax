@@ -172,60 +172,74 @@ export function getExchangeColor(exchange: string | null | undefined): string {
 }
 
 // Price change color based on value
-export function getPriceChangeColor(change: number | null | undefined): string {
+export function getPriceChangeColor(change: number | string | null | undefined): string {
   if (change === null || change === undefined) return 'text-muted-foreground'
-  if (change > 0) return 'text-profit'
-  if (change < 0) return 'text-loss'
+  const num = typeof change === 'string' ? parseFloat(change) : change
+  if (isNaN(num)) return 'text-muted-foreground'
+  if (num > 0) return 'text-profit'
+  if (num < 0) return 'text-loss'
   return 'text-muted-foreground'
 }
 
 // Format price change with sign
-export function formatPriceChange(change: number | null | undefined): string {
+export function formatPriceChange(change: number | string | null | undefined): string {
   if (change === null || change === undefined) return '-'
-  const sign = change >= 0 ? '+' : ''
-  return `${sign}${change.toFixed(2)}%`
+  const num = typeof change === 'string' ? parseFloat(change) : change
+  if (isNaN(num)) return '-'
+  const sign = num >= 0 ? '+' : ''
+  return `${sign}${num.toFixed(2)}%`
 }
 
 // Format market cap - input is already in 亿元 units
-export function formatMarketCap(cap: number | null | undefined): string {
+export function formatMarketCap(cap: number | string | null | undefined): string {
   if (cap === null || cap === undefined) return '-'
+  const num = typeof cap === 'string' ? parseFloat(cap) : cap
+  if (isNaN(num)) return '-'
   // cap is already in 亿元 units from API
-  if (cap >= 10000) {
-    return `${(cap / 10000).toFixed(2)}万亿`
+  if (num >= 10000) {
+    return `${(num / 10000).toFixed(2)}万亿`
   }
-  if (cap >= 1000) {
-    return `${(cap / 1000).toFixed(1)}千亿`
+  if (num >= 1000) {
+    return `${(num / 1000).toFixed(1)}千亿`
   }
-  if (cap >= 1) {
-    return `${cap.toFixed(0)}亿`
+  if (num >= 1) {
+    return `${num.toFixed(0)}亿`
   }
-  return `${(cap * 10000).toFixed(0)}万`
+  return `${(num * 10000).toFixed(0)}万`
 }
 
 // Format number with locale
-export function formatNumber(num: number | null | undefined, decimals = 2): string {
+export function formatNumber(num: number | string | null | undefined, decimals = 2): string {
   if (num === null || num === undefined) return '-'
-  return num.toLocaleString('zh-CN', {
+  const val = typeof num === 'string' ? parseFloat(num) : num
+  if (isNaN(val)) return '-'
+  return val.toLocaleString('zh-CN', {
     minimumFractionDigits: decimals,
     maximumFractionDigits: decimals,
   })
 }
 
 // Format price with currency
-export function formatPrice(price: number | null | undefined): string {
+export function formatPrice(price: number | string | null | undefined): string {
   if (price === null || price === undefined) return '-'
-  return `¥${price.toFixed(2)}`
+  const num = typeof price === 'string' ? parseFloat(price) : price
+  if (isNaN(num)) return '-'
+  return `¥${num.toFixed(2)}`
 }
 
 // Format turnover rate as percentage
-export function formatTurnover(turn: number | null | undefined): string {
+export function formatTurnover(turn: number | string | null | undefined): string {
   if (turn === null || turn === undefined) return '-'
-  return `${turn.toFixed(2)}%`
+  const num = typeof turn === 'string' ? parseFloat(turn) : turn
+  if (isNaN(num)) return '-'
+  return `${num.toFixed(2)}%`
 }
 
 // Format PE/PB ratio
-export function formatRatio(ratio: number | null | undefined): string {
+export function formatRatio(ratio: number | string | null | undefined): string {
   if (ratio === null || ratio === undefined) return '-'
-  if (ratio < 0) return '亏损'
-  return ratio.toFixed(2)
+  const num = typeof ratio === 'string' ? parseFloat(ratio) : ratio
+  if (isNaN(num)) return '-'
+  if (num < 0) return '亏损'
+  return num.toFixed(2)
 }

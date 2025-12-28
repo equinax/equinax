@@ -773,7 +773,8 @@ def fetch_etf_valuation_batch() -> List[Dict]:
         return []
 
     records = []
-    today = date.today()
+    # 使用最新交易日而非今日，确保与 market_daily 日期一致
+    valuation_date = get_latest_trading_day()
 
     for _, row in df.iterrows():
         code = str(row.get('代码', ''))
@@ -794,7 +795,7 @@ def fetch_etf_valuation_batch() -> List[Dict]:
         if total_mv or circ_mv:
             records.append({
                 'code': db_code,
-                'date': today,
+                'date': valuation_date,
                 'pe_ttm': None,
                 'pb_mrq': None,
                 'ps_ttm': None,
@@ -1570,6 +1571,39 @@ async def backfill_index_history(
     }
 
 
+async def calculate_index_pct_chg(session: AsyncSession) -> int:
+    """
+    计算指数的 pct_chg (涨跌幅)
+
+    由于历史 API (stock_zh_index_daily_em) 不返回 pct_chg，
+    我们从连续交易日的 close 价格计算。
+
+    Returns:
+        更新的记录数
+    """
+    sql = text("""
+        UPDATE market_daily m
+        SET pct_chg = ROUND(
+            (m.close - prev.close) / prev.close * 100,
+            2
+        )
+        FROM market_daily prev
+        WHERE m.code = prev.code
+          AND prev.date = (
+              SELECT MAX(date)
+              FROM market_daily
+              WHERE code = m.code AND date < m.date
+          )
+          AND (m.code LIKE 'sh.0%' OR m.code LIKE 'sz.39%')
+          AND m.pct_chg IS NULL
+          AND prev.close > 0
+    """)
+    result = await session.execute(sql)
+    updated = result.rowcount
+    logger.info(f"Calculated pct_chg for {updated} index records")
+    return updated
+
+
 async def sync_indices_batch(
     session: AsyncSession,
     progress_callback: Callable[[str, int, Dict], Any] = None,
@@ -1603,12 +1637,17 @@ async def sync_indices_batch(
     # 3. 使用历史 API 并行下载所有指数
     result = await backfill_index_history(session, missing_days, progress_callback)
 
+    # 4. 计算指数的 pct_chg (历史 API 不返回此字段)
+    pct_chg_updated = await calculate_index_pct_chg(session)
+    await session.commit()
+
     return {
         "status": result.get("status", "success"),
         "message": f"指数数据同步完成",
         "trading_date": str(latest_trading_day),
         "market_daily_count": result.get("records", 0),
         "total_indices": result.get("records", 0),
+        "pct_chg_calculated": pct_chg_updated,
     }
 
 
