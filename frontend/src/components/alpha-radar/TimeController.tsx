@@ -504,14 +504,13 @@ export function TimeController({
                         onClick={() => isTradingDay && onDateChange(day)}
                         onMouseDown={(e) => handleDragStart(e, isSelected)}
                         onTouchStart={(e) => handleDragStart(e, isSelected)}
-                        disabled={!isTradingDay}
                         style={selectedStyle || marketStyle}
                         className={cn(
                           'cursor-grab active:cursor-grabbing',
                           'w-full aspect-square text-[10px] font-medium transition-all',
                           'flex items-center justify-center',
-                          // Non-trading day style
-                          !isTradingDay && 'bg-muted/30 text-muted-foreground/40 cursor-not-allowed',
+                          // Non-trading day style - still draggable, just not clickable
+                          !isTradingDay && 'bg-muted text-muted-foreground',
                           // Trading day without market change (flat/平盘)
                           isTradingDay && !marketStyle && !selectedStyle && 'bg-muted/50',
                           // Hover for trading days

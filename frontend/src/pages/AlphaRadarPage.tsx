@@ -2,7 +2,7 @@ import { useState, useMemo, useCallback } from 'react'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs'
-import { ChevronLeft, ChevronRight, Radar } from 'lucide-react'
+import { ChevronLeft, ChevronRight } from 'lucide-react'
 import type { SortingState, Updater } from '@tanstack/react-table'
 import {
   useGetDashboardApiV1AlphaRadarDashboardGet,
@@ -104,33 +104,27 @@ export default function AlphaRadarPage() {
 
   return (
     <div className="space-y-4">
-      {/* Header */}
-      <div className="flex items-center gap-3">
-        <div className="h-10 w-10 rounded-lg bg-gradient-to-br from-blue-500 to-purple-600 flex items-center justify-center">
-          <Radar className="h-6 w-6 text-white" />
-        </div>
-        <div>
-          <h1 className="text-2xl font-bold">Alpha Radar</h1>
-          <p className="text-muted-foreground text-sm">
-            市场发现与智能选股
-            {screener?.date && (
-              <span className="ml-2">
-                · 数据日期: <span className="font-mono">{screener.date}</span>
-              </span>
-            )}
+      {/* Header + Time Controller */}
+      <div className="flex items-center gap-4">
+        <div className="shrink-0">
+          <h1 className="text-2xl font-bold">α Radar</h1>
+          <p className="text-sm text-muted-foreground font-mono h-5">
+            {selectedDate
+              ? selectedDate.toISOString().split('T')[0]
+              : screener?.date ?? <span className="invisible">0000-00-00</span>}
           </p>
         </div>
+        <div className="flex-1">
+          <TimeController
+            mode={timeMode}
+            onModeChange={handleTimeModeChange}
+            selectedDate={selectedDate}
+            onDateChange={setSelectedDate}
+            dateRange={dateRange}
+            onDateRangeChange={setDateRange}
+          />
+        </div>
       </div>
-
-      {/* Time Controller */}
-      <TimeController
-        mode={timeMode}
-        onModeChange={handleTimeModeChange}
-        selectedDate={selectedDate}
-        onDateChange={setSelectedDate}
-        dateRange={dateRange}
-        onDateRangeChange={setDateRange}
-      />
 
       {/* Market Dashboard - 4 Cards */}
       <MarketDashboard data={dashboard} isLoading={isLoadingDashboard} />
