@@ -43,6 +43,7 @@ class AssetTypeFilter(str, Enum):
     ALL = "all"
     STOCK = "stock"
     ETF = "etf"
+    INDEX = "index"
 
 
 class SortField(str, Enum):
@@ -368,6 +369,8 @@ async def get_universe_snapshot(
         query = query.where(AssetMeta.asset_type == AssetType.STOCK)
     elif asset_type == AssetTypeFilter.ETF:
         query = query.where(AssetMeta.asset_type == AssetType.ETF)
+    elif asset_type == AssetTypeFilter.INDEX:
+        query = query.where(AssetMeta.asset_type == AssetType.INDEX)
 
     # Apply exchange filter
     if exchange:

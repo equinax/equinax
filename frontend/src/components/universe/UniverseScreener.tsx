@@ -2,7 +2,7 @@ import { useState, useMemo } from 'react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Badge } from '@/components/ui/badge'
-import { Search, X, TrendingUp, PieChart, ChevronDown, ChevronUp } from 'lucide-react'
+import { Search, X, TrendingUp, PieChart, BarChart3, ChevronDown, ChevronUp } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import {
   UniverseCategoryFilter,
@@ -12,7 +12,7 @@ import {
 import { IndustryCascadeFilter } from './IndustryCascadeFilter'
 
 export interface UniverseFilters {
-  assetType: 'stock' | 'etf'
+  assetType: 'stock' | 'etf' | 'index'
   exchange: string
   search: string
   // Industry filters (SW)
@@ -61,9 +61,9 @@ export function UniverseScreener({
     updateFilter('search', '')
   }
 
-  const handleAssetTypeChange = (newType: 'stock' | 'etf') => {
-    if (newType === 'etf') {
-      // ETF only keeps common filters, reset stock-specific filters
+  const handleAssetTypeChange = (newType: 'stock' | 'etf' | 'index') => {
+    if (newType === 'etf' || newType === 'index') {
+      // ETF/Index only keeps common filters, reset stock-specific filters
       onFiltersChange({
         assetType: newType,
         exchange: filters.exchange,
@@ -128,8 +128,8 @@ export function UniverseScreener({
   // Combine category groups based on asset type
   // Note: Industry filters are handled separately by IndustryCascadeFilter
   const categoryGroups = useMemo(() => {
-    if (filters.assetType === 'etf') {
-      return etfCategoryGroups
+    if (filters.assetType === 'etf' || filters.assetType === 'index') {
+      return etfCategoryGroups  // Index uses same basic filters as ETF (just exchange)
     }
     // For stocks, use predefined groups (without industry - handled by cascade filter)
     return stockCategoryGroups
@@ -195,6 +195,18 @@ export function UniverseScreener({
           >
             <PieChart className="h-4 w-4" />
             ETF
+          </button>
+          <button
+            onClick={() => handleAssetTypeChange('index')}
+            className={cn(
+              'flex items-center gap-1.5 px-3 py-1.5 text-sm rounded-md transition-colors',
+              filters.assetType === 'index'
+                ? 'bg-background text-foreground shadow-sm'
+                : 'text-muted-foreground hover:text-foreground'
+            )}
+          >
+            <BarChart3 className="h-4 w-4" />
+            指数
           </button>
         </div>
 

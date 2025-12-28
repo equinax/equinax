@@ -413,3 +413,4 @@ export * from "./validateFilterApiV1PoolsValidateFilterPostBody";
 export * from "./validationError";
 export * from "./validationErrorLocItem";
 export * from "./validationResult";
+export * from "./appApiV1StocksAssetTypeFilter";

@@ -4,13 +4,12 @@
 /**
  * Asset type filter for API.
  */
-export type AppApiV1UniverseAssetTypeFilter =
-  (typeof AppApiV1UniverseAssetTypeFilter)[keyof typeof AppApiV1UniverseAssetTypeFilter];
+export type AppApiV1StocksAssetTypeFilter =
+  (typeof AppApiV1StocksAssetTypeFilter)[keyof typeof AppApiV1StocksAssetTypeFilter];
 
 // eslint-disable-next-line @typescript-eslint/no-redeclare
-export const AppApiV1UniverseAssetTypeFilter = {
+export const AppApiV1StocksAssetTypeFilter = {
   all: "all",
   stock: "stock",
   etf: "etf",
-  index: "index",
 } as const;
