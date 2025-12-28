@@ -86,27 +86,51 @@ export function TimeController({
 }: TimeControllerProps) {
   const today = new Date()
 
-  // Page offset: 0 = current page (ending today), 1 = previous page, etc.
-  const [pageOffset, setPageOffset] = useState(0)
+  // Scroll offset in pixels (positive = showing earlier dates)
+  const [scrollOffset, setScrollOffset] = useState(0)
 
   // Drag state
   const dragRef = useRef<{
     startX: number
-    startIndex: number
+    startScrollOffset: number
+    startSelectedIndex: number
     isDraggingActive: boolean
-    accumulatedDelta: number
+    lastX: number
+    lastTime: number
+    velocity: number
   } | null>(null)
   const containerRef = useRef<HTMLDivElement>(null)
+  const animationRef = useRef<number | null>(null)
 
-  // Calculate date range for calendar API based on page offset
+  // Get cell width for calculations
+  const getCellWidth = useCallback(() => {
+    if (!containerRef.current) return 24
+    return containerRef.current.offsetWidth / DAYS_TO_SHOW
+  }, [])
+
+  // Calculate days offset from scroll position
+  const daysOffset = useMemo(() => {
+    const cellWidth = getCellWidth()
+    return Math.floor(scrollOffset / cellWidth)
+  }, [scrollOffset, getCellWidth])
+
+  // Sub-pixel offset for smooth visual scrolling
+  // Positive scroll offset means showing earlier dates, so we translate left (negative)
+  const subPixelOffset = useMemo(() => {
+    const cellWidth = getCellWidth()
+    return (scrollOffset % cellWidth)
+  }, [scrollOffset, getCellWidth])
+
+  // Calculate date range for calendar API - load extra days for smooth scrolling
   const calendarParams = useMemo(() => {
-    const endDate = subDays(today, pageOffset * DAYS_TO_SHOW)
-    const startDate = subDays(endDate, DAYS_TO_SHOW - 1)
+    const buffer = 30 // Extra days to load for smooth scrolling
+    const endDate = subDays(today, Math.max(0, daysOffset - buffer))
+    const startDate = subDays(today, daysOffset + DAYS_TO_SHOW + buffer)
     return {
       start_date: format(startDate, 'yyyy-MM-dd'),
       end_date: format(endDate, 'yyyy-MM-dd'),
     }
-  }, [pageOffset])
+  }, [daysOffset])
 
   // Fetch calendar data
   const { data: calendarData } = useGetCalendarApiV1AlphaRadarCalendarGet(calendarParams)
@@ -125,101 +149,142 @@ export function TimeController({
     return map
   }, [calendarData])
 
-  // Generate days array for current page
+  // Generate days array based on scroll offset
   const visibleDays = useMemo(() => {
     const days: Date[] = []
-    const endDate = subDays(today, pageOffset * DAYS_TO_SHOW)
+    const endDate = subDays(today, daysOffset)
     for (let i = DAYS_TO_SHOW - 1; i >= 0; i--) {
       days.push(subDays(endDate, i))
     }
     return days
-  }, [pageOffset])
+  }, [daysOffset])
+
+  // Smooth scroll with momentum animation
+  const animateMomentum = useCallback((velocity: number, isDraggingActive: boolean) => {
+    const friction = 0.95
+    const minVelocity = 0.5
+
+    const animate = () => {
+      if (Math.abs(velocity) < minVelocity) {
+        animationRef.current = null
+        return
+      }
+
+      if (isDraggingActive) {
+        // For active day dragging - momentum continues in drag direction
+        // Positive velocity (was dragging right) → continue selecting later dates
+        // Handled by the decay - selection stays where it was dragged to
+      } else {
+        // For timeline scrolling, update scroll offset
+        // Positive velocity (was dragging right) → continue showing earlier dates (increase offset)
+        setScrollOffset(prev => Math.max(0, prev + velocity))
+      }
+
+      velocity *= friction
+      animationRef.current = requestAnimationFrame(() => animate())
+    }
+
+    animate()
+  }, [getCellWidth, selectedDate, today, dateInfoMap, onDateChange])
 
   // Navigate to previous page (earlier dates)
   const handlePrevPage = () => {
-    setPageOffset((prev) => prev + 1)
+    const cellWidth = getCellWidth()
+    setScrollOffset(prev => prev + cellWidth * 15)
   }
 
   // Navigate to next page (more recent dates)
   const handleNextPage = () => {
-    setPageOffset((prev) => Math.max(0, prev - 1))
+    const cellWidth = getCellWidth()
+    setScrollOffset(prev => Math.max(0, prev - cellWidth * 15))
   }
 
   // Check if we can go to next page (already at most recent)
-  const canGoNext = pageOffset > 0
-
-  // Get cell width for drag calculations
-  const getCellWidth = useCallback(() => {
-    if (!containerRef.current) return 30
-    return containerRef.current.offsetWidth / DAYS_TO_SHOW
-  }, [])
-
-  // Find the index of a date in visibleDays
-  const findDateIndex = useCallback((date: Date) => {
-    return visibleDays.findIndex(d => isSameDay(d, date))
-  }, [visibleDays])
+  const canGoNext = scrollOffset > 0
 
   // Handle drag start
   const handleDragStart = useCallback((e: React.MouseEvent | React.TouchEvent, isOnActiveDay: boolean) => {
+    // Cancel any ongoing momentum animation
+    if (animationRef.current) {
+      cancelAnimationFrame(animationRef.current)
+      animationRef.current = null
+    }
+
     const clientX = 'touches' in e ? e.touches[0].clientX : e.clientX
-    const currentIndex = selectedDate ? findDateIndex(selectedDate) : findDateIndex(today)
+    const now = Date.now()
 
     dragRef.current = {
       startX: clientX,
-      startIndex: currentIndex,
+      startScrollOffset: scrollOffset,
+      startSelectedIndex: selectedDate ? visibleDays.findIndex(d => isSameDay(d, selectedDate)) : -1,
       isDraggingActive: isOnActiveDay,
-      accumulatedDelta: 0,
+      lastX: clientX,
+      lastTime: now,
+      velocity: 0,
     }
 
-    // Prevent text selection during drag
     e.preventDefault()
-  }, [selectedDate, findDateIndex, today])
+  }, [scrollOffset, selectedDate, visibleDays])
 
   // Handle drag move
   const handleDragMove = useCallback((e: React.MouseEvent | React.TouchEvent) => {
     if (!dragRef.current) return
 
     const clientX = 'touches' in e ? e.touches[0].clientX : e.clientX
+    const now = Date.now()
     const deltaX = clientX - dragRef.current.startX
-    const cellWidth = getCellWidth()
-    const cellsMoved = Math.round(deltaX / cellWidth)
+    const deltaTime = now - dragRef.current.lastTime
+
+    // Calculate velocity (pixels per ms)
+    if (deltaTime > 0) {
+      const instantVelocity = (clientX - dragRef.current.lastX) / deltaTime
+      dragRef.current.velocity = dragRef.current.velocity * 0.7 + instantVelocity * 0.3 * 16 // Smooth and scale
+    }
+
+    dragRef.current.lastX = clientX
+    dragRef.current.lastTime = now
 
     if (dragRef.current.isDraggingActive) {
-      // Dragging on active day - move selection
-      const newIndex = dragRef.current.startIndex + cellsMoved
-      if (newIndex >= 0 && newIndex < visibleDays.length) {
-        const newDate = visibleDays[newIndex]
-        const dateStr = format(newDate, 'yyyy-MM-dd')
-        const dayInfo = dateInfoMap.get(dateStr)
-        if (dayInfo?.isTradingDay) {
-          onDateChange(newDate)
+      // Dragging on active day - move selection based on drag distance
+      // Drag right (positive deltaX) → select later date (higher index)
+      // Drag left (negative deltaX) → select earlier date (lower index)
+      const cellWidth = getCellWidth()
+      const cellsMoved = Math.round(deltaX / cellWidth)
+
+      if (cellsMoved !== 0 && dragRef.current.startSelectedIndex >= 0) {
+        const newIndex = dragRef.current.startSelectedIndex + cellsMoved
+        if (newIndex >= 0 && newIndex < visibleDays.length) {
+          const newDate = visibleDays[newIndex]
+          const dateStr = format(newDate, 'yyyy-MM-dd')
+          const dayInfo = dateInfoMap.get(dateStr)
+          if (dayInfo?.isTradingDay) {
+            onDateChange(newDate)
+          }
         }
       }
     } else {
-      // Dragging on non-active area - scroll timeline
-      // Accumulate delta and shift pages when threshold reached
-      dragRef.current.accumulatedDelta = deltaX
-      const pagesShifted = Math.floor(Math.abs(deltaX) / (cellWidth * 10))
-
-      if (pagesShifted > 0) {
-        if (deltaX > 0) {
-          // Dragging right = go to earlier dates
-          setPageOffset(prev => prev + 1)
-        } else {
-          // Dragging left = go to more recent dates
-          setPageOffset(prev => Math.max(0, prev - 1))
-        }
-        // Reset start position after page shift
-        dragRef.current.startX = clientX
-        dragRef.current.accumulatedDelta = 0
-      }
+      // Dragging on timeline - smooth scroll
+      // Drag right (positive deltaX) → show earlier dates (increase offset)
+      // Drag left (negative deltaX) → show more recent dates (decrease offset)
+      const newOffset = dragRef.current.startScrollOffset + deltaX
+      setScrollOffset(Math.max(0, newOffset))
     }
   }, [visibleDays, dateInfoMap, onDateChange, getCellWidth])
 
-  // Handle drag end
+  // Handle drag end with momentum
   const handleDragEnd = useCallback(() => {
+    if (!dragRef.current) return
+
+    const velocity = dragRef.current.velocity
+    const isDraggingActive = dragRef.current.isDraggingActive
+
     dragRef.current = null
-  }, [])
+
+    // Apply momentum if velocity is significant
+    if (Math.abs(velocity) > 2) {
+      animateMomentum(velocity, isDraggingActive)
+    }
+  }, [animateMomentum])
 
   // Period mode handlers
   const handlePeriodPreset = (preset: (typeof PERIOD_PRESETS)[0]) => {
@@ -294,7 +359,13 @@ export function TimeController({
               onTouchEnd={handleDragEnd}
             >
               {/* Date cells row */}
-              <div className="grid h-full" style={{ gridTemplateColumns: `repeat(${DAYS_TO_SHOW}, 1fr)` }}>
+              <div
+                className="grid h-full transition-transform duration-75"
+                style={{
+                  gridTemplateColumns: `repeat(${DAYS_TO_SHOW}, 1fr)`,
+                  transform: `translateX(${subPixelOffset}px)`,
+                }}
+              >
                 {visibleDays.map((day) => {
                   const dateStr = format(day, 'yyyy-MM-dd')
                   const dayInfo = dateInfoMap.get(dateStr)
