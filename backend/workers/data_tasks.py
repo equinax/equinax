@@ -624,66 +624,60 @@ async def api_triggered_sync(ctx: Dict[str, Any], sync_record_id: str) -> Dict[s
             etf_count = 0
             step_errors = []
 
-            if check_result["etf_needs_update"]:
-                await _publish_and_persist("progress", sync_record_id, {
+            # Always call sync_etfs_batch - it handles skip logic internally
+            # and syncs ETF valuation data even when market data is up to date
+            await _publish_and_persist("progress", sync_record_id, {
+                "step": "sync_etfs",
+                "progress": 60,
+                "message": "正在同步ETF数据...",
+            }, session, sync_record)
+
+            # ETF 进度回调
+            async def etf_progress_callback(message: str, progress: int, detail: dict):
+                """将 ETF 同步进度实时推送到 SSE"""
+                await _publish_only("progress", sync_record_id, {
                     "step": "sync_etfs",
-                    "progress": 60,
-                    "message": "正在同步ETF数据...",
-                }, session, sync_record)
+                    "progress": progress,
+                    "message": message,
+                    "detail": detail,
+                })
 
-                # ETF 进度回调
-                async def etf_progress_callback(message: str, progress: int, detail: dict):
-                    """将 ETF 同步进度实时推送到 SSE"""
-                    await _publish_only("progress", sync_record_id, {
-                        "step": "sync_etfs",
-                        "progress": progress,
-                        "message": message,
-                        "detail": detail,
-                    })
-
-                try:
-                    etf_result = await sync_etfs_batch(session, etf_progress_callback)
-                    sync_record.details["steps"]["sync_etfs"] = etf_result
-                    step_duration = (datetime.now() - step_start).total_seconds()
-
-                    if etf_result.get("status") == "success":
-                        etf_count = etf_result.get("market_daily_count", 0)
-                        records_imported += etf_count
-
-                    await _publish_and_persist("step_complete", sync_record_id, {
-                        "step": "sync_etfs",
-                        "status": etf_result.get("status"),
-                        "records_count": etf_count,
-                        "duration_seconds": round(step_duration, 1),
-                        "detail": etf_result.get("message", ""),
-                        "message": f"同步ETF数据: {etf_count} 条 ({step_duration:.1f}s)",
-                    }, session, sync_record)
-                except Exception as e:
-                    step_duration = (datetime.now() - step_start).total_seconds()
-                    error_msg = f"ETF同步失败: {str(e)}"
-                    step_errors.append(error_msg)
-                    logger.warning(f"ETF sync failed (continuing with other steps): {e}")
-                    sync_record.details["steps"]["sync_etfs"] = {"status": "error", "message": error_msg}
-
-                    await _publish_and_persist("step_complete", sync_record_id, {
-                        "step": "sync_etfs",
-                        "status": "error",
-                        "records_count": 0,
-                        "duration_seconds": round(step_duration, 1),
-                        "detail": error_msg,
-                        "message": f"同步ETF数据: 失败 ({step_duration:.1f}s)",
-                    }, session, sync_record)
-            else:
-                sync_record.details["steps"]["sync_etfs"] = {"status": "skip", "message": "数据已是最新"}
+            try:
+                etf_result = await sync_etfs_batch(session, etf_progress_callback)
+                sync_record.details["steps"]["sync_etfs"] = etf_result
                 step_duration = (datetime.now() - step_start).total_seconds()
+
+                if etf_result.get("status") == "success":
+                    etf_count = etf_result.get("market_daily_count", 0)
+                    records_imported += etf_count
+
+                valuation_count = etf_result.get("valuation_count", 0)
+                status_msg = etf_result.get("status", "success")
+                detail_msg = etf_result.get("message", "")
 
                 await _publish_and_persist("step_complete", sync_record_id, {
                     "step": "sync_etfs",
-                    "status": "skip",
+                    "status": status_msg,
+                    "records_count": etf_count,
+                    "valuation_count": valuation_count,
+                    "duration_seconds": round(step_duration, 1),
+                    "detail": detail_msg,
+                    "message": f"同步ETF数据: {etf_count} 条, 估值: {valuation_count} 条 ({step_duration:.1f}s)",
+                }, session, sync_record)
+            except Exception as e:
+                step_duration = (datetime.now() - step_start).total_seconds()
+                error_msg = f"ETF同步失败: {str(e)}"
+                step_errors.append(error_msg)
+                logger.warning(f"ETF sync failed (continuing with other steps): {e}")
+                sync_record.details["steps"]["sync_etfs"] = {"status": "error", "message": error_msg}
+
+                await _publish_and_persist("step_complete", sync_record_id, {
+                    "step": "sync_etfs",
+                    "status": "error",
                     "records_count": 0,
                     "duration_seconds": round(step_duration, 1),
-                    "detail": "数据已是最新",
-                    "message": f"同步ETF数据: 跳过 (已是最新)",
+                    "detail": error_msg,
+                    "message": f"同步ETF数据: 失败 ({step_duration:.1f}s)",
                 }, session, sync_record)
 
             # Step 4: Sync index data (batch mode) - with error isolation

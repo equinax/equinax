@@ -195,7 +195,7 @@ export function UniverseDataTable({
         ),
         cell: ({ getValue }) => (
           <span className="font-mono text-sm text-right block">
-            {formatMarketCap(Number(getValue()))}
+            {formatMarketCap(getValue() as number | null)}
           </span>
         ),
         size: 80,

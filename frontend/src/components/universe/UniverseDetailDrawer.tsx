@@ -297,7 +297,7 @@ export function UniverseDetailDrawer({ code, open, onClose }: UniverseDetailDraw
                   <div>
                     <p className="text-xs text-muted-foreground">市值</p>
                     <p className="text-sm font-mono font-medium">
-                      {formatMarketCap(Number(detail.market_cap))}
+                      {formatMarketCap(detail.market_cap as number | null)}
                     </p>
                   </div>
                   <div>
@@ -315,7 +315,7 @@ export function UniverseDetailDrawer({ code, open, onClose }: UniverseDetailDraw
                   <div>
                     <p className="text-xs text-muted-foreground">流通市值</p>
                     <p className="text-sm font-mono font-medium">
-                      {formatMarketCap(Number(detail.circ_mv))}
+                      {formatMarketCap(detail.circ_mv as number | null)}
                     </p>
                   </div>
                   <div>

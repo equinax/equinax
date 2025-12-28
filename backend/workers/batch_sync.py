@@ -757,6 +757,57 @@ async def backfill_etf_history(
     }
 
 
+def fetch_etf_valuation_batch() -> List[Dict]:
+    """
+    从 fund_etf_spot_em 获取 ETF 市值数据
+
+    Returns:
+        indicator_valuation 记录列表
+    """
+    import akshare as ak
+
+    try:
+        df = ak.fund_etf_spot_em()
+    except Exception as e:
+        logger.warning(f"Failed to fetch ETF valuation data: {e}")
+        return []
+
+    records = []
+    today = date.today()
+
+    for _, row in df.iterrows():
+        code = str(row.get('代码', ''))
+        if not code:
+            continue
+
+        # 转换代码格式: 510050 -> sh.510050 / 159xxx -> sz.159xxx
+        if code.startswith('51') or code.startswith('56'):
+            db_code = f'sh.{code}'
+        elif code.startswith('15') or code.startswith('16'):
+            db_code = f'sz.{code}'
+        else:
+            continue  # 跳过非主流 ETF
+
+        total_mv = safe_decimal(row.get('总市值'))
+        circ_mv = safe_decimal(row.get('流通市值'))
+
+        if total_mv or circ_mv:
+            records.append({
+                'code': db_code,
+                'date': today,
+                'pe_ttm': None,
+                'pb_mrq': None,
+                'ps_ttm': None,
+                'pcf_ncf_ttm': None,
+                'total_mv': Decimal(str(float(total_mv) / 100000000)) if total_mv else None,  # 转为亿元
+                'circ_mv': Decimal(str(float(circ_mv) / 100000000)) if circ_mv else None,
+                'is_st': 0,
+            })
+
+    logger.info(f"Fetched ETF valuation data: {len(records)} records")
+    return records
+
+
 async def sync_etfs_batch(
     session: AsyncSession,
     progress_callback: Callable[[str, int, Dict], Any] = None,
@@ -778,10 +829,19 @@ async def sync_etfs_batch(
     logger.info(f"ETF sync check: PG max date = {pg_max_date}, latest trading day = {latest_trading_day}")
 
     if pg_max_date and pg_max_date >= latest_trading_day:
+        # 市值数据仍需每日更新（即使行情数据已是最新）
+        etf_valuation_records = await asyncio.to_thread(fetch_etf_valuation_batch)
+        valuation_count = 0
+        if etf_valuation_records:
+            valuation_count = await batch_insert_valuation(session, etf_valuation_records)
+            await session.commit()
+            logger.info(f"ETF valuation synced (skip mode): {valuation_count} records")
+
         return {
             "status": "skip",
             "message": f"ETF数据已是最新 (PG: {pg_max_date}, 最近交易日: {latest_trading_day})",
             "records": 0,
+            "valuation_count": valuation_count,
         }
 
     # 2. 计算缺失的交易日
@@ -790,12 +850,21 @@ async def sync_etfs_batch(
     # 3. 使用历史 API 并行下载（比 fund_etf_spot_em 更稳定）
     result = await backfill_etf_history(session, missing_days, progress_callback)
 
+    # 4. 获取并保存 ETF 市值数据（每日更新）
+    etf_valuation_records = await asyncio.to_thread(fetch_etf_valuation_batch)
+    valuation_count = 0
+    if etf_valuation_records:
+        valuation_count = await batch_insert_valuation(session, etf_valuation_records)
+        await session.commit()
+        logger.info(f"ETF valuation synced: {valuation_count} records")
+
     return {
         "status": result.get("status", "success"),
         "message": f"ETF数据同步完成",
         "trading_date": str(latest_trading_day),
         "market_daily_count": result.get("records", 0),
         "total_etfs": result.get("records", 0),
+        "valuation_count": valuation_count,
     }
 
 
