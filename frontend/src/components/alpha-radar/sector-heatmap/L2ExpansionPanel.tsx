@@ -8,7 +8,7 @@
  */
 
 import { memo } from 'react'
-import { motion, AnimatePresence } from 'motion/react'
+import { motion } from 'motion/react'
 import type { ProcessedL1Item, ProcessedL2Item, ChartDimensions } from './types'
 import { DEFAULT_DIMENSIONS } from './types'
 
@@ -67,21 +67,28 @@ const L2Bar = memo(function L2Bar({
     <motion.g
       initial={{
         opacity: 0,
-        y: direction === 'up' ? 10 : -10,
+        y: direction === 'up' ? height : -height,
+        scaleY: 0.3,
       }}
       animate={{
         opacity: 1,
         y: 0,
+        scaleY: 1,
       }}
       exit={{
         opacity: 0,
-        y: direction === 'up' ? 10 : -10,
+        y: direction === 'up' ? height + cumulativeOffset : -(height + cumulativeOffset),
+        scaleY: 0,
       }}
       transition={{
         duration: 0.2,
-        delay: index * 0.03,
+        delay: index * 0.015,
       }}
-      style={{ cursor: 'pointer', outline: 'none' }}
+      style={{
+        cursor: 'pointer',
+        outline: 'none',
+        transformOrigin: direction === 'up' ? `${x + width / 2}px ${baselineY}px` : `${x + width / 2}px ${baselineY}px`,
+      }}
       onMouseEnter={() => onHover(true)}
       onMouseLeave={() => onHover(false)}
       onClick={onClick}
@@ -164,56 +171,57 @@ export const L2ExpansionPanel = memo(function L2ExpansionPanel({
   let loserOffset = l1Height
 
   return (
-    <AnimatePresence>
-      <motion.g
-        key={`l2-panel-${segment.name}`}
-        initial={{ opacity: 0 }}
-        animate={{ opacity: 1 }}
-        exit={{ opacity: 0 }}
-        transition={{ duration: 0.2 }}
-      >
-        {/* Gainers - extend UP */}
-        {gainers.map((l2, idx) => {
-          const currentOffset = gainerOffset
-          gainerOffset += l2.height + dims.L2_GAP
+    <motion.g
+      key={`l2-panel-${segment.name}`}
+      initial={{ opacity: 0, scaleY: 0 }}
+      animate={{ opacity: 1, scaleY: 1 }}
+      exit={{ opacity: 0, scaleY: 0 }}
+      transition={{ duration: 0.25, ease: 'easeInOut' }}
+      style={{
+        transformOrigin: `${segment.x + segment.width / 2}px ${baselineY + l1Height / 2}px`,
+      }}
+    >
+      {/* Gainers - extend UP */}
+      {gainers.map((l2, idx) => {
+        const currentOffset = gainerOffset
+        gainerOffset += l2.height + dims.L2_GAP
 
-          return (
-            <L2Bar
-              key={l2.name}
-              item={l2}
-              x={segment.x}
-              width={segment.width}
-              direction="up"
-              baselineY={baselineY}
-              cumulativeOffset={currentOffset}
-              index={idx}
-              onHover={(hovering) => onL2Hover(hovering ? l2 : null)}
-              onClick={() => onL2Click(segment.name, l2.name)}
-            />
-          )
-        })}
+        return (
+          <L2Bar
+            key={l2.name}
+            item={l2}
+            x={segment.x}
+            width={segment.width}
+            direction="up"
+            baselineY={baselineY}
+            cumulativeOffset={currentOffset}
+            index={idx}
+            onHover={(hovering) => onL2Hover(hovering ? l2 : null)}
+            onClick={() => onL2Click(segment.name, l2.name)}
+          />
+        )
+      })}
 
-        {/* Losers - extend DOWN */}
-        {losers.map((l2, idx) => {
-          const currentOffset = loserOffset
-          loserOffset += l2.height + dims.L2_GAP
+      {/* Losers - extend DOWN */}
+      {losers.map((l2, idx) => {
+        const currentOffset = loserOffset
+        loserOffset += l2.height + dims.L2_GAP
 
-          return (
-            <L2Bar
-              key={l2.name}
-              item={l2}
-              x={segment.x}
-              width={segment.width}
-              direction="down"
-              baselineY={baselineY}
-              cumulativeOffset={currentOffset}
-              index={idx + gainers.length}
-              onHover={(hovering) => onL2Hover(hovering ? l2 : null)}
-              onClick={() => onL2Click(segment.name, l2.name)}
-            />
-          )
-        })}
-      </motion.g>
-    </AnimatePresence>
+        return (
+          <L2Bar
+            key={l2.name}
+            item={l2}
+            x={segment.x}
+            width={segment.width}
+            direction="down"
+            baselineY={baselineY}
+            cumulativeOffset={currentOffset}
+            index={idx + gainers.length}
+            onHover={(hovering) => onL2Hover(hovering ? l2 : null)}
+            onClick={() => onL2Click(segment.name, l2.name)}
+          />
+        )
+      })}
+    </motion.g>
   )
 })
