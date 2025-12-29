@@ -40,6 +40,14 @@
   src: url('/fonts/inter/Inter-Bold.woff2') format('woff2');
 }
 
+@font-face {
+  font-family: 'Audiowide';
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url('/fonts/Audiowide/Audiowide-Regular.ttf') format('truetype');
+}
+
 @layer base {
   :root {
     /*

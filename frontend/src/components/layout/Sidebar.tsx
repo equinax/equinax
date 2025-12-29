@@ -23,7 +23,7 @@ const navigation = [
   { name: '策略管理', href: '/strategies', icon: Code2 },
   { name: '回测执行', href: '/backtest', icon: PlayCircle },
   { name: '结果分析', href: '/results', icon: BarChart3 },
-  { name: 'Alpha Radar', href: '/alpha-radar', icon: Radar },
+  { name: '选股雷达', href: '/alpha-radar', icon: Radar },
   { name: '市场发现', href: '/universe', icon: Database },
   { name: '数据同步', href: '/data-sync', icon: RefreshCw },
 ]
@@ -44,7 +44,7 @@ export default function Sidebar() {
         className={cn(
           'group/sidebar relative flex flex-col border-r border-border bg-card',
           'transition-[width] duration-300 ease-out',
-          collapsed ? 'w-16' : 'w-64'
+          collapsed ? 'w-16' : 'w-36'
         )}
         onMouseEnter={() => setIsHovering(true)}
         onMouseLeave={() => setIsHovering(false)}
@@ -95,19 +95,26 @@ export default function Sidebar() {
             </span>
           </div>
 
-          {/* Expanded logo */}
+          {/* Expanded logo - refined quant/tech aesthetic */}
           <div
             className={cn(
-              'flex items-center pl-4',
+              'flex items-center justify-center w-full',
               'transition-all duration-300 ease-out',
               collapsed
                 ? 'opacity-0 translate-x-[-20px]'
                 : 'opacity-100 translate-x-0'
             )}
           >
-            <span className="text-[2rem] tracking-[0.02em] whitespace-nowrap">
-              <span className="font-extrabold text-foreground/90">Equi</span>
-              <span className="font-semibold text-primary">nax</span>
+            <span className="flex items-baseline whitespace-nowrap items-center">
+              <span
+                className="text-[1.7rem] bg-clip-text text-transparent"
+                style={{
+                  fontFamily: 'Audiowide',
+                  backgroundImage: 'linear-gradient(135deg, #00049b 0%,  #00049b 100%)',
+                }}
+              >Equinax</span>
+              {/* <span className="text-[1.5rem] font-light text-foreground/70">nax</span> */}
+              {/* <span className="ml-1 w-1.5 h-1.5 rounded-full bg-gradient-to-br from-blue-500 to-violet-500" /> */}
             </span>
           </div>
         </div>
