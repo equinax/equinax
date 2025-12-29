@@ -1,15 +1,15 @@
 import { Card } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
-import { GlassSpinner, ShimmerSkeleton } from '@/components/ui/web3-loader'
+import { ComputingConsole } from '@/components/ui/computing-console'
 import {
   Tooltip,
   TooltipContent,
   TooltipProvider,
   TooltipTrigger,
 } from '@/components/ui/tooltip'
-import { motion } from 'motion/react'
 import { TrendingUp, TrendingDown } from 'lucide-react'
 import { cn } from '@/lib/utils'
+import { useComputingProgress } from '@/hooks/useComputingProgress'
 import type { DashboardResponse } from '@/api/generated/schemas'
 
 interface MarketDashboardProps {
@@ -49,27 +49,16 @@ function getScoreColor(score: number) {
 }
 
 export function MarketDashboard({ data, isLoading }: MarketDashboardProps) {
+  const { steps, progress } = useComputingProgress(isLoading, 'dashboard')
+
   if (isLoading) {
     return (
-      <Card className="px-4 py-2">
-        <motion.div
-          initial={{ opacity: 0 }}
-          animate={{ opacity: 1 }}
-          className="flex items-center gap-4"
-        >
-          <GlassSpinner size="sm" />
-          <div className="flex items-center gap-4">
-            <ShimmerSkeleton className="h-6 w-16" />
-            <div className="h-4 w-px bg-border" />
-            <ShimmerSkeleton className="h-6 w-32" />
-            <div className="h-4 w-px bg-border" />
-            <ShimmerSkeleton className="h-6 w-24" />
-            <div className="h-4 w-px bg-border" />
-            <ShimmerSkeleton className="h-6 w-20" />
-            <div className="h-4 w-px bg-border" />
-            <ShimmerSkeleton className="h-6 w-28" />
-          </div>
-        </motion.div>
+      <Card className="px-4 py-3">
+        <ComputingConsole
+          title="正在计算市场数据..."
+          steps={steps}
+          progress={progress}
+        />
       </Card>
     )
   }

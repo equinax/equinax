@@ -17,10 +17,10 @@ import {
 } from '@/components/ui/table'
 import { Badge } from '@/components/ui/badge'
 import { Progress } from '@/components/ui/progress'
-import { ShimmerSkeleton, staggerContainer, staggerItem } from '@/components/ui/web3-loader'
-import { motion } from 'motion/react'
+import { ComputingConsole } from '@/components/ui/computing-console'
 import { ArrowUpDown, ArrowUp, ArrowDown } from 'lucide-react'
 import { cn } from '@/lib/utils'
+import { useComputingProgress } from '@/hooks/useComputingProgress'
 import type { ScreenerItem, TimeMode } from '@/api/generated/schemas'
 
 interface RadarDataTableProps {
@@ -65,6 +65,8 @@ export function RadarDataTable({
   onSortingChange,
   timeMode,
 }: RadarDataTableProps) {
+  const { steps, progress } = useComputingProgress(isLoading, 'screener')
+
   // Define columns
   const columns = useMemo<ColumnDef<ScreenerItem>[]>(() => {
     const baseColumns: ColumnDef<ScreenerItem>[] = [
@@ -300,45 +302,15 @@ export function RadarDataTable({
     manualSorting: true,
   })
 
-  // Loading state with staggered reveal animation
+  // Loading state with computing console
   if (isLoading) {
     return (
-      <div className="rounded-md border">
-        <motion.div
-          variants={staggerContainer}
-          initial="hidden"
-          animate="show"
-          className="divide-y divide-border"
-        >
-          {/* Header skeleton */}
-          <div className="flex items-center gap-2 px-2 py-2 bg-muted/30">
-            <ShimmerSkeleton className="h-4 w-20" />
-            <ShimmerSkeleton className="h-4 w-16" />
-            <ShimmerSkeleton className="h-4 w-16" />
-            <ShimmerSkeleton className="h-4 w-20" />
-            <ShimmerSkeleton className="h-4 w-16" />
-            <ShimmerSkeleton className="h-4 w-16" />
-            <ShimmerSkeleton className="h-4 w-12" />
-            <ShimmerSkeleton className="h-4 w-12" />
-          </div>
-          {/* Row skeletons with staggered reveal */}
-          {Array.from({ length: 10 }).map((_, i) => (
-            <motion.div
-              key={i}
-              variants={staggerItem}
-              className="flex items-center gap-2 px-2 py-2"
-            >
-              <ShimmerSkeleton className="h-6 w-24" />
-              <ShimmerSkeleton className="h-4 w-[100px]" />
-              <ShimmerSkeleton className="h-5 w-[120px]" />
-              <ShimmerSkeleton className="h-5 w-20" />
-              <ShimmerSkeleton className="h-4 w-[80px]" />
-              <ShimmerSkeleton className="h-5 w-16" />
-              <ShimmerSkeleton className="h-5 w-12" />
-              <ShimmerSkeleton className="h-4 w-16" />
-            </motion.div>
-          ))}
-        </motion.div>
+      <div className="rounded-md border p-4">
+        <ComputingConsole
+          title="正在筛选股票..."
+          steps={steps}
+          progress={progress}
+        />
       </div>
     )
   }
