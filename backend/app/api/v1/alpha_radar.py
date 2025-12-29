@@ -44,6 +44,14 @@ class MarketRegimeType(str, Enum):
     RANGE = "RANGE"
 
 
+class SectorMetric(str, Enum):
+    """Metric type for sector heatmap coloring."""
+    CHANGE = "change"           # 涨跌幅
+    AMOUNT = "amount"           # 成交额
+    MAIN_STRENGTH = "main_strength"  # 主力强度
+    SCORE = "score"             # 综合评分
+
+
 class ValuationLevel(str, Enum):
     """Valuation level based on historical percentile."""
     LOW = "LOW"           # 0-25%
@@ -196,6 +204,54 @@ class ScreenerResponse(BaseModel):
     date: Optional[datetime.date] = None
     start_date: Optional[datetime.date] = None
     end_date: Optional[datetime.date] = None
+
+
+# ============================================
+# Sector Heatmap Schemas
+# ============================================
+
+class SectorL2Item(BaseModel):
+    """L2 (二级行业) item in sector heatmap."""
+    name: str = Field(description="L2 industry name")
+    stock_count: int = Field(description="Number of stocks in this sector")
+    value: Optional[Decimal] = Field(default=None, description="Value for color mapping")
+    size_value: Optional[Decimal] = Field(default=None, description="Value for area sizing (typically amount)")
+    avg_change_pct: Optional[Decimal] = Field(default=None, description="Average change percentage")
+    total_amount: Optional[Decimal] = Field(default=None, description="Total trading amount")
+    avg_main_strength: Optional[Decimal] = Field(default=None, description="Average main strength proxy")
+    avg_score: Optional[Decimal] = Field(default=None, description="Average panorama score")
+    up_count: int = Field(default=0, description="Number of stocks up")
+    down_count: int = Field(default=0, description="Number of stocks down")
+    flat_count: int = Field(default=0, description="Number of stocks flat")
+
+
+class SectorL1Item(BaseModel):
+    """L1 (一级行业) item in sector heatmap with nested L2 children."""
+    name: str = Field(description="L1 industry name")
+    stock_count: int = Field(description="Total stocks in this sector")
+    value: Optional[Decimal] = Field(default=None, description="Value for color mapping")
+    size_value: Optional[Decimal] = Field(default=None, description="Value for area sizing")
+    avg_change_pct: Optional[Decimal] = Field(default=None, description="Average change percentage")
+    total_amount: Optional[Decimal] = Field(default=None, description="Total trading amount")
+    avg_main_strength: Optional[Decimal] = Field(default=None, description="Average main strength proxy")
+    avg_score: Optional[Decimal] = Field(default=None, description="Average panorama score")
+    up_count: int = Field(default=0, description="Number of stocks up")
+    down_count: int = Field(default=0, description="Number of stocks down")
+    flat_count: int = Field(default=0, description="Number of stocks flat")
+    children: List[SectorL2Item] = Field(default_factory=list, description="L2 sub-sectors")
+
+
+class SectorHeatmapResponse(BaseModel):
+    """Response for sector heatmap visualization."""
+    time_mode: TimeMode
+    date: Optional[datetime.date] = None
+    start_date: Optional[datetime.date] = None
+    end_date: Optional[datetime.date] = None
+    metric: SectorMetric
+    sectors: List[SectorL1Item] = Field(description="L1 sectors with nested L2 children")
+    min_value: Decimal = Field(description="Minimum value across all sectors")
+    max_value: Decimal = Field(description="Maximum value across all sectors")
+    market_avg: Decimal = Field(description="Market average value")
 
 
 # ============================================
@@ -489,4 +545,87 @@ async def get_screener(
         date=result.get("date"),
         start_date=result.get("start_date"),
         end_date=result.get("end_date"),
+    )
+
+
+@router.get("/sector-heatmap", response_model=SectorHeatmapResponse)
+async def get_sector_heatmap(
+    # Metric selection
+    metric: SectorMetric = Query(default=SectorMetric.CHANGE, description="Metric for color mapping"),
+
+    # Time parameters
+    mode: TimeMode = Query(default=TimeMode.SNAPSHOT),
+    date: Optional[datetime.date] = Query(default=None, description="Target date for snapshot"),
+    start_date: Optional[datetime.date] = Query(default=None, description="Start date for period"),
+    end_date: Optional[datetime.date] = Query(default=None, description="End date for period"),
+
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    Get sector heatmap data aggregated by industry (SW申万 L1/L2).
+
+    Metrics:
+    - change: Average price change percentage (涨跌幅)
+    - amount: Total trading amount (成交额)
+    - main_strength: Average main strength proxy (主力强度)
+    - score: Average panorama score (综合评分)
+
+    Returns nested structure: L1 sectors containing L2 sub-sectors.
+    Each sector includes value for color mapping and size_value for area sizing.
+    """
+    from app.services.alpha_radar.sector_heatmap_service import SectorHeatmapService
+
+    service = SectorHeatmapService(db)
+    result = await service.get_sector_heatmap(
+        metric=metric.value,
+        mode=mode.value,
+        target_date=date,
+        start_date=start_date,
+        end_date=end_date,
+    )
+
+    # Convert sectors to response models
+    sectors = [
+        SectorL1Item(
+            name=s["name"],
+            stock_count=s["stock_count"],
+            value=s.get("value"),
+            size_value=s.get("size_value"),
+            avg_change_pct=s.get("avg_change_pct"),
+            total_amount=s.get("total_amount"),
+            avg_main_strength=s.get("avg_main_strength"),
+            avg_score=s.get("avg_score"),
+            up_count=s.get("up_count", 0),
+            down_count=s.get("down_count", 0),
+            flat_count=s.get("flat_count", 0),
+            children=[
+                SectorL2Item(
+                    name=c["name"],
+                    stock_count=c["stock_count"],
+                    value=c.get("value"),
+                    size_value=c.get("size_value"),
+                    avg_change_pct=c.get("avg_change_pct"),
+                    total_amount=c.get("total_amount"),
+                    avg_main_strength=c.get("avg_main_strength"),
+                    avg_score=c.get("avg_score"),
+                    up_count=c.get("up_count", 0),
+                    down_count=c.get("down_count", 0),
+                    flat_count=c.get("flat_count", 0),
+                )
+                for c in s.get("children", [])
+            ],
+        )
+        for s in result.get("sectors", [])
+    ]
+
+    return SectorHeatmapResponse(
+        time_mode=TimeMode(result["time_mode"]),
+        date=result.get("date"),
+        start_date=result.get("start_date"),
+        end_date=result.get("end_date"),
+        metric=SectorMetric(result["metric"]),
+        sectors=sectors,
+        min_value=result["min_value"] or Decimal("0"),
+        max_value=result["max_value"] or Decimal("0"),
+        market_avg=result["market_avg"] or Decimal("0"),
     )

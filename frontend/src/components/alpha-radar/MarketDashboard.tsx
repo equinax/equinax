@@ -23,19 +23,19 @@ function getRegimeStyle(regime: string) {
     case 'BULL':
       return {
         color: 'text-profit',  // 红色 - 牛市
-        bg: 'bg-profit/10',
+        bg: 'bg-profit/10 hover:bg-profit/20',
         label: '牛市',
       }
     case 'BEAR':
       return {
         color: 'text-loss',    // 绿色 - 熊市
-        bg: 'bg-loss/10',
+        bg: 'bg-loss/10 hover:bg-loss/20',
         label: '熊市',
       }
     default:
       return {
         color: 'text-amber-600 dark:text-amber-400',
-        bg: 'bg-amber-100 dark:bg-amber-900/30',
+        bg: 'bg-amber-100 hover:bg-amber-200 dark:bg-amber-900/30 dark:hover:bg-amber-900/50',
         label: '震荡',
       }
   }
@@ -177,9 +177,9 @@ export function MarketDashboard({ data, isLoading }: MarketDashboardProps) {
                 <Badge
                   className={cn(
                     'text-xs border-0',
-                    smart_money.money_flow_proxy === 'inflow' && 'bg-profit/10 text-profit',
-                    smart_money.money_flow_proxy === 'outflow' && 'bg-loss/10 text-loss',
-                    smart_money.money_flow_proxy === 'neutral' && 'bg-amber-100 text-amber-600 dark:bg-amber-900/30 dark:text-amber-400'
+                    smart_money.money_flow_proxy === 'inflow' && 'bg-profit/10 text-profit hover:bg-profit/20',
+                    smart_money.money_flow_proxy === 'outflow' && 'bg-loss/10 text-loss hover:bg-loss/20',
+                    smart_money.money_flow_proxy === 'neutral' && 'bg-amber-100 text-amber-600 hover:bg-amber-200 dark:bg-amber-900/30 dark:text-amber-400 dark:hover:bg-amber-900/50'
                   )}
                 >
                   {smart_money.money_flow_proxy === 'inflow' ? '流入' :

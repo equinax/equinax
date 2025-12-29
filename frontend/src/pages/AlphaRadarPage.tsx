@@ -12,6 +12,7 @@ import type { ScreenerTab, TimeMode } from '@/api/generated/schemas'
 import { MarketDashboard } from '@/components/alpha-radar/MarketDashboard'
 import { RadarDataTable } from '@/components/alpha-radar/RadarDataTable'
 import { TimeController } from '@/components/alpha-radar/TimeController'
+import { SectorHeatmap } from '@/components/alpha-radar/SectorHeatmap'
 
 // Tab configuration
 const TABS = [
@@ -144,6 +145,13 @@ export default function AlphaRadarPage() {
 
       {/* Market Dashboard - 4 Cards */}
       <MarketDashboard data={dashboard} isLoading={isLoadingDashboard} />
+
+      {/* Sector Heatmap */}
+      <SectorHeatmap
+        timeMode={timeMode}
+        selectedDate={selectedDate}
+        dateRange={dateRange}
+      />
 
       {/* Intelligent Screener */}
       <Card>

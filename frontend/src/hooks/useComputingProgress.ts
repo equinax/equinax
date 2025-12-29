@@ -25,15 +25,27 @@ const SCREENER_STEPS: StepConfig[] = [
   { id: 'paginate', label: '准备数据展示', duration: 100 },
 ]
 
+// Heatmap 计算步骤（中文）
+const HEATMAP_STEPS: StepConfig[] = [
+  { id: 'fetch', label: '加载行情数据', duration: 250 },
+  { id: 'industry', label: '映射行业分类', duration: 200 },
+  { id: 'aggregate', label: '聚合行业指标', duration: 300 },
+  { id: 'render', label: '渲染热力图', duration: 150 },
+]
+
 /**
  * Hook to simulate computing progress based on loading state
  * Shows animated step progression while data is being fetched
  */
 export function useComputingProgress(
   isLoading: boolean | undefined,
-  type: 'dashboard' | 'screener'
+  type: 'dashboard' | 'screener' | 'heatmap'
 ): { steps: ComputingStep[]; progress: number } {
-  const baseSteps = type === 'dashboard' ? DASHBOARD_STEPS : SCREENER_STEPS
+  const baseSteps = type === 'dashboard'
+    ? DASHBOARD_STEPS
+    : type === 'heatmap'
+      ? HEATMAP_STEPS
+      : SCREENER_STEPS
   const [steps, setSteps] = useState<ComputingStep[]>(
     baseSteps.map((s) => ({ id: s.id, label: s.label, status: 'pending' as const }))
   )

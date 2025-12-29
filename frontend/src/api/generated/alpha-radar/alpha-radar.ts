@@ -19,8 +19,10 @@ import type {
   GetCalendarApiV1AlphaRadarCalendarGetParams,
   GetDashboardApiV1AlphaRadarDashboardGetParams,
   GetScreenerApiV1AlphaRadarScreenerGetParams,
+  GetSectorHeatmapApiV1AlphaRadarSectorHeatmapGetParams,
   HTTPValidationError,
   ScreenerResponse,
+  SectorHeatmapResponse,
   TimeControllerRequest,
   TimeControllerResponse,
 } from ".././schemas";
@@ -690,6 +692,232 @@ export const useGetScreenerApiV1AlphaRadarScreenerGet = <
     params,
     options,
   );
+
+  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
+    queryKey: QueryKey;
+  };
+
+  query.queryKey = queryOptions.queryKey;
+
+  return query;
+};
+
+/**
+ * Get sector heatmap data aggregated by industry (SW申万 L1/L2).
+
+Metrics:
+- change: Average price change percentage (涨跌幅)
+- amount: Total trading amount (成交额)
+- main_strength: Average main strength proxy (主力强度)
+- score: Average panorama score (综合评分)
+
+Returns nested structure: L1 sectors containing L2 sub-sectors.
+Each sector includes value for color mapping and size_value for area sizing.
+ * @summary Get Sector Heatmap
+ */
+export const getSectorHeatmapApiV1AlphaRadarSectorHeatmapGet = (
+  params?: GetSectorHeatmapApiV1AlphaRadarSectorHeatmapGetParams,
+  signal?: AbortSignal,
+) => {
+  return customInstance<SectorHeatmapResponse>({
+    url: `/api/v1/alpha-radar/sector-heatmap`,
+    method: "GET",
+    params,
+    signal,
+  });
+};
+
+export const getGetSectorHeatmapApiV1AlphaRadarSectorHeatmapGetQueryKey = (
+  params?: GetSectorHeatmapApiV1AlphaRadarSectorHeatmapGetParams,
+) => {
+  return [
+    `/api/v1/alpha-radar/sector-heatmap`,
+    ...(params ? [params] : []),
+  ] as const;
+};
+
+export const getGetSectorHeatmapApiV1AlphaRadarSectorHeatmapGetInfiniteQueryOptions =
+  <
+    TData = InfiniteData<
+      Awaited<
+        ReturnType<typeof getSectorHeatmapApiV1AlphaRadarSectorHeatmapGet>
+      >,
+      GetSectorHeatmapApiV1AlphaRadarSectorHeatmapGetParams["page"]
+    >,
+    TError = HTTPValidationError,
+  >(
+    params?: GetSectorHeatmapApiV1AlphaRadarSectorHeatmapGetParams,
+    options?: {
+      query?: Partial<
+        UseInfiniteQueryOptions<
+          Awaited<
+            ReturnType<typeof getSectorHeatmapApiV1AlphaRadarSectorHeatmapGet>
+          >,
+          TError,
+          TData,
+          Awaited<
+            ReturnType<typeof getSectorHeatmapApiV1AlphaRadarSectorHeatmapGet>
+          >,
+          QueryKey,
+          GetSectorHeatmapApiV1AlphaRadarSectorHeatmapGetParams["page"]
+        >
+      >;
+    },
+  ) => {
+    const { query: queryOptions } = options ?? {};
+
+    const queryKey =
+      queryOptions?.queryKey ??
+      getGetSectorHeatmapApiV1AlphaRadarSectorHeatmapGetQueryKey(params);
+
+    const queryFn: QueryFunction<
+      Awaited<
+        ReturnType<typeof getSectorHeatmapApiV1AlphaRadarSectorHeatmapGet>
+      >,
+      QueryKey,
+      GetSectorHeatmapApiV1AlphaRadarSectorHeatmapGetParams["page"]
+    > = ({ signal, pageParam }) =>
+      getSectorHeatmapApiV1AlphaRadarSectorHeatmapGet(
+        { ...params, page: pageParam || params?.["page"] },
+        signal,
+      );
+
+    return { queryKey, queryFn, ...queryOptions } as UseInfiniteQueryOptions<
+      Awaited<
+        ReturnType<typeof getSectorHeatmapApiV1AlphaRadarSectorHeatmapGet>
+      >,
+      TError,
+      TData,
+      Awaited<
+        ReturnType<typeof getSectorHeatmapApiV1AlphaRadarSectorHeatmapGet>
+      >,
+      QueryKey,
+      GetSectorHeatmapApiV1AlphaRadarSectorHeatmapGetParams["page"]
+    > & { queryKey: QueryKey };
+  };
+
+export type GetSectorHeatmapApiV1AlphaRadarSectorHeatmapGetInfiniteQueryResult =
+  NonNullable<
+    Awaited<ReturnType<typeof getSectorHeatmapApiV1AlphaRadarSectorHeatmapGet>>
+  >;
+export type GetSectorHeatmapApiV1AlphaRadarSectorHeatmapGetInfiniteQueryError =
+  HTTPValidationError;
+
+/**
+ * @summary Get Sector Heatmap
+ */
+export const useGetSectorHeatmapApiV1AlphaRadarSectorHeatmapGetInfinite = <
+  TData = InfiniteData<
+    Awaited<ReturnType<typeof getSectorHeatmapApiV1AlphaRadarSectorHeatmapGet>>,
+    GetSectorHeatmapApiV1AlphaRadarSectorHeatmapGetParams["page"]
+  >,
+  TError = HTTPValidationError,
+>(
+  params?: GetSectorHeatmapApiV1AlphaRadarSectorHeatmapGetParams,
+  options?: {
+    query?: Partial<
+      UseInfiniteQueryOptions<
+        Awaited<
+          ReturnType<typeof getSectorHeatmapApiV1AlphaRadarSectorHeatmapGet>
+        >,
+        TError,
+        TData,
+        Awaited<
+          ReturnType<typeof getSectorHeatmapApiV1AlphaRadarSectorHeatmapGet>
+        >,
+        QueryKey,
+        GetSectorHeatmapApiV1AlphaRadarSectorHeatmapGetParams["page"]
+      >
+    >;
+  },
+): UseInfiniteQueryResult<TData, TError> & { queryKey: QueryKey } => {
+  const queryOptions =
+    getGetSectorHeatmapApiV1AlphaRadarSectorHeatmapGetInfiniteQueryOptions(
+      params,
+      options,
+    );
+
+  const query = useInfiniteQuery(queryOptions) as UseInfiniteQueryResult<
+    TData,
+    TError
+  > & { queryKey: QueryKey };
+
+  query.queryKey = queryOptions.queryKey;
+
+  return query;
+};
+
+export const getGetSectorHeatmapApiV1AlphaRadarSectorHeatmapGetQueryOptions = <
+  TData = Awaited<
+    ReturnType<typeof getSectorHeatmapApiV1AlphaRadarSectorHeatmapGet>
+  >,
+  TError = HTTPValidationError,
+>(
+  params?: GetSectorHeatmapApiV1AlphaRadarSectorHeatmapGetParams,
+  options?: {
+    query?: Partial<
+      UseQueryOptions<
+        Awaited<
+          ReturnType<typeof getSectorHeatmapApiV1AlphaRadarSectorHeatmapGet>
+        >,
+        TError,
+        TData
+      >
+    >;
+  },
+) => {
+  const { query: queryOptions } = options ?? {};
+
+  const queryKey =
+    queryOptions?.queryKey ??
+    getGetSectorHeatmapApiV1AlphaRadarSectorHeatmapGetQueryKey(params);
+
+  const queryFn: QueryFunction<
+    Awaited<ReturnType<typeof getSectorHeatmapApiV1AlphaRadarSectorHeatmapGet>>
+  > = ({ signal }) =>
+    getSectorHeatmapApiV1AlphaRadarSectorHeatmapGet(params, signal);
+
+  return { queryKey, queryFn, ...queryOptions } as UseQueryOptions<
+    Awaited<ReturnType<typeof getSectorHeatmapApiV1AlphaRadarSectorHeatmapGet>>,
+    TError,
+    TData
+  > & { queryKey: QueryKey };
+};
+
+export type GetSectorHeatmapApiV1AlphaRadarSectorHeatmapGetQueryResult =
+  NonNullable<
+    Awaited<ReturnType<typeof getSectorHeatmapApiV1AlphaRadarSectorHeatmapGet>>
+  >;
+export type GetSectorHeatmapApiV1AlphaRadarSectorHeatmapGetQueryError =
+  HTTPValidationError;
+
+/**
+ * @summary Get Sector Heatmap
+ */
+export const useGetSectorHeatmapApiV1AlphaRadarSectorHeatmapGet = <
+  TData = Awaited<
+    ReturnType<typeof getSectorHeatmapApiV1AlphaRadarSectorHeatmapGet>
+  >,
+  TError = HTTPValidationError,
+>(
+  params?: GetSectorHeatmapApiV1AlphaRadarSectorHeatmapGetParams,
+  options?: {
+    query?: Partial<
+      UseQueryOptions<
+        Awaited<
+          ReturnType<typeof getSectorHeatmapApiV1AlphaRadarSectorHeatmapGet>
+        >,
+        TError,
+        TData
+      >
+    >;
+  },
+): UseQueryResult<TData, TError> & { queryKey: QueryKey } => {
+  const queryOptions =
+    getGetSectorHeatmapApiV1AlphaRadarSectorHeatmapGetQueryOptions(
+      params,
+      options,
+    );
 
   const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
     queryKey: QueryKey;
