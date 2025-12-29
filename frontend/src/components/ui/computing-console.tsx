@@ -25,7 +25,7 @@ const colors = {
   sage: {
     main: '#7eda64',
     light: '#99d674',
-    dark: '#54b836',
+    dark: '#64b866',
   },
 }
 
