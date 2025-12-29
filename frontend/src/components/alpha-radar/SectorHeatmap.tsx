@@ -8,6 +8,7 @@
  */
 
 import { useState } from 'react'
+import { keepPreviousData } from '@tanstack/react-query'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { ComputingConsole } from '@/components/ui/computing-console'
@@ -47,25 +48,33 @@ export function SectorHeatmap({
     (theme === 'system' &&
       window.matchMedia('(prefers-color-scheme: dark)').matches)
 
-  // Fetch heatmap data
-  const { data, isLoading } = useGetSectorHeatmapApiV1AlphaRadarSectorHeatmapGet(
+  // Fetch heatmap data - keep previous data while loading new metric
+  const { data, isLoading, isFetching } = useGetSectorHeatmapApiV1AlphaRadarSectorHeatmapGet(
     {
       metric,
       mode: timeMode,
       date: selectedDate?.toISOString().split('T')[0],
       start_date: dateRange?.from?.toISOString().split('T')[0],
       end_date: dateRange?.to?.toISOString().split('T')[0],
+    },
+    {
+      query: {
+        placeholderData: keepPreviousData,
+      },
     }
   )
 
-  const { steps, progress } = useComputingProgress(isLoading, 'heatmap')
+  // Only show loading console for initial load (no data yet)
+  const showInitialLoading = isLoading && !data
+  const { steps, progress } = useComputingProgress(showInitialLoading, 'heatmap')
 
   // Handle L2 click
   const handleL2Click = (l1Name: string, l2Name: string) => {
     onSectorClick?.(l1Name, l2Name)
   }
 
-  if (isLoading) {
+  // Initial loading state (no data yet)
+  if (showInitialLoading) {
     return (
       <Card>
         <CardHeader className="pb-3 pt-3">
@@ -134,14 +143,36 @@ export function SectorHeatmap({
         <div className="text-xs text-muted-foreground mb-2">
           点击展开/收起二级行业 | 按指标值从大到小排列
         </div>
-        <DivergingBarChart
-          sectors={data?.sectors}
-          metric={metric}
-          isDark={isDark}
-          minValue={Number(data?.min_value) || 0}
-          maxValue={Number(data?.max_value) || 0}
-          onL2Click={handleL2Click}
-        />
+        <div className="relative">
+          {/* Loading overlay - shimmer effect */}
+          {isFetching && (
+            <div className="absolute inset-0 z-10 pointer-events-none overflow-hidden rounded-lg">
+              <div className="absolute inset-0 bg-background/40 backdrop-blur-[1px]" />
+              <div
+                className="absolute inset-0"
+                style={{
+                  background: 'linear-gradient(90deg, transparent 0%, rgba(255,255,255,0.2) 50%, transparent 100%)',
+                  backgroundSize: '200% 100%',
+                  animation: 'shimmer 1.2s ease-in-out infinite',
+                }}
+              />
+              <style>{`
+                @keyframes shimmer {
+                  0% { background-position: 200% 0; }
+                  100% { background-position: -200% 0; }
+                }
+              `}</style>
+            </div>
+          )}
+          <DivergingBarChart
+            sectors={data?.sectors}
+            metric={metric}
+            isDark={isDark}
+            minValue={Number(data?.min_value) || 0}
+            maxValue={Number(data?.max_value) || 0}
+            onL2Click={handleL2Click}
+          />
+        </div>
       </CardContent>
     </Card>
   )
