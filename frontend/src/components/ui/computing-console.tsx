@@ -15,9 +15,23 @@ interface ComputingConsoleProps {
   className?: string
 }
 
+// Color palette: Pink + Sage/Teal
+const colors = {
+  pink: {
+    main: '#f2c8c9',
+    light: '#fde2d6',
+    dark: '#f2a7a5',
+  },
+  sage: {
+    main: '#7eda64',
+    light: '#99d674',
+    dark: '#54b836',
+  },
+}
+
 /**
  * Animated SVG computing visualization with multiple moving elements
- * Larger, more elaborate design for centered display
+ * Color scheme: Pink + Sage/Teal green
  */
 function ComputingAnimation({ progress }: { progress: number }) {
   const cx = 100 // center x
@@ -99,24 +113,24 @@ function ComputingAnimation({ progress }: { progress: number }) {
         transition={{ duration: 6, repeat: Infinity, ease: 'linear' }}
         style={{ transformOrigin: `${cx}px ${cy}px` }}
       >
-        <circle cx={cx} cy={35} r="4" fill="#3b82f6" />
-        <circle cx={cx} cy={35} r="2" fill="#60a5fa" />
+        <circle cx={cx} cy={35} r="4" fill={colors.sage.dark} />
+        <circle cx={cx} cy={35} r="2" fill={colors.sage.light} />
       </motion.g>
       <motion.g
         animate={{ rotate: -360 }}
         transition={{ duration: 8, repeat: Infinity, ease: 'linear' }}
         style={{ transformOrigin: `${cx}px ${cy}px` }}
       >
-        <circle cx={165} cy={cy} r="3.5" fill="#8b5cf6" />
-        <circle cx={165} cy={cy} r="1.5" fill="#a78bfa" />
+        <circle cx={165} cy={cy} r="3.5" fill={colors.pink.main} />
+        <circle cx={165} cy={cy} r="1.5" fill={colors.pink.light} />
       </motion.g>
       <motion.g
         animate={{ rotate: 360 }}
         transition={{ duration: 10, repeat: Infinity, ease: 'linear' }}
         style={{ transformOrigin: `${cx}px ${cy}px` }}
       >
-        <circle cx={50} cy={140} r="3" fill="#ec4899" />
-        <circle cx={50} cy={140} r="1.2" fill="#f472b6" />
+        <circle cx={50} cy={140} r="3" fill={colors.sage.main} />
+        <circle cx={50} cy={140} r="1.2" fill={colors.sage.light} />
       </motion.g>
 
       {/* Data flow particles - converging to center */}
@@ -124,7 +138,7 @@ function ComputingAnimation({ progress }: { progress: number }) {
         <motion.circle
           key={`particle-in-${i}`}
           r="2"
-          fill={['#3b82f6', '#8b5cf6', '#ec4899', '#3b82f6', '#8b5cf6'][i]}
+          fill={[colors.sage.dark, colors.pink.main, colors.sage.main, colors.pink.dark, colors.sage.dark][i]}
           animate={{
             cx: [cx + 80 * Math.cos((angle * Math.PI) / 180), cx + 20 * Math.cos((angle * Math.PI) / 180)],
             cy: [cy + 80 * Math.sin((angle * Math.PI) / 180), cy + 20 * Math.sin((angle * Math.PI) / 180)],
@@ -140,7 +154,7 @@ function ComputingAnimation({ progress }: { progress: number }) {
         <motion.circle
           key={`particle-out-${i}`}
           r="1.5"
-          fill={['#60a5fa', '#a78bfa', '#f472b6', '#60a5fa', '#a78bfa'][i]}
+          fill={[colors.sage.light, colors.pink.light, colors.sage.main, colors.pink.light, colors.sage.light][i]}
           animate={{
             cx: [cx + 25 * Math.cos((angle * Math.PI) / 180), cx + 70 * Math.cos((angle * Math.PI) / 180)],
             cy: [cy + 25 * Math.sin((angle * Math.PI) / 180), cy + 70 * Math.sin((angle * Math.PI) / 180)],
@@ -155,7 +169,7 @@ function ComputingAnimation({ progress }: { progress: number }) {
         cx={cx}
         cy={cy}
         fill="none"
-        stroke="#3b82f6"
+        stroke={colors.sage.dark}
         strokeWidth="1"
         animate={{ r: [25, 60], opacity: [0.6, 0] }}
         transition={{ duration: 2.5, repeat: Infinity }}
@@ -164,7 +178,7 @@ function ComputingAnimation({ progress }: { progress: number }) {
         cx={cx}
         cy={cy}
         fill="none"
-        stroke="#8b5cf6"
+        stroke={colors.pink.main}
         strokeWidth="1"
         animate={{ r: [25, 60], opacity: [0.6, 0] }}
         transition={{ duration: 2.5, repeat: Infinity, delay: 0.8 }}
@@ -173,7 +187,7 @@ function ComputingAnimation({ progress }: { progress: number }) {
         cx={cx}
         cy={cy}
         fill="none"
-        stroke="#ec4899"
+        stroke={colors.sage.main}
         strokeWidth="1"
         animate={{ r: [25, 60], opacity: [0.6, 0] }}
         transition={{ duration: 2.5, repeat: Infinity, delay: 1.6 }}
@@ -192,7 +206,7 @@ function ComputingAnimation({ progress }: { progress: number }) {
           cy={pos.y}
           r="3"
           fill="none"
-          stroke={['#3b82f6', '#8b5cf6', '#ec4899', '#3b82f6'][i]}
+          stroke={[colors.sage.dark, colors.pink.main, colors.pink.dark, colors.sage.main][i]}
           strokeWidth="1"
           animate={{ opacity: [0.3, 0.8, 0.3] }}
           transition={{ duration: 2, repeat: Infinity, delay: i * 0.5 }}
@@ -212,36 +226,36 @@ function ComputingAnimation({ progress }: { progress: number }) {
           y1={line.y1}
           x2={line.x2}
           y2={line.y2}
-          stroke={['#3b82f6', '#8b5cf6', '#ec4899', '#3b82f6'][i]}
+          stroke={[colors.sage.dark, colors.pink.main, colors.pink.dark, colors.sage.main][i]}
           strokeWidth="0.5"
           animate={{ opacity: [0.1, 0.4, 0.1] }}
           transition={{ duration: 3, repeat: Infinity, delay: i * 0.3 }}
         />
       ))}
 
-      {/* Gradients */}
+      {/* Gradients - Pink + Sage */}
       <defs>
         <linearGradient id="outerRingGradient" x1="0%" y1="0%" x2="100%" y2="100%">
-          <stop offset="0%" stopColor="#3b82f6" />
-          <stop offset="100%" stopColor="#ec4899" />
+          <stop offset="0%" stopColor={colors.sage.dark} />
+          <stop offset="100%" stopColor={colors.pink.main} />
         </linearGradient>
         <linearGradient id="middleRingGradient" x1="0%" y1="0%" x2="100%" y2="100%">
-          <stop offset="0%" stopColor="#8b5cf6" />
-          <stop offset="100%" stopColor="#3b82f6" />
+          <stop offset="0%" stopColor={colors.pink.main} />
+          <stop offset="100%" stopColor={colors.sage.dark} />
         </linearGradient>
         <linearGradient id="progressGradient" x1="0%" y1="0%" x2="100%" y2="0%">
-          <stop offset="0%" stopColor="#3b82f6" />
-          <stop offset="50%" stopColor="#8b5cf6" />
-          <stop offset="100%" stopColor="#ec4899" />
+          <stop offset="0%" stopColor={colors.pink.dark} />
+          <stop offset="50%" stopColor={colors.pink.light} />
+          <stop offset="100%" stopColor={colors.pink.main} />
         </linearGradient>
         <linearGradient id="hexGradient" x1="0%" y1="0%" x2="100%" y2="100%">
-          <stop offset="0%" stopColor="#3b82f6" />
-          <stop offset="100%" stopColor="#8b5cf6" />
+          <stop offset="0%" stopColor={colors.sage.main} />
+          <stop offset="100%" stopColor={colors.pink.main} />
         </linearGradient>
         <linearGradient id="coreGradient" x1="0%" y1="0%" x2="100%" y2="100%">
-          <stop offset="0%" stopColor="#3b82f6" />
-          <stop offset="50%" stopColor="#8b5cf6" />
-          <stop offset="100%" stopColor="#ec4899" />
+          <stop offset="0%" stopColor={colors.sage.dark} />
+          <stop offset="50%" stopColor={colors.sage.light} />
+          <stop offset="100%" stopColor={colors.sage.main} />
         </linearGradient>
       </defs>
     </svg>
@@ -300,10 +314,10 @@ function StepLine({ step, index }: { step: ComputingStep; index: number }) {
     >
       {/* Status icon */}
       {step.status === 'completed' && (
-        <Check className="h-3.5 w-3.5 text-green-500" />
+        <Check className="h-3.5 w-3.5 text-teal-500" />
       )}
       {step.status === 'running' && (
-        <Loader2 className="h-3.5 w-3.5 text-blue-500 animate-spin" />
+        <Loader2 className="h-3.5 w-3.5 text-pink-500 animate-spin" />
       )}
       {step.status === 'pending' && (
         <Circle className="h-3.5 w-3.5 text-muted-foreground/40" />
@@ -323,7 +337,7 @@ function StepLine({ step, index }: { step: ComputingStep; index: number }) {
           <motion.span
             animate={{ opacity: [1, 0] }}
             transition={{ duration: 0.5, repeat: Infinity }}
-            className="text-blue-500"
+            className="text-pink-500"
           >
             _
           </motion.span>
