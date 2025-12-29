@@ -86,11 +86,9 @@ export function RadarDataTable({
           </button>
         ),
         cell: ({ row }) => (
-          <div className="min-w-[100px]">
-            <div className="font-mono text-sm">{row.original.code}</div>
-            <div className="text-xs text-muted-foreground truncate max-w-[120px]">
-              {row.original.name}
-            </div>
+          <div className="flex items-center gap-2 whitespace-nowrap">
+            <span className="font-mono text-sm">{row.original.code}</span>
+            <span className="text-xs text-muted-foreground">{row.original.name}</span>
           </div>
         ),
       },
@@ -115,11 +113,9 @@ export function RadarDataTable({
         cell: ({ row }) => {
           const score = Number(row.original.composite_score)
           return (
-            <div className="w-[100px]">
-              <div className="flex items-center justify-between mb-1">
-                <span className="text-sm font-medium">{score.toFixed(1)}</span>
-              </div>
-              <Progress value={score} className="h-1.5" />
+            <div className="flex items-center gap-2 w-[100px]">
+              <span className="text-sm font-medium w-8">{score.toFixed(1)}</span>
+              <Progress value={score} className="h-1.5 flex-1" />
             </div>
           )
         },
@@ -151,13 +147,13 @@ export function RadarDataTable({
         id: 'price_change',
         header: '现价/涨幅',
         cell: ({ row }: { row: { original: ScreenerItem } }) => (
-          <div className="text-right">
-            <div className="font-mono text-sm">
+          <div className="flex items-center gap-2 whitespace-nowrap">
+            <span className="font-mono text-sm">
               {row.original.price ? Number(row.original.price).toFixed(2) : '-'}
-            </div>
-            <div className="text-xs">
+            </span>
+            <span className="text-xs">
               {formatChangePct(row.original.change_pct)}
-            </div>
+            </span>
           </div>
         ),
       }] as ColumnDef<ScreenerItem>[] : []),
@@ -184,12 +180,12 @@ export function RadarDataTable({
           if (value === null || value === undefined) return '-'
           const num = Number(value)
           return (
-            <div className="w-[60px]">
-              <div className="text-xs font-mono text-right">{num.toFixed(0)}</div>
+            <div className="flex items-center gap-2 w-[80px]">
+              <span className="text-xs font-mono w-6">{num.toFixed(0)}</span>
               <Progress
                 value={num}
                 className={cn(
-                  'h-1',
+                  'h-1.5 flex-1',
                   num > 60 ? '[&>div]:bg-green-500' :
                   num > 40 ? '[&>div]:bg-amber-500' : '[&>div]:bg-gray-400'
                 )}
@@ -222,16 +218,16 @@ export function RadarDataTable({
           if (!level) return '-'
           const style = VALUATION_STYLES[level] || {}
           return (
-            <div className="text-right">
-              <span className={cn('text-sm font-medium', style.className)}>
+            <div className="flex items-center gap-1.5 whitespace-nowrap">
+              <span className={cn('text-xs font-medium', style.className)}>
                 {level === 'LOW' ? '低估' :
                   level === 'MEDIUM' ? '中等' :
                   level === 'HIGH' ? '偏高' : '极高'}
               </span>
               {pct && (
-                <div className="text-xs text-muted-foreground font-mono">
+                <span className="text-xs text-muted-foreground font-mono">
                   {Number(pct).toFixed(0)}%
-                </div>
+                </span>
               )}
             </div>
           )
@@ -326,7 +322,7 @@ export function RadarDataTable({
           {table.getHeaderGroups().map((headerGroup) => (
             <TableRow key={headerGroup.id}>
               {headerGroup.headers.map((header) => (
-                <TableHead key={header.id} className="text-xs">
+                <TableHead key={header.id} className="text-xs h-8 px-2">
                   {header.isPlaceholder
                     ? null
                     : flexRender(header.column.columnDef.header, header.getContext())}
@@ -343,7 +339,7 @@ export function RadarDataTable({
                 className="cursor-pointer hover:bg-muted/50"
               >
                 {row.getVisibleCells().map((cell) => (
-                  <TableCell key={cell.id} className="py-2">
+                  <TableCell key={cell.id} className="py-1 px-2">
                     {flexRender(cell.column.columnDef.cell, cell.getContext())}
                   </TableCell>
                 ))}

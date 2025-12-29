@@ -131,7 +131,7 @@ export default function AlphaRadarPage() {
 
       {/* Intelligent Screener */}
       <Card>
-        <CardHeader className="pb-3">
+        <CardHeader className="pb-3 pt-3">
           <div className="flex items-center gap-4">
             {/* Title */}
             <CardTitle className="text-lg shrink-0">智能选股</CardTitle>
