@@ -463,7 +463,7 @@ export function TimeController({
             {/* Day Cells - Heatmap Style - Fill entire width - no gap with arrows */}
             <div
               ref={containerRef}
-              className="flex-1 relative -mx-1 select-none"
+              className="flex-1 relative -mx-1 select-none overflow-x-clip overflow-y-visible"
               onMouseMove={handleDragMove}
               onMouseUp={handleDragEnd}
               onMouseLeave={handleDragEnd}

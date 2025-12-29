@@ -44,7 +44,7 @@ export default function Sidebar() {
         className={cn(
           'group/sidebar relative flex flex-col border-r border-border bg-card',
           'transition-[width] duration-300 ease-out',
-          collapsed ? 'w-16' : 'w-36'
+          collapsed ? 'w-16' : 'w-40'
         )}
         onMouseEnter={() => setIsHovering(true)}
         onMouseLeave={() => setIsHovering(false)}
