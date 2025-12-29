@@ -12,6 +12,8 @@ export interface ProcessedL2Item {
   stockCount: number
   upCount: number
   downCount: number
+  metricValue: number  // Display value based on selected metric
+  metricLabel: string  // Formatted display string
   // Computed layout
   height: number
   y: number
@@ -27,6 +29,8 @@ export interface ProcessedL1Item {
   stockCount: number
   upCount: number
   downCount: number
+  metricValue: number  // Display value based on selected metric
+  metricLabel: string  // Formatted display string
   // Computed layout
   x: number
   width: number

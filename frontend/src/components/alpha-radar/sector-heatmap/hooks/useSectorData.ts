@@ -20,6 +20,24 @@ interface UseSectorDataOptions {
   maxValue: number
 }
 
+// Format metric value for display
+function formatMetricLabel(value: number, metric: SectorMetric): string {
+  switch (metric) {
+    case 'change':
+      return `${value >= 0 ? '+' : ''}${value.toFixed(2)}%`
+    case 'amount':
+      // Convert to 亿
+      const yi = value / 100000000
+      return yi >= 1 ? `${yi.toFixed(1)}亿` : `${(value / 10000).toFixed(0)}万`
+    case 'main_strength':
+      return value.toFixed(2)
+    case 'score':
+      return value.toFixed(1)
+    default:
+      return value.toFixed(2)
+  }
+}
+
 export function useSectorData({
   sectors,
   metric,
@@ -49,9 +67,12 @@ export function useSectorData({
       const amount = Number(sector.total_amount || 0)
       const proportion = amount / totalAmount
 
+      // Get the metric value for display
+      const metricValue = Number(sector.value || 0)
+      const metricLabel = formatMetricLabel(metricValue, metric)
+
       // Get color based on metric value
-      const value = Number(sector.value || 0)
-      const color = getValueColor(value, minValue, maxValue, metric, isDark)
+      const color = getValueColor(metricValue, minValue, maxValue, metric, isDark)
       const textColor = getContrastTextColor(color)
 
       // Process L2 children
@@ -66,8 +87,9 @@ export function useSectorData({
         const childChangePct = Number(child.avg_change_pct || 0)
         const childAmount = Number(child.total_amount || 0)
         const childProportion = l1TotalAmount > 0 ? childAmount / l1TotalAmount : 0
-        const childValue = Number(child.value || 0)
-        const childColor = getValueColor(childValue, minValue, maxValue, metric, isDark)
+        const childMetricValue = Number(child.value || 0)
+        const childMetricLabel = formatMetricLabel(childMetricValue, metric)
+        const childColor = getValueColor(childMetricValue, minValue, maxValue, metric, isDark)
         const childTextColor = getContrastTextColor(childColor)
 
         return {
@@ -80,6 +102,8 @@ export function useSectorData({
           stockCount: child.stock_count,
           upCount: child.up_count,
           downCount: child.down_count,
+          metricValue: childMetricValue,
+          metricLabel: childMetricLabel,
           // Layout will be calculated later
           height: 0,
           y: 0,
@@ -107,6 +131,8 @@ export function useSectorData({
         stockCount: sector.stock_count,
         upCount: sector.up_count,
         downCount: sector.down_count,
+        metricValue,
+        metricLabel,
         // Layout will be calculated by useChartLayout
         x: 0,
         width: 0,

@@ -44,7 +44,7 @@ const L2Bar = memo(function L2Bar({
   onHover,
   onClick,
 }: L2BarProps) {
-  const { name, changePct, color, textColor, height } = item
+  const { name, color, textColor, height, metricLabel } = item
 
   // Calculate Y position
   // UP: bars grow upward from baseline (y decreases)
@@ -59,12 +59,9 @@ const L2Bar = memo(function L2Bar({
       ? '0 1px 2px rgba(0,0,0,0.5)'
       : '0 1px 1px rgba(255,255,255,0.6)'
 
-  // Format change percentage
-  const changeStr = `${changePct >= 0 ? '+' : ''}${changePct.toFixed(2)}%`
-
   // Determine label visibility based on height
   const showLabel = height >= 24
-  const showChange = height >= 32
+  const showMetricValue = height >= 32
 
   return (
     <motion.g
@@ -84,7 +81,7 @@ const L2Bar = memo(function L2Bar({
         duration: 0.2,
         delay: index * 0.03,
       }}
-      style={{ cursor: 'pointer' }}
+      style={{ cursor: 'pointer', outline: 'none' }}
       onMouseEnter={() => onHover(true)}
       onMouseLeave={() => onHover(false)}
       onClick={onClick}
@@ -115,7 +112,7 @@ const L2Bar = memo(function L2Bar({
       {showLabel && (
         <text
           x={x + width / 2}
-          y={y + (showChange ? height / 2 - 5 : height / 2)}
+          y={y + (showMetricValue ? height / 2 - 5 : height / 2)}
           textAnchor="middle"
           dominantBaseline="middle"
           fill={textColor === 'light' ? '#ffffff' : '#1f2937'}
@@ -127,8 +124,8 @@ const L2Bar = memo(function L2Bar({
         </text>
       )}
 
-      {/* Change percentage */}
-      {showChange && (
+      {/* Metric value */}
+      {showMetricValue && (
         <text
           x={x + width / 2}
           y={y + height / 2 + 8}
@@ -139,12 +136,12 @@ const L2Bar = memo(function L2Bar({
           fontFamily="monospace"
           style={{ textShadow, pointerEvents: 'none' }}
         >
-          {changeStr}
+          {metricLabel}
         </text>
       )}
 
       {/* Tooltip for small bars */}
-      {!showLabel && <title>{`${name}: ${changeStr}`}</title>}
+      {!showLabel && <title>{`${name}: ${metricLabel}`}</title>}
     </motion.g>
   )
 })

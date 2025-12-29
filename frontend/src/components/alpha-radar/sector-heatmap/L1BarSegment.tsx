@@ -24,12 +24,12 @@ export const L1BarSegment = memo(function L1BarSegment({
   onClick,
   onHover,
 }: L1BarSegmentProps) {
-  const { name, changePct, color, textColor, x, width } = segment
+  const { name, color, textColor, x, width, metricLabel } = segment
 
   // Determine if we have enough space for labels
   const showFullLabel = width > 60
   const showAnyLabel = width > 30
-  const showChangePct = width > 50
+  const showMetricValue = width > 50
 
   // Text shadow for contrast
   const textShadow =
@@ -37,19 +37,16 @@ export const L1BarSegment = memo(function L1BarSegment({
       ? '0 1px 3px rgba(0,0,0,0.6), 0 0 2px rgba(0,0,0,0.3)'
       : '0 1px 2px rgba(255,255,255,0.8)'
 
-  // Format change percentage
-  const changeStr = `${changePct >= 0 ? '+' : ''}${changePct.toFixed(2)}%`
-
   return (
     <motion.g
       transform={`translate(${x}, 0)`}
       onClick={onClick}
       onMouseEnter={(e) => onHover(true, e)}
       onMouseLeave={() => onHover(false)}
-      style={{ cursor: 'pointer' }}
+      style={{ cursor: 'pointer', outline: 'none' }}
       role="button"
       tabIndex={0}
-      aria-label={`${name}: ${changeStr}`}
+      aria-label={`${name}: ${metricLabel}`}
       onKeyDown={(e) => {
         if (e.key === 'Enter' || e.key === ' ') {
           e.preventDefault()
@@ -74,7 +71,7 @@ export const L1BarSegment = memo(function L1BarSegment({
       {showAnyLabel ? (
         <text
           x={width / 2}
-          y={showChangePct ? height / 2 - 6 : height / 2}
+          y={showMetricValue ? height / 2 - 6 : height / 2}
           textAnchor="middle"
           dominantBaseline="middle"
           fill={textColor === 'light' ? '#ffffff' : '#1f2937'}
@@ -101,8 +98,8 @@ export const L1BarSegment = memo(function L1BarSegment({
         </text>
       )}
 
-      {/* Change percentage */}
-      {showChangePct && (
+      {/* Metric value */}
+      {showMetricValue && (
         <text
           x={width / 2}
           y={height / 2 + 10}
@@ -113,12 +110,12 @@ export const L1BarSegment = memo(function L1BarSegment({
           fontFamily="monospace"
           style={{ textShadow, pointerEvents: 'none' }}
         >
-          {changeStr}
+          {metricLabel}
         </text>
       )}
 
-      {/* Tooltip trigger area (invisible) - for very narrow segments */}
-      {!showAnyLabel && <title>{`${name}: ${changeStr}`}</title>}
+      {/* Tooltip for narrow segments */}
+      {!showAnyLabel && <title>{`${name}: ${metricLabel}`}</title>}
     </motion.g>
   )
 })
