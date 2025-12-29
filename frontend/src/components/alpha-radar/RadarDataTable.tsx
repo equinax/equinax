@@ -18,6 +18,7 @@ import {
 import { Badge } from '@/components/ui/badge'
 import { Progress } from '@/components/ui/progress'
 import { ComputingConsole } from '@/components/ui/computing-console'
+import { motion } from 'motion/react'
 import { ArrowUpDown, ArrowUp, ArrowDown } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { useComputingProgress } from '@/hooks/useComputingProgress'
@@ -316,7 +317,7 @@ export function RadarDataTable({
   }
 
   return (
-    <div className="rounded-md border">
+    <div className="rounded-md border overflow-hidden">
       <Table>
         <TableHeader>
           {table.getHeaderGroups().map((headerGroup) => (
@@ -333,17 +334,24 @@ export function RadarDataTable({
         </TableHeader>
         <TableBody>
           {table.getRowModel().rows?.length ? (
-            table.getRowModel().rows.map((row) => (
-              <TableRow
+            table.getRowModel().rows.map((row, index) => (
+              <motion.tr
                 key={row.id}
-                className="cursor-pointer hover:bg-muted/50"
+                initial={{ opacity: 0, y: 10 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{
+                  duration: 0.2,
+                  delay: index * 0.02,
+                  ease: 'easeOut',
+                }}
+                className="cursor-pointer hover:bg-muted/50 border-b transition-colors"
               >
                 {row.getVisibleCells().map((cell) => (
                   <TableCell key={cell.id} className="py-1 px-2">
                     {flexRender(cell.column.columnDef.cell, cell.getContext())}
                   </TableCell>
                 ))}
-              </TableRow>
+              </motion.tr>
             ))
           ) : (
             <TableRow>
