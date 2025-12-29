@@ -61,45 +61,67 @@ class DashboardService:
         return await self._calculate_market_state(target_date)
 
     async def _calculate_market_state(self, target_date: date) -> dict:
-        """Calculate market state from market_daily data."""
-        # Get 上证指数 performance
+        """
+        Calculate market state using composite scoring.
+
+        Three-factor model:
+        - 50% weight: 20-day cumulative return (momentum)
+        - 30% weight: % above/below MA20 (short-term trend)
+        - 20% weight: % above/below MA60 (medium-term trend)
+
+        Thresholds based on statistical analysis:
+        - BULL: score >= 30 (~31% of days)
+        - BEAR: score <= -30 (~18% of days)
+        - RANGE: otherwise (~51% of days)
+        """
         query = text("""
-            WITH today AS (
-                SELECT pct_chg FROM market_daily
-                WHERE code = 'sh.000001' AND date = :target_date
-            ),
-            recent AS (
-                SELECT AVG(pct_chg) as avg_chg
+            WITH price_data AS (
+                SELECT
+                    date, close, pct_chg,
+                    AVG(close) OVER (ORDER BY date ROWS BETWEEN 19 PRECEDING AND CURRENT ROW) as ma20,
+                    AVG(close) OVER (ORDER BY date ROWS BETWEEN 59 PRECEDING AND CURRENT ROW) as ma60,
+                    SUM(pct_chg) OVER (ORDER BY date ROWS BETWEEN 19 PRECEDING AND CURRENT ROW) as cumret_20d
                 FROM market_daily
                 WHERE code = 'sh.000001'
-                AND date >= :start_date AND date <= :target_date
             )
             SELECT
-                (SELECT pct_chg FROM today) as today_chg,
-                (SELECT avg_chg FROM recent) as avg_chg
+                cumret_20d,
+                (close - ma20) / NULLIF(ma20, 0) * 100 as pct_above_ma20,
+                (close - ma60) / NULLIF(ma60, 0) * 100 as pct_above_ma60
+            FROM price_data
+            WHERE date = :target_date AND ma60 IS NOT NULL
         """)
-        from datetime import timedelta
-        start_date = target_date - timedelta(days=30)
 
-        result = await self.db.execute(query, {"target_date": target_date, "start_date": start_date})
+        result = await self.db.execute(query, {"target_date": target_date})
         row = result.fetchone()
 
         if row and row[0] is not None:
-            today_chg = float(row[0])
-            avg_chg = float(row[1] or 0)
+            cumret_20d = float(row[0] or 0)
+            pct_ma20 = float(row[1] or 0)
+            pct_ma60 = float(row[2] or 0)
 
-            # Calculate regime score based on recent performance
-            regime_score = min(100, max(-100, avg_chg * 20))
+            # Composite score with weighted factors
+            regime_score = max(-100, min(100,
+                cumret_20d * 10 * 0.5 +      # 50% momentum
+                pct_ma20 * 20 * 0.3 +        # 30% short-term
+                pct_ma60 * 10 * 0.2          # 20% medium-term
+            ))
 
-            if regime_score > 20:
+            # Classification with refined descriptions
+            if regime_score >= 30:
                 regime = "BULL"
                 desc = "强势上涨"
-            elif regime_score < -20:
+            elif regime_score <= -30:
                 regime = "BEAR"
                 desc = "弱势下跌"
             else:
                 regime = "RANGE"
-                desc = "震荡整理"
+                if abs(regime_score) <= 15:
+                    desc = "震荡整理"
+                elif regime_score > 0:
+                    desc = "偏多震荡"
+                else:
+                    desc = "偏空震荡"
 
             return {
                 "regime": regime,

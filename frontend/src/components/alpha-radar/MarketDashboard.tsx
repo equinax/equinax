@@ -10,19 +10,19 @@ interface MarketDashboardProps {
   isLoading?: boolean
 }
 
-// Regime color mapping
+// Regime color mapping (A股惯例: 涨红跌绿)
 function getRegimeStyle(regime: string) {
   switch (regime) {
     case 'BULL':
       return {
-        color: 'text-green-600 dark:text-green-400',
-        bg: 'bg-green-100 dark:bg-green-900/30',
+        color: 'text-profit',  // 红色 - 牛市
+        bg: 'bg-profit/10',
         label: '牛市',
       }
     case 'BEAR':
       return {
-        color: 'text-red-600 dark:text-red-400',
-        bg: 'bg-red-100 dark:bg-red-900/30',
+        color: 'text-loss',    // 绿色 - 熊市
+        bg: 'bg-loss/10',
         label: '熊市',
       }
     default:
@@ -34,10 +34,10 @@ function getRegimeStyle(regime: string) {
   }
 }
 
-// Score to color
+// Score to color (A股惯例: 涨红跌绿)
 function getScoreColor(score: number) {
-  if (score > 30) return 'text-green-600 dark:text-green-400'
-  if (score < -30) return 'text-red-600 dark:text-red-400'
+  if (score > 30) return 'text-profit'   // 红色 - 牛市
+  if (score < -30) return 'text-loss'    // 绿色 - 熊市
   return 'text-amber-600 dark:text-amber-400'
 }
 
@@ -123,8 +123,8 @@ export function MarketDashboard({ data, isLoading }: MarketDashboardProps) {
             variant="outline"
             className={cn(
               'text-xs',
-              smart_money.money_flow_proxy === 'inflow' && 'border-green-500 text-green-600',
-              smart_money.money_flow_proxy === 'outflow' && 'border-red-500 text-red-600',
+              smart_money.money_flow_proxy === 'inflow' && 'border-profit text-profit',    // 红色 - 流入利好
+              smart_money.money_flow_proxy === 'outflow' && 'border-loss text-loss',       // 绿色 - 流出利空
               smart_money.money_flow_proxy === 'neutral' && 'border-amber-500 text-amber-600'
             )}
           >

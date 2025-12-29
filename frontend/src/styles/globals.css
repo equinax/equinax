@@ -310,6 +310,14 @@
   background-color: hsl(var(--loss));
 }
 
+.border-profit {
+  border-color: hsl(var(--profit));
+}
+
+.border-loss {
+  border-color: hsl(var(--loss));
+}
+
 /* Hide TradingView branding from lightweight-charts */
 .tv-lightweight-charts a[href*="tradingview"],
 .tv-lightweight-charts [class*="apply-common-tooltip"],
