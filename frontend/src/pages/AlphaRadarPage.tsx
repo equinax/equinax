@@ -132,27 +132,34 @@ export default function AlphaRadarPage() {
       {/* Intelligent Screener */}
       <Card>
         <CardHeader className="pb-3">
-          <div className="flex items-center justify-between">
-            <CardTitle className="text-lg">智能选股</CardTitle>
-            <div className="flex items-center gap-2">
-              <span className="text-sm text-muted-foreground">
-                共 {screener?.total?.toLocaleString() || 0} 只
-              </span>
-            </div>
+          <div className="flex items-center gap-4">
+            {/* Title */}
+            <CardTitle className="text-lg shrink-0">智能选股</CardTitle>
+
+            {/* Tabs */}
+            <Tabs value={activeTab} onValueChange={handleTabChange} className="shrink-0">
+              <TabsList>
+                {TABS.map((tab) => (
+                  <TabsTrigger key={tab.value} value={tab.value} className="text-xs px-3">
+                    {tab.label}
+                  </TabsTrigger>
+                ))}
+              </TabsList>
+            </Tabs>
+
+            {/* Description */}
+            <span className="text-xs text-muted-foreground shrink-0">
+              {TABS.find((t) => t.value === activeTab)?.description}
+            </span>
+
+            {/* Spacer */}
+            <div className="flex-1" />
+
+            {/* Count */}
+            <span className="text-sm text-muted-foreground shrink-0">
+              共 {screener?.total?.toLocaleString() || 0} 只
+            </span>
           </div>
-          {/* Tab Selector */}
-          <Tabs value={activeTab} onValueChange={handleTabChange} className="mt-2">
-            <TabsList className="grid w-full grid-cols-4">
-              {TABS.map((tab) => (
-                <TabsTrigger key={tab.value} value={tab.value} className="text-xs sm:text-sm">
-                  {tab.label}
-                </TabsTrigger>
-              ))}
-            </TabsList>
-          </Tabs>
-          <p className="text-xs text-muted-foreground mt-2">
-            {TABS.find((t) => t.value === activeTab)?.description}
-          </p>
         </CardHeader>
         <CardContent className="pt-0">
           {/* Data Table */}
