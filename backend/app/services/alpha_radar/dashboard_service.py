@@ -256,19 +256,18 @@ class DashboardService:
                 small_growth_return += avg_ret
                 small_growth_count += 1
 
+        # If no style exposure data, fallback to index-based calculation
+        if large_value_count == 0 or small_growth_count == 0:
+            return await self._calculate_style_rotation_from_index(target_date)
+
         # Normalize to 0-100 scale
-        # Use relative strength comparison
-        lv_strength = 50.0
-        sg_strength = 50.0
+        lv_avg = large_value_return / large_value_count
+        sg_avg = small_growth_return / small_growth_count
 
-        if large_value_count > 0 and small_growth_count > 0:
-            lv_avg = large_value_return / large_value_count
-            sg_avg = small_growth_return / small_growth_count
-
-            # Convert to relative strength
-            total = abs(lv_avg) + abs(sg_avg) + 0.001  # Avoid division by zero
-            lv_strength = 50 + (lv_avg / total) * 50
-            sg_strength = 50 + (sg_avg / total) * 50
+        # Convert to relative strength
+        total = abs(lv_avg) + abs(sg_avg) + 0.001  # Avoid division by zero
+        lv_strength = 50 + (lv_avg / total) * 50
+        sg_strength = 50 + (sg_avg / total) * 50
 
         # Determine dominant style
         if lv_strength > sg_strength + 10:
@@ -286,6 +285,47 @@ class DashboardService:
             "small_growth_strength": Decimal(str(round(sg_strength, 2))),
             "dominant_style": dominant_style,
             "rotation_signal": rotation_signal,
+        }
+
+    async def _calculate_style_rotation_from_index(self, target_date: date) -> dict:
+        """
+        Fallback: Calculate style rotation from index performance.
+
+        Uses:
+        - 上证50 (sh.000016) as large-cap value proxy
+        - 中证1000 (sh.000852) as small-cap growth proxy
+        """
+        query = text("""
+            SELECT code, pct_chg
+            FROM market_daily
+            WHERE date = :target_date
+            AND code IN ('sh.000016', 'sh.000852')
+        """)
+
+        result = await self.db.execute(query, {"target_date": target_date})
+        rows = {row[0]: float(row[1] or 0) for row in result.fetchall()}
+
+        lv_chg = rows.get('sh.000016', 0)  # 上证50 - large value
+        sg_chg = rows.get('sh.000852', 0)  # 中证1000 - small growth
+
+        # Convert to 0-100 strength scale
+        total = abs(lv_chg) + abs(sg_chg) + 0.001
+        lv_strength = 50 + (lv_chg / total) * 50
+        sg_strength = 50 + (sg_chg / total) * 50
+
+        # Determine dominant style
+        if lv_strength > sg_strength + 10:
+            dominant_style = "large_value"
+        elif sg_strength > lv_strength + 10:
+            dominant_style = "small_growth"
+        else:
+            dominant_style = "balanced"
+
+        return {
+            "large_value_strength": Decimal(str(round(lv_strength, 2))),
+            "small_growth_strength": Decimal(str(round(sg_strength, 2))),
+            "dominant_style": dominant_style,
+            "rotation_signal": "stable",
         }
 
     async def get_smart_money(self, target_date: date) -> dict:
