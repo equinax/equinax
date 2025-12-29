@@ -112,9 +112,11 @@ export function TimeController({
     lastX: number
     lastTime: number
     velocity: number
+    hasMoved: boolean // Track if actual movement happened
   } | null>(null)
   const containerRef = useRef<HTMLDivElement>(null)
   const animationRef = useRef<number | null>(null)
+  const justDraggedRef = useRef(false) // Prevent click after drag
 
   // Get earliest available date from backend
   const { mutate: fetchTimeController, data: timeControllerData } = useResolveTimeControllerApiV1AlphaRadarTimeControllerPost()
@@ -332,6 +334,7 @@ export function TimeController({
       lastX: clientX,
       lastTime: now,
       velocity: 0,
+      hasMoved: false,
     }
 
     e.preventDefault()
@@ -345,6 +348,11 @@ export function TimeController({
     const now = Date.now()
     const deltaX = clientX - dragRef.current.startX
     const deltaTime = now - dragRef.current.lastTime
+
+    // Mark as moved if dragged more than 5 pixels (threshold to distinguish from click)
+    if (Math.abs(deltaX) > 5) {
+      dragRef.current.hasMoved = true
+    }
 
     // Calculate velocity (pixels per ms)
     if (deltaTime > 0) {
@@ -388,6 +396,16 @@ export function TimeController({
 
     const velocity = dragRef.current.velocity
     const isDraggingActive = dragRef.current.isDraggingActive
+    const hasMoved = dragRef.current.hasMoved
+
+    // Set flag to prevent click event if we actually dragged
+    if (hasMoved) {
+      justDraggedRef.current = true
+      // Reset after a short delay (to catch the click event that fires after mouseup)
+      setTimeout(() => {
+        justDraggedRef.current = false
+      }, 50)
+    }
 
     dragRef.current = null
 
@@ -501,7 +519,11 @@ export function TimeController({
                       style={{ width: `${100 / DAYS_TO_SHOW}%` }}
                     >
                       <button
-                        onClick={() => isTradingDay && onDateChange(day)}
+                        onClick={() => {
+                          // Skip click if we just finished a drag
+                          if (justDraggedRef.current) return
+                          if (isTradingDay) onDateChange(day)
+                        }}
                         onMouseDown={(e) => handleDragStart(e, isSelected)}
                         onTouchStart={(e) => handleDragStart(e, isSelected)}
                         style={selectedStyle || marketStyle}
