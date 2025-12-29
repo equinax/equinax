@@ -148,7 +148,7 @@ class ScoringEngine:
                 pl.col("volume_ratio_5d")
                 .fill_null(1.0)
                 .clip(0.5, 3.0)
-                .map_elements(lambda x: min(100, (x - 0.5) * 40), return_dtype=pl.Float64)
+                .map_elements(lambda x: min(100.0, (x - 0.5) * 40), return_dtype=pl.Float64)
             ).alias("volume_pattern_component"),
 
             # Price position score (inverse - lower is better for accumulation)
