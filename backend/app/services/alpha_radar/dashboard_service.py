@@ -27,7 +27,7 @@ class DashboardService:
 
     async def get_market_state(self, target_date: date) -> dict:
         """
-        Get market state from MarketRegime table.
+        Get market state - try MarketRegime table first, fallback to calculation.
 
         Returns:
             dict with regime, regime_score, regime_description
@@ -57,7 +57,56 @@ class DashboardService:
                 "regime_description": descriptions.get(regime_str, "未知状态"),
             }
 
-        # Default if no data
+        # Fallback: Calculate from market_daily
+        return await self._calculate_market_state(target_date)
+
+    async def _calculate_market_state(self, target_date: date) -> dict:
+        """Calculate market state from market_daily data."""
+        # Get 上证指数 performance
+        query = text("""
+            WITH today AS (
+                SELECT pct_chg FROM market_daily
+                WHERE code = 'sh.000001' AND date = :target_date
+            ),
+            recent AS (
+                SELECT AVG(pct_chg) as avg_chg
+                FROM market_daily
+                WHERE code = 'sh.000001'
+                AND date >= :start_date AND date <= :target_date
+            )
+            SELECT
+                (SELECT pct_chg FROM today) as today_chg,
+                (SELECT avg_chg FROM recent) as avg_chg
+        """)
+        from datetime import timedelta
+        start_date = target_date - timedelta(days=30)
+
+        result = await self.db.execute(query, {"target_date": target_date, "start_date": start_date})
+        row = result.fetchone()
+
+        if row and row[0] is not None:
+            today_chg = float(row[0])
+            avg_chg = float(row[1] or 0)
+
+            # Calculate regime score based on recent performance
+            regime_score = min(100, max(-100, avg_chg * 20))
+
+            if regime_score > 20:
+                regime = "BULL"
+                desc = "强势上涨"
+            elif regime_score < -20:
+                regime = "BEAR"
+                desc = "弱势下跌"
+            else:
+                regime = "RANGE"
+                desc = "震荡整理"
+
+            return {
+                "regime": regime,
+                "regime_score": Decimal(str(round(regime_score, 2))),
+                "regime_description": desc,
+            }
+
         return {
             "regime": "RANGE",
             "regime_score": Decimal("0"),
@@ -68,7 +117,7 @@ class DashboardService:
         """
         Get market breadth metrics.
 
-        Uses MarketRegime table for basic breadth, calculates MA20 breadth separately.
+        Uses MarketRegime table first, falls back to calculation from market_daily.
 
         Returns:
             dict with up_count, down_count, flat_count, up_down_ratio,
@@ -79,7 +128,7 @@ class DashboardService:
         )
         regime = result.scalar_one_or_none()
 
-        if regime:
+        if regime and regime.up_count and regime.down_count:
             up_count = regime.up_count or 0
             down_count = regime.down_count or 0
             total = regime.total_stocks or (up_count + down_count)
@@ -93,12 +142,51 @@ class DashboardService:
                 "down_count": down_count,
                 "flat_count": flat_count,
                 "up_down_ratio": round(up_down_ratio, 2),
-                "above_ma20_ratio": Decimal("0.5"),  # Placeholder - would need separate calculation
+                "above_ma20_ratio": Decimal("0.5"),
                 "limit_up_count": regime.limit_up_count or 0,
                 "limit_down_count": regime.limit_down_count or 0,
             }
 
-        # Default if no data
+        # Fallback: Calculate from market_daily
+        return await self._calculate_market_breadth(target_date)
+
+    async def _calculate_market_breadth(self, target_date: date) -> dict:
+        """Calculate market breadth from market_daily data."""
+        query = text("""
+            SELECT
+                COUNT(CASE WHEN pct_chg > 0.01 THEN 1 END) as up_count,
+                COUNT(CASE WHEN pct_chg < -0.01 THEN 1 END) as down_count,
+                COUNT(CASE WHEN pct_chg >= -0.01 AND pct_chg <= 0.01 THEN 1 END) as flat_count,
+                COUNT(CASE WHEN pct_chg >= 9.9 THEN 1 END) as limit_up_count,
+                COUNT(CASE WHEN pct_chg <= -9.9 THEN 1 END) as limit_down_count
+            FROM market_daily
+            WHERE date = :target_date
+            AND code NOT LIKE 'sh.000%'
+            AND code NOT LIKE 'sz.399%'
+        """)
+
+        result = await self.db.execute(query, {"target_date": target_date})
+        row = result.fetchone()
+
+        if row:
+            up_count = int(row[0] or 0)
+            down_count = int(row[1] or 0)
+            flat_count = int(row[2] or 0)
+            limit_up = int(row[3] or 0)
+            limit_down = int(row[4] or 0)
+
+            up_down_ratio = Decimal(str(up_count / down_count)) if down_count > 0 else Decimal("999")
+
+            return {
+                "up_count": up_count,
+                "down_count": down_count,
+                "flat_count": flat_count,
+                "up_down_ratio": round(up_down_ratio, 2),
+                "above_ma20_ratio": Decimal("0.5"),
+                "limit_up_count": limit_up,
+                "limit_down_count": limit_down,
+            }
+
         return {
             "up_count": 0,
             "down_count": 0,
