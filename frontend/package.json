@@ -39,6 +39,7 @@
     "echarts-for-react": "^3.0.2",
     "lightweight-charts": "^4.1.1",
     "lucide-react": "^0.311.0",
+    "motion": "^12.23.26",
     "react": "^18.2.0",
     "react-day-picker": "^9.13.0",
     "react-dom": "^18.2.0",

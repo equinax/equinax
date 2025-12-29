@@ -79,6 +79,21 @@ export default function AlphaRadarPage() {
     sort_order: sortOrder as 'asc' | 'desc',
   })
 
+  // Loading lock - prevent rapid date changes while data is loading
+  const isAnyLoading = isLoadingDashboard || isLoadingScreener
+
+  // Handle date change with loading lock
+  const handleDateChange = useCallback((date: Date | undefined) => {
+    if (isAnyLoading) return // Ignore clicks while loading
+    setSelectedDate(date)
+  }, [isAnyLoading])
+
+  // Handle date range change with loading lock
+  const handleDateRangeChange = useCallback((range: { from?: Date; to?: Date }) => {
+    if (isAnyLoading) return
+    setDateRange(range)
+  }, [isAnyLoading])
+
   // Handle tab change - reset to page 1
   const handleTabChange = (tab: string) => {
     setActiveTab(tab as ScreenerTab)
@@ -119,9 +134,10 @@ export default function AlphaRadarPage() {
             mode={timeMode}
             onModeChange={handleTimeModeChange}
             selectedDate={selectedDate}
-            onDateChange={setSelectedDate}
+            onDateChange={handleDateChange}
             dateRange={dateRange}
-            onDateRangeChange={setDateRange}
+            onDateRangeChange={handleDateRangeChange}
+            disabled={isAnyLoading}
           />
         </div>
       </div>

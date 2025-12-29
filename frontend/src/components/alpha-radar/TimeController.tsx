@@ -22,6 +22,7 @@ interface TimeControllerProps {
   onDateChange: (date?: Date) => void
   dateRange: { from?: Date; to?: Date }
   onDateRangeChange: (range: { from?: Date; to?: Date }) => void
+  disabled?: boolean
 }
 
 // Quick date presets for period mode
@@ -91,6 +92,7 @@ export function TimeController({
   onDateChange,
   dateRange,
   onDateRangeChange,
+  disabled = false,
 }: TimeControllerProps) {
   const today = useMemo(() => new Date(), [])
 
@@ -520,12 +522,12 @@ export function TimeController({
                     >
                       <button
                         onClick={() => {
-                          // Skip click if we just finished a drag
-                          if (justDraggedRef.current) return
+                          // Skip click if disabled or we just finished a drag
+                          if (disabled || justDraggedRef.current) return
                           if (isTradingDay) onDateChange(day)
                         }}
-                        onMouseDown={(e) => handleDragStart(e, isSelected)}
-                        onTouchStart={(e) => handleDragStart(e, isSelected)}
+                        onMouseDown={(e) => !disabled && handleDragStart(e, isSelected)}
+                        onTouchStart={(e) => !disabled && handleDragStart(e, isSelected)}
                         style={selectedStyle || marketStyle}
                         className={cn(
                           'cursor-grab active:cursor-grabbing',
@@ -535,12 +537,14 @@ export function TimeController({
                           !isTradingDay && 'bg-muted text-muted-foreground',
                           // Trading day without market change (flat/平盘)
                           isTradingDay && !marketStyle && !selectedStyle && 'bg-muted/50',
-                          // Hover for trading days
-                          isTradingDay && 'hover:brightness-110',
+                          // Hover for trading days (only when not disabled)
+                          isTradingDay && !disabled && 'hover:brightness-110',
                           // Selected state - glass effect + taller
                           isSelected && isTradingDay && 'text-white font-semibold !aspect-auto !h-[120%] !-my-[10%] z-10 rounded-sm',
                           // Today indicator (if not selected)
                           !isSelected && isToday && isTradingDay && 'ring-1 ring-primary/50 ring-inset',
+                          // Disabled state - reduced opacity and no pointer events
+                          disabled && 'opacity-60 cursor-not-allowed',
                         )}
                         title={`${format(day, 'yyyy-MM-dd (EEEE)')}${isTradingDay ? (marketChange !== null ? ` ${marketChange > 0 ? '+' : ''}${marketChange.toFixed(2)}%` : '') : ' (非交易日)'}`}
                       >
@@ -581,6 +585,7 @@ export function TimeController({
                   size="sm"
                   className="h-7 px-3 text-xs"
                   onClick={() => handlePeriodPreset(preset)}
+                  disabled={disabled}
                 >
                   {preset.label}
                 </Button>

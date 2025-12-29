@@ -1,12 +1,13 @@
 import { Card } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
-import { Skeleton } from '@/components/ui/skeleton'
+import { GlassSpinner, ShimmerSkeleton } from '@/components/ui/web3-loader'
 import {
   Tooltip,
   TooltipContent,
   TooltipProvider,
   TooltipTrigger,
 } from '@/components/ui/tooltip'
+import { motion } from 'motion/react'
 import { TrendingUp, TrendingDown } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import type { DashboardResponse } from '@/api/generated/schemas'
@@ -50,13 +51,25 @@ function getScoreColor(score: number) {
 export function MarketDashboard({ data, isLoading }: MarketDashboardProps) {
   if (isLoading) {
     return (
-      <Card className="p-3">
-        <div className="flex items-center gap-6">
-          <Skeleton className="h-6 w-24" />
-          <Skeleton className="h-6 w-32" />
-          <Skeleton className="h-6 w-28" />
-          <Skeleton className="h-6 w-36" />
-        </div>
+      <Card className="px-4 py-2">
+        <motion.div
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          className="flex items-center gap-4"
+        >
+          <GlassSpinner size="sm" />
+          <div className="flex items-center gap-4">
+            <ShimmerSkeleton className="h-6 w-16" />
+            <div className="h-4 w-px bg-border" />
+            <ShimmerSkeleton className="h-6 w-32" />
+            <div className="h-4 w-px bg-border" />
+            <ShimmerSkeleton className="h-6 w-24" />
+            <div className="h-4 w-px bg-border" />
+            <ShimmerSkeleton className="h-6 w-20" />
+            <div className="h-4 w-px bg-border" />
+            <ShimmerSkeleton className="h-6 w-28" />
+          </div>
+        </motion.div>
       </Card>
     )
   }
