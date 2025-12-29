@@ -94,13 +94,14 @@ const L2Bar = memo(function L2Bar({
       onClick={onClick}
     >
       {/* Bar background */}
-      <rect
+      <motion.rect
         x={x}
         y={y}
         width={width}
         height={height}
-        fill={color}
         rx={2}
+        animate={{ fill: color }}
+        transition={{ fill: { duration: 0.3 } }}
       />
 
       {/* Border for visibility */}

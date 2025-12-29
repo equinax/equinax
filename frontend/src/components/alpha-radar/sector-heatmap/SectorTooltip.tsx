@@ -9,7 +9,16 @@
 
 import { memo, useEffect, useState } from 'react'
 import { createPortal } from 'react-dom'
+import type { SectorMetric } from '@/api/generated/schemas'
 import type { ProcessedL1Item, ProcessedL2Item } from './types'
+
+// Metric labels and descriptions
+const METRIC_LABELS: Record<SectorMetric, { name: string; desc: string }> = {
+  change: { name: '涨跌幅', desc: '今日股价变动百分比' },
+  amount: { name: '成交额', desc: '今日总成交金额' },
+  main_strength: { name: '主力强度', desc: '主力资金净流入强度' },
+  score: { name: '综合评分', desc: '多维度综合评估得分' },
+}
 
 interface SectorTooltipProps {
   segment: ProcessedL1Item | ProcessedL2Item | null
@@ -17,6 +26,7 @@ interface SectorTooltipProps {
   parentName?: string // For L2, show parent L1 name
   mouseX: number
   mouseY: number
+  metric: SectorMetric
 }
 
 // Type guard to check if segment is L1
@@ -32,6 +42,7 @@ export const SectorTooltip = memo(function SectorTooltip({
   parentName,
   mouseX,
   mouseY,
+  metric,
 }: SectorTooltipProps) {
   const [position, setPosition] = useState({ x: 0, y: 0 })
 
@@ -71,9 +82,16 @@ export const SectorTooltip = memo(function SectorTooltip({
 
   if (!segment) return null
 
-  const { name, changePct, stockCount, upCount, downCount, amount } = segment
+  const { name, changePct, stockCount, upCount, downCount, amount, metricLabel, metricValue } = segment
   const changeStr = `${changePct >= 0 ? '+' : ''}${changePct.toFixed(2)}%`
   const changeColor = changePct >= 0 ? 'text-red-500' : 'text-green-500'
+
+  // Get current metric info
+  const metricInfo = METRIC_LABELS[metric]
+  // For metric display color - positive values red, negative green (for change metric)
+  const metricColor = metric === 'change'
+    ? (metricValue >= 0 ? 'text-red-500' : 'text-green-500')
+    : 'text-blue-400'
 
   // Format amount (in 亿)
   const amountInYi = amount / 100000000
@@ -103,9 +121,14 @@ export const SectorTooltip = memo(function SectorTooltip({
             )}
             <span className="font-semibold text-sm">{name}</span>
           </div>
-          <span className={`font-mono font-bold ${changeColor}`}>
-            {changeStr}
+          <span className={`font-mono font-bold ${metricColor}`}>
+            {metricLabel}
           </span>
+        </div>
+
+        {/* Current metric description */}
+        <div className="text-[10px] text-gray-500 mb-2">
+          {metricInfo.name}：{metricInfo.desc}
         </div>
 
         {/* Divider */}
@@ -113,6 +136,14 @@ export const SectorTooltip = memo(function SectorTooltip({
 
         {/* Stats */}
         <div className="space-y-1.5 text-xs">
+          {/* Change percentage (show when not the current metric) */}
+          {metric !== 'change' && (
+            <div className="flex justify-between">
+              <span className="text-gray-400">涨跌幅</span>
+              <span className={`font-mono ${changeColor}`}>{changeStr}</span>
+            </div>
+          )}
+
           {/* Stock count */}
           <div className="flex justify-between">
             <span className="text-gray-400">股票数量</span>

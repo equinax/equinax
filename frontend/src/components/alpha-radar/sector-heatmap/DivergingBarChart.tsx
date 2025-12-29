@@ -58,6 +58,11 @@ export const DivergingBarChart = memo(function DivergingBarChart({
 
   const dims = { ...DEFAULT_DIMENSIONS, ...customDims }
 
+  // Auto-collapse L2 when metric changes
+  useEffect(() => {
+    setIsExpanded(false)
+  }, [metric])
+
   // Process sector data
   const processedData = useSectorData({
     sectors,
@@ -212,6 +217,7 @@ export const DivergingBarChart = memo(function DivergingBarChart({
         parentName={hoverState.parentName}
         mouseX={hoverState.mouseX}
         mouseY={hoverState.mouseY}
+        metric={metric}
       />
     </motion.div>
   )

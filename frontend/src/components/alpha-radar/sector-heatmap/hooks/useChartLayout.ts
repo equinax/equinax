@@ -65,34 +65,20 @@ export function useChartLayout({
 
       // Calculate L2 heights for all sectors when expanded
       if (isExpanded) {
-        const { gainers, losers } = item.children
+        const { losers } = item.children
 
-        // Calculate heights for gainers
-        const totalGainerProportion = gainers.reduce((sum, g) => sum + g.proportion, 0)
-        let gainerY = 0
-        result.children.gainers = gainers.map((g) => {
-          // Normalize proportion within gainers
-          const normalizedProportion = totalGainerProportion > 0
-            ? g.proportion / totalGainerProportion
-            : 1 / gainers.length
-          const height = Math.max(
-            normalizedProportion * (dims.L2_MAX_HEIGHT / 2),
-            dims.L2_MIN_BAR_HEIGHT
-          )
-          const y = gainerY
-          gainerY += height + dims.L2_GAP
-          return { ...g, height, y }
-        })
+        // Gainers array is now empty (unified L2 display)
+        result.children.gainers = []
 
-        // Calculate heights for losers
-        const totalLoserProportion = losers.reduce((sum, l) => sum + l.proportion, 0)
+        // Calculate heights for all L2 items (now in losers array)
+        const totalProportion = losers.reduce((sum, l) => sum + l.proportion, 0)
         let loserY = 0
         result.children.losers = losers.map((l) => {
-          const normalizedProportion = totalLoserProportion > 0
-            ? l.proportion / totalLoserProportion
+          const normalizedProportion = totalProportion > 0
+            ? l.proportion / totalProportion
             : 1 / losers.length
           const height = Math.max(
-            normalizedProportion * (dims.L2_MAX_HEIGHT / 2),
+            normalizedProportion * dims.L2_MAX_HEIGHT,
             dims.L2_MIN_BAR_HEIGHT
           )
           const y = loserY
@@ -104,32 +90,27 @@ export function useChartLayout({
       return result
     })
 
-    // Calculate max heights across ALL sectors when expanded
+    // Calculate max L2 height across ALL sectors when expanded
     let maxGainerHeight = 0
     let maxLoserHeight = 0
 
     if (isExpanded) {
-      // Find the maximum gainer and loser heights across all sectors
+      // Find the maximum L2 height across all sectors (all items now in losers)
       segments.forEach((segment) => {
-        const { gainers, losers } = segment.children
-        const gainerHeight = gainers.reduce(
-          (sum, g) => sum + g.height + dims.L2_GAP,
-          0
-        )
+        const { losers } = segment.children
         const loserHeight = losers.reduce(
           (sum, l) => sum + l.height + dims.L2_GAP,
           0
         )
-        maxGainerHeight = Math.max(maxGainerHeight, gainerHeight)
         maxLoserHeight = Math.max(maxLoserHeight, loserHeight)
       })
     }
 
-    // SVG height = L1 height + space for gainers above + space for losers below
-    const svgHeight = dims.L1_BAR_HEIGHT + maxGainerHeight + maxLoserHeight + 16 // padding
+    // SVG height = L1 height + space for L2 below
+    const svgHeight = dims.L1_BAR_HEIGHT + maxLoserHeight + 16 // padding
 
-    // L1 baseline Y = space for gainers above
-    const l1BaselineY = maxGainerHeight + 8
+    // L1 baseline Y = top (no gainers above)
+    const l1BaselineY = 8
 
     return {
       segments,

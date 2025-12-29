@@ -56,9 +56,9 @@ export function useSectorData({
 
     if (totalAmount === 0) return []
 
-    // Sort L1 by change: most gain on LEFT, most loss on RIGHT
+    // Sort L1 by metric value: largest on LEFT
     const sortedL1 = [...sectors].sort(
-      (a, b) => Number(b.avg_change_pct || 0) - Number(a.avg_change_pct || 0)
+      (a, b) => Number(b.value || 0) - Number(a.value || 0)
     )
 
     // Process each L1 sector
@@ -110,16 +110,15 @@ export function useSectorData({
         } as ProcessedL2Item
       })
 
-      // Split and sort
-      // Gainers: least gain first (closest to baseline), most gain last (at top)
-      const gainers = processedChildren
-        .filter((c) => c.changePct >= 0)
-        .sort((a, b) => a.changePct - b.changePct)
+      // Unified sorting: all L2 sorted by metricValue from large to small
+      // Display below L1 bar (in losers array for rendering)
+      const sortedChildren = processedChildren.sort(
+        (a, b) => b.metricValue - a.metricValue
+      )
 
-      // Losers: least loss first (closest to baseline), most loss last (at bottom)
-      const losers = processedChildren
-        .filter((c) => c.changePct < 0)
-        .sort((a, b) => b.changePct - a.changePct)
+      // Put all in losers array (displays below L1 bar)
+      const gainers: ProcessedL2Item[] = []
+      const losers = sortedChildren
 
       return {
         name: sector.name,

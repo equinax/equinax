@@ -132,10 +132,9 @@ export function SectorHeatmap({
       </CardHeader>
       <CardContent className="pt-0">
         <div className="text-xs text-muted-foreground mb-2">
-          点击展开/收起二级行业 | 涨幅排序：左涨右跌 | 展开时：上涨下跌
+          点击展开/收起二级行业 | 按指标值从大到小排列
         </div>
         <DivergingBarChart
-          key={metric}
           sectors={data?.sectors}
           metric={metric}
           isDark={isDark}

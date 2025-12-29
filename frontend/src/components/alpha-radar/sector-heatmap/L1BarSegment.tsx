@@ -39,7 +39,8 @@ export const L1BarSegment = memo(function L1BarSegment({
 
   return (
     <motion.g
-      transform={`translate(${x}, 0)`}
+      animate={{ x }}
+      transition={{ duration: 0.4, ease: [0.4, 0, 0.2, 1] }}
       onClick={onClick}
       onMouseEnter={(e) => onHover(true, e)}
       onMouseLeave={() => onHover(false)}
@@ -56,15 +57,20 @@ export const L1BarSegment = memo(function L1BarSegment({
     >
       {/* Background rect */}
       <motion.rect
-        width={width}
         height={height}
-        fill={color}
         rx={2}
         animate={{
+          width,
+          fill: color,
           opacity: isHovered ? 1 : 0.95,
           filter: isHovered ? 'brightness(1.08)' : 'brightness(1)',
         }}
-        transition={{ duration: 0.15 }}
+        transition={{
+          width: { duration: 0.4, ease: [0.4, 0, 0.2, 1] },
+          fill: { duration: 0.3 },
+          opacity: { duration: 0.15 },
+          filter: { duration: 0.15 },
+        }}
       />
 
       {/* Industry name - horizontal for wide, vertical for narrow */}
