@@ -8,6 +8,7 @@
  */
 
 import { useState } from 'react'
+import { useNavigate } from 'react-router-dom'
 import { keepPreviousData } from '@tanstack/react-query'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs'
@@ -41,6 +42,7 @@ export function SectorHeatmap({
 }: SectorHeatmapProps) {
   const [metric, setMetric] = useState<SectorMetric>('change')
   const { theme } = useTheme()
+  const navigate = useNavigate()
 
   const isDark =
     theme === 'dark' ||
@@ -110,6 +112,14 @@ export function SectorHeatmap({
           </Tabs>
 
           <div className="flex-1" />
+
+          {/* Industry Rotation Link */}
+          <button
+            onClick={() => navigate('/industry-rotation')}
+            className="text-xs text-muted-foreground hover:text-foreground transition-colors"
+          >
+            行业轮动 →
+          </button>
 
           {/* Stats summary */}
           {data && (

@@ -13,6 +13,7 @@ import UniverseDetailPage from '@/pages/UniverseDetailPage'
 import SettingsPage from '@/pages/SettingsPage'
 import DataSyncPage from '@/pages/DataSyncPage'
 import AlphaRadarPage from '@/pages/AlphaRadarPage'
+import IndustryRotationPage from '@/pages/IndustryRotationPage'
 
 function App() {
   return (
@@ -32,6 +33,7 @@ function App() {
           <Route path="settings" element={<SettingsPage />} />
           <Route path="data-sync" element={<DataSyncPage />} />
           <Route path="alpha-radar" element={<AlphaRadarPage />} />
+          <Route path="industry-rotation" element={<IndustryRotationPage />} />
         </Route>
       </Routes>
     </ThemeProvider>

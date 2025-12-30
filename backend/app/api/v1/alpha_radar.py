@@ -52,6 +52,23 @@ class SectorMetric(str, Enum):
     SCORE = "score"             # 综合评分
 
 
+class RotationSortBy(str, Enum):
+    """Sort options for sector rotation matrix."""
+    TODAY_CHANGE = "today_change"     # 今日涨幅
+    PERIOD_CHANGE = "period_change"   # N日累计涨幅
+    MONEY_FLOW = "money_flow"         # 资金流入
+    MOMENTUM = "momentum"             # 动量因子
+    UPSTREAM = "upstream"             # 上游优先（产业链序）
+
+
+class CellSignalType(str, Enum):
+    """Algorithm signal types for matrix cells."""
+    MOMENTUM = "momentum"       # 主线行情 🔥
+    REVERSAL = "reversal"       # 反转信号 ⚡️
+    DIVERGENCE = "divergence"   # 资金背离 (金色边框)
+    OVERCROWDED = "overcrowded" # 极致拥挤 ⚠️
+
+
 class ValuationLevel(str, Enum):
     """Valuation level based on historical percentile."""
     LOW = "LOW"           # 0-25%
@@ -252,6 +269,65 @@ class SectorHeatmapResponse(BaseModel):
     min_value: Decimal = Field(description="Minimum value across all sectors")
     max_value: Decimal = Field(description="Maximum value across all sectors")
     market_avg: Decimal = Field(description="Market average value")
+
+
+# ============================================
+# Sector Rotation Schemas
+# ============================================
+
+class RotationTopStock(BaseModel):
+    """Top stock info for rotation matrix cell."""
+    code: str = Field(description="Stock code")
+    name: str = Field(description="Stock name")
+    change_pct: Decimal = Field(description="Change percentage")
+
+
+class RotationCellSignal(BaseModel):
+    """Algorithm signal for matrix cell."""
+    type: CellSignalType
+    label: str = Field(description="Display label like '主线🔥', '反转⚡️'")
+
+
+class SectorDayCell(BaseModel):
+    """Single cell in rotation matrix (one date × one industry)."""
+    date: datetime.date
+    change_pct: Decimal = Field(description="Industry average change %")
+    money_flow: Optional[Decimal] = Field(default=None, description="Net money flow")
+    main_strength: Optional[Decimal] = Field(default=None, description="Main force strength")
+    top_stock: Optional[RotationTopStock] = Field(default=None, description="Best performing stock")
+    signals: List[RotationCellSignal] = Field(default_factory=list, description="Algorithm signals")
+
+
+class SectorRotationColumn(BaseModel):
+    """One industry column in rotation matrix."""
+    name: str = Field(description="Industry name (L1)")
+    code: str = Field(description="Industry code")
+    cells: List[SectorDayCell] = Field(description="Daily data cells")
+    # Sorting metrics
+    today_change: Decimal = Field(description="Today's change %")
+    period_change: Decimal = Field(description="Period cumulative change %")
+    total_flow: Decimal = Field(default=Decimal("0"), description="Period total money flow")
+    momentum_score: Decimal = Field(default=Decimal("0"), description="Momentum factor score")
+
+
+class SectorRotationStats(BaseModel):
+    """Statistics for rotation matrix."""
+    total_industries: int
+    trading_days: int
+    avg_change: Decimal
+    max_change: Decimal
+    min_change: Decimal
+    hot_industries: List[str] = Field(default_factory=list, description="Top 5 industries by momentum")
+    cold_industries: List[str] = Field(default_factory=list, description="Bottom 5 industries")
+
+
+class SectorRotationResponse(BaseModel):
+    """Response for sector rotation matrix."""
+    trading_days: List[datetime.date] = Field(description="Y-axis dates (T-day first)")
+    industries: List[SectorRotationColumn] = Field(description="X-axis industries (sorted)")
+    stats: SectorRotationStats
+    sort_by: RotationSortBy
+    days: int = Field(description="Number of trading days requested")
 
 
 # ============================================
@@ -628,4 +704,39 @@ async def get_sector_heatmap(
         min_value=result["min_value"] or Decimal("0"),
         max_value=result["max_value"] or Decimal("0"),
         market_avg=result["market_avg"] or Decimal("0"),
+    )
+
+
+@router.get("/sector-rotation", response_model=SectorRotationResponse)
+async def get_sector_rotation(
+    # Time range
+    days: int = Query(default=60, ge=5, le=120, description="Number of trading days"),
+    end_date: Optional[datetime.date] = Query(default=None, description="End date (default: latest)"),
+
+    # Sort options
+    sort_by: RotationSortBy = Query(default=RotationSortBy.TODAY_CHANGE, description="Sort industries by"),
+
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    Get sector rotation matrix for industry analysis.
+
+    Returns a date × industry matrix showing:
+    - Daily industry performance (change %)
+    - Algorithm signals (momentum/reversal/divergence)
+    - Top performing stock per cell
+    - Sorting by various metrics with animation support
+
+    Use cases:
+    - Identify sector rotation patterns
+    - Spot momentum leaders and reversals
+    - Track money flow across industries
+    """
+    from app.services.alpha_radar.sector_rotation_service import SectorRotationService
+
+    service = SectorRotationService(db)
+    return await service.get_rotation_matrix(
+        days=days,
+        end_date=end_date,
+        sort_by=sort_by.value,
     )

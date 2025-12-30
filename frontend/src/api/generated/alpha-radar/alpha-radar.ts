@@ -20,9 +20,11 @@ import type {
   GetDashboardApiV1AlphaRadarDashboardGetParams,
   GetScreenerApiV1AlphaRadarScreenerGetParams,
   GetSectorHeatmapApiV1AlphaRadarSectorHeatmapGetParams,
+  GetSectorRotationApiV1AlphaRadarSectorRotationGetParams,
   HTTPValidationError,
   ScreenerResponse,
   SectorHeatmapResponse,
+  SectorRotationResponse,
   TimeControllerRequest,
   TimeControllerResponse,
 } from ".././schemas";
@@ -915,6 +917,245 @@ export const useGetSectorHeatmapApiV1AlphaRadarSectorHeatmapGet = <
 ): UseQueryResult<TData, TError> & { queryKey: QueryKey } => {
   const queryOptions =
     getGetSectorHeatmapApiV1AlphaRadarSectorHeatmapGetQueryOptions(
+      params,
+      options,
+    );
+
+  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
+    queryKey: QueryKey;
+  };
+
+  query.queryKey = queryOptions.queryKey;
+
+  return query;
+};
+
+/**
+ * Get sector rotation matrix for industry analysis.
+
+Returns a date × industry matrix showing:
+- Daily industry performance (change %)
+- Algorithm signals (momentum/reversal/divergence)
+- Top performing stock per cell
+- Sorting by various metrics with animation support
+
+Use cases:
+- Identify sector rotation patterns
+- Spot momentum leaders and reversals
+- Track money flow across industries
+ * @summary Get Sector Rotation
+ */
+export const getSectorRotationApiV1AlphaRadarSectorRotationGet = (
+  params?: GetSectorRotationApiV1AlphaRadarSectorRotationGetParams,
+  signal?: AbortSignal,
+) => {
+  return customInstance<SectorRotationResponse>({
+    url: `/api/v1/alpha-radar/sector-rotation`,
+    method: "GET",
+    params,
+    signal,
+  });
+};
+
+export const getGetSectorRotationApiV1AlphaRadarSectorRotationGetQueryKey = (
+  params?: GetSectorRotationApiV1AlphaRadarSectorRotationGetParams,
+) => {
+  return [
+    `/api/v1/alpha-radar/sector-rotation`,
+    ...(params ? [params] : []),
+  ] as const;
+};
+
+export const getGetSectorRotationApiV1AlphaRadarSectorRotationGetInfiniteQueryOptions =
+  <
+    TData = InfiniteData<
+      Awaited<
+        ReturnType<typeof getSectorRotationApiV1AlphaRadarSectorRotationGet>
+      >,
+      GetSectorRotationApiV1AlphaRadarSectorRotationGetParams["page"]
+    >,
+    TError = HTTPValidationError,
+  >(
+    params?: GetSectorRotationApiV1AlphaRadarSectorRotationGetParams,
+    options?: {
+      query?: Partial<
+        UseInfiniteQueryOptions<
+          Awaited<
+            ReturnType<typeof getSectorRotationApiV1AlphaRadarSectorRotationGet>
+          >,
+          TError,
+          TData,
+          Awaited<
+            ReturnType<typeof getSectorRotationApiV1AlphaRadarSectorRotationGet>
+          >,
+          QueryKey,
+          GetSectorRotationApiV1AlphaRadarSectorRotationGetParams["page"]
+        >
+      >;
+    },
+  ) => {
+    const { query: queryOptions } = options ?? {};
+
+    const queryKey =
+      queryOptions?.queryKey ??
+      getGetSectorRotationApiV1AlphaRadarSectorRotationGetQueryKey(params);
+
+    const queryFn: QueryFunction<
+      Awaited<
+        ReturnType<typeof getSectorRotationApiV1AlphaRadarSectorRotationGet>
+      >,
+      QueryKey,
+      GetSectorRotationApiV1AlphaRadarSectorRotationGetParams["page"]
+    > = ({ signal, pageParam }) =>
+      getSectorRotationApiV1AlphaRadarSectorRotationGet(
+        { ...params, page: pageParam || params?.["page"] },
+        signal,
+      );
+
+    return { queryKey, queryFn, ...queryOptions } as UseInfiniteQueryOptions<
+      Awaited<
+        ReturnType<typeof getSectorRotationApiV1AlphaRadarSectorRotationGet>
+      >,
+      TError,
+      TData,
+      Awaited<
+        ReturnType<typeof getSectorRotationApiV1AlphaRadarSectorRotationGet>
+      >,
+      QueryKey,
+      GetSectorRotationApiV1AlphaRadarSectorRotationGetParams["page"]
+    > & { queryKey: QueryKey };
+  };
+
+export type GetSectorRotationApiV1AlphaRadarSectorRotationGetInfiniteQueryResult =
+  NonNullable<
+    Awaited<
+      ReturnType<typeof getSectorRotationApiV1AlphaRadarSectorRotationGet>
+    >
+  >;
+export type GetSectorRotationApiV1AlphaRadarSectorRotationGetInfiniteQueryError =
+  HTTPValidationError;
+
+/**
+ * @summary Get Sector Rotation
+ */
+export const useGetSectorRotationApiV1AlphaRadarSectorRotationGetInfinite = <
+  TData = InfiniteData<
+    Awaited<
+      ReturnType<typeof getSectorRotationApiV1AlphaRadarSectorRotationGet>
+    >,
+    GetSectorRotationApiV1AlphaRadarSectorRotationGetParams["page"]
+  >,
+  TError = HTTPValidationError,
+>(
+  params?: GetSectorRotationApiV1AlphaRadarSectorRotationGetParams,
+  options?: {
+    query?: Partial<
+      UseInfiniteQueryOptions<
+        Awaited<
+          ReturnType<typeof getSectorRotationApiV1AlphaRadarSectorRotationGet>
+        >,
+        TError,
+        TData,
+        Awaited<
+          ReturnType<typeof getSectorRotationApiV1AlphaRadarSectorRotationGet>
+        >,
+        QueryKey,
+        GetSectorRotationApiV1AlphaRadarSectorRotationGetParams["page"]
+      >
+    >;
+  },
+): UseInfiniteQueryResult<TData, TError> & { queryKey: QueryKey } => {
+  const queryOptions =
+    getGetSectorRotationApiV1AlphaRadarSectorRotationGetInfiniteQueryOptions(
+      params,
+      options,
+    );
+
+  const query = useInfiniteQuery(queryOptions) as UseInfiniteQueryResult<
+    TData,
+    TError
+  > & { queryKey: QueryKey };
+
+  query.queryKey = queryOptions.queryKey;
+
+  return query;
+};
+
+export const getGetSectorRotationApiV1AlphaRadarSectorRotationGetQueryOptions =
+  <
+    TData = Awaited<
+      ReturnType<typeof getSectorRotationApiV1AlphaRadarSectorRotationGet>
+    >,
+    TError = HTTPValidationError,
+  >(
+    params?: GetSectorRotationApiV1AlphaRadarSectorRotationGetParams,
+    options?: {
+      query?: Partial<
+        UseQueryOptions<
+          Awaited<
+            ReturnType<typeof getSectorRotationApiV1AlphaRadarSectorRotationGet>
+          >,
+          TError,
+          TData
+        >
+      >;
+    },
+  ) => {
+    const { query: queryOptions } = options ?? {};
+
+    const queryKey =
+      queryOptions?.queryKey ??
+      getGetSectorRotationApiV1AlphaRadarSectorRotationGetQueryKey(params);
+
+    const queryFn: QueryFunction<
+      Awaited<
+        ReturnType<typeof getSectorRotationApiV1AlphaRadarSectorRotationGet>
+      >
+    > = ({ signal }) =>
+      getSectorRotationApiV1AlphaRadarSectorRotationGet(params, signal);
+
+    return { queryKey, queryFn, ...queryOptions } as UseQueryOptions<
+      Awaited<
+        ReturnType<typeof getSectorRotationApiV1AlphaRadarSectorRotationGet>
+      >,
+      TError,
+      TData
+    > & { queryKey: QueryKey };
+  };
+
+export type GetSectorRotationApiV1AlphaRadarSectorRotationGetQueryResult =
+  NonNullable<
+    Awaited<
+      ReturnType<typeof getSectorRotationApiV1AlphaRadarSectorRotationGet>
+    >
+  >;
+export type GetSectorRotationApiV1AlphaRadarSectorRotationGetQueryError =
+  HTTPValidationError;
+
+/**
+ * @summary Get Sector Rotation
+ */
+export const useGetSectorRotationApiV1AlphaRadarSectorRotationGet = <
+  TData = Awaited<
+    ReturnType<typeof getSectorRotationApiV1AlphaRadarSectorRotationGet>
+  >,
+  TError = HTTPValidationError,
+>(
+  params?: GetSectorRotationApiV1AlphaRadarSectorRotationGetParams,
+  options?: {
+    query?: Partial<
+      UseQueryOptions<
+        Awaited<
+          ReturnType<typeof getSectorRotationApiV1AlphaRadarSectorRotationGet>
+        >,
+        TError,
+        TData
+      >
+    >;
+  },
+): UseQueryResult<TData, TError> & { queryKey: QueryKey } => {
+  const queryOptions =
+    getGetSectorRotationApiV1AlphaRadarSectorRotationGetQueryOptions(
       params,
       options,
     );
