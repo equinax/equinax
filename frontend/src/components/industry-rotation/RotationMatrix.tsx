@@ -26,9 +26,8 @@ interface RotationMatrixProps {
 const CELL_WIDTH = 42  // Default cell width
 const MIN_CELL_WIDTH = 36  // Minimum cell width for readability
 const CELL_HEIGHT = 20
-const DATE_COLUMN_WIDTH = 55
+const DATE_COLUMN_WIDTH = 38  // Compact - date text "MM-DD" is ~32px
 const HEADER_HEIGHT = 32
-const PADDING = 0  // CardContent handles padding
 
 // Industry chain order (upstream -> midstream -> downstream)
 // Must match actual SW L1 industry names from database
@@ -79,14 +78,15 @@ export function RotationMatrix({ data, visibleMetrics }: RotationMatrixProps) {
 
   // Calculate dimensions - responsive cell width
   const numIndustries = sortedIndustries.length
-  const availableWidth = containerWidth - DATE_COLUMN_WIDTH - PADDING * 2
+  const availableWidth = containerWidth - DATE_COLUMN_WIDTH
+  // Use exact division to fill container completely
   const cellWidth = numIndustries > 0 && containerWidth > 0
-    ? Math.max(MIN_CELL_WIDTH, Math.floor(availableWidth / numIndustries))
+    ? Math.max(MIN_CELL_WIDTH, availableWidth / numIndustries)
     : CELL_WIDTH
-  const matrixWidth = numIndustries * cellWidth
   const matrixHeight = data.trading_days.length * CELL_HEIGHT
-  const svgWidth = PADDING + DATE_COLUMN_WIDTH + matrixWidth + PADDING
-  const svgHeight = HEADER_HEIGHT + matrixHeight + PADDING * 2
+  // SVG fills container width exactly
+  const svgWidth = containerWidth || (DATE_COLUMN_WIDTH + numIndustries * CELL_WIDTH)
+  const svgHeight = HEADER_HEIGHT + matrixHeight
 
   // Handle cell hover
   const handleCellHover = useCallback(
@@ -148,7 +148,7 @@ export function RotationMatrix({ data, visibleMetrics }: RotationMatrixProps) {
         aria-label="行业轮动矩阵"
       >
         {/* Header row - Industry names */}
-        <g transform={`translate(${PADDING + DATE_COLUMN_WIDTH}, ${PADDING})`}>
+        <g transform={`translate(${DATE_COLUMN_WIDTH}, 0)`}>
           <AnimatePresence>
             {sortedIndustries.map((industry, colIndex) => (
               <motion.g
@@ -175,8 +175,17 @@ export function RotationMatrix({ data, visibleMetrics }: RotationMatrixProps) {
           </AnimatePresence>
         </g>
 
-        {/* Date column */}
-        <g transform={`translate(${PADDING}, ${HEADER_HEIGHT + PADDING})`}>
+        {/* Date column with soft background */}
+        <g transform={`translate(0, ${HEADER_HEIGHT})`}>
+          {/* Background */}
+          <rect
+            x={0}
+            y={0}
+            width={DATE_COLUMN_WIDTH}
+            height={matrixHeight}
+            className="fill-muted"
+          />
+          {/* Date labels */}
           {data.trading_days.map((dateStr, rowIndex) => (
             <text
               key={dateStr}
@@ -195,7 +204,7 @@ export function RotationMatrix({ data, visibleMetrics }: RotationMatrixProps) {
 
         {/* Matrix cells */}
         <g
-          transform={`translate(${PADDING + DATE_COLUMN_WIDTH}, ${HEADER_HEIGHT + PADDING})`}
+          transform={`translate(${DATE_COLUMN_WIDTH}, ${HEADER_HEIGHT})`}
         >
           {data.trading_days.map((dateStr, rowIndex) => (
             <g key={dateStr}>

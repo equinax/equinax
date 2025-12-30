@@ -23,11 +23,11 @@ import { RotationMatrix } from '@/components/industry-rotation/RotationMatrix'
 // Metric options for cell display
 export type MetricKey = 'change' | 'volume' | 'flow' | 'momentum'
 
-const METRIC_OPTIONS: { key: MetricKey; label: string }[] = [
-  { key: 'change', label: '涨跌幅' },
-  { key: 'volume', label: '成交量' },
-  { key: 'flow', label: '资金流入' },
-  { key: 'momentum', label: '动量' },
+const METRIC_OPTIONS: { key: MetricKey; label: string; activeColor: string }[] = [
+  { key: 'change', label: '涨跌幅', activeColor: 'bg-[#c93b3b]' },
+  { key: 'volume', label: '成交量', activeColor: 'bg-[#2989c9]' },
+  { key: 'flow', label: '资金流入', activeColor: 'bg-[#c47a30]' },
+  { key: 'momentum', label: '动量', activeColor: 'bg-[#7a2eb0]' },
 ]
 
 export default function IndustryRotationPage() {
@@ -92,19 +92,20 @@ export default function IndustryRotationPage() {
               )}
             </div>
 
-            {/* Metric Chips */}
-            <div className="flex items-center gap-2">
-              {METRIC_OPTIONS.map((opt) => {
+            {/* Metric Group Buttons */}
+            <div className="flex items-center border rounded-md overflow-hidden">
+              {METRIC_OPTIONS.map((opt, idx) => {
                 const isSelected = visibleMetrics.includes(opt.key)
+                const isFirst = idx === 0
                 return (
                   <button
                     key={opt.key}
                     onClick={() => toggleMetric(opt.key)}
-                    className={`px-3 py-1 text-sm rounded-md transition-colors ${
+                    className={`px-2.5 py-1 text-xs font-medium transition-colors ${
                       isSelected
-                        ? 'bg-primary text-primary-foreground'
-                        : 'text-muted-foreground hover:text-foreground hover:bg-muted'
-                    }`}
+                        ? `${opt.activeColor} text-white`
+                        : 'bg-background text-muted-foreground hover:text-foreground hover:bg-muted'
+                    } ${!isFirst ? 'border-l' : ''}`}
                   >
                     {opt.label}
                   </button>
