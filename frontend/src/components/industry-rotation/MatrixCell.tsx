@@ -175,7 +175,7 @@ export const MatrixCell = memo(function MatrixCell({
 
   // Calculate stripe width for each metric
   const stripeWidth = width / visibleMetrics.length
-  const fontSize = visibleMetrics.length > 2 ? 7 : visibleMetrics.length > 1 ? 8 : 9
+  const fontSize = visibleMetrics.length > 2 ? 6 : visibleMetrics.length > 1 ? 7 : 8
 
   return (
     <motion.g

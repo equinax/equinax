@@ -7,7 +7,7 @@
  * - Cells: Red-green gradient with change % text
  */
 
-import { useState, useRef, useMemo, useCallback } from 'react'
+import { useState, useRef, useMemo, useCallback, useEffect } from 'react'
 import { motion, AnimatePresence } from 'motion/react'
 import type { SectorRotationResponse } from '@/api/generated/schemas'
 import { MatrixCell } from './MatrixCell'
@@ -23,11 +23,12 @@ interface RotationMatrixProps {
 }
 
 // Layout constants
-const CELL_WIDTH = 52
-const CELL_HEIGHT = 24
-const DATE_COLUMN_WIDTH = 70
-const HEADER_HEIGHT = 40
-const PADDING = 8
+const CELL_WIDTH = 42  // Default cell width
+const MIN_CELL_WIDTH = 36  // Minimum cell width for readability
+const CELL_HEIGHT = 20
+const DATE_COLUMN_WIDTH = 55
+const HEADER_HEIGHT = 32
+const PADDING = 0  // CardContent handles padding
 
 // Industry chain order (upstream -> midstream -> downstream)
 // Must match actual SW L1 industry names from database
@@ -49,6 +50,25 @@ const INDUSTRY_CHAIN_ORDER: Record<string, number> = {
 export function RotationMatrix({ data, visibleMetrics }: RotationMatrixProps) {
   const containerRef = useRef<HTMLDivElement>(null)
   const [tooltip, setTooltip] = useState<TooltipData | null>(null)
+  const [containerWidth, setContainerWidth] = useState(0)
+
+  // Track container width for responsive sizing
+  useEffect(() => {
+    const container = containerRef.current
+    if (!container) return
+
+    const observer = new ResizeObserver((entries) => {
+      for (const entry of entries) {
+        setContainerWidth(entry.contentRect.width)
+      }
+    })
+
+    observer.observe(container)
+    // Initial measurement
+    setContainerWidth(container.clientWidth)
+
+    return () => observer.disconnect()
+  }, [])
 
   // Sort industries by upstream/downstream order (fixed)
   const sortedIndustries = useMemo(() => {
@@ -57,10 +77,15 @@ export function RotationMatrix({ data, visibleMetrics }: RotationMatrixProps) {
     )
   }, [data.industries])
 
-  // Calculate dimensions
-  const matrixWidth = sortedIndustries.length * CELL_WIDTH
+  // Calculate dimensions - responsive cell width
+  const numIndustries = sortedIndustries.length
+  const availableWidth = containerWidth - DATE_COLUMN_WIDTH - PADDING * 2
+  const cellWidth = numIndustries > 0 && containerWidth > 0
+    ? Math.max(MIN_CELL_WIDTH, Math.floor(availableWidth / numIndustries))
+    : CELL_WIDTH
+  const matrixWidth = numIndustries * cellWidth
   const matrixHeight = data.trading_days.length * CELL_HEIGHT
-  const svgWidth = DATE_COLUMN_WIDTH + matrixWidth + PADDING * 2
+  const svgWidth = PADDING + DATE_COLUMN_WIDTH + matrixWidth + PADDING
   const svgHeight = HEADER_HEIGHT + matrixHeight + PADDING * 2
 
   // Handle cell hover
@@ -112,7 +137,7 @@ export function RotationMatrix({ data, visibleMetrics }: RotationMatrixProps) {
   return (
     <div
       ref={containerRef}
-      className="relative overflow-auto"
+      className="relative w-full overflow-auto"
       onMouseMove={handleMouseMove}
     >
       <svg
@@ -123,21 +148,21 @@ export function RotationMatrix({ data, visibleMetrics }: RotationMatrixProps) {
         aria-label="行业轮动矩阵"
       >
         {/* Header row - Industry names */}
-        <g transform={`translate(${DATE_COLUMN_WIDTH + PADDING}, ${PADDING})`}>
+        <g transform={`translate(${PADDING + DATE_COLUMN_WIDTH}, ${PADDING})`}>
           <AnimatePresence>
             {sortedIndustries.map((industry, colIndex) => (
               <motion.g
                 key={industry.code}
-                initial={{ x: colIndex * CELL_WIDTH }}
-                animate={{ x: colIndex * CELL_WIDTH }}
+                initial={{ x: colIndex * cellWidth }}
+                animate={{ x: colIndex * cellWidth }}
                 transition={{ duration: 0.4, ease: [0.4, 0, 0.2, 1] }}
               >
                 <text
-                  x={CELL_WIDTH / 2}
+                  x={cellWidth / 2}
                   y={HEADER_HEIGHT / 2}
                   textAnchor="middle"
                   dominantBaseline="middle"
-                  fontSize={10}
+                  fontSize={9}
                   fill="currentColor"
                   className="text-muted-foreground"
                 >
@@ -155,11 +180,11 @@ export function RotationMatrix({ data, visibleMetrics }: RotationMatrixProps) {
           {data.trading_days.map((dateStr, rowIndex) => (
             <text
               key={dateStr}
-              x={DATE_COLUMN_WIDTH - 8}
+              x={DATE_COLUMN_WIDTH - 4}
               y={rowIndex * CELL_HEIGHT + CELL_HEIGHT / 2}
               textAnchor="end"
               dominantBaseline="middle"
-              fontSize={10}
+              fontSize={9}
               fill="currentColor"
               className="text-muted-foreground font-mono"
             >
@@ -170,7 +195,7 @@ export function RotationMatrix({ data, visibleMetrics }: RotationMatrixProps) {
 
         {/* Matrix cells */}
         <g
-          transform={`translate(${DATE_COLUMN_WIDTH + PADDING}, ${HEADER_HEIGHT + PADDING})`}
+          transform={`translate(${PADDING + DATE_COLUMN_WIDTH}, ${HEADER_HEIGHT + PADDING})`}
         >
           {data.trading_days.map((dateStr, rowIndex) => (
             <g key={dateStr}>
@@ -181,9 +206,9 @@ export function RotationMatrix({ data, visibleMetrics }: RotationMatrixProps) {
                   return (
                     <MatrixCell
                       key={`${industry.code}-${dateStr}`}
-                      x={colIndex * CELL_WIDTH}
+                      x={colIndex * cellWidth}
                       y={rowIndex * CELL_HEIGHT}
-                      width={CELL_WIDTH}
+                      width={cellWidth}
                       height={CELL_HEIGHT}
                       visibleMetrics={visibleMetrics}
                       changePct={cell ? Number(cell.change_pct) : 0}
