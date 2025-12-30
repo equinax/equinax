@@ -73,7 +73,7 @@ export const DivergingBarChart = memo(function DivergingBarChart({
   })
 
   // Calculate layout
-  const { segments, svgHeight, l1BaselineY } = useChartLayout({
+  const { segments, svgHeight, l1BaselineY, maxLoserHeight } = useChartLayout({
     data: processedData,
     containerWidth,
     isExpanded,
@@ -191,6 +191,7 @@ export const DivergingBarChart = memo(function DivergingBarChart({
                 segment={segment}
                 baselineY={l1BaselineY}
                 l1Height={dims.L1_BAR_HEIGHT}
+                maxL2Height={maxLoserHeight}
                 dimensions={customDims}
                 onL2Hover={(l2) => {
                   if (l2) {
