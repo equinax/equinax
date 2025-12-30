@@ -10,7 +10,7 @@
 import { useState } from 'react'
 import { keepPreviousData } from '@tanstack/react-query'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
-import { Button } from '@/components/ui/button'
+import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { ComputingConsole } from '@/components/ui/computing-console'
 import { useTheme } from '@/components/theme-provider'
 import { useComputingProgress } from '@/hooks/useComputingProgress'
@@ -18,7 +18,6 @@ import { useGetSectorHeatmapApiV1AlphaRadarSectorHeatmapGet } from '@/api/genera
 import type { SectorMetric, TimeMode } from '@/api/generated/schemas'
 import { formatMetricValue, getMetricLabel } from '@/lib/sector-colors'
 import { DivergingBarChart } from './sector-heatmap/DivergingBarChart'
-import { cn } from '@/lib/utils'
 
 interface SectorHeatmapProps {
   timeMode: TimeMode
@@ -100,22 +99,15 @@ export function SectorHeatmap({
           <CardTitle className="text-lg shrink-0">行业热力图</CardTitle>
 
           {/* Metric Switcher */}
-          <div className="flex items-center gap-1">
-            {METRICS.map((m) => (
-              <Button
-                key={m.value}
-                variant={metric === m.value ? 'default' : 'ghost'}
-                size="sm"
-                onClick={() => setMetric(m.value)}
-                className={cn(
-                  'text-xs h-7 px-3',
-                  metric === m.value && 'bg-primary text-primary-foreground'
-                )}
-              >
-                {m.label}
-              </Button>
-            ))}
-          </div>
+          <Tabs value={metric} onValueChange={(v) => setMetric(v as SectorMetric)} className="shrink-0">
+            <TabsList>
+              {METRICS.map((m) => (
+                <TabsTrigger key={m.value} value={m.value} className="text-xs px-3">
+                  {m.label}
+                </TabsTrigger>
+              ))}
+            </TabsList>
+          </Tabs>
 
           <div className="flex-1" />
 
@@ -140,9 +132,6 @@ export function SectorHeatmap({
         </div>
       </CardHeader>
       <CardContent className="pt-0">
-        <div className="text-xs text-muted-foreground mb-2">
-          点击展开/收起二级行业 | 按指标值从大到小排列
-        </div>
         <div className="relative">
           {/* Loading overlay - shimmer effect */}
           {isFetching && (
