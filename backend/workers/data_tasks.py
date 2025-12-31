@@ -297,7 +297,9 @@ async def daily_data_update(ctx: Dict[str, Any]) -> Dict[str, Any]:
     logger.info("[4/4] Triggering classification update...")
     try:
         from workers.classification_tasks import daily_classification_update
-        classification_result = await daily_classification_update(ctx)
+        # 使用实际交易日而非 date.today()
+        trading_day = get_latest_trading_day()
+        classification_result = await daily_classification_update(ctx, str(trading_day))
         results["steps"]["classification"] = classification_result
     except Exception as e:
         logger.exception("Classification update failed")
@@ -817,7 +819,8 @@ async def api_triggered_sync(ctx: Dict[str, Any], sync_record_id: str) -> Dict[s
                 classification_result = {"status": "success", "message": "No changes"}
                 try:
                     from workers.classification_tasks import daily_classification_update
-                    classification_result = await daily_classification_update(ctx)
+                    # 使用实际交易日(latest_trading_day)而非 date.today()
+                    classification_result = await daily_classification_update(ctx, str(latest_trading_day))
                 except Exception as e:
                     classification_result = {"status": "error", "message": str(e)}
 
