@@ -28,77 +28,122 @@ interface MatrixCellProps {
 }
 
 /**
- * Get color for change percentage (red = gain, green = loss)
- * Using lower saturation colors from sector-colors.ts
+ * HSB (HSV) to Hex color conversion
+ * HSB provides more vibrant colors than HSL
+ * @param h - Hue (0-360)
+ * @param s - Saturation (0-100)
+ * @param b - Brightness (0-100)
+ */
+function hsbToHex(h: number, s: number, b: number): string {
+  s /= 100
+  b /= 100
+  const k = (n: number) => (n + h / 60) % 6
+  const f = (n: number) => b * (1 - s * Math.max(0, Math.min(k(n), 4 - k(n), 1)))
+  const toHex = (x: number) => Math.round(x * 255).toString(16).padStart(2, '0')
+  return `#${toHex(f(5))}${toHex(f(3))}${toHex(f(1))}`
+}
+
+/**
+ * Continuous diverging color scale: red for positive, green for negative
+ * Uses HSB for more vibrant colors
+ * @param value - The value to map
+ * @param maxMagnitude - The maximum expected magnitude (for scaling)
+ */
+function getDivergingColor(value: number, maxMagnitude: number): string {
+  // Clamp to reasonable range
+  const clamped = Math.max(-maxMagnitude, Math.min(maxMagnitude, value))
+  // Normalize magnitude to 0-1
+  const magnitude = Math.abs(clamped) / maxMagnitude
+
+  // Hue: 0 = red (positive), 145 = green (negative)
+  const hue = value >= 0 ? 0 : 145
+
+  // Saturation: 0% at center → 85% at max (vibrant colors)
+  const saturation = magnitude * 85
+
+  // Brightness: 100% at center → 85% at max
+  const brightness = 100 - magnitude * 15
+
+  return hsbToHex(hue, saturation, brightness)
+}
+
+/**
+ * Continuous sequential color scale (for single-direction metrics)
+ * Uses HSB for more vibrant colors
+ * @param value - Normalized value from 0 to 1
+ * @param hue - Base hue for the color
+ */
+function getSequentialColor(normalizedValue: number, hue: number): string {
+  // Clamp to 0-1
+  const t = Math.max(0, Math.min(1, normalizedValue))
+
+  // Saturation: 5% at min → 80% at max
+  const saturation = 5 + t * 75
+
+  // Brightness: 100% at min → 70% at max (darker for higher values)
+  const brightness = 100 - t * 30
+
+  return hsbToHex(hue, saturation, brightness)
+}
+
+/**
+ * Get color for change percentage (continuous red/green)
+ * Red for positive, green for negative, white at 0
  */
 function getChangeColor(value: number): string {
-  if (value > 5) return '#c93b3b'  // 胭脂红 (extreme profit)
-  if (value > 3) return '#d47070'  // light red
-  if (value > 1) return '#e8a8a8'  // very light red
-  if (value > 0) return '#f0c8c8'  // pale red
-  if (value > -1) return '#f5f3ef' // ivory white (neutral)
-  if (value > -3) return '#c8e8d8' // pale green
-  if (value > -5) return '#8bc9a5' // very light green
-  return '#4ca87a'                 // 翡翠绿 (extreme loss)
+  return getDivergingColor(value, 8) // ±8% as max intensity
 }
 
 /**
- * Get color for volume (blue gradient)
- * Using muted colors from sector-colors.ts amount gradient
+ * Get color for volume (continuous blue gradient)
+ * Uses log scale for better distribution
  */
 function getVolumeColor(value: number | null): string {
-  if (value === null) return '#f5f3ef'
-  const yi = value / 100000000
-  if (yi > 500) return '#1a6ba8' // deep blue
-  if (yi > 300) return '#2989c9' // darker blue
-  if (yi > 150) return '#4aa5de' // standard blue
-  if (yi > 80) return '#7ebfe8'  // medium blue
-  if (yi > 40) return '#b3d9f2'  // light blue
-  return '#e8f4fc'              // very light blue
+  if (value === null) return '#f5f5f5'
+  const yi = value / 100000000 // Convert to 亿
+  // Log scale: 10亿 → 0.3, 100亿 → 0.6, 500亿 → 0.85, 1000亿 → 1.0
+  const logValue = Math.log10(Math.max(yi, 1)) / Math.log10(1000)
+  return getSequentialColor(Math.min(logValue, 1), 210) // Blue hue
 }
 
 /**
- * Get color for flow (amber/orange gradient)
- * Using muted warm colors, data range typically +15 to +50
+ * Get color for flow (continuous amber/yellow gradient)
+ * Higher flow = deeper amber
  */
 function getFlowColor(value: number | null): string {
-  if (value === null) return '#f5f3ef'
-  if (value > 45) return '#a85d20' // deep amber
-  if (value > 40) return '#c47a30' // dark amber
-  if (value > 35) return '#d99545' // standard amber
-  if (value > 30) return '#e8b060' // medium amber
-  if (value > 25) return '#f0c888' // light amber
-  if (value > 20) return '#f5ddb0' // very light amber
-  return '#faf0d8'                // pale amber
+  if (value === null) return '#f5f5f5'
+  // Normalize: typical range is 15-50, map to 0-1
+  const normalized = (value - 10) / 45 // 10→0, 55→1
+  return getSequentialColor(normalized, 35) // Amber hue
 }
 
 /**
- * Get color for momentum (purple gradient)
- * Using muted colors from sector-colors.ts main_strength gradient
+ * Get color for momentum (continuous purple gradient)
+ * Higher momentum = deeper purple
  */
 function getMomentumColor(value: number | null): string {
-  if (value === null) return '#f5f3ef'
-  if (value > 45) return '#5e1a98' // deep purple
-  if (value > 40) return '#7a2eb0' // dark purple
-  if (value > 35) return '#964dc8' // standard purple
-  if (value > 30) return '#b580d8' // medium purple
-  if (value > 25) return '#d4b3e8' // light purple
-  if (value > 20) return '#e8d0f0' // very light purple
-  return '#f3e8f8'                // pale purple
+  if (value === null) return '#f5f5f5'
+  // Normalize: typical range is 15-50, map to 0-1
+  const normalized = (value - 10) / 45 // 10→0, 55→1
+  return getSequentialColor(normalized, 280) // Purple hue
 }
 
 /**
  * Get text color based on background brightness
+ * Uses relative luminance calculation for accessibility
  */
 function getTextColor(bgColor: string): string {
-  // Dark colors need white text
-  const darkColors = [
-    '#c93b3b', '#d47070', '#4ca87a',                         // red/green (muted)
-    '#1a6ba8', '#2989c9', '#4aa5de',                         // blue (muted)
-    '#a85d20', '#c47a30', '#d99545',                         // amber (muted)
-    '#5e1a98', '#7a2eb0', '#964dc8',                         // purple (muted)
-  ]
-  return darkColors.includes(bgColor) ? '#ffffff' : '#374151'
+  // Parse hex color
+  const hex = bgColor.replace('#', '')
+  const r = parseInt(hex.substring(0, 2), 16) / 255
+  const g = parseInt(hex.substring(2, 4), 16) / 255
+  const b = parseInt(hex.substring(4, 6), 16) / 255
+
+  // Calculate relative luminance (WCAG formula)
+  const luminance = 0.2126 * r + 0.7152 * g + 0.0722 * b
+
+  // Use white text on dark backgrounds, dark text on light backgrounds
+  return luminance < 0.5 ? '#ffffff' : '#374151'
 }
 
 /**
