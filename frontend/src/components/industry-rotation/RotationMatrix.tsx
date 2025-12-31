@@ -10,7 +10,14 @@
 import { useState, useRef, useCallback, useEffect, useMemo } from 'react'
 import { motion, AnimatePresence } from 'motion/react'
 import { ChevronDown } from 'lucide-react'
-import type { SectorRotationResponse } from '@/api/generated/schemas'
+import type { SectorRotationResponse, RotationSortBy } from '@/api/generated/schemas'
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select'
 import { MatrixCell } from './MatrixCell'
 import { MatrixTooltip } from './MatrixTooltip'
 import type { TooltipData } from './types'
@@ -29,7 +36,18 @@ interface RotationMatrixProps {
   data: SectorRotationResponse
   visibleMetrics: MetricKey[]
   highlightRange?: HighlightRange | null
+  sortBy: RotationSortBy
+  onSortChange: (value: RotationSortBy) => void
 }
+
+// Sort options for dropdown
+const SORT_OPTIONS: { value: RotationSortBy; label: string }[] = [
+  { value: 'upstream', label: '产业链' },
+  { value: 'today_change', label: '今日涨跌' },
+  { value: 'period_change', label: '区间涨跌' },
+  { value: 'money_flow', label: '资金流向' },
+  { value: 'momentum', label: '动量' },
+]
 
 // Layout constants
 const CELL_WIDTH = 42  // Default cell width
@@ -40,7 +58,7 @@ const HEADER_HEIGHT = 32
 const COLLAPSED_ROW_HEIGHT = 16  // Height for collapsed industry icons row
 
 
-export function RotationMatrix({ data, visibleMetrics, highlightRange }: RotationMatrixProps) {
+export function RotationMatrix({ data, visibleMetrics, highlightRange, sortBy, onSortChange }: RotationMatrixProps) {
   const containerRef = useRef<HTMLDivElement>(null)
   const [tooltip, setTooltip] = useState<TooltipData | null>(null)
   const [containerWidth, setContainerWidth] = useState(0)
@@ -233,6 +251,31 @@ export function RotationMatrix({ data, visibleMetrics, highlightRange }: Rotatio
             })}
           </g>
         )}
+
+        {/* Sort dropdown in top-left cell */}
+        <foreignObject
+          x={0}
+          y={collapsedRowHeight}
+          width={DATE_COLUMN_WIDTH}
+          height={HEADER_HEIGHT}
+        >
+          <div className="flex items-center justify-center h-full">
+            <Select value={sortBy} onValueChange={onSortChange}>
+              <SelectTrigger className="w-[32px] h-[24px] p-0 border-0 bg-transparent focus:ring-0 focus:ring-offset-0 [&>svg]:hidden">
+                <SelectValue>
+                  <span className="text-xs text-muted-foreground">排序</span>
+                </SelectValue>
+              </SelectTrigger>
+              <SelectContent>
+                {SORT_OPTIONS.map((opt) => (
+                  <SelectItem key={opt.value} value={opt.value}>
+                    {opt.label}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+        </foreignObject>
 
         {/* Header row - Industry names (clickable to hide) */}
         <g transform={`translate(${DATE_COLUMN_WIDTH}, ${collapsedRowHeight})`}>

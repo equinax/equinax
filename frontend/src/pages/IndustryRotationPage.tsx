@@ -12,17 +12,10 @@
 import { useState, useCallback } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { keepPreviousData } from '@tanstack/react-query'
-import { ArrowLeft, ArrowUpDown } from 'lucide-react'
+import { ArrowLeft } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { ComputingConsole } from '@/components/ui/computing-console'
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select'
 import { useComputingProgress } from '@/hooks/useComputingProgress'
 import { useGetSectorRotationApiV1AlphaRadarSectorRotationGet } from '@/api/generated/alpha-radar/alpha-radar'
 import { RotationSortBy } from '@/api/generated/schemas'
@@ -36,14 +29,6 @@ const METRIC_OPTIONS: { key: MetricKey; label: string; activeColor: string }[] =
   { key: 'volume', label: '成交量', activeColor: 'bg-[#2989c9]' },
   { key: 'flow', label: '资金流入', activeColor: 'bg-[#c47a30]' },
   { key: 'momentum', label: '动量', activeColor: 'bg-[#7a2eb0]' },
-]
-
-const SORT_OPTIONS: { value: RotationSortBy; label: string }[] = [
-  { value: 'upstream', label: '产业链' },
-  { value: 'today_change', label: '今日涨跌' },
-  { value: 'period_change', label: '区间涨跌' },
-  { value: 'money_flow', label: '资金流向' },
-  { value: 'momentum', label: '动量' },
 ]
 
 // Highlight range for color filter
@@ -125,20 +110,6 @@ export default function IndustryRotationPage() {
         <CardHeader className="pb-2 pt-3">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-3">
-              {/* Sort dropdown */}
-              <Select value={sortBy} onValueChange={(v) => setSortBy(v as RotationSortBy)}>
-                <SelectTrigger className="w-[100px] h-7 text-xs">
-                  <ArrowUpDown className="h-3 w-3 mr-1" />
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  {SORT_OPTIONS.map((opt) => (
-                    <SelectItem key={opt.value} value={opt.value} className="text-xs">
-                      {opt.label}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
               <CardTitle className="text-lg">轮动矩阵</CardTitle>
               {isFetching && !showInitialLoading && (
                 <span className="text-xs text-muted-foreground animate-pulse">
@@ -190,6 +161,8 @@ export default function IndustryRotationPage() {
               data={data}
               visibleMetrics={visibleMetrics}
               highlightRange={highlightRange}
+              sortBy={sortBy}
+              onSortChange={setSortBy}
             />
           ) : (
             <div className="flex items-center justify-center h-32 text-muted-foreground">
