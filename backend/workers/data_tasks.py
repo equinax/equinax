@@ -525,6 +525,7 @@ async def api_triggered_sync(ctx: Dict[str, Any], sync_record_id: str) -> Dict[s
                     {"id": "sync_stocks", "name": "同步股票数据"},
                     {"id": "sync_etfs", "name": "同步ETF数据"},
                     {"id": "sync_indices", "name": "同步指数数据"},
+                    {"id": "adjust_factors", "name": "同步复权因子"},
                     {"id": "classification", "name": "更新分类"},
                 ],
                 "message": "准备开始数据同步 (批量模式)...",
@@ -747,13 +748,69 @@ async def api_triggered_sync(ctx: Dict[str, Any], sync_record_id: str) -> Dict[s
                     "message": f"同步指数数据: 跳过 (已是最新)",
                 }, session, sync_record)
 
-            # Step 5: Classification update (conditional - only if new data was imported)
+            # Step 5: Adjust factor sync (for backtesting)
+            step_start = datetime.now()
+            adjust_factor_count = 0
+
+            await _publish_and_persist("progress", sync_record_id, {
+                "step": "adjust_factors",
+                "progress": 85,
+                "message": "正在同步复权因子...",
+            }, session, sync_record)
+
+            # 进度回调：每 10% 更新一次（不要每批都发）
+            last_progress_pct = 0
+
+            async def adjust_progress_callback(message: str, progress: int, detail: Dict):
+                nonlocal last_progress_pct
+                # 只在进度变化超过 10% 时才发送更新
+                if progress - last_progress_pct >= 10 or progress >= 100:
+                    last_progress_pct = progress
+                    await _publish_and_persist("progress", sync_record_id, {
+                        "step": "adjust_factors",
+                        "progress": 85 + int(progress * 0.10),  # 85-95%
+                        "message": message,
+                        "detail": detail,
+                    }, session, sync_record)
+
+            try:
+                adjust_result = await sync_adjust_factors(session, adjust_progress_callback)
+                sync_record.details["steps"]["adjust_factors"] = adjust_result
+                step_duration = (datetime.now() - step_start).total_seconds()
+
+                adjust_factor_count = adjust_result.get("records", 0)
+
+                await _publish_and_persist("step_complete", sync_record_id, {
+                    "step": "adjust_factors",
+                    "status": adjust_result.get("status"),
+                    "records_count": adjust_factor_count,
+                    "duration_seconds": round(step_duration, 1),
+                    "detail": adjust_result.get("message", ""),
+                    "message": f"同步复权因子: {adjust_factor_count} 条 ({step_duration:.1f}s)",
+                }, session, sync_record)
+            except Exception as e:
+                step_duration = (datetime.now() - step_start).total_seconds()
+                error_msg = f"复权因子同步失败: {str(e)}"
+                step_errors.append(error_msg)
+                logger.warning(f"Adjust factor sync failed (continuing): {e}")
+                sync_record.details["steps"]["adjust_factors"] = {"status": "error", "message": error_msg}
+
+                await _publish_and_persist("step_complete", sync_record_id, {
+                    "step": "adjust_factors",
+                    "status": "error",
+                    "records_count": 0,
+                    "duration_seconds": round(step_duration, 1),
+                    "detail": error_msg,
+                    "message": f"同步复权因子: 失败 ({step_duration:.1f}s)",
+                }, session, sync_record)
+
+            # Step 6: Classification update (conditional - only if new data was imported)
             step_start = datetime.now()
 
             if records_imported > 0:
                 await _publish_and_persist("progress", sync_record_id, {
                     "step": "classification",
-                    "progress": 90,
+                    "progress": 95,
                     "message": "正在更新股票分类...",
                 }, session, sync_record)
 
@@ -792,55 +849,6 @@ async def api_triggered_sync(ctx: Dict[str, Any], sync_record_id: str) -> Dict[s
                     "duration_seconds": round(step_duration, 1),
                     "detail": "无新数据导入",
                     "message": "更新分类: 跳过 (无新数据)",
-                }, session, sync_record)
-
-            # Step 6: Adjust factor sync (for backtesting)
-            step_start = datetime.now()
-            adjust_factor_count = 0
-
-            await _publish_and_persist("progress", sync_record_id, {
-                "step": "adjust_factors",
-                "progress": 95,
-                "message": "正在同步复权因子...",
-            }, session, sync_record)
-
-            async def adjust_progress_callback(message: str, progress: int, detail: Dict):
-                await _publish_and_persist("progress", sync_record_id, {
-                    "step": "adjust_factors",
-                    "progress": 95 + int(progress * 0.04),  # 95-99%
-                    "message": message,
-                    "detail": detail,
-                }, session, sync_record)
-
-            try:
-                adjust_result = await sync_adjust_factors(session, adjust_progress_callback)
-                sync_record.details["steps"]["adjust_factors"] = adjust_result
-                step_duration = (datetime.now() - step_start).total_seconds()
-
-                adjust_factor_count = adjust_result.get("records", 0)
-
-                await _publish_and_persist("step_complete", sync_record_id, {
-                    "step": "adjust_factors",
-                    "status": adjust_result.get("status"),
-                    "records_count": adjust_factor_count,
-                    "duration_seconds": round(step_duration, 1),
-                    "detail": adjust_result.get("message", ""),
-                    "message": f"同步复权因子: {adjust_factor_count} 条 ({step_duration:.1f}s)",
-                }, session, sync_record)
-            except Exception as e:
-                step_duration = (datetime.now() - step_start).total_seconds()
-                error_msg = f"复权因子同步失败: {str(e)}"
-                step_errors.append(error_msg)
-                logger.warning(f"Adjust factor sync failed (continuing): {e}")
-                sync_record.details["steps"]["adjust_factors"] = {"status": "error", "message": error_msg}
-
-                await _publish_and_persist("step_complete", sync_record_id, {
-                    "step": "adjust_factors",
-                    "status": "error",
-                    "records_count": 0,
-                    "duration_seconds": round(step_duration, 1),
-                    "detail": error_msg,
-                    "message": f"同步复权因子: 失败 ({step_duration:.1f}s)",
                 }, session, sync_record)
 
             # Update sync record with success (or partial success if some steps failed)
