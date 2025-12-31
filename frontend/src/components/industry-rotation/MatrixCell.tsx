@@ -219,12 +219,21 @@ export const MatrixCell = memo(function MatrixCell({
   onHover,
   onLeave,
 }: MatrixCellProps) {
-  // Get metric values
+  // Get metric values (for display)
   const metricValues: Record<MetricKey, number | null> = {
     change: changePct,
     volume,
     flow,
     momentum,
+  }
+
+  // Get metric values for range comparison (volume needs to be in 亿 units)
+  const getComparisonValue = (metric: MetricKey): number | null => {
+    const value = metricValues[metric]
+    if (value === null) return null
+    // Volume is in yuan, convert to 亿 for comparison
+    if (metric === 'volume') return value / 100000000
+    return value
   }
 
   // Calculate stripe width for each metric
@@ -233,13 +242,34 @@ export const MatrixCell = memo(function MatrixCell({
 
   // Calculate if this cell should be highlighted based on highlightRange
   const isHighlighted = !highlightRange || (() => {
-    const value = metricValues[highlightRange.metric]
+    const value = getComparisonValue(highlightRange.metric)
     if (value === null) return false
     return value >= highlightRange.min && value <= highlightRange.max
   })()
 
   // Opacity: 1 if highlighted or no filter, 0.15 if dimmed
   const cellOpacity = isHighlighted ? 1 : 0.15
+
+  // Show border when cell is highlighted with an active filter (helps visibility for near-white cells)
+  const showHighlightBorder = highlightRange && isHighlighted
+
+  // Get border color based on metric theme
+  const getBorderColor = (): string => {
+    if (!highlightRange) return '#666'
+    switch (highlightRange.metric) {
+      case 'change':
+        // Red for positive, green for negative based on the cell's change value
+        return changePct >= 0 ? '#c93b3b' : '#2d8a2d'
+      case 'volume':
+        return '#2989c9' // Blue
+      case 'flow':
+        return '#c47a30' // Amber
+      case 'momentum':
+        return '#7a2eb0' // Purple
+      default:
+        return '#666'
+    }
+  }
 
   return (
     <motion.g
@@ -287,6 +317,20 @@ export const MatrixCell = memo(function MatrixCell({
           </g>
         )
       })}
+
+      {/* Highlight border for visibility when filtering near-white values */}
+      {showHighlightBorder && (
+        <rect
+          x={0}
+          y={y}
+          width={width}
+          height={height}
+          fill="none"
+          stroke={getBorderColor()}
+          strokeWidth={1.5}
+          style={{ pointerEvents: 'none' }}
+        />
+      )}
     </motion.g>
   )
 })

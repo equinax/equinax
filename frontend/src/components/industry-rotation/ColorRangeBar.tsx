@@ -30,10 +30,10 @@ const METRIC_CONFIG: Record<MetricKey, {
     label: (v) => `${v > 0 ? '+' : ''}${v.toFixed(1)}%`,
   },
   volume: {
-    min: 0,
-    max: 100,  // Represents percentile or normalized value
+    min: 10,
+    max: 500,  // In 亿 units
     hue: () => 210,  // Blue
-    label: (v) => `${v.toFixed(0)}%`,
+    label: (v) => `${v.toFixed(0)}亿`,
   },
   flow: {
     min: 10,

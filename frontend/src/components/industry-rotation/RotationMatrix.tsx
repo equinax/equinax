@@ -44,7 +44,6 @@ interface RotationMatrixProps {
 const SORT_OPTIONS: { value: RotationSortBy; label: string }[] = [
   { value: 'upstream', label: '产业链' },
   { value: 'today_change', label: '今日涨跌' },
-  { value: 'period_change', label: '区间涨跌' },
   { value: 'money_flow', label: '资金流向' },
   { value: 'momentum', label: '动量' },
 ]
@@ -253,6 +252,13 @@ export function RotationMatrix({ data, visibleMetrics, highlightRange, sortBy, o
         )}
 
         {/* Sort dropdown in top-left cell */}
+        <rect
+          x={0}
+          y={collapsedRowHeight}
+          width={DATE_COLUMN_WIDTH}
+          height={HEADER_HEIGHT}
+          className="fill-muted"
+        />
         <foreignObject
           x={0}
           y={collapsedRowHeight}
@@ -279,6 +285,14 @@ export function RotationMatrix({ data, visibleMetrics, highlightRange, sortBy, o
 
         {/* Header row - Industry names (clickable to hide) */}
         <g transform={`translate(${DATE_COLUMN_WIDTH}, ${collapsedRowHeight})`}>
+          {/* Background for header row */}
+          <rect
+            x={0}
+            y={0}
+            width={svgWidth - DATE_COLUMN_WIDTH}
+            height={HEADER_HEIGHT}
+            className="fill-muted"
+          />
           <AnimatePresence>
             {visibleIndustries.map((industry, colIndex) => (
               <motion.g
