@@ -7,8 +7,9 @@
  * - Cells: Red-green gradient with change % text
  */
 
-import { useState, useRef, useMemo, useCallback, useEffect } from 'react'
+import { useState, useRef, useCallback, useEffect, useMemo } from 'react'
 import { motion, AnimatePresence } from 'motion/react'
+import { ChevronDown } from 'lucide-react'
 import type { SectorRotationResponse } from '@/api/generated/schemas'
 import { MatrixCell } from './MatrixCell'
 import { MatrixTooltip } from './MatrixTooltip'
@@ -17,9 +18,17 @@ import type { TooltipData } from './types'
 // Metric keys matching page component
 type MetricKey = 'change' | 'volume' | 'flow' | 'momentum'
 
+// Highlight range for color filtering
+interface HighlightRange {
+  metric: MetricKey
+  min: number
+  max: number
+}
+
 interface RotationMatrixProps {
   data: SectorRotationResponse
   visibleMetrics: MetricKey[]
+  highlightRange?: HighlightRange | null
 }
 
 // Layout constants
@@ -28,28 +37,30 @@ const MIN_CELL_WIDTH = 36  // Minimum cell width for readability
 const CELL_HEIGHT = 20
 const DATE_COLUMN_WIDTH = 38  // Compact - date text "MM-DD" is ~32px
 const HEADER_HEIGHT = 32
+const COLLAPSED_ROW_HEIGHT = 16  // Height for collapsed industry icons row
 
-// Industry chain order (upstream -> midstream -> downstream)
-// Must match actual SW L1 industry names from database
-const INDUSTRY_CHAIN_ORDER: Record<string, number> = {
-  // Upstream resources (1-10)
-  '煤炭': 1, '石油石化': 2, '钢铁': 3, '有色金属': 4, '基础化工': 5, '建筑材料': 6,
-  // Midstream manufacturing (11-20)
-  '机械设备': 11, '电力设备': 12, '国防军工': 13, '电子': 14, '计算机': 15,
-  '通信': 16, '汽车': 17, '家用电器': 18, '轻工制造': 19, '纺织服饰': 20,
-  // Downstream consumption (21-30)
-  '食品饮料': 21, '医药生物': 22, '农林牧渔': 23, '商贸零售': 24,
-  '社会服务': 25, '美容护理': 26, '传媒': 27,
-  // Utilities & infrastructure (31-40)
-  '公用事业': 31, '交通运输': 32, '建筑装饰': 33, '环保': 34, '房地产': 35,
-  // Finance (41-50)
-  '银行': 41, '非银金融': 42, '综合': 50,
-}
 
-export function RotationMatrix({ data, visibleMetrics }: RotationMatrixProps) {
+export function RotationMatrix({ data, visibleMetrics, highlightRange }: RotationMatrixProps) {
   const containerRef = useRef<HTMLDivElement>(null)
   const [tooltip, setTooltip] = useState<TooltipData | null>(null)
   const [containerWidth, setContainerWidth] = useState(0)
+  // Track hidden (collapsed) industries
+  const [hiddenIndustries, setHiddenIndustries] = useState<Set<string>>(new Set())
+  // Hover state for collapsed icons
+  const [collapsedHover, setCollapsedHover] = useState<string | null>(null)
+
+  // Toggle industry visibility
+  const toggleIndustry = useCallback((code: string) => {
+    setHiddenIndustries((prev) => {
+      const next = new Set(prev)
+      if (next.has(code)) {
+        next.delete(code)
+      } else {
+        next.add(code)
+      }
+      return next
+    })
+  }, [])
 
   // Track container width for responsive sizing
   useEffect(() => {
@@ -69,24 +80,39 @@ export function RotationMatrix({ data, visibleMetrics }: RotationMatrixProps) {
     return () => observer.disconnect()
   }, [])
 
-  // Sort industries by upstream/downstream order (fixed)
-  const sortedIndustries = useMemo(() => {
-    return [...data.industries].sort((a, b) =>
-      (INDUSTRY_CHAIN_ORDER[a.name] ?? 99) - (INDUSTRY_CHAIN_ORDER[b.name] ?? 99)
-    )
-  }, [data.industries])
+  // Industries come pre-sorted from backend based on sort_by parameter
+  const allIndustries = data.industries
 
-  // Calculate dimensions - responsive cell width
-  const numIndustries = sortedIndustries.length
+  // Separate visible and hidden industries, preserving original order
+  const { visibleIndustries, hiddenIndustriesWithPosition } = useMemo(() => {
+    const visible: typeof allIndustries = []
+    const hidden: Array<{ industry: typeof allIndustries[0]; originalIndex: number }> = []
+
+    allIndustries.forEach((industry, index) => {
+      if (hiddenIndustries.has(industry.code)) {
+        hidden.push({ industry, originalIndex: index })
+      } else {
+        visible.push(industry)
+      }
+    })
+
+    return { visibleIndustries: visible, hiddenIndustriesWithPosition: hidden }
+  }, [allIndustries, hiddenIndustries])
+
+  // Calculate dimensions - responsive cell width based on VISIBLE industries
+  const numIndustries = visibleIndustries.length
+  const hasHiddenIndustries = hiddenIndustriesWithPosition.length > 0
   const availableWidth = containerWidth - DATE_COLUMN_WIDTH
   // Use exact division to fill container completely
   const cellWidth = numIndustries > 0 && containerWidth > 0
     ? Math.max(MIN_CELL_WIDTH, availableWidth / numIndustries)
     : CELL_WIDTH
   const matrixHeight = data.trading_days.length * CELL_HEIGHT
+  // Add collapsed row height if there are hidden industries
+  const collapsedRowHeight = hasHiddenIndustries ? COLLAPSED_ROW_HEIGHT : 0
   // SVG fills container width exactly
   const svgWidth = containerWidth || (DATE_COLUMN_WIDTH + numIndustries * CELL_WIDTH)
-  const svgHeight = HEADER_HEIGHT + matrixHeight
+  const svgHeight = collapsedRowHeight + HEADER_HEIGHT + matrixHeight
 
   // Handle cell hover
   const handleCellHover = useCallback(
@@ -147,15 +173,78 @@ export function RotationMatrix({ data, visibleMetrics }: RotationMatrixProps) {
         role="img"
         aria-label="行业轮动矩阵"
       >
-        {/* Header row - Industry names */}
-        <g transform={`translate(${DATE_COLUMN_WIDTH}, 0)`}>
+        {/* Collapsed industries row - ChevronDown icons */}
+        {hasHiddenIndustries && (
+          <g transform={`translate(${DATE_COLUMN_WIDTH}, 0)`}>
+            {hiddenIndustriesWithPosition.map(({ industry, originalIndex }) => {
+              // Calculate x position based on where this industry would be among visible ones
+              // Find how many visible industries come before this one in original order
+              let visibleBefore = 0
+              for (let i = 0; i < originalIndex; i++) {
+                if (!hiddenIndustries.has(allIndustries[i].code)) {
+                  visibleBefore++
+                }
+              }
+              const xPos = visibleBefore * cellWidth + cellWidth / 2
+
+              return (
+                <g
+                  key={`collapsed-${industry.code}`}
+                  transform={`translate(${xPos}, ${COLLAPSED_ROW_HEIGHT / 2})`}
+                  style={{ cursor: 'pointer' }}
+                  onClick={() => toggleIndustry(industry.code)}
+                  onMouseEnter={() => setCollapsedHover(industry.code)}
+                  onMouseLeave={() => setCollapsedHover(null)}
+                >
+                  <circle
+                    r={6}
+                    className={`${collapsedHover === industry.code ? 'fill-muted-foreground/30' : 'fill-muted'} transition-colors`}
+                  />
+                  <ChevronDown
+                    x={-4}
+                    y={-4}
+                    width={8}
+                    height={8}
+                    className="text-muted-foreground"
+                  />
+                  {/* Tooltip on hover */}
+                  {collapsedHover === industry.code && (
+                    <g transform="translate(0, -16)">
+                      <rect
+                        x={-20}
+                        y={-10}
+                        width={40}
+                        height={14}
+                        rx={3}
+                        className="fill-popover stroke-border"
+                      />
+                      <text
+                        textAnchor="middle"
+                        dominantBaseline="middle"
+                        fontSize={8}
+                        className="fill-foreground"
+                      >
+                        {industry.name.slice(0, 4)}
+                      </text>
+                    </g>
+                  )}
+                </g>
+              )
+            })}
+          </g>
+        )}
+
+        {/* Header row - Industry names (clickable to hide) */}
+        <g transform={`translate(${DATE_COLUMN_WIDTH}, ${collapsedRowHeight})`}>
           <AnimatePresence>
-            {sortedIndustries.map((industry, colIndex) => (
+            {visibleIndustries.map((industry, colIndex) => (
               <motion.g
                 key={industry.code}
                 initial={{ x: colIndex * cellWidth }}
                 animate={{ x: colIndex * cellWidth }}
                 transition={{ duration: 0.4, ease: [0.4, 0, 0.2, 1] }}
+                style={{ cursor: 'pointer' }}
+                onClick={() => toggleIndustry(industry.code)}
               >
                 <text
                   x={cellWidth / 2}
@@ -164,7 +253,7 @@ export function RotationMatrix({ data, visibleMetrics }: RotationMatrixProps) {
                   dominantBaseline="middle"
                   fontSize={9}
                   fill="currentColor"
-                  className="text-muted-foreground"
+                  className="text-muted-foreground hover:text-foreground transition-colors"
                 >
                   {industry.name.length > 4
                     ? industry.name.slice(0, 4)
@@ -176,7 +265,7 @@ export function RotationMatrix({ data, visibleMetrics }: RotationMatrixProps) {
         </g>
 
         {/* Date column with soft background */}
-        <g transform={`translate(0, ${HEADER_HEIGHT})`}>
+        <g transform={`translate(0, ${collapsedRowHeight + HEADER_HEIGHT})`}>
           {/* Background */}
           <rect
             x={0}
@@ -204,12 +293,12 @@ export function RotationMatrix({ data, visibleMetrics }: RotationMatrixProps) {
 
         {/* Matrix cells */}
         <g
-          transform={`translate(${DATE_COLUMN_WIDTH}, ${HEADER_HEIGHT})`}
+          transform={`translate(${DATE_COLUMN_WIDTH}, ${collapsedRowHeight + HEADER_HEIGHT})`}
         >
           {data.trading_days.map((dateStr, rowIndex) => (
             <g key={dateStr}>
               <AnimatePresence>
-                {sortedIndustries.map((industry, colIndex) => {
+                {visibleIndustries.map((industry, colIndex) => {
                   const cell = industry.cells.find((c) => c.date === dateStr)
 
                   return (
@@ -224,6 +313,7 @@ export function RotationMatrix({ data, visibleMetrics }: RotationMatrixProps) {
                       volume={cell?.money_flow ? Number(cell.money_flow) : null}
                       flow={cell?.main_strength ? Number(cell.main_strength) : null}
                       momentum={cell?.main_strength ? Number(cell.main_strength) : null}
+                      highlightRange={highlightRange}
                       onHover={(e) =>
                         handleCellHover(
                           industry.name,

@@ -13,6 +13,13 @@ import { motion } from 'motion/react'
 // Metric keys
 type MetricKey = 'change' | 'volume' | 'flow' | 'momentum'
 
+// Highlight range for color filtering
+interface HighlightRange {
+  metric: MetricKey
+  min: number
+  max: number
+}
+
 interface MatrixCellProps {
   x: number
   y: number
@@ -23,6 +30,7 @@ interface MatrixCellProps {
   volume: number | null
   flow: number | null
   momentum: number | null
+  highlightRange?: HighlightRange | null
   onHover: (event: React.MouseEvent) => void
   onLeave: () => void
 }
@@ -207,6 +215,7 @@ export const MatrixCell = memo(function MatrixCell({
   volume,
   flow,
   momentum,
+  highlightRange,
   onHover,
   onLeave,
 }: MatrixCellProps) {
@@ -222,11 +231,21 @@ export const MatrixCell = memo(function MatrixCell({
   const stripeWidth = width / visibleMetrics.length
   const fontSize = visibleMetrics.length > 2 ? 6 : visibleMetrics.length > 1 ? 7 : 8
 
+  // Calculate if this cell should be highlighted based on highlightRange
+  const isHighlighted = !highlightRange || (() => {
+    const value = metricValues[highlightRange.metric]
+    if (value === null) return false
+    return value >= highlightRange.min && value <= highlightRange.max
+  })()
+
+  // Opacity: 1 if highlighted or no filter, 0.15 if dimmed
+  const cellOpacity = isHighlighted ? 1 : 0.15
+
   return (
     <motion.g
       initial={{ x }}
-      animate={{ x }}
-      transition={{ duration: 0.4, ease: [0.4, 0, 0.2, 1] }}
+      animate={{ x, opacity: cellOpacity }}
+      transition={{ duration: 0.4, ease: [0.4, 0, 0.2, 1], opacity: { duration: 0.15 } }}
       onMouseEnter={onHover}
       onMouseLeave={onLeave}
       style={{ cursor: 'pointer' }}

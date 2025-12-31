@@ -1,4 +1,5 @@
 export { RotationMatrix } from './RotationMatrix'
 export { MatrixCell } from './MatrixCell'
 export { MatrixTooltip } from './MatrixTooltip'
+export { ColorRangeBar } from './ColorRangeBar'
 export type { TooltipData } from './types'

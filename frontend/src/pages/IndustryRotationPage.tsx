@@ -9,16 +9,24 @@
  * - Rich tooltips with top stocks and metrics
  */
 
-import { useState } from 'react'
+import { useState, useCallback } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { keepPreviousData } from '@tanstack/react-query'
-import { ArrowLeft } from 'lucide-react'
+import { ArrowLeft, ArrowUpDown } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { ComputingConsole } from '@/components/ui/computing-console'
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select'
 import { useComputingProgress } from '@/hooks/useComputingProgress'
 import { useGetSectorRotationApiV1AlphaRadarSectorRotationGet } from '@/api/generated/alpha-radar/alpha-radar'
-import { RotationMatrix } from '@/components/industry-rotation/RotationMatrix'
+import { RotationSortBy } from '@/api/generated/schemas'
+import { RotationMatrix, ColorRangeBar } from '@/components/industry-rotation'
 
 // Metric options for cell display
 export type MetricKey = 'change' | 'volume' | 'flow' | 'momentum'
@@ -30,27 +38,60 @@ const METRIC_OPTIONS: { key: MetricKey; label: string; activeColor: string }[] =
   { key: 'momentum', label: '动量', activeColor: 'bg-[#7a2eb0]' },
 ]
 
+const SORT_OPTIONS: { value: RotationSortBy; label: string }[] = [
+  { value: 'upstream', label: '产业链' },
+  { value: 'today_change', label: '今日涨跌' },
+  { value: 'period_change', label: '区间涨跌' },
+  { value: 'money_flow', label: '资金流向' },
+  { value: 'momentum', label: '动量' },
+]
+
+// Highlight range for color filter
+interface HighlightRange {
+  metric: MetricKey
+  min: number
+  max: number
+}
+
 export default function IndustryRotationPage() {
   const navigate = useNavigate()
   // Default: show change only, others can be toggled
   const [visibleMetrics, setVisibleMetrics] = useState<MetricKey[]>(['change'])
+  // Track last selected metric for color range bar
+  const [lastSelectedMetric, setLastSelectedMetric] = useState<MetricKey>('change')
+  // Sort order for columns
+  const [sortBy, setSortBy] = useState<RotationSortBy>('upstream')
+  // Highlight range for filtering cells by color
+  const [highlightRange, setHighlightRange] = useState<HighlightRange | null>(null)
 
   // Toggle metric visibility (at least one must be selected)
-  const toggleMetric = (key: MetricKey) => {
+  const toggleMetric = useCallback((key: MetricKey) => {
     setVisibleMetrics((prev) => {
       if (prev.includes(key)) {
         // Don't allow deselecting the last one
         if (prev.length === 1) return prev
         return prev.filter((m) => m !== key)
       }
+      // When selecting a new metric, update lastSelectedMetric
+      setLastSelectedMetric(key)
       return [...prev, key]
     })
-  }
+  }, [])
+
+  // Handle color range bar hover
+  const handleColorRangeHover = useCallback((range: { min: number; max: number } | null) => {
+    if (range) {
+      setHighlightRange({ metric: lastSelectedMetric, ...range })
+    } else {
+      setHighlightRange(null)
+    }
+  }, [lastSelectedMetric])
 
   // Fetch rotation data (fixed 60 days)
   const { data, isLoading, isFetching } = useGetSectorRotationApiV1AlphaRadarSectorRotationGet(
     {
       days: 60,
+      sort_by: sortBy,
     },
     {
       query: {
@@ -84,6 +125,20 @@ export default function IndustryRotationPage() {
         <CardHeader className="pb-2 pt-3">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-3">
+              {/* Sort dropdown */}
+              <Select value={sortBy} onValueChange={(v) => setSortBy(v as RotationSortBy)}>
+                <SelectTrigger className="w-[100px] h-7 text-xs">
+                  <ArrowUpDown className="h-3 w-3 mr-1" />
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {SORT_OPTIONS.map((opt) => (
+                    <SelectItem key={opt.value} value={opt.value} className="text-xs">
+                      {opt.label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
               <CardTitle className="text-lg">轮动矩阵</CardTitle>
               {isFetching && !showInitialLoading && (
                 <span className="text-xs text-muted-foreground animate-pulse">
@@ -92,25 +147,34 @@ export default function IndustryRotationPage() {
               )}
             </div>
 
-            {/* Metric Group Buttons */}
-            <div className="flex items-center border rounded-md overflow-hidden">
-              {METRIC_OPTIONS.map((opt, idx) => {
-                const isSelected = visibleMetrics.includes(opt.key)
-                const isFirst = idx === 0
-                return (
-                  <button
-                    key={opt.key}
-                    onClick={() => toggleMetric(opt.key)}
-                    className={`px-2.5 py-1 text-xs font-medium transition-colors ${
-                      isSelected
-                        ? `${opt.activeColor} text-white`
-                        : 'bg-background text-muted-foreground hover:text-foreground hover:bg-muted'
-                    } ${!isFirst ? 'border-l' : ''}`}
-                  >
-                    {opt.label}
-                  </button>
-                )
-              })}
+            {/* Color Range Bar + Metric Group Buttons */}
+            <div className="flex items-center gap-3">
+              {/* Color range filter bar */}
+              <ColorRangeBar
+                metric={lastSelectedMetric}
+                onHoverRange={handleColorRangeHover}
+              />
+
+              {/* Metric Group Buttons */}
+              <div className="flex items-center border rounded-md overflow-hidden">
+                {METRIC_OPTIONS.map((opt, idx) => {
+                  const isSelected = visibleMetrics.includes(opt.key)
+                  const isFirst = idx === 0
+                  return (
+                    <button
+                      key={opt.key}
+                      onClick={() => toggleMetric(opt.key)}
+                      className={`px-2.5 py-1 text-xs font-medium transition-colors ${
+                        isSelected
+                          ? `${opt.activeColor} text-white`
+                          : 'bg-background text-muted-foreground hover:text-foreground hover:bg-muted'
+                      } ${!isFirst ? 'border-l' : ''}`}
+                    >
+                      {opt.label}
+                    </button>
+                  )
+                })}
+              </div>
             </div>
           </div>
         </CardHeader>
@@ -122,7 +186,11 @@ export default function IndustryRotationPage() {
               progress={progress}
             />
           ) : data ? (
-            <RotationMatrix data={data} visibleMetrics={visibleMetrics} />
+            <RotationMatrix
+              data={data}
+              visibleMetrics={visibleMetrics}
+              highlightRange={highlightRange}
+            />
           ) : (
             <div className="flex items-center justify-center h-32 text-muted-foreground">
               暂无数据
