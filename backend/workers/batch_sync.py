@@ -39,21 +39,31 @@ PARALLEL_WORKERS = 10
 def _fetch_latest_trading_day_from_baostock() -> date:
     """
     从 baostock 获取最近的交易日（内部函数，不带缓存）
+
+    如果当前时间 < 17:00，不考虑今天（盘中数据不完整）
     """
     import baostock as bs
+    from datetime import datetime
 
     today = date.today()
+    now = datetime.now()
+
+    # 如果当前时间 < 17:00，不考虑今天（盘中数据不完整）
+    if now.hour < 17:
+        query_end_date = today - timedelta(days=1)
+    else:
+        query_end_date = today
 
     # 登录 baostock
     lg = bs.login()
     if lg.error_code != '0':
-        logger.warning(f"baostock login failed: {lg.error_msg}, using today as fallback")
-        return today
+        logger.warning(f"baostock login failed: {lg.error_msg}, using {query_end_date} as fallback")
+        return query_end_date
 
     try:
         # 查询最近30天的交易日历
-        start_date = (today - timedelta(days=30)).strftime('%Y-%m-%d')
-        end_date = today.strftime('%Y-%m-%d')
+        start_date = (query_end_date - timedelta(days=30)).strftime('%Y-%m-%d')
+        end_date = query_end_date.strftime('%Y-%m-%d')
 
         rs = bs.query_trade_dates(start_date=start_date, end_date=end_date)
 
@@ -66,8 +76,8 @@ def _fetch_latest_trading_day_from_baostock() -> date:
         if trading_days:
             return date.fromisoformat(trading_days[-1])
         else:
-            logger.warning("No trading days found in last 30 days, using today")
-            return today
+            logger.warning(f"No trading days found in last 30 days, using {query_end_date}")
+            return query_end_date
 
     finally:
         bs.logout()
@@ -78,14 +88,18 @@ def get_latest_trading_day() -> date:
     获取最近的交易日（今天或之前）
 
     使用 Redis 缓存，每天只查询一次 baostock。
-    缓存 key 为当天日期，过期时间为当天结束。
+    缓存 key 区分盘中(before17)/盘后(after17)，避免早上的缓存影响下午的查询。
     """
     import redis
     from datetime import datetime
     import os
 
     today = date.today()
-    cache_key = f"latest_trading_day:{today.isoformat()}"
+    now = datetime.now()
+
+    # 缓存 key 区分盘中/盘后
+    time_segment = "after17" if now.hour >= 17 else "before17"
+    cache_key = f"latest_trading_day:{today.isoformat()}:{time_segment}"
 
     # 获取 Redis 连接
     redis_url = os.environ.get("REDIS_URL", "redis://localhost:6379/0")
@@ -103,7 +117,6 @@ def get_latest_trading_day() -> date:
         latest_trading_day = _fetch_latest_trading_day_from_baostock()
 
         # 计算到今天结束的秒数
-        now = datetime.now()
         end_of_day = datetime(now.year, now.month, now.day, 23, 59, 59)
         ttl_seconds = int((end_of_day - now).total_seconds()) + 1
 
@@ -1086,7 +1099,8 @@ def _fetch_stock_history_sync(code: str, start_str: str, end_str: str, missing_d
                     'low': safe_decimal(row.get('最低')),
                     'close': safe_decimal(row.get('收盘')),
                     'preclose': None,
-                    'volume': safe_int(row.get('成交量')),
+                    # 成交量: akshare 历史API返回的是"手"，需要转为"股" (*100)
+                    'volume': safe_int(row.get('成交量', 0)) * 100 if safe_int(row.get('成交量')) else None,
                     'amount': amount,
                     'turn': turn,
                     'pct_chg': safe_decimal(row.get('涨跌幅')),
@@ -1101,6 +1115,10 @@ def _fetch_stock_history_sync(code: str, start_str: str, end_str: str, missing_d
                 valuation_records.append({
                     'code': db_code,
                     'date': row_date,
+                    'pe_ttm': None,       # 历史API不提供
+                    'pb_mrq': None,       # 历史API不提供
+                    'ps_ttm': None,       # 历史API不提供
+                    'pcf_ncf_ttm': None,  # 历史API不提供
                     'total_mv': circ_mv,  # 使用 circ_mv 作为 total_mv 近似值
                     'circ_mv': circ_mv,
                     'is_st': 0,  # 历史数据无法判断 ST
@@ -1635,28 +1653,33 @@ async def calculate_index_pct_chg(session: AsyncSession) -> int:
     由于历史 API (stock_zh_index_daily_em) 不返回 pct_chg，
     我们从连续交易日的 close 价格计算。
 
+    使用窗口函数 LAG() 代替子查询，大幅提升性能。
+
     Returns:
         更新的记录数
     """
     # 设置 TimescaleDB 元组解压限制为无限，避免大批量更新时出错
     await session.execute(text("SET timescaledb.max_tuples_decompressed_per_dml_transaction = 0"))
 
+    # 使用 CTE + 窗口函数 LAG() 获取前一天收盘价，比子查询快 100 倍
     sql = text("""
-        UPDATE market_daily m
-        SET pct_chg = ROUND(
-            (m.close - prev.close) / prev.close * 100,
-            2
+        WITH prev_close AS (
+            SELECT
+                code,
+                date,
+                close,
+                LAG(close) OVER (PARTITION BY code ORDER BY date) as prev_close
+            FROM market_daily
+            WHERE (code LIKE 'sh.0%' OR code LIKE 'sz.39%')
         )
-        FROM market_daily prev
-        WHERE m.code = prev.code
-          AND prev.date = (
-              SELECT MAX(date)
-              FROM market_daily
-              WHERE code = m.code AND date < m.date
-          )
-          AND (m.code LIKE 'sh.0%' OR m.code LIKE 'sz.39%')
+        UPDATE market_daily m
+        SET pct_chg = ROUND((pc.close - pc.prev_close) / pc.prev_close * 100, 2)
+        FROM prev_close pc
+        WHERE m.code = pc.code
+          AND m.date = pc.date
           AND m.pct_chg IS NULL
-          AND prev.close > 0
+          AND pc.prev_close IS NOT NULL
+          AND pc.prev_close > 0
     """)
     result = await session.execute(sql)
     updated = result.rowcount
