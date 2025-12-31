@@ -66,15 +66,20 @@ export function RotationMatrix({ data, visibleMetrics, highlightRange, sortBy, o
   // Hover state for collapsed icons
   const [collapsedHover, setCollapsedHover] = useState<string | null>(null)
 
-  // Toggle industry visibility
-  const toggleIndustry = useCallback((code: string) => {
+  // Toggle industry visibility (supports multiple codes for grouped expansion)
+  const toggleIndustry = useCallback((codes: string | string[]) => {
+    const codeArray = Array.isArray(codes) ? codes : [codes]
     setHiddenIndustries((prev) => {
       const next = new Set(prev)
-      if (next.has(code)) {
-        next.delete(code)
-      } else {
-        next.add(code)
-      }
+      // Check if first code is hidden - if so, show all; otherwise hide all
+      const shouldShow = next.has(codeArray[0])
+      codeArray.forEach((code) => {
+        if (shouldShow) {
+          next.delete(code)
+        } else {
+          next.add(code)
+        }
+      })
       return next
     })
   }, [])
@@ -100,25 +105,38 @@ export function RotationMatrix({ data, visibleMetrics, highlightRange, sortBy, o
   // Industries come pre-sorted from backend based on sort_by parameter
   const allIndustries = data.industries
 
-  // Separate visible and hidden industries, preserving original order
-  const { visibleIndustries, hiddenIndustriesWithPosition } = useMemo(() => {
+  // Separate visible and hidden industries, group hidden by slot position
+  const { visibleIndustries, hiddenGroups } = useMemo(() => {
     const visible: typeof allIndustries = []
-    const hidden: Array<{ industry: typeof allIndustries[0]; originalIndex: number }> = []
+    // Group hidden industries by their slot position (number of visible before them)
+    const groupMap = new Map<number, Array<typeof allIndustries[0]>>()
 
-    allIndustries.forEach((industry, index) => {
+    let visibleCount = 0
+    allIndustries.forEach((industry) => {
       if (hiddenIndustries.has(industry.code)) {
-        hidden.push({ industry, originalIndex: index })
+        // Add to group at current slot position
+        const group = groupMap.get(visibleCount) || []
+        group.push(industry)
+        groupMap.set(visibleCount, group)
       } else {
         visible.push(industry)
+        visibleCount++
       }
     })
 
-    return { visibleIndustries: visible, hiddenIndustriesWithPosition: hidden }
+    // Convert map to array of groups with position info
+    const groups = Array.from(groupMap.entries()).map(([slotPosition, industries]) => ({
+      slotPosition,
+      industries,
+      key: industries.map((i) => i.code).join('-'),
+    }))
+
+    return { visibleIndustries: visible, hiddenGroups: groups }
   }, [allIndustries, hiddenIndustries])
 
   // Calculate dimensions - responsive cell width based on VISIBLE industries
   const numIndustries = visibleIndustries.length
-  const hasHiddenIndustries = hiddenIndustriesWithPosition.length > 0
+  const hasHiddenIndustries = hiddenGroups.length > 0
   const availableWidth = containerWidth - DATE_COLUMN_WIDTH
   // Use exact division to fill container completely
   const cellWidth = numIndustries > 0 && containerWidth > 0
@@ -190,32 +208,28 @@ export function RotationMatrix({ data, visibleMetrics, highlightRange, sortBy, o
         role="img"
         aria-label="行业轮动矩阵"
       >
-        {/* Collapsed industries row - ChevronDown icons */}
+        {/* Collapsed industries row - ChevronDown icons (grouped) */}
         {hasHiddenIndustries && (
           <g transform={`translate(${DATE_COLUMN_WIDTH}, 0)`}>
-            {hiddenIndustriesWithPosition.map(({ industry, originalIndex }) => {
-              // Calculate x position based on where this industry would be among visible ones
-              // Find how many visible industries come before this one in original order
-              let visibleBefore = 0
-              for (let i = 0; i < originalIndex; i++) {
-                if (!hiddenIndustries.has(allIndustries[i].code)) {
-                  visibleBefore++
-                }
-              }
-              const xPos = visibleBefore * cellWidth + cellWidth / 2
+            {hiddenGroups.map((group) => {
+              const xPos = group.slotPosition * cellWidth + cellWidth / 2
+              const codes = group.industries.map((i) => i.code)
 
               return (
                 <g
-                  key={`collapsed-${industry.code}`}
+                  key={group.key}
                   transform={`translate(${xPos}, ${COLLAPSED_ROW_HEIGHT / 2})`}
                   style={{ cursor: 'pointer' }}
-                  onClick={() => toggleIndustry(industry.code)}
-                  onMouseEnter={() => setCollapsedHover(industry.code)}
+                  onClick={() => toggleIndustry(codes)}
+                  onMouseEnter={() => setCollapsedHover(group.key)}
                   onMouseLeave={() => setCollapsedHover(null)}
                 >
+                  {/* Larger invisible hit area */}
+                  <circle r={12} fill="transparent" />
+                  {/* Visible circle */}
                   <circle
                     r={6}
-                    className={`${collapsedHover === industry.code ? 'fill-muted-foreground/30' : 'fill-muted'} transition-colors`}
+                    className={`${collapsedHover === group.key ? 'fill-muted-foreground/30' : 'fill-muted'} transition-colors`}
                   />
                   <ChevronDown
                     x={-4}
@@ -224,27 +238,6 @@ export function RotationMatrix({ data, visibleMetrics, highlightRange, sortBy, o
                     height={8}
                     className="text-muted-foreground"
                   />
-                  {/* Tooltip on hover */}
-                  {collapsedHover === industry.code && (
-                    <g transform="translate(0, -16)">
-                      <rect
-                        x={-20}
-                        y={-10}
-                        width={40}
-                        height={14}
-                        rx={3}
-                        className="fill-popover stroke-border"
-                      />
-                      <text
-                        textAnchor="middle"
-                        dominantBaseline="middle"
-                        fontSize={8}
-                        className="fill-foreground"
-                      >
-                        {industry.name.slice(0, 4)}
-                      </text>
-                    </g>
-                  )}
                 </g>
               )
             })}
@@ -386,6 +379,46 @@ export function RotationMatrix({ data, visibleMetrics, highlightRange, sortBy, o
             </g>
           ))}
         </g>
+
+        {/* Collapsed industry tooltip - rendered last to be on top */}
+        {collapsedHover && (() => {
+          const hoveredGroup = hiddenGroups.find((g) => g.key === collapsedHover)
+          if (!hoveredGroup) return null
+
+          // Calculate position - below the arrow, on top of header
+          const xPos = DATE_COLUMN_WIDTH + hoveredGroup.slotPosition * cellWidth + cellWidth / 2
+          const names = hoveredGroup.industries.map((i) => i.name.slice(0, 4))
+          const tooltipText = names.join(' · ')
+          const tooltipWidth = Math.max(60, tooltipText.length * 9 + 20)
+          const tooltipHeight = 22
+          // Position below the arrow (will overlay header row)
+          const yPos = COLLAPSED_ROW_HEIGHT + 2
+
+          return (
+            <g transform={`translate(${xPos}, ${yPos})`}>
+              <rect
+                x={-tooltipWidth / 2}
+                y={0}
+                width={tooltipWidth}
+                height={tooltipHeight}
+                rx={4}
+                className="fill-popover"
+                stroke="#888"
+                strokeWidth={1}
+              />
+              <text
+                x={0}
+                y={tooltipHeight / 2}
+                textAnchor="middle"
+                dominantBaseline="middle"
+                fontSize={11}
+                className="fill-foreground"
+              >
+                {tooltipText}
+              </text>
+            </g>
+          )
+        })()}
       </svg>
 
       {/* Tooltip */}
