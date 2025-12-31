@@ -810,7 +810,7 @@ async def api_triggered_sync(ctx: Dict[str, Any], sync_record_id: str) -> Dict[s
                     "progress": 95 + int(progress * 0.04),  # 95-99%
                     "message": message,
                     "detail": detail,
-                })
+                }, session, sync_record)
 
             try:
                 adjust_result = await sync_adjust_factors(session, adjust_progress_callback)
