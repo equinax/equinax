@@ -90,26 +90,27 @@ export default function IndustryRotationPage() {
   const { steps, progress } = useComputingProgress(showInitialLoading, 'heatmap')
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-2">
       {/* Page Header */}
-      <div className="flex items-center gap-4">
-        <Button variant="ghost" size="sm" onClick={() => navigate(-1)}>
-          <ArrowLeft className="h-4 w-4 mr-1" />
-          返回
-        </Button>
+      {/* <div className="flex items-center gap-4">
+
         <h1 className="text-2xl font-bold">行业轮动雷达</h1>
         {data && (
           <span className="text-sm text-muted-foreground">
             {data.stats.total_industries} 个行业 · {data.stats.trading_days} 个交易日
           </span>
         )}
-      </div>
+      </div> */}
 
       {/* Matrix */}
       <Card>
         <CardHeader className="pb-2 pt-3">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-3">
+              <Button variant="ghost" size="sm" onClick={() => navigate(-1)}>
+                <ArrowLeft className="h-4 w-4 mr-1" />
+                返回
+              </Button>
               <CardTitle className="text-lg">轮动矩阵</CardTitle>
               {isFetching && !showInitialLoading && (
                 <span className="text-xs text-muted-foreground animate-pulse">
@@ -135,11 +136,10 @@ export default function IndustryRotationPage() {
                     <button
                       key={opt.key}
                       onClick={() => toggleMetric(opt.key)}
-                      className={`px-2.5 py-1 text-xs font-medium transition-colors ${
-                        isSelected
+                      className={`px-2.5 py-1 text-xs font-medium transition-colors ${isSelected
                           ? `${opt.activeColor} text-white`
                           : 'bg-background text-muted-foreground hover:text-foreground hover:bg-muted'
-                      } ${!isFirst ? 'border-l' : ''}`}
+                        } ${!isFirst ? 'border-l' : ''}`}
                     >
                       {opt.label}
                     </button>
