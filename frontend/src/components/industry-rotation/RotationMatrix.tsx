@@ -294,6 +294,7 @@ export function RotationMatrix({
           signals: cell.signals || [],
           mouseX: event.clientX,
           mouseY: event.clientY,
+          volume_baseline: industryData.volume_baseline ? Number(industryData.volume_baseline) : null,
         })
       }
     },

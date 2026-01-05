@@ -49,6 +49,7 @@ export function MatrixTooltip({ data }: MatrixTooltipProps) {
     signals,
     mouseX,
     mouseY,
+    volume_baseline,
   } = data
 
   // Position tooltip to avoid going off-screen
@@ -102,6 +103,14 @@ export function MatrixTooltip({ data }: MatrixTooltipProps) {
           <div className="flex justify-between">
             <span className="text-gray-400">成交额</span>
             <span className="font-mono">{formatAmount(money_flow)}</span>
+          </div>
+        )}
+
+        {/* Volume Baseline (for weighted volume) */}
+        {volume_baseline !== null && volume_baseline !== undefined && (
+          <div className="flex justify-between">
+            <span className="text-gray-400">基准成交</span>
+            <span className="font-mono text-gray-300">{formatAmount(volume_baseline * 1e8)}</span>
           </div>
         )}
 

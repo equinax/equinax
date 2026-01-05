@@ -14,4 +14,6 @@ export interface TooltipData {
   signals: RotationCellSignal[]
   mouseX: number
   mouseY: number
+  // For weighted volume display
+  volume_baseline?: number | null
 }

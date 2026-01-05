@@ -93,10 +93,17 @@ function mergeRotationData(
     }
   })
 
+  // Merge market_changes (for weighted change calculation)
+  const mergedMarketChanges = {
+    ...existing.market_changes,
+    ...newData.market_changes,
+  }
+
   return {
     ...existing,
     trading_days: uniqueDays,
     industries: mergedIndustries,
+    market_changes: mergedMarketChanges,
     stats: {
       ...existing.stats,
       trading_days: uniqueDays.length,
