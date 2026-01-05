@@ -23,6 +23,8 @@ interface TimeControllerProps {
   dateRange: { from?: Date; to?: Date }
   onDateRangeChange: (range: { from?: Date; to?: Date }) => void
   disabled?: boolean
+  /** The default active date from API response (used when no date is explicitly selected) */
+  defaultActiveDate?: string
 }
 
 // Quick date presets for period mode
@@ -93,8 +95,15 @@ export function TimeController({
   dateRange,
   onDateRangeChange,
   disabled = false,
+  defaultActiveDate,
 }: TimeControllerProps) {
   const today = useMemo(() => new Date(), [])
+
+  // Parse the default active date from API
+  const defaultDate = useMemo(() => {
+    if (!defaultActiveDate) return null
+    return parseISO(defaultActiveDate)
+  }, [defaultActiveDate])
 
   // Scroll offset in pixels (positive = showing earlier dates)
   const [scrollOffset, setScrollOffset] = useState(0)
@@ -503,7 +512,11 @@ export function TimeController({
                   const dayInfo = dateInfoMap.get(dateStr)
                   const isTradingDay = dayInfo?.isTradingDay ?? false
                   const marketChange = dayInfo?.marketChange ?? null
-                  const isSelected = selectedDate ? isSameDay(selectedDate, day) : isSameDay(day, today)
+                  const isSelected = selectedDate
+                    ? isSameDay(selectedDate, day)
+                    : defaultDate
+                      ? isSameDay(defaultDate, day)
+                      : isSameDay(day, today)
                   const isToday = isSameDay(day, today)
                   const dayNum = getDate(day)
                   const isFirstOfMonth = dayNum === 1

@@ -1,9 +1,11 @@
-import { useState, useMemo, useCallback } from 'react'
+import { useState, useMemo, useCallback, useEffect } from 'react'
+import { useSearchParams } from 'react-router-dom'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { ChevronLeft, ChevronRight } from 'lucide-react'
 import type { SortingState, Updater } from '@tanstack/react-table'
+import { format } from 'date-fns'
 import {
   useGetDashboardApiV1AlphaRadarDashboardGet,
   useGetScreenerApiV1AlphaRadarScreenerGet,
@@ -32,10 +34,46 @@ const sortFieldMap: Record<string, string> = {
 }
 
 export default function AlphaRadarPage() {
+  const [searchParams, setSearchParams] = useSearchParams()
+
   // Time controller state
   const [timeMode, setTimeMode] = useState<TimeMode>('snapshot')
-  const [selectedDate, setSelectedDate] = useState<Date | undefined>(undefined)
   const [dateRange, setDateRange] = useState<{ from?: Date; to?: Date }>({})
+
+  // Parse date string to Date object (avoiding timezone issues)
+  const parseDateString = (dateStr: string): Date => {
+    // Parse as local date to avoid timezone shift
+    const [year, month, day] = dateStr.split('-').map(Number)
+    return new Date(year, month - 1, day)
+  }
+
+  // Format Date to string (avoiding timezone issues)
+  const formatDateString = (date: Date): string => {
+    return format(date, 'yyyy-MM-dd')
+  }
+
+  // Initialize selectedDate from URL params
+  const [selectedDate, setSelectedDate] = useState<Date | undefined>(() => {
+    const dateParam = searchParams.get('date')
+    return dateParam ? parseDateString(dateParam) : undefined
+  })
+
+  // Sync selectedDate to URL
+  useEffect(() => {
+    const currentDateParam = searchParams.get('date')
+    const newDateStr = selectedDate ? formatDateString(selectedDate) : undefined
+
+    if (newDateStr !== currentDateParam) {
+      setSearchParams(prev => {
+        if (newDateStr) {
+          prev.set('date', newDateStr)
+        } else {
+          prev.delete('date')
+        }
+        return prev
+      }, { replace: true })
+    }
+  }, [selectedDate, searchParams, setSearchParams])
 
   // Tab state
   const [activeTab, setActiveTab] = useState<ScreenerTab>('panorama')
@@ -139,6 +177,7 @@ export default function AlphaRadarPage() {
             dateRange={dateRange}
             onDateRangeChange={handleDateRangeChange}
             disabled={isAnyLoading}
+            defaultActiveDate={screener?.date ?? undefined}
           />
         </div>
       </div>
@@ -193,6 +232,7 @@ export default function AlphaRadarPage() {
             sorting={sorting}
             onSortingChange={handleSortingChange}
             timeMode={timeMode}
+            activeDate={screener?.date ?? undefined}
           />
 
           {/* Pagination */}

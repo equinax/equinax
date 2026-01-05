@@ -1,4 +1,5 @@
 import { useMemo } from 'react'
+import { useNavigate } from 'react-router-dom'
 import {
   flexRender,
   getCoreRowModel,
@@ -30,6 +31,7 @@ interface RadarDataTableProps {
   sorting: SortingState
   onSortingChange: OnChangeFn<SortingState>
   timeMode: TimeMode
+  activeDate?: string
 }
 
 // Quant label styles
@@ -65,7 +67,19 @@ export function RadarDataTable({
   sorting,
   onSortingChange,
   timeMode,
+  activeDate,
 }: RadarDataTableProps) {
+  const navigate = useNavigate()
+
+  const handleRowClick = (code: string) => {
+    const params = new URLSearchParams()
+    if (activeDate) {
+      params.set('date', activeDate)
+    }
+    params.set('from', 'alpha-radar')
+    const queryString = params.toString()
+    navigate(`/universe/${code}${queryString ? `?${queryString}` : ''}`)
+  }
   const { steps, progress } = useComputingProgress(isLoading, 'screener')
 
   // Define columns
@@ -345,6 +359,7 @@ export function RadarDataTable({
                   ease: 'easeOut',
                 }}
                 className="cursor-pointer hover:bg-muted/50 border-b transition-colors"
+                onClick={() => handleRowClick(row.original.code)}
               >
                 {row.getVisibleCells().map((cell) => (
                   <TableCell key={cell.id} className="py-1 px-2">

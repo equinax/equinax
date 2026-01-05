@@ -1,4 +1,4 @@
-import { useParams, useNavigate } from 'react-router-dom'
+import { useParams, useNavigate, useSearchParams } from 'react-router-dom'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -19,6 +19,20 @@ import {
 export default function UniverseDetailPage() {
   const { code } = useParams<{ code: string }>()
   const navigate = useNavigate()
+  const [searchParams] = useSearchParams()
+
+  const fromPage = searchParams.get('from')
+  const activeDate = searchParams.get('date')
+
+  const handleBack = () => {
+    if (fromPage) {
+      // If we have a known source, use browser history
+      navigate(-1)
+    } else {
+      // Default fallback to universe page
+      navigate('/universe')
+    }
+  }
 
   const { data: detail, isLoading } = useGetAssetDetailApiV1UniverseCodeGet(
     code || '',
@@ -39,8 +53,8 @@ export default function UniverseDetailPage() {
     return (
       <div className="flex flex-col items-center justify-center py-12">
         <p className="text-muted-foreground">未找到资产信息</p>
-        <Button variant="link" onClick={() => navigate('/universe')}>
-          返回市场发现
+        <Button variant="link" onClick={handleBack}>
+          返回
         </Button>
       </div>
     )
@@ -54,7 +68,7 @@ export default function UniverseDetailPage() {
           <Button
             variant="ghost"
             size="icon"
-            onClick={() => navigate('/universe')}
+            onClick={handleBack}
             className="mt-1"
           >
             <ArrowLeft className="h-5 w-5" />
@@ -99,8 +113,13 @@ export default function UniverseDetailPage() {
             </span>
           </div>
           <p className="text-sm text-muted-foreground mt-1">
-            {detail.price_date}
+            {activeDate || detail.price_date}
           </p>
+          {activeDate && activeDate !== detail.price_date && (
+            <p className="text-xs text-muted-foreground">
+              (选股日期: {activeDate})
+            </p>
+          )}
         </div>
       </div>
 
