@@ -455,6 +455,37 @@ export function TimeController({
     }
   }, [animateMomentum])
 
+  // Attach wheel event listener for trackpad two-finger swipe support
+  useEffect(() => {
+    const container = containerRef.current
+    if (!container) return
+
+    const onWheel = (e: WheelEvent) => {
+      // Only handle horizontal scroll (trackpad two-finger swipe)
+      if (Math.abs(e.deltaX) > Math.abs(e.deltaY)) {
+        e.preventDefault() // Prevent browser back/forward navigation
+
+        // Cancel any ongoing momentum animation
+        if (animationRef.current) {
+          cancelAnimationFrame(animationRef.current)
+          animationRef.current = null
+        }
+
+        // Update scroll offset
+        // Swipe right (negative deltaX) → show earlier dates (increase offset)
+        // Swipe left (positive deltaX) → show recent dates (decrease offset)
+        setScrollOffset(prev => clampOffset(prev - e.deltaX))
+      }
+    }
+
+    // Must use { passive: false } to allow preventDefault()
+    container.addEventListener('wheel', onWheel, { passive: false })
+
+    return () => {
+      container.removeEventListener('wheel', onWheel)
+    }
+  }, [clampOffset])
+
   // Period mode handlers
   const handlePeriodPreset = (preset: (typeof PERIOD_PRESETS)[0]) => {
     if (preset.days === 0) {
