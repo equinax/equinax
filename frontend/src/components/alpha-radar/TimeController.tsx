@@ -1,4 +1,4 @@
-import { useMemo, useState, useRef, useCallback, useEffect } from 'react'
+import { useMemo, useState, useRef, useCallback, useEffect, useLayoutEffect } from 'react'
 import {
   Calendar,
   CalendarRange,
@@ -128,6 +128,7 @@ export function TimeController({
     velocity: number
     hasMoved: boolean // Track if actual movement happened
   } | null>(null)
+  const cardRef = useRef<HTMLDivElement>(null)
   const containerRef = useRef<HTMLDivElement>(null)
   const animationRef = useRef<number | null>(null)
   const justDraggedRef = useRef(false) // Prevent click after drag
@@ -455,15 +456,21 @@ export function TimeController({
     }
   }, [animateMomentum])
 
-  // Attach wheel event listener for trackpad two-finger swipe support
-  useEffect(() => {
-    const container = containerRef.current
-    if (!container) return
+  // Attach wheel event listener to entire card for trackpad two-finger swipe support
+  // This blocks browser back/forward navigation on horizontal swipe anywhere on the card
+  // Use useLayoutEffect to attach listener synchronously before browser can handle the event
+  useLayoutEffect(() => {
+    const card = cardRef.current
+    if (!card) return
 
     const onWheel = (e: WheelEvent) => {
       // Only handle horizontal scroll (trackpad two-finger swipe)
       if (Math.abs(e.deltaX) > Math.abs(e.deltaY)) {
         e.preventDefault() // Prevent browser back/forward navigation
+        e.stopPropagation() // Stop event from bubbling
+
+        // Only update scroll in snapshot mode
+        if (mode !== 'snapshot') return
 
         // Cancel any ongoing momentum animation
         if (animationRef.current) {
@@ -479,12 +486,13 @@ export function TimeController({
     }
 
     // Must use { passive: false } to allow preventDefault()
-    container.addEventListener('wheel', onWheel, { passive: false })
+    // Use capture: true to intercept event before it reaches other handlers
+    card.addEventListener('wheel', onWheel, { passive: false, capture: true })
 
     return () => {
-      container.removeEventListener('wheel', onWheel)
+      card.removeEventListener('wheel', onWheel, { capture: true })
     }
-  }, [clampOffset])
+  }, [clampOffset, mode])
 
   // Period mode handlers
   const handlePeriodPreset = (preset: (typeof PERIOD_PRESETS)[0]) => {
@@ -505,7 +513,7 @@ export function TimeController({
   }
 
   return (
-    <Card className="p-2">
+    <Card ref={cardRef} className="p-2" style={{ overscrollBehaviorX: 'contain', touchAction: 'pan-y' }}>
       <div className="flex items-center gap-1">
         {/* Mode Toggle */}
         <div className="flex items-center p-0.5 bg-muted rounded-md shrink-0">
