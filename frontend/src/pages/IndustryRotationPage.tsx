@@ -3,13 +3,15 @@
  *
  * Displays a date × industry matrix heatmap for sector rotation analysis.
  * Features:
+ * - Full-height layout with fixed header
+ * - Infinite scroll to load more historical data
  * - Multiple sorting options with column animation
  * - Multi-metric display in cells
  * - Algorithm signals (momentum, reversal, divergence)
  * - Rich tooltips with top stocks and metrics
  */
 
-import { useState, useCallback } from 'react'
+import { useState, useCallback, useEffect, useRef } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { keepPreviousData } from '@tanstack/react-query'
 import { ArrowLeft } from 'lucide-react'
@@ -17,8 +19,11 @@ import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { ComputingConsole } from '@/components/ui/computing-console'
 import { useComputingProgress } from '@/hooks/useComputingProgress'
-import { useGetSectorRotationApiV1AlphaRadarSectorRotationGet } from '@/api/generated/alpha-radar/alpha-radar'
-import { RotationSortBy } from '@/api/generated/schemas'
+import {
+  useGetSectorRotationApiV1AlphaRadarSectorRotationGet,
+  getSectorRotationApiV1AlphaRadarSectorRotationGet,
+} from '@/api/generated/alpha-radar/alpha-radar'
+import { RotationSortBy, SectorRotationResponse } from '@/api/generated/schemas'
 import { RotationMatrix, ColorRangeBar } from '@/components/industry-rotation'
 
 // Metric options for cell display
@@ -31,11 +36,55 @@ const METRIC_OPTIONS: { key: MetricKey; label: string; activeColor: string }[] =
   { key: 'momentum', label: '动量', activeColor: 'bg-[#7a2eb0]' },
 ]
 
+// Initial load and pagination size
+const DAYS_PER_PAGE = 40
+
 // Highlight range for color filter
 interface HighlightRange {
   metric: MetricKey
   min: number
   max: number
+}
+
+/**
+ * Get the date before a given date string (YYYY-MM-DD format)
+ */
+function getDateBefore(dateStr: string): string {
+  const date = new Date(dateStr)
+  date.setDate(date.getDate() - 1)
+  return date.toISOString().split('T')[0]
+}
+
+/**
+ * Merge two SectorRotationResponse objects (append new data to existing)
+ */
+function mergeRotationData(
+  existing: SectorRotationResponse,
+  newData: SectorRotationResponse
+): SectorRotationResponse {
+  // Combine trading days (new data is older, append at end)
+  const allDays = [...existing.trading_days, ...newData.trading_days]
+  // Remove duplicates while preserving order (most recent first)
+  const uniqueDays = [...new Set(allDays)]
+
+  // Merge each industry's cells
+  const mergedIndustries = existing.industries.map((ind) => {
+    const newInd = newData.industries.find((i) => i.code === ind.code)
+    return {
+      ...ind,
+      cells: [...ind.cells, ...(newInd?.cells || [])],
+    }
+  })
+
+  return {
+    ...existing,
+    trading_days: uniqueDays,
+    industries: mergedIndustries,
+    stats: {
+      ...existing.stats,
+      trading_days: uniqueDays.length,
+    },
+  }
 }
 
 export default function IndustryRotationPage() {
@@ -48,6 +97,12 @@ export default function IndustryRotationPage() {
   const [sortBy, setSortBy] = useState<RotationSortBy>('upstream')
   // Highlight range for filtering cells by color
   const [highlightRange, setHighlightRange] = useState<HighlightRange | null>(null)
+
+  // Infinite scroll state
+  const [allData, setAllData] = useState<SectorRotationResponse | null>(null)
+  const [isLoadingMore, setIsLoadingMore] = useState(false)
+  const [hasMore, setHasMore] = useState(true)
+  const loadMoreRef = useRef(false) // Prevent duplicate loads
 
   // Toggle metric visibility (at least one must be selected)
   const toggleMetric = useCallback((key: MetricKey) => {
@@ -64,18 +119,21 @@ export default function IndustryRotationPage() {
   }, [])
 
   // Handle color range bar hover
-  const handleColorRangeHover = useCallback((range: { min: number; max: number } | null) => {
-    if (range) {
-      setHighlightRange({ metric: lastSelectedMetric, ...range })
-    } else {
-      setHighlightRange(null)
-    }
-  }, [lastSelectedMetric])
+  const handleColorRangeHover = useCallback(
+    (range: { min: number; max: number } | null) => {
+      if (range) {
+        setHighlightRange({ metric: lastSelectedMetric, ...range })
+      } else {
+        setHighlightRange(null)
+      }
+    },
+    [lastSelectedMetric]
+  )
 
-  // Fetch rotation data (fixed 60 days)
-  const { data, isLoading, isFetching } = useGetSectorRotationApiV1AlphaRadarSectorRotationGet(
+  // Initial data fetch (30 days)
+  const { data: initialData, isLoading, isFetching } = useGetSectorRotationApiV1AlphaRadarSectorRotationGet(
     {
-      days: 60,
+      days: DAYS_PER_PAGE,
       sort_by: sortBy,
     },
     {
@@ -85,26 +143,56 @@ export default function IndustryRotationPage() {
     }
   )
 
+  // Update allData when initial data changes (including sort changes)
+  useEffect(() => {
+    if (initialData) {
+      setAllData(initialData)
+      setHasMore(initialData.trading_days.length === DAYS_PER_PAGE)
+    }
+  }, [initialData])
+
+  // Reset data when sort changes
+  useEffect(() => {
+    setAllData(null)
+    setHasMore(true)
+  }, [sortBy])
+
+  // Load more data
+  const loadMore = useCallback(async () => {
+    if (isLoadingMore || !hasMore || !allData || loadMoreRef.current) return
+
+    const earliestDate = allData.trading_days[allData.trading_days.length - 1]
+    if (!earliestDate) return
+
+    loadMoreRef.current = true
+    setIsLoadingMore(true)
+
+    try {
+      const moreData = await getSectorRotationApiV1AlphaRadarSectorRotationGet({
+        days: DAYS_PER_PAGE,
+        end_date: getDateBefore(earliestDate),
+        sort_by: sortBy,
+      })
+
+      setAllData((prev) => (prev ? mergeRotationData(prev, moreData) : moreData))
+      setHasMore(moreData.trading_days.length === DAYS_PER_PAGE)
+    } catch (error) {
+      console.error('Failed to load more data:', error)
+    } finally {
+      setIsLoadingMore(false)
+      loadMoreRef.current = false
+    }
+  }, [isLoadingMore, hasMore, allData, sortBy])
+
   // Loading state
-  const showInitialLoading = isLoading && !data
+  const showInitialLoading = isLoading && !allData
   const { steps, progress } = useComputingProgress(showInitialLoading, 'heatmap')
 
   return (
-    <div className="space-y-2">
-      {/* Page Header */}
-      {/* <div className="flex items-center gap-4">
-
-        <h1 className="text-2xl font-bold">行业轮动雷达</h1>
-        {data && (
-          <span className="text-sm text-muted-foreground">
-            {data.stats.total_industries} 个行业 · {data.stats.trading_days} 个交易日
-          </span>
-        )}
-      </div> */}
-
-      {/* Matrix */}
-      <Card>
-        <CardHeader className="pb-2 pt-3">
+    <div className="h-[calc(100vh-32px)] flex flex-col">
+      {/* Matrix Card - fills remaining height */}
+      <Card className="flex-1 flex flex-col min-h-0">
+        <CardHeader className="flex-shrink-0 pb-2 pt-2">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-3">
               <Button variant="ghost" size="sm" onClick={() => navigate(-1)}>
@@ -122,10 +210,7 @@ export default function IndustryRotationPage() {
             {/* Color Range Bar + Metric Group Buttons */}
             <div className="flex items-center gap-3">
               {/* Color range filter bar */}
-              <ColorRangeBar
-                metric={lastSelectedMetric}
-                onHoverRange={handleColorRangeHover}
-              />
+              <ColorRangeBar metric={lastSelectedMetric} onHoverRange={handleColorRangeHover} />
 
               {/* Metric Group Buttons */}
               <div className="flex items-center border rounded-md overflow-hidden">
@@ -136,10 +221,11 @@ export default function IndustryRotationPage() {
                     <button
                       key={opt.key}
                       onClick={() => toggleMetric(opt.key)}
-                      className={`px-2.5 py-1 text-xs font-medium transition-colors ${isSelected
+                      className={`px-2.5 py-1 text-xs font-medium transition-colors ${
+                        isSelected
                           ? `${opt.activeColor} text-white`
                           : 'bg-background text-muted-foreground hover:text-foreground hover:bg-muted'
-                        } ${!isFirst ? 'border-l' : ''}`}
+                      } ${!isFirst ? 'border-l' : ''}`}
                     >
                       {opt.label}
                     </button>
@@ -149,20 +235,19 @@ export default function IndustryRotationPage() {
             </div>
           </div>
         </CardHeader>
-        <CardContent className="pt-0">
+        <CardContent className="flex-1 min-h-0 p-4 pt-0 flex flex-col">
           {showInitialLoading ? (
-            <ComputingConsole
-              title="正在计算行业轮动数据..."
-              steps={steps}
-              progress={progress}
-            />
-          ) : data ? (
+            <ComputingConsole title="正在计算行业轮动数据..." steps={steps} progress={progress} />
+          ) : allData ? (
             <RotationMatrix
-              data={data}
+              data={allData}
               visibleMetrics={visibleMetrics}
               highlightRange={highlightRange}
               sortBy={sortBy}
               onSortChange={setSortBy}
+              isLoadingMore={isLoadingMore}
+              hasMore={hasMore}
+              onLoadMore={loadMore}
             />
           ) : (
             <div className="flex items-center justify-center h-32 text-muted-foreground">

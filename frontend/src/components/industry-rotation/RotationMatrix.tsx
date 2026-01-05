@@ -2,9 +2,9 @@
  * Rotation Matrix Component
  *
  * SVG-based heatmap for sector rotation visualization:
- * - X-axis: Industries (sorted, with FLIP animation on reorder)
- * - Y-axis: Dates (T-day at top)
- * - Cells: Red-green gradient with change % text
+ * - Fixed header row with industry names
+ * - Scrollable body with date rows and cells
+ * - Infinite scroll support
  */
 
 import { useState, useRef, useCallback, useEffect, useMemo } from 'react'
@@ -20,6 +20,7 @@ import {
 } from '@/components/ui/select'
 import { MatrixCell } from './MatrixCell'
 import { MatrixTooltip } from './MatrixTooltip'
+import { LoadingMoreIndicator } from './LoadingMoreIndicator'
 import type { TooltipData } from './types'
 
 // Metric keys matching page component
@@ -38,6 +39,10 @@ interface RotationMatrixProps {
   highlightRange?: HighlightRange | null
   sortBy: RotationSortBy
   onSortChange: (value: RotationSortBy) => void
+  // Infinite scroll props
+  isLoadingMore?: boolean
+  hasMore?: boolean
+  onLoadMore?: () => void
 }
 
 // Sort options for dropdown
@@ -49,16 +54,25 @@ const SORT_OPTIONS: { value: RotationSortBy; label: string }[] = [
 ]
 
 // Layout constants
-const CELL_WIDTH = 42  // Default cell width
-const MIN_CELL_WIDTH = 36  // Minimum cell width for readability
+const CELL_WIDTH = 42 // Default cell width
+const MIN_CELL_WIDTH = 36 // Minimum cell width for readability
 const CELL_HEIGHT = 20
-const DATE_COLUMN_WIDTH = 38  // Compact - date text "MM-DD" is ~32px
+const DATE_COLUMN_WIDTH = 38 // Compact - date text "MM-DD" is ~32px
 const HEADER_HEIGHT = 32
-const COLLAPSED_ROW_HEIGHT = 16  // Height for collapsed industry icons row
+const COLLAPSED_ROW_HEIGHT = 16 // Height for collapsed industry icons row
 
-
-export function RotationMatrix({ data, visibleMetrics, highlightRange, sortBy, onSortChange }: RotationMatrixProps) {
+export function RotationMatrix({
+  data,
+  visibleMetrics,
+  highlightRange,
+  sortBy,
+  onSortChange,
+  isLoadingMore = false,
+  hasMore = true,
+  onLoadMore,
+}: RotationMatrixProps) {
   const containerRef = useRef<HTMLDivElement>(null)
+  const scrollContainerRef = useRef<HTMLDivElement>(null)
   const [tooltip, setTooltip] = useState<TooltipData | null>(null)
   const [containerWidth, setContainerWidth] = useState(0)
   // Track hidden (collapsed) industries
@@ -102,6 +116,19 @@ export function RotationMatrix({ data, visibleMetrics, highlightRange, sortBy, o
     return () => observer.disconnect()
   }, [])
 
+  // Scroll detection for infinite scroll
+  const handleScroll = useCallback(() => {
+    const container = scrollContainerRef.current
+    if (!container || !onLoadMore) return
+
+    const { scrollTop, scrollHeight, clientHeight } = container
+    const threshold = 100 // Trigger when 100px from bottom
+
+    if (scrollHeight - scrollTop - clientHeight < threshold) {
+      onLoadMore()
+    }
+  }, [onLoadMore])
+
   // Industries come pre-sorted from backend based on sort_by parameter
   const allIndustries = data.industries
 
@@ -109,7 +136,7 @@ export function RotationMatrix({ data, visibleMetrics, highlightRange, sortBy, o
   const { visibleIndustries, hiddenGroups } = useMemo(() => {
     const visible: typeof allIndustries = []
     // Group hidden industries by their slot position (number of visible before them)
-    const groupMap = new Map<number, Array<typeof allIndustries[0]>>()
+    const groupMap = new Map<number, Array<(typeof allIndustries)[0]>>()
 
     let visibleCount = 0
     allIndustries.forEach((industry) => {
@@ -139,23 +166,20 @@ export function RotationMatrix({ data, visibleMetrics, highlightRange, sortBy, o
   const hasHiddenIndustries = hiddenGroups.length > 0
   const availableWidth = containerWidth - DATE_COLUMN_WIDTH
   // Use exact division to fill container completely
-  const cellWidth = numIndustries > 0 && containerWidth > 0
-    ? Math.max(MIN_CELL_WIDTH, availableWidth / numIndustries)
-    : CELL_WIDTH
+  const cellWidth =
+    numIndustries > 0 && containerWidth > 0
+      ? Math.max(MIN_CELL_WIDTH, availableWidth / numIndustries)
+      : CELL_WIDTH
   const matrixHeight = data.trading_days.length * CELL_HEIGHT
   // Add collapsed row height if there are hidden industries
   const collapsedRowHeight = hasHiddenIndustries ? COLLAPSED_ROW_HEIGHT : 0
   // SVG fills container width exactly
-  const svgWidth = containerWidth || (DATE_COLUMN_WIDTH + numIndustries * CELL_WIDTH)
-  const svgHeight = collapsedRowHeight + HEADER_HEIGHT + matrixHeight
+  const svgWidth = containerWidth || DATE_COLUMN_WIDTH + numIndustries * CELL_WIDTH
+  const headerSvgHeight = collapsedRowHeight + HEADER_HEIGHT
 
   // Handle cell hover
   const handleCellHover = useCallback(
-    (
-      industry: string,
-      date: string,
-      event: React.MouseEvent
-    ) => {
+    (industry: string, date: string, event: React.MouseEvent) => {
       const industryData = data.industries.find((i) => i.name === industry)
       const cell = industryData?.cells.find((c) => c.date === date)
 
@@ -181,13 +205,16 @@ export function RotationMatrix({ data, visibleMetrics, highlightRange, sortBy, o
   }, [])
 
   // Track mouse position for tooltip
-  const handleMouseMove = useCallback((event: React.MouseEvent) => {
-    if (tooltip) {
-      setTooltip((prev) =>
-        prev ? { ...prev, mouseX: event.clientX, mouseY: event.clientY } : null
-      )
-    }
-  }, [tooltip])
+  const handleMouseMove = useCallback(
+    (event: React.MouseEvent) => {
+      if (tooltip) {
+        setTooltip((prev) =>
+          prev ? { ...prev, mouseX: event.clientX, mouseY: event.clientY } : null
+        )
+      }
+    },
+    [tooltip]
+  )
 
   // Format date for display (MM-DD)
   const formatDate = (dateStr: string) => {
@@ -196,230 +223,233 @@ export function RotationMatrix({ data, visibleMetrics, highlightRange, sortBy, o
   }
 
   return (
-    <div
-      ref={containerRef}
-      className="relative w-full overflow-auto"
-      onMouseMove={handleMouseMove}
-    >
-      <svg
-        width={svgWidth}
-        height={svgHeight}
-        className="overflow-visible"
-        role="img"
-        aria-label="行业轮动矩阵"
-      >
-        {/* Collapsed industries row - ChevronDown icons (grouped) */}
-        {hasHiddenIndustries && (
-          <g transform={`translate(${DATE_COLUMN_WIDTH}, 0)`}>
-            {hiddenGroups.map((group) => {
-              const xPos = group.slotPosition * cellWidth + cellWidth / 2
-              const codes = group.industries.map((i) => i.code)
-
-              return (
-                <g
-                  key={group.key}
-                  transform={`translate(${xPos}, ${COLLAPSED_ROW_HEIGHT / 2})`}
-                  style={{ cursor: 'pointer' }}
-                  onClick={() => toggleIndustry(codes)}
-                  onMouseEnter={() => setCollapsedHover(group.key)}
-                  onMouseLeave={() => setCollapsedHover(null)}
-                >
-                  {/* Larger invisible hit area */}
-                  <circle r={12} fill="transparent" />
-                  {/* Visible circle */}
-                  <circle
-                    r={6}
-                    className={`${collapsedHover === group.key ? 'fill-muted-foreground/30' : 'fill-muted'} transition-colors`}
-                  />
-                  <ChevronDown
-                    x={-4}
-                    y={-4}
-                    width={8}
-                    height={8}
-                    className="text-muted-foreground"
-                  />
-                </g>
-              )
-            })}
-          </g>
-        )}
-
-        {/* Sort dropdown in top-left cell */}
-        <rect
-          x={0}
-          y={collapsedRowHeight}
-          width={DATE_COLUMN_WIDTH}
-          height={HEADER_HEIGHT}
-          className="fill-muted"
-        />
-        <foreignObject
-          x={0}
-          y={collapsedRowHeight}
-          width={DATE_COLUMN_WIDTH}
-          height={HEADER_HEIGHT}
+    <div ref={containerRef} className="relative w-full flex-1 min-h-0 flex flex-col" onMouseMove={handleMouseMove}>
+      {/* Fixed Header SVG */}
+      <div className="flex-shrink-0">
+        <svg
+          width={svgWidth}
+          height={headerSvgHeight}
+          className="overflow-visible"
+          role="img"
+          aria-label="行业轮动矩阵表头"
         >
-          <div className="flex items-center justify-center h-full">
-            <Select value={sortBy} onValueChange={onSortChange}>
-              <SelectTrigger className="w-[32px] h-[24px] p-0 border-0 bg-transparent focus:ring-0 focus:ring-offset-0 [&>svg]:hidden">
-                <SelectValue>
-                  <span className="text-xs text-muted-foreground">排序</span>
-                </SelectValue>
-              </SelectTrigger>
-              <SelectContent>
-                {SORT_OPTIONS.map((opt) => (
-                  <SelectItem key={opt.value} value={opt.value}>
-                    {opt.label}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
-        </foreignObject>
+          {/* Collapsed industries row - ChevronDown icons (grouped) */}
+          {hasHiddenIndustries && (
+            <g transform={`translate(${DATE_COLUMN_WIDTH}, 0)`}>
+              {hiddenGroups.map((group) => {
+                const xPos = group.slotPosition * cellWidth + cellWidth / 2
+                const codes = group.industries.map((i) => i.code)
 
-        {/* Header row - Industry names (clickable to hide) */}
-        <g transform={`translate(${DATE_COLUMN_WIDTH}, ${collapsedRowHeight})`}>
-          {/* Background for header row */}
+                return (
+                  <g
+                    key={group.key}
+                    transform={`translate(${xPos}, ${COLLAPSED_ROW_HEIGHT / 2})`}
+                    style={{ cursor: 'pointer' }}
+                    onClick={() => toggleIndustry(codes)}
+                    onMouseEnter={() => setCollapsedHover(group.key)}
+                    onMouseLeave={() => setCollapsedHover(null)}
+                  >
+                    {/* Larger invisible hit area */}
+                    <circle r={12} fill="transparent" />
+                    {/* Visible circle */}
+                    <circle
+                      r={6}
+                      className={`${collapsedHover === group.key ? 'fill-muted-foreground/30' : 'fill-muted'} transition-colors`}
+                    />
+                    <ChevronDown
+                      x={-4}
+                      y={-4}
+                      width={8}
+                      height={8}
+                      className="text-muted-foreground"
+                    />
+                  </g>
+                )
+              })}
+            </g>
+          )}
+
+          {/* Sort dropdown in top-left cell */}
           <rect
             x={0}
-            y={0}
-            width={svgWidth - DATE_COLUMN_WIDTH}
+            y={collapsedRowHeight}
+            width={DATE_COLUMN_WIDTH}
             height={HEADER_HEIGHT}
             className="fill-muted"
           />
-          <AnimatePresence>
-            {visibleIndustries.map((industry, colIndex) => (
-              <motion.g
-                key={industry.code}
-                initial={{ x: colIndex * cellWidth }}
-                animate={{ x: colIndex * cellWidth }}
-                transition={{ duration: 0.4, ease: [0.4, 0, 0.2, 1] }}
-                style={{ cursor: 'pointer' }}
-                onClick={() => toggleIndustry(industry.code)}
-              >
-                <text
-                  x={cellWidth / 2}
-                  y={HEADER_HEIGHT / 2}
-                  textAnchor="middle"
-                  dominantBaseline="middle"
-                  fontSize={9}
-                  fill="currentColor"
-                  className="text-muted-foreground hover:text-foreground transition-colors"
-                >
-                  {industry.name.length > 4
-                    ? industry.name.slice(0, 4)
-                    : industry.name}
-                </text>
-              </motion.g>
-            ))}
-          </AnimatePresence>
-        </g>
-
-        {/* Date column with soft background */}
-        <g transform={`translate(0, ${collapsedRowHeight + HEADER_HEIGHT})`}>
-          {/* Background */}
-          <rect
+          <foreignObject
             x={0}
-            y={0}
+            y={collapsedRowHeight}
             width={DATE_COLUMN_WIDTH}
-            height={matrixHeight}
-            className="fill-muted"
-          />
-          {/* Date labels */}
-          {data.trading_days.map((dateStr, rowIndex) => (
-            <text
-              key={dateStr}
-              x={DATE_COLUMN_WIDTH - 4}
-              y={rowIndex * CELL_HEIGHT + CELL_HEIGHT / 2}
-              textAnchor="end"
-              dominantBaseline="middle"
-              fontSize={9}
-              fill="currentColor"
-              className="text-muted-foreground font-mono"
-            >
-              {formatDate(dateStr)}
-            </text>
-          ))}
-        </g>
+            height={HEADER_HEIGHT}
+          >
+            <div className="flex items-center justify-center h-full">
+              <Select value={sortBy} onValueChange={onSortChange}>
+                <SelectTrigger className="w-[32px] h-[24px] p-0 border-0 bg-transparent focus:ring-0 focus:ring-offset-0 [&>svg]:hidden">
+                  <SelectValue>
+                    <span className="text-xs text-muted-foreground">排序</span>
+                  </SelectValue>
+                </SelectTrigger>
+                <SelectContent>
+                  {SORT_OPTIONS.map((opt) => (
+                    <SelectItem key={opt.value} value={opt.value}>
+                      {opt.label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          </foreignObject>
 
-        {/* Matrix cells */}
-        <g
-          transform={`translate(${DATE_COLUMN_WIDTH}, ${collapsedRowHeight + HEADER_HEIGHT})`}
+          {/* Header row - Industry names (clickable to hide) */}
+          <g transform={`translate(${DATE_COLUMN_WIDTH}, ${collapsedRowHeight})`}>
+            {/* Background for header row */}
+            <rect
+              x={0}
+              y={0}
+              width={svgWidth - DATE_COLUMN_WIDTH}
+              height={HEADER_HEIGHT}
+              className="fill-muted"
+            />
+            <AnimatePresence>
+              {visibleIndustries.map((industry, colIndex) => (
+                <motion.g
+                  key={industry.code}
+                  initial={{ x: colIndex * cellWidth }}
+                  animate={{ x: colIndex * cellWidth }}
+                  transition={{ duration: 0.4, ease: [0.4, 0, 0.2, 1] }}
+                  style={{ cursor: 'pointer' }}
+                  onClick={() => toggleIndustry(industry.code)}
+                >
+                  <text
+                    x={cellWidth / 2}
+                    y={HEADER_HEIGHT / 2}
+                    textAnchor="middle"
+                    dominantBaseline="middle"
+                    fontSize={9}
+                    fill="currentColor"
+                    className="text-muted-foreground hover:text-foreground transition-colors"
+                  >
+                    {industry.name.length > 4 ? industry.name.slice(0, 4) : industry.name}
+                  </text>
+                </motion.g>
+              ))}
+            </AnimatePresence>
+          </g>
+
+          {/* Collapsed industry tooltip - rendered last to be on top */}
+          {collapsedHover &&
+            (() => {
+              const hoveredGroup = hiddenGroups.find((g) => g.key === collapsedHover)
+              if (!hoveredGroup) return null
+
+              // Calculate position - below the arrow, on top of header
+              const xPos =
+                DATE_COLUMN_WIDTH + hoveredGroup.slotPosition * cellWidth + cellWidth / 2
+              const names = hoveredGroup.industries.map((i) => i.name.slice(0, 4))
+              const tooltipText = names.join(' · ')
+              const tooltipWidth = Math.max(60, tooltipText.length * 9 + 20)
+              const tooltipHeight = 22
+              // Position below the arrow (will overlay header row)
+              const yPos = COLLAPSED_ROW_HEIGHT + 2
+
+              return (
+                <g transform={`translate(${xPos}, ${yPos})`}>
+                  <rect
+                    x={-tooltipWidth / 2}
+                    y={0}
+                    width={tooltipWidth}
+                    height={tooltipHeight}
+                    rx={4}
+                    className="fill-popover"
+                    stroke="#888"
+                    strokeWidth={1}
+                  />
+                  <text
+                    x={0}
+                    y={tooltipHeight / 2}
+                    textAnchor="middle"
+                    dominantBaseline="middle"
+                    fontSize={11}
+                    className="fill-foreground"
+                  >
+                    {tooltipText}
+                  </text>
+                </g>
+              )
+            })()}
+        </svg>
+      </div>
+
+      {/* Scrollable Body */}
+      <div
+        ref={scrollContainerRef}
+        className="flex-1 overflow-y-auto overflow-x-hidden min-h-0"
+        onScroll={handleScroll}
+      >
+        <svg
+          width={svgWidth}
+          height={matrixHeight}
+          className="overflow-visible"
+          role="img"
+          aria-label="行业轮动矩阵数据"
         >
-          {data.trading_days.map((dateStr, rowIndex) => (
-            <g key={dateStr}>
-              <AnimatePresence>
-                {visibleIndustries.map((industry, colIndex) => {
-                  const cell = industry.cells.find((c) => c.date === dateStr)
-
-                  return (
-                    <MatrixCell
-                      key={`${industry.code}-${dateStr}`}
-                      x={colIndex * cellWidth}
-                      y={rowIndex * CELL_HEIGHT}
-                      width={cellWidth}
-                      height={CELL_HEIGHT}
-                      visibleMetrics={visibleMetrics}
-                      changePct={cell ? Number(cell.change_pct) : 0}
-                      volume={cell?.money_flow ? Number(cell.money_flow) : null}
-                      flow={cell?.main_strength ? Number(cell.main_strength) : null}
-                      momentum={cell?.main_strength ? Number(cell.main_strength) : null}
-                      highlightRange={highlightRange}
-                      onHover={(e) =>
-                        handleCellHover(
-                          industry.name,
-                          dateStr,
-                          e
-                        )
-                      }
-                      onLeave={handleCellLeave}
-                    />
-                  )
-                })}
-              </AnimatePresence>
-            </g>
-          ))}
-        </g>
-
-        {/* Collapsed industry tooltip - rendered last to be on top */}
-        {collapsedHover && (() => {
-          const hoveredGroup = hiddenGroups.find((g) => g.key === collapsedHover)
-          if (!hoveredGroup) return null
-
-          // Calculate position - below the arrow, on top of header
-          const xPos = DATE_COLUMN_WIDTH + hoveredGroup.slotPosition * cellWidth + cellWidth / 2
-          const names = hoveredGroup.industries.map((i) => i.name.slice(0, 4))
-          const tooltipText = names.join(' · ')
-          const tooltipWidth = Math.max(60, tooltipText.length * 9 + 20)
-          const tooltipHeight = 22
-          // Position below the arrow (will overlay header row)
-          const yPos = COLLAPSED_ROW_HEIGHT + 2
-
-          return (
-            <g transform={`translate(${xPos}, ${yPos})`}>
-              <rect
-                x={-tooltipWidth / 2}
-                y={0}
-                width={tooltipWidth}
-                height={tooltipHeight}
-                rx={4}
-                className="fill-popover"
-                stroke="#888"
-                strokeWidth={1}
-              />
+          {/* Date column with soft background */}
+          <g>
+            {/* Background */}
+            <rect x={0} y={0} width={DATE_COLUMN_WIDTH} height={matrixHeight} className="fill-muted" />
+            {/* Date labels */}
+            {data.trading_days.map((dateStr, rowIndex) => (
               <text
-                x={0}
-                y={tooltipHeight / 2}
-                textAnchor="middle"
+                key={dateStr}
+                x={DATE_COLUMN_WIDTH - 4}
+                y={rowIndex * CELL_HEIGHT + CELL_HEIGHT / 2}
+                textAnchor="end"
                 dominantBaseline="middle"
-                fontSize={11}
-                className="fill-foreground"
+                fontSize={9}
+                fill="currentColor"
+                className="text-muted-foreground font-mono"
               >
-                {tooltipText}
+                {formatDate(dateStr)}
               </text>
-            </g>
-          )
-        })()}
-      </svg>
+            ))}
+          </g>
+
+          {/* Matrix cells */}
+          <g transform={`translate(${DATE_COLUMN_WIDTH}, 0)`}>
+            {data.trading_days.map((dateStr, rowIndex) => (
+              <g key={dateStr}>
+                <AnimatePresence>
+                  {visibleIndustries.map((industry, colIndex) => {
+                    const cell = industry.cells.find((c) => c.date === dateStr)
+
+                    return (
+                      <MatrixCell
+                        key={`${industry.code}-${dateStr}`}
+                        x={colIndex * cellWidth}
+                        y={rowIndex * CELL_HEIGHT}
+                        width={cellWidth}
+                        height={CELL_HEIGHT}
+                        visibleMetrics={visibleMetrics}
+                        changePct={cell ? Number(cell.change_pct) : 0}
+                        volume={cell?.money_flow ? Number(cell.money_flow) : null}
+                        flow={cell?.main_strength ? Number(cell.main_strength) : null}
+                        momentum={cell?.main_strength ? Number(cell.main_strength) : null}
+                        highlightRange={highlightRange}
+                        onHover={(e) => handleCellHover(industry.name, dateStr, e)}
+                        onLeave={handleCellLeave}
+                      />
+                    )
+                  })}
+                </AnimatePresence>
+              </g>
+            ))}
+          </g>
+        </svg>
+
+        {/* Loading More Indicator */}
+        <LoadingMoreIndicator isLoading={isLoadingMore} hasMore={hasMore} />
+      </div>
 
       {/* Tooltip */}
       {tooltip && <MatrixTooltip data={tooltip} />}
