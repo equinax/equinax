@@ -13,6 +13,9 @@ import { motion } from 'motion/react'
 // Metric keys
 type MetricKey = 'change' | 'volume' | 'flow' | 'momentum'
 
+// 3-state metric
+type MetricState = 'off' | 'raw' | 'weighted'
+
 // Highlight range for color filtering
 interface HighlightRange {
   metric: MetricKey
@@ -26,10 +29,14 @@ interface MatrixCellProps {
   width: number
   height: number
   visibleMetrics: MetricKey[]
+  metricStates: Record<MetricKey, MetricState>
   changePct: number
   volume: number | null
   flow: number | null
   momentum: number | null
+  // Weighted calculation inputs
+  marketChange?: number // For weighted change (超额收益)
+  volumeBaseline?: number | null // Industry's 120-day avg volume (亿)
   highlightRange?: HighlightRange | null
   onHover: (event: React.MouseEvent) => void
   onLeave: () => void
@@ -182,6 +189,33 @@ function formatFlow(value: number | null): string {
   return `${prefix}${value.toFixed(0)}`
 }
 
+/**
+ * Format weighted volume as percentage deviation from baseline
+ */
+function formatWeightedVolume(value: number | null, baseline: number | null): string {
+  if (value === null || baseline === null || baseline === 0) return '-'
+  const yi = value / 100000000 // Convert to 亿
+  const deviation = ((yi - baseline) / baseline) * 100
+  const prefix = deviation > 0 ? '+' : ''
+  return `${prefix}${deviation.toFixed(0)}%`
+}
+
+/**
+ * Get color for weighted volume (deviation from baseline)
+ * Uses blue-based sequential scale: lighter for below average, darker for above
+ */
+function getWeightedVolumeColor(value: number | null, baseline: number | null): string {
+  if (value === null || baseline === null || baseline === 0) return '#f5f5f5'
+  const yi = value / 100000000 // Convert to 亿
+  const deviation = ((yi - baseline) / baseline) * 100
+
+  // Map deviation to 0-1 range: -50% → 0.1, 0% → 0.5, +50% → 0.9
+  // This gives good color differentiation for typical ±50% deviations
+  const normalized = 0.5 + (deviation / 100) // -100% → -0.5, 0% → 0.5, +100% → 1.5
+  const clamped = Math.max(0.05, Math.min(1, normalized))
+  return getSequentialColor(clamped, 210) // Blue hue
+}
+
 // Metric config for getting color and formatting
 const METRIC_CONFIG: Record<MetricKey, {
   getColor: (value: number | null) => string
@@ -211,17 +245,25 @@ export const MatrixCell = memo(function MatrixCell({
   width,
   height,
   visibleMetrics,
+  metricStates,
   changePct,
   volume,
   flow,
   momentum,
+  marketChange,
+  volumeBaseline,
   highlightRange,
   onHover,
   onLeave,
 }: MatrixCellProps) {
-  // Get metric values (for display)
+  // Calculate weighted values when in weighted mode
+  const weightedChange = metricStates.change === 'weighted' && marketChange !== undefined
+    ? changePct - marketChange
+    : changePct
+
+  // Get metric values (raw or weighted based on state)
   const metricValues: Record<MetricKey, number | null> = {
-    change: changePct,
+    change: metricStates.change === 'weighted' ? weightedChange : changePct,
     volume,
     flow,
     momentum,
@@ -284,9 +326,20 @@ export const MatrixCell = memo(function MatrixCell({
       {visibleMetrics.map((metric, idx) => {
         const value = metricValues[metric]
         const config = METRIC_CONFIG[metric]
-        const bgColor = config.getColor(value)
+        const state = metricStates[metric]
+
+        // Use weighted color/format for volume when in weighted mode
+        let bgColor: string
+        let text: string
+        if (metric === 'volume' && state === 'weighted') {
+          bgColor = getWeightedVolumeColor(volume, volumeBaseline ?? null)
+          text = formatWeightedVolume(volume, volumeBaseline ?? null)
+        } else {
+          bgColor = config.getColor(value)
+          text = config.format(value)
+        }
+
         const textColor = getTextColor(bgColor)
-        const text = config.format(value)
         const stripeX = idx * stripeWidth
 
         return (

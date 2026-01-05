@@ -8,6 +8,7 @@ from decimal import Decimal
 from typing import List, Optional, Dict, Any
 
 import polars as pl
+from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.services.alpha_radar.polars_engine import PolarsEngine
@@ -73,9 +74,111 @@ class SectorRotationService:
     Supports multiple sorting modes and algorithm signals.
     """
 
+    # Days for calculating industry volume baseline
+    VOLUME_BASELINE_DAYS = 120
+
+    # Shanghai Composite Index code
+    MARKET_INDEX_CODE = "sh.000001"
+
     def __init__(self, db: AsyncSession):
         self.db = db
         self.polars_engine = PolarsEngine(db)
+
+    async def _get_market_changes(
+        self, trading_days: List[date]
+    ) -> Dict[str, Decimal]:
+        """
+        Get market (上证指数) daily changes for the given trading days.
+
+        Returns:
+            Dict mapping date string (YYYY-MM-DD) to change percent
+        """
+        if not trading_days:
+            return {}
+
+        # Query market index data
+        result = await self.db.execute(
+            text("""
+                SELECT date, pct_chg
+                FROM market_daily
+                WHERE code = :code
+                AND date = ANY(:dates)
+            """),
+            {"code": self.MARKET_INDEX_CODE, "dates": trading_days}
+        )
+        rows = result.fetchall()
+
+        market_changes = {}
+        for row in rows:
+            day, pct_chg = row
+            if pct_chg is not None:
+                market_changes[day.isoformat()] = self._to_decimal(pct_chg) or Decimal("0")
+            else:
+                market_changes[day.isoformat()] = Decimal("0")
+
+        return market_changes
+
+    async def _get_industry_volume_baselines(
+        self, end_date: date
+    ) -> Dict[str, Decimal]:
+        """
+        Get 120-day average volume for each industry.
+
+        Returns:
+            Dict mapping industry name to average daily volume (in 亿)
+        """
+        # Calculate date range for baseline
+        result = await self.db.execute(
+            text("""
+                SELECT DISTINCT date FROM market_daily
+                WHERE date <= :end_date
+                ORDER BY date DESC
+                LIMIT :days
+            """),
+            {"end_date": end_date, "days": self.VOLUME_BASELINE_DAYS}
+        )
+        dates = [row[0] for row in result.fetchall()]
+        if not dates:
+            return {}
+
+        start_date = dates[-1]
+
+        # Query average DAILY TOTAL volume per industry over the baseline period
+        # First sum by date+industry (daily total), then average across days
+        result = await self.db.execute(
+            text("""
+                WITH daily_totals AS (
+                    SELECT
+                        sp.sw_industry_l1,
+                        md.date,
+                        SUM(md.amount) as daily_amount
+                    FROM market_daily md
+                    JOIN stock_profile sp ON md.code = sp.code
+                    WHERE md.date >= :start_date
+                    AND md.date <= :end_date
+                    AND sp.sw_industry_l1 IS NOT NULL
+                    GROUP BY sp.sw_industry_l1, md.date
+                )
+                SELECT
+                    sw_industry_l1,
+                    AVG(daily_amount) as avg_daily_amount
+                FROM daily_totals
+                GROUP BY sw_industry_l1
+            """),
+            {"start_date": start_date, "end_date": end_date}
+        )
+        rows = result.fetchall()
+
+        baselines = {}
+        for row in rows:
+            industry, avg_amount = row
+            if avg_amount is not None:
+                # Convert to 亿 (amount is in yuan)
+                baselines[industry] = self._to_decimal(float(avg_amount) / 1e8) or Decimal("0")
+            else:
+                baselines[industry] = Decimal("0")
+
+        return baselines
 
     async def get_rotation_matrix(
         self,
@@ -153,9 +256,15 @@ class SectorRotationService:
         # Get top stock per cell
         top_stocks_df = self._compute_top_stocks(df)
 
+        # Get market changes for weighted calculations
+        market_changes = await self._get_market_changes(trading_days)
+
+        # Get industry volume baselines
+        volume_baselines = await self._get_industry_volume_baselines(end_date)
+
         # Build response structure
         industries = self._build_industry_columns(
-            matrix_df, top_stocks_df, trading_days, sort_by
+            matrix_df, top_stocks_df, trading_days, sort_by, volume_baselines
         )
 
         # Calculate stats
@@ -167,6 +276,7 @@ class SectorRotationService:
             stats=stats,
             sort_by=RotationSortBy(sort_by),
             days=len(trading_days),
+            market_changes=market_changes,
         )
 
     def _compute_industry_matrix(self, df: pl.DataFrame) -> pl.DataFrame:
@@ -265,8 +375,10 @@ class SectorRotationService:
         top_stocks_df: pl.DataFrame,
         trading_days: List[date],
         sort_by: str,
+        volume_baselines: Optional[Dict[str, Decimal]] = None,
     ) -> List[SectorRotationColumn]:
         """Build industry columns with cells and sorting metrics."""
+        volume_baselines = volume_baselines or {}
         # Get unique industries
         industries = matrix_df.select("sw_industry_l1").unique().to_series().to_list()
 
@@ -365,6 +477,9 @@ class SectorRotationService:
             # Momentum score (weighted by recency)
             momentum_score = self._calculate_momentum_score(industry_data, trading_days)
 
+            # Get volume baseline for this industry
+            industry_volume_baseline = volume_baselines.get(industry)
+
             columns.append(SectorRotationColumn(
                 name=industry,
                 code=industry,  # Using name as code for SW industries
@@ -373,6 +488,7 @@ class SectorRotationService:
                 period_change=period_change,
                 total_flow=total_flow,
                 momentum_score=momentum_score,
+                volume_baseline=industry_volume_baseline,
             ))
 
         # Sort columns based on sort_by
@@ -477,4 +593,5 @@ class SectorRotationService:
             ),
             sort_by=RotationSortBy(sort_by),
             days=days,
+            market_changes={},
         )

@@ -29,12 +29,29 @@ import { RotationMatrix, ColorRangeBar } from '@/components/industry-rotation'
 // Metric options for cell display
 export type MetricKey = 'change' | 'volume' | 'flow' | 'momentum'
 
-const METRIC_OPTIONS: { key: MetricKey; label: string; activeColor: string }[] = [
-  { key: 'change', label: '涨跌幅', activeColor: 'bg-[#c93b3b]' },
-  { key: 'volume', label: '成交量', activeColor: 'bg-[#2989c9]' },
-  { key: 'flow', label: '资金流入', activeColor: 'bg-[#c47a30]' },
-  { key: 'momentum', label: '动量', activeColor: 'bg-[#7a2eb0]' },
+// 3-state metric: off -> raw -> weighted -> off
+export type MetricState = 'off' | 'raw' | 'weighted'
+
+// Only change and volume support weighted mode
+const METRIC_OPTIONS: { key: MetricKey; label: string; activeColor: string; supportsWeighted: boolean }[] = [
+  { key: 'change', label: '涨跌幅', activeColor: 'bg-[#c93b3b]', supportsWeighted: true },
+  { key: 'volume', label: '成交量', activeColor: 'bg-[#2989c9]', supportsWeighted: true },
+  { key: 'flow', label: '资金流入', activeColor: 'bg-[#c47a30]', supportsWeighted: false },
+  { key: 'momentum', label: '动量', activeColor: 'bg-[#7a2eb0]', supportsWeighted: false },
 ]
+
+// Get button label with weighted indicator
+const getMetricLabel = (opt: typeof METRIC_OPTIONS[0], state: MetricState): string => {
+  if (state === 'weighted') return `${opt.label}(加权)`
+  return opt.label
+}
+
+// Cycle through states: off -> raw -> weighted -> off
+const cycleMetricState = (current: MetricState, supportsWeighted: boolean): MetricState => {
+  if (current === 'off') return 'raw'
+  if (current === 'raw' && supportsWeighted) return 'weighted'
+  return 'off' // weighted -> off, or raw (no weighted) -> off
+}
 
 // Initial load and pagination size
 const DAYS_PER_PAGE = 40
@@ -89,8 +106,13 @@ function mergeRotationData(
 
 export default function IndustryRotationPage() {
   const navigate = useNavigate()
-  // Default: show change only, others can be toggled
-  const [visibleMetrics, setVisibleMetrics] = useState<MetricKey[]>(['change'])
+  // 3-state metrics: off/raw/weighted (default: change=raw, others=off)
+  const [metricStates, setMetricStates] = useState<Record<MetricKey, MetricState>>({
+    change: 'raw',
+    volume: 'off',
+    flow: 'off',
+    momentum: 'off',
+  })
   // Track last selected metric for color range bar
   const [lastSelectedMetric, setLastSelectedMetric] = useState<MetricKey>('change')
   // Sort order for columns
@@ -104,17 +126,33 @@ export default function IndustryRotationPage() {
   const [hasMore, setHasMore] = useState(true)
   const loadMoreRef = useRef(false) // Prevent duplicate loads
 
-  // Toggle metric visibility (at least one must be selected)
+  // Derive visibleMetrics from metricStates (any non-off metric is visible)
+  const visibleMetrics = METRIC_OPTIONS.filter((opt) => metricStates[opt.key] !== 'off').map((opt) => opt.key)
+
+  // Toggle metric state: off -> raw -> weighted -> raw (for metrics with weighted support)
   const toggleMetric = useCallback((key: MetricKey) => {
-    setVisibleMetrics((prev) => {
-      if (prev.includes(key)) {
-        // Don't allow deselecting the last one
-        if (prev.length === 1) return prev
-        return prev.filter((m) => m !== key)
+    const opt = METRIC_OPTIONS.find((o) => o.key === key)
+    if (!opt) return
+
+    setMetricStates((prev) => {
+      const currentState = prev[key]
+      const nextState = cycleMetricState(currentState, opt.supportsWeighted)
+
+      // Ensure at least one metric is visible
+      if (nextState === 'off') {
+        const otherVisible = Object.entries(prev).some(([k, v]) => k !== key && v !== 'off')
+        if (!otherVisible) {
+          // Can't turn off the last one - stay at raw
+          return { ...prev, [key]: 'raw' }
+        }
       }
-      // When selecting a new metric, update lastSelectedMetric
-      setLastSelectedMetric(key)
-      return [...prev, key]
+
+      // When turning on a new metric, update lastSelectedMetric
+      if (currentState === 'off') {
+        setLastSelectedMetric(key)
+      }
+
+      return { ...prev, [key]: nextState }
     })
   }, [])
 
@@ -212,22 +250,24 @@ export default function IndustryRotationPage() {
               {/* Color range filter bar */}
               <ColorRangeBar metric={lastSelectedMetric} onHoverRange={handleColorRangeHover} />
 
-              {/* Metric Group Buttons */}
+              {/* Metric Group Buttons - 3 states: off/raw/weighted */}
               <div className="flex items-center border rounded-md overflow-hidden">
                 {METRIC_OPTIONS.map((opt, idx) => {
-                  const isSelected = visibleMetrics.includes(opt.key)
+                  const state = metricStates[opt.key]
                   const isFirst = idx === 0
                   return (
                     <button
                       key={opt.key}
                       onClick={() => toggleMetric(opt.key)}
                       className={`px-2.5 py-1 text-xs font-medium transition-colors ${
-                        isSelected
-                          ? `${opt.activeColor} text-white`
-                          : 'bg-background text-muted-foreground hover:text-foreground hover:bg-muted'
+                        state === 'weighted'
+                          ? `${opt.activeColor} text-white ring-2 ring-white/30 ring-inset`
+                          : state === 'raw'
+                            ? `${opt.activeColor} text-white`
+                            : 'bg-background text-muted-foreground hover:text-foreground hover:bg-muted'
                       } ${!isFirst ? 'border-l' : ''}`}
                     >
-                      {opt.label}
+                      {getMetricLabel(opt, state)}
                     </button>
                   )
                 })}
@@ -242,6 +282,7 @@ export default function IndustryRotationPage() {
             <RotationMatrix
               data={allData}
               visibleMetrics={visibleMetrics}
+              metricStates={metricStates}
               highlightRange={highlightRange}
               sortBy={sortBy}
               onSortChange={setSortBy}

@@ -308,6 +308,8 @@ class SectorRotationColumn(BaseModel):
     period_change: Decimal = Field(description="Period cumulative change %")
     total_flow: Decimal = Field(default=Decimal("0"), description="Period total money flow")
     momentum_score: Decimal = Field(default=Decimal("0"), description="Momentum factor score")
+    # Weighted data baseline
+    volume_baseline: Optional[Decimal] = Field(default=None, description="120-day average volume for this industry (亿)")
 
 
 class SectorRotationStats(BaseModel):
@@ -328,6 +330,8 @@ class SectorRotationResponse(BaseModel):
     stats: SectorRotationStats
     sort_by: RotationSortBy
     days: int = Field(description="Number of trading days requested")
+    # Weighted data: per-day market change (上证指数涨跌幅)
+    market_changes: Optional[dict[str, Decimal]] = Field(default=None, description="Map of date -> market change % for weighted calculations")
 
 
 # ============================================

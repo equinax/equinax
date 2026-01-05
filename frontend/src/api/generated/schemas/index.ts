@@ -487,3 +487,6 @@ export * from "./validateFilterApiV1PoolsValidateFilterPostBody";
 export * from "./validationError";
 export * from "./validationErrorLocItem";
 export * from "./validationResult";
+export * from "./sectorRotationColumnVolumeBaseline";
+export * from "./sectorRotationResponseMarketChanges";
+export * from "./sectorRotationResponseMarketChangesAnyOf";
