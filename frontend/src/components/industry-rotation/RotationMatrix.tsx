@@ -24,7 +24,7 @@ import { LoadingMoreIndicator } from './LoadingMoreIndicator'
 import type { TooltipData } from './types'
 
 // Metric keys matching page component
-type MetricKey = 'change' | 'volume' | 'flow' | 'momentum'
+type MetricKey = 'change' | 'volume' | 'flow' | 'momentum' | 'limit_up' | 'dragon'
 
 // 3-state metric: off/raw/weighted
 type MetricState = 'off' | 'raw' | 'weighted'
@@ -318,6 +318,11 @@ export function RotationMatrix({
           mouseX: event.clientX,
           mouseY: event.clientY,
           volume_baseline: industryData.volume_baseline ? Number(industryData.volume_baseline) : null,
+          // 涨停榜数据
+          limit_up_count: cell.limit_up_count,
+          limit_up_stocks: cell.limit_up_stocks,
+          // 龙头战法筛选
+          dragon_stock: cell.dragon_stock,
         })
       }
     },
@@ -659,6 +664,12 @@ export function RotationMatrix({
                           volume={cell?.money_flow ? Number(cell.money_flow) : null}
                           flow={cell?.main_strength ? Number(cell.main_strength) : null}
                           momentum={cell?.main_strength ? Number(cell.main_strength) : null}
+                          limitUpCount={cell?.limit_up_count ?? null}
+                          dragonStock={cell?.dragon_stock ? {
+                            code: cell.dragon_stock.code,
+                            name: cell.dragon_stock.name,
+                            change_pct: Number(cell.dragon_stock.change_pct),
+                          } : null}
                           marketChange={marketChange !== undefined ? Number(marketChange) : undefined}
                           volumeBaseline={industry.volume_baseline !== undefined ? Number(industry.volume_baseline) : null}
                           highlightRange={highlightRange}

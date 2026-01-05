@@ -27,7 +27,7 @@ import { SectorRotationResponse } from '@/api/generated/schemas'
 import { RotationMatrix, ColorRangeBar } from '@/components/industry-rotation'
 
 // Metric options for cell display
-export type MetricKey = 'change' | 'volume' | 'flow' | 'momentum'
+export type MetricKey = 'change' | 'volume' | 'flow' | 'momentum' | 'limit_up' | 'dragon'
 
 // 3-state metric: off -> raw -> weighted -> off
 export type MetricState = 'off' | 'raw' | 'weighted'
@@ -61,6 +61,20 @@ const METRIC_OPTIONS: { key: MetricKey; label: string; activeColor: string; supp
     activeColor: 'bg-[#7a2eb0]',
     supportsWeighted: false,
     tooltip: '动量强度指标 (0-100)\n同资金流入计算方式\n高值表示成交活跃、换手率上升、价格处于高位'
+  },
+  {
+    key: 'limit_up',
+    label: '涨停',
+    activeColor: 'bg-[#ff6b35]',
+    supportsWeighted: false,
+    tooltip: '行业内涨停股票数量\n涨停标准: 主板≥9.9%, 创业板/科创板≥19.8%, ST≥4.9%'
+  },
+  {
+    key: 'dragon',
+    label: '龙头',
+    activeColor: 'bg-[#fbbf24]',
+    supportsWeighted: false,
+    tooltip: '龙头战法筛选\n条件: 涨停+非一字板+放量+换手3-25%+市值30-1000亿\n无符合条件则显示"-"'
   },
 ]
 
@@ -143,6 +157,8 @@ export default function IndustryRotationPage() {
     volume: 'off',
     flow: 'off',
     momentum: 'off',
+    limit_up: 'off',
+    dragon: 'off',
   })
   // Track last selected metric for color range bar
   const [lastSelectedMetric, setLastSelectedMetric] = useState<MetricKey>('change')

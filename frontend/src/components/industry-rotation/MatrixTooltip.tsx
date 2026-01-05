@@ -50,6 +50,9 @@ export function MatrixTooltip({ data }: MatrixTooltipProps) {
     mouseX,
     mouseY,
     volume_baseline,
+    limit_up_count,
+    limit_up_stocks,
+    dragon_stock,
   } = data
 
   // Position tooltip to avoid going off-screen
@@ -125,7 +128,7 @@ export function MatrixTooltip({ data }: MatrixTooltipProps) {
         {/* Top Stock */}
         {top_stock && (
           <div className="flex justify-between">
-            <span className="text-gray-400">龙头股</span>
+            <span className="text-gray-400">涨幅最大</span>
             <span>
               {top_stock.name}{' '}
               <span
@@ -140,7 +143,41 @@ export function MatrixTooltip({ data }: MatrixTooltipProps) {
             </span>
           </div>
         )}
+
+        {/* Dragon Stock (龙头战法筛选) */}
+        {dragon_stock && (
+          <div className="flex justify-between">
+            <span className="text-yellow-400">龙头战法</span>
+            <span>
+              <span className="text-yellow-300 font-medium">{dragon_stock.name}</span>
+              <span className="text-red-400 font-mono ml-1">
+                {formatPercent(Number(dragon_stock.change_pct))}
+              </span>
+            </span>
+          </div>
+        )}
       </div>
+
+      {/* Limit-up stocks section */}
+      {limit_up_count !== undefined && limit_up_count > 0 && (
+        <div className="border-t border-gray-700 pt-2 mt-2">
+          <div className="flex justify-between mb-1">
+            <span className="text-gray-400">涨停家数</span>
+            <span className="font-mono text-orange-400 font-bold">{limit_up_count}</span>
+          </div>
+          {/* Limit-up stocks list (show all) */}
+          {limit_up_stocks && limit_up_stocks.length > 0 && (
+            <div className="text-xs space-y-0.5 mt-1 max-h-48 overflow-y-auto">
+              {limit_up_stocks.map((stock) => (
+                <div key={stock.code} className="flex justify-between text-gray-300">
+                  <span>{stock.name}</span>
+                  <span className="text-red-400 font-mono">{formatPercent(Number(stock.change_pct))}</span>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
 
       {/* Signals */}
       {signals.length > 0 && (

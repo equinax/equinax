@@ -8,7 +8,7 @@
 import { useCallback, useRef, useState } from 'react'
 
 // Metric keys matching page component
-type MetricKey = 'change' | 'volume' | 'flow' | 'momentum'
+type MetricKey = 'change' | 'volume' | 'flow' | 'momentum' | 'limit_up' | 'dragon'
 
 interface ColorRangeBarProps {
   metric: MetricKey
@@ -50,6 +50,24 @@ const METRIC_CONFIG: Record<MetricKey, MetricConfig> = {
     max: 55,
     hue: () => 280,  // Purple
     label: (v) => v.toFixed(0),
+  },
+  limit_up: {
+    min: 0,
+    max: 10,  // 10 limit-up stocks = max intensity
+    hue: () => 15,  // Fire orange-red
+    label: (v) => v.toFixed(0),
+  },
+  dragon: {
+    min: 4.9,   // ST stocks limit-up at ~5%
+    max: 20,    // Max 20% (ChiNext limit-up)
+    // Lavender (270) for ST (<8%), Gold (48) for main board (8-15%), Pink (350) for STAR/ChiNext (>=15%)
+    hue: (t) => {
+      const value = 4.9 + t * (20 - 4.9)  // Map t to actual percentage
+      if (value >= 15) return 350     // Light pink for STAR/ChiNext
+      if (value >= 8) return 48       // Gold for main board
+      return 270                       // Lavender for ST
+    },
+    label: (v) => `+${v.toFixed(1)}%`,
   },
 }
 
@@ -155,11 +173,12 @@ export function ColorRangeBar({ metric, isWeighted, onHoverRange }: ColorRangeBa
     metric === 'change' ? 'diverging' :
     (isWeighted && metric === 'volume') ? 'weighted-volume' :
     'sequential'
-  const hue = config.hue(0.5) // Get base hue for this metric
 
   // Generate gradient stops
+  // Pass t to config.hue for metrics that change hue based on position (like dragon)
   const gradientStops = Array.from({ length: 20 }, (_, i) => {
     const t = i / 19
+    const hue = config.hue(t) // Get hue at this position (varies for dragon: gold → red)
     return { offset: `${t * 100}%`, color: getGradientColor(metric, t, colorMode, hue) }
   })
 

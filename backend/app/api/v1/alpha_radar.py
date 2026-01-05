@@ -295,7 +295,11 @@ class SectorDayCell(BaseModel):
     money_flow: Optional[Decimal] = Field(default=None, description="Net money flow")
     main_strength: Optional[Decimal] = Field(default=None, description="Main force strength")
     top_stock: Optional[RotationTopStock] = Field(default=None, description="Best performing stock")
+    dragon_stock: Optional[RotationTopStock] = Field(default=None, description="Dragon stock (龙头战法筛选)")
     signals: List[RotationCellSignal] = Field(default_factory=list, description="Algorithm signals")
+    # 涨停榜数据
+    limit_up_count: int = Field(default=0, description="Number of limit-up stocks")
+    limit_up_stocks: List[RotationTopStock] = Field(default_factory=list, description="List of limit-up stocks")
 
 
 class SectorRotationColumn(BaseModel):

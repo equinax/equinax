@@ -11,7 +11,7 @@ import { memo } from 'react'
 import { motion } from 'motion/react'
 
 // Metric keys
-type MetricKey = 'change' | 'volume' | 'flow' | 'momentum'
+type MetricKey = 'change' | 'volume' | 'flow' | 'momentum' | 'limit_up' | 'dragon'
 
 // 3-state metric
 type MetricState = 'off' | 'raw' | 'weighted'
@@ -21,6 +21,13 @@ interface HighlightRange {
   metric: MetricKey
   min: number
   max: number
+}
+
+// Dragon stock data
+interface DragonStockData {
+  code: string
+  name: string
+  change_pct: number
 }
 
 interface MatrixCellProps {
@@ -34,6 +41,9 @@ interface MatrixCellProps {
   volume: number | null
   flow: number | null
   momentum: number | null
+  // New metrics
+  limitUpCount: number | null
+  dragonStock: DragonStockData | null
   // Weighted calculation inputs
   marketChange?: number // For weighted change (超额收益)
   volumeBaseline?: number | null // Industry's 120-day avg volume (亿)
@@ -146,6 +156,53 @@ function getMomentumColor(value: number | null): string {
 }
 
 /**
+ * Get color for limit-up count (fire gradient: gray → orange → red)
+ * 0: light gray, 10+: deep red
+ */
+function getLimitUpColor(count: number | null): string {
+  if (count === null || count === 0) return '#f5f5f5'
+  // Normalize: 0 → 0, 10 → 1 (10 stocks = max intensity)
+  const t = Math.min(count / 10, 1)
+  // Fire gradient: orange (25°) to red (0°)
+  const hue = 25 - t * 25
+  const saturation = 40 + t * 50  // 40% → 90%
+  const brightness = 100 - t * 30  // 100% → 70%
+  return hsbToHex(hue, saturation, brightness)
+}
+
+/**
+ * Get color for dragon stock (based on change percentage)
+ * ST stocks (change < 8%): Light lavender (浅紫色)
+ * Main board (8% <= change < 15%): Light gold (浅金色) - 重点关注
+ * STAR/ChiNext (change >= 15%): Light pink (浅粉色) - 不太显眼
+ */
+function getDragonColor(changePct: number | null): string {
+  if (changePct === null) return '#f5f5f5'  // No dragon = light gray
+
+  // Distinguish board type by change percentage
+  // ST limit-up: ~4.9-5%, Main board: ~9.9-10%, STAR/ChiNext: ~19.8-20%
+  if (changePct >= 15) {
+    // STAR/ChiNext: Light pink (浅粉色) - less prominent, can't trade these
+    const t = Math.min((changePct - 15) / 5, 1)  // 15% → 0, 20% → 1
+    const saturation = 25 + t * 15  // 25% → 40% (light)
+    const brightness = 95 - t * 5   // 95% → 90%
+    return hsbToHex(350, saturation, brightness)  // Pink hue (350°)
+  } else if (changePct >= 8) {
+    // Main board: Light gold gradient (龙头=浅金色) - 重点关注
+    const t = Math.min((changePct - 8) / 7, 1)  // 8% → 0, 15% → 1
+    const saturation = 45 + t * 20  // 45% → 65%
+    const brightness = 95 - t * 10  // 95% → 85%
+    return hsbToHex(48, saturation, brightness)  // Gold hue (48°)
+  } else {
+    // ST stocks: Light lavender (浅紫色) - distinctive from gold/pink
+    const t = Math.min(changePct / 8, 1)  // 0% → 0, 8% → 1
+    const saturation = 30 + t * 20  // 30% → 50%
+    const brightness = 95 - t * 5   // 95% → 90%
+    return hsbToHex(270, saturation, brightness)  // Lavender hue (270°)
+  }
+}
+
+/**
  * Get text color based on background brightness
  * Uses relative luminance calculation for accessibility
  */
@@ -161,6 +218,31 @@ function getTextColor(bgColor: string): string {
 
   // Use white text on dark backgrounds, dark text on light backgrounds
   return luminance < 0.5 ? '#ffffff' : '#374151'
+}
+
+/**
+ * Get text color specifically for dragon cells
+ * All dragon backgrounds are now light colors, use dark text for contrast
+ */
+function getDragonTextColor(bgColor: string): string {
+  // Parse hex color
+  const hex = bgColor.replace('#', '')
+  const r = parseInt(hex.substring(0, 2), 16) / 255
+  const g = parseInt(hex.substring(2, 4), 16) / 255
+  const b = parseInt(hex.substring(4, 6), 16) / 255
+
+  // Detect color type by RGB ratios
+  // Pink: high R, low G, medium B (hue ~350)
+  // Gold: high R, high G, low B (hue ~48)
+  // Lavender: medium R, low G, high B (hue ~270)
+
+  if (b > g && b > r * 0.7) {
+    return '#581c87'  // Purple-800 for lavender backgrounds
+  }
+  if (r > g * 1.1 && r > b * 1.5) {
+    return '#9f1239'  // Rose-800 for pink backgrounds
+  }
+  return '#78350f'    // Amber-900 for gold backgrounds
 }
 
 /**
@@ -192,6 +274,22 @@ function formatFlow(value: number | null): string {
 }
 
 /**
+ * Format limit-up count (empty if 0)
+ */
+function formatLimitUp(count: number | null): string {
+  if (count === null || count === 0) return ''
+  return count.toString()
+}
+
+/**
+ * Format dragon stock name (truncate to 4 chars)
+ */
+function formatDragonName(name: string | null): string {
+  if (!name) return '-'  // No qualifying dragon
+  return name.length > 4 ? name.slice(0, 4) : name
+}
+
+/**
  * Format weighted volume as percentage deviation from baseline
  */
 function formatWeightedVolume(value: number | null, baseline: number | null): string {
@@ -219,6 +317,7 @@ function getWeightedVolumeColor(value: number | null, baseline: number | null): 
 }
 
 // Metric config for getting color and formatting
+// Note: limit_up and dragon need special handling with extra data
 const METRIC_CONFIG: Record<MetricKey, {
   getColor: (value: number | null) => string
   format: (value: number | null) => string
@@ -239,6 +338,16 @@ const METRIC_CONFIG: Record<MetricKey, {
     getColor: getMomentumColor,
     format: formatFlow,
   },
+  limit_up: {
+    getColor: getLimitUpColor,
+    format: formatLimitUp,
+  },
+  dragon: {
+    // Dragon needs special handling - uses dragonStock.change_pct for color
+    // and dragonStock.name for text
+    getColor: getDragonColor,
+    format: () => '-',  // Placeholder - actual format done in render
+  },
 }
 
 export const MatrixCell = memo(function MatrixCell({
@@ -252,6 +361,8 @@ export const MatrixCell = memo(function MatrixCell({
   volume,
   flow,
   momentum,
+  limitUpCount,
+  dragonStock,
   marketChange,
   volumeBaseline,
   highlightRange,
@@ -269,6 +380,8 @@ export const MatrixCell = memo(function MatrixCell({
     volume,
     flow,
     momentum,
+    limit_up: limitUpCount,
+    dragon: dragonStock?.change_pct ?? null,
   }
 
   // Get metric values for range comparison
@@ -292,6 +405,16 @@ export const MatrixCell = memo(function MatrixCell({
       }
       // Raw mode: convert to 亿 for comparison
       return volume !== null ? volume / 100000000 : null
+    }
+
+    // Limit up: raw count
+    if (metric === 'limit_up') {
+      return limitUpCount
+    }
+
+    // Dragon: use change_pct for range comparison
+    if (metric === 'dragon') {
+      return dragonStock?.change_pct ?? null
     }
 
     // Flow and momentum: use raw values
@@ -329,6 +452,10 @@ export const MatrixCell = memo(function MatrixCell({
         return '#c47a30' // Amber
       case 'momentum':
         return '#7a2eb0' // Purple
+      case 'limit_up':
+        return '#ff6b35' // Fire orange
+      case 'dragon':
+        return '#fbbf24' // Gold
       default:
         return '#666'
     }
@@ -348,20 +475,55 @@ export const MatrixCell = memo(function MatrixCell({
         const value = metricValues[metric]
         const config = METRIC_CONFIG[metric]
         const state = metricStates[metric]
+        const stripeX = idx * stripeWidth
 
         // Use weighted color/format for volume when in weighted mode
+        // Dragon needs special handling for color (based on change) and text (stock name)
         let bgColor: string
         let text: string
         if (metric === 'volume' && state === 'weighted') {
           bgColor = getWeightedVolumeColor(volume, volumeBaseline ?? null)
           text = formatWeightedVolume(volume, volumeBaseline ?? null)
+        } else if (metric === 'dragon') {
+          // Dragon: color based on change_pct, text is stock name
+          // Uses special text color for better readability on gold/red backgrounds
+          bgColor = getDragonColor(dragonStock?.change_pct ?? null)
+          text = formatDragonName(dragonStock?.name ?? null)
+          const dragonTextColor = getDragonTextColor(bgColor)
+
+          return (
+            <g key={metric}>
+              {/* Background stripe */}
+              <motion.rect
+                x={stripeX}
+                y={y}
+                width={stripeWidth}
+                height={height}
+                animate={{ fill: bgColor }}
+                transition={{ fill: { duration: 0.3 } }}
+              />
+
+              {/* Text with special dragon color */}
+              <text
+                x={stripeX + stripeWidth / 2}
+                y={y + height / 2}
+                textAnchor="middle"
+                dominantBaseline="middle"
+                fontSize={fontSize}
+                fontFamily="ui-monospace, monospace"
+                fill={dragonTextColor}
+                style={{ pointerEvents: 'none' }}
+              >
+                {text}
+              </text>
+            </g>
+          )
         } else {
           bgColor = config.getColor(value)
           text = config.format(value)
         }
 
         const textColor = getTextColor(bgColor)
-        const stripeX = idx * stripeWidth
 
         return (
           <g key={metric}>

@@ -16,4 +16,9 @@ export interface TooltipData {
   mouseY: number
   // For weighted volume display
   volume_baseline?: number | null
+  // 涨停榜数据
+  limit_up_count?: number
+  limit_up_stocks?: RotationTopStock[]
+  // 龙头战法筛选
+  dragon_stock?: RotationTopStock | null
 }

@@ -231,6 +231,21 @@ class SectorRotationService:
         if df.is_empty():
             return self._empty_response(sort_by, days)
 
+        # Mark limit-up stocks for 涨停榜 and 龙头榜 (needs name for ST detection)
+        df = self._mark_limit_up(df)
+
+        # Load valuation data for market cap (for 龙头战法 filtering)
+        valuation_df = await self.polars_engine.load_valuation_data(end_date)
+        if not valuation_df.is_empty():
+            df = df.join(
+                valuation_df.select(["code", "total_mv"]),
+                on="code",
+                how="left",
+            )
+        else:
+            # Add empty total_mv column if no valuation data
+            df = df.with_columns(pl.lit(None).cast(pl.Float64).alias("total_mv"))
+
         # Get unique trading days (most recent N days)
         trading_days = (
             df.select("date")
@@ -256,6 +271,12 @@ class SectorRotationService:
         # Get top stock per cell
         top_stocks_df = self._compute_top_stocks(df)
 
+        # Get limit-up stocks list per cell (for 涨停榜)
+        limit_up_stocks = self._compute_limit_up_stocks(df)
+
+        # Get dragon stocks per cell (for 龙头榜)
+        dragon_stocks_df = self._compute_dragon_stocks(df, matrix_df)
+
         # Get market changes for weighted calculations
         market_changes = await self._get_market_changes(trading_days)
 
@@ -264,7 +285,8 @@ class SectorRotationService:
 
         # Build response structure
         industries = self._build_industry_columns(
-            matrix_df, top_stocks_df, trading_days, sort_by, volume_baselines
+            matrix_df, top_stocks_df, trading_days, sort_by, volume_baselines,
+            limit_up_stocks, dragon_stocks_df
         )
 
         # Calculate stats
@@ -279,6 +301,37 @@ class SectorRotationService:
             market_changes=market_changes,
         )
 
+    def _mark_limit_up(self, df: pl.DataFrame) -> pl.DataFrame:
+        """
+        Mark limit-up stocks with board-specific thresholds.
+
+        Rules:
+        - STAR Market (sh.688xxx) / ChiNext (sz.300xxx, sz.301xxx): >= 19.8%
+        - ST stocks (name contains ST): >= 4.9%
+        - Main board: >= 9.9%
+
+        Note: code format is "sh.688xxx" or "sz.300xxx", so we use contains()
+        """
+        return df.with_columns([
+            pl.when(
+                # STAR Market (sh.688xxx) / ChiNext (sz.300xxx, sz.301xxx): 20%
+                pl.col("code").str.contains("688") |
+                pl.col("code").str.contains(r"\.30[01]")  # matches .300 or .301
+            ).then(pl.col("pct_chg") >= 19.8)
+            .when(
+                # ST stocks (name contains ST): 5%
+                pl.col("name").str.contains("ST")
+            ).then(pl.col("pct_chg") >= 4.9)
+            .otherwise(
+                # Main board: 10%
+                pl.col("pct_chg") >= 9.9
+            ).alias("is_limit_up"),
+
+            # Is one-line board (can't buy in - amplitude < 0.5%)
+            ((pl.col("high") - pl.col("low")) / pl.col("preclose") * 100 < 0.5)
+            .alias("is_one_line"),
+        ])
+
     def _compute_industry_matrix(self, df: pl.DataFrame) -> pl.DataFrame:
         """Aggregate data by date × industry."""
         return df.group_by(["date", "sw_industry_l1"]).agg([
@@ -290,6 +343,10 @@ class SectorRotationService:
             pl.col("main_strength_proxy").mean().alias("main_strength"),
             # Count for debugging
             pl.len().alias("stock_count"),
+            # 涨停榜: 涨停股票数量
+            pl.col("is_limit_up").sum().cast(pl.Int32).alias("limit_up_count"),
+            # 龙头筛选: 行业成交额中位数 (用于放量判断)
+            pl.col("amount").median().alias("amount_median"),
         ])
 
     def _compute_signals(
@@ -369,6 +426,93 @@ class SectorRotationService:
             ])
         )
 
+    def _compute_limit_up_stocks(self, df: pl.DataFrame) -> Dict[str, List[RotationTopStock]]:
+        """
+        Get list of limit-up stocks per date × industry.
+
+        Returns:
+            Dict mapping "date|industry" key to list of RotationTopStock
+        """
+        limit_up_df = (
+            df.filter(pl.col("is_limit_up"))
+            .sort(["date", "sw_industry_l1", "pct_chg"], descending=[False, False, True])
+            .select(["date", "sw_industry_l1", "code", "name", "pct_chg"])
+        )
+
+        result: Dict[str, List[RotationTopStock]] = {}
+
+        for row in limit_up_df.iter_rows(named=True):
+            key = f"{row['date']}|{row['sw_industry_l1']}"
+            if key not in result:
+                result[key] = []
+            result[key].append(RotationTopStock(
+                code=row["code"],
+                name=row["name"],
+                change_pct=self._to_decimal(row["pct_chg"]) or Decimal("0"),
+            ))
+
+        return result
+
+    def _compute_dragon_stocks(
+        self,
+        df: pl.DataFrame,
+        matrix_df: pl.DataFrame,
+    ) -> pl.DataFrame:
+        """
+        Compute dragon stocks per date × industry using 龙头战法 criteria.
+
+        Dragon stock must meet ALL conditions:
+        1. is_limit_up: Must be limit-up
+        2. Not one-line board (amplitude > 0.5%)
+        3. High volume: amount > industry median for the day
+        4. Turnover rate: 3% <= turn <= 25%
+        5. Market cap: 30B <= total_mv <= 1000B
+
+        Sorted by amount (highest first), take top 1 per cell.
+        If no stock meets criteria, cell has no dragon (宁缺毋滥).
+        """
+        # Join with matrix to get industry amount median
+        df_with_median = df.join(
+            matrix_df.select(["date", "sw_industry_l1", "amount_median"]),
+            on=["date", "sw_industry_l1"],
+            how="left",
+        )
+
+        # Filter by dragon criteria
+        # Note: total_mv is in 亿 (hundred million) units in the database
+        dragon_candidates = df_with_median.filter(
+            pl.col("is_limit_up") &                              # Must be limit-up
+            ~pl.col("is_one_line") &                             # Not one-line board
+            (pl.col("amount") > pl.col("amount_median")) &       # High volume
+            (pl.col("turn") >= 3) & (pl.col("turn") <= 25) &     # Turnover 3%-25%
+            (pl.col("total_mv") >= 30) &                         # Market cap >= 30亿
+            (pl.col("total_mv") <= 1000)                         # Market cap <= 1000亿
+        )
+
+        if dragon_candidates.is_empty():
+            return pl.DataFrame(schema={
+                "date": pl.Date,
+                "sw_industry_l1": pl.Utf8,
+                "dragon_code": pl.Utf8,
+                "dragon_name": pl.Utf8,
+                "dragon_change": pl.Float64,
+            })
+
+        # Sort by amount (highest first) and take top 1 per cell
+        return (
+            dragon_candidates
+            .sort(["date", "sw_industry_l1", "amount"], descending=[False, False, True])
+            .group_by(["date", "sw_industry_l1"])
+            .first()
+            .select([
+                "date",
+                "sw_industry_l1",
+                pl.col("code").alias("dragon_code"),
+                pl.col("name").alias("dragon_name"),
+                pl.col("pct_chg").alias("dragon_change"),
+            ])
+        )
+
     def _build_industry_columns(
         self,
         matrix_df: pl.DataFrame,
@@ -376,9 +520,12 @@ class SectorRotationService:
         trading_days: List[date],
         sort_by: str,
         volume_baselines: Optional[Dict[str, Decimal]] = None,
+        limit_up_stocks: Optional[Dict[str, List[RotationTopStock]]] = None,
+        dragon_stocks_df: Optional[pl.DataFrame] = None,
     ) -> List[SectorRotationColumn]:
         """Build industry columns with cells and sorting metrics."""
         volume_baselines = volume_baselines or {}
+        limit_up_stocks = limit_up_stocks or {}
         # Get unique industries
         industries = matrix_df.select("sw_industry_l1").unique().to_series().to_list()
 
@@ -388,6 +535,14 @@ class SectorRotationService:
             on=["date", "sw_industry_l1"],
             how="left",
         )
+
+        # Join matrix with dragon stocks
+        if dragon_stocks_df is not None and not dragon_stocks_df.is_empty():
+            matrix_df = matrix_df.join(
+                dragon_stocks_df,
+                on=["date", "sw_industry_l1"],
+                how="left",
+            )
 
         # Today is the most recent trading day
         today = max(trading_days)
@@ -410,6 +565,9 @@ class SectorRotationService:
                         main_strength=None,
                         top_stock=None,
                         signals=[],
+                        limit_up_count=0,
+                        limit_up_stocks=[],
+                        dragon_stock=None,
                     ))
                 else:
                     row = day_data.row(0, named=True)
@@ -441,6 +599,19 @@ class SectorRotationService:
                             change_pct=self._to_decimal(row.get("top_change")) or Decimal("0"),
                         )
 
+                    # Build dragon stock (龙头战法筛选)
+                    dragon_stock = None
+                    if row.get("dragon_code"):
+                        dragon_stock = RotationTopStock(
+                            code=row["dragon_code"],
+                            name=row.get("dragon_name") or row["dragon_code"],
+                            change_pct=self._to_decimal(row.get("dragon_change")) or Decimal("0"),
+                        )
+
+                    # Get limit-up stocks for this cell
+                    cell_key = f"{day}|{industry}"
+                    cell_limit_up_stocks = limit_up_stocks.get(cell_key, [])
+
                     cells.append(SectorDayCell(
                         date=day,
                         change_pct=self._to_decimal(row.get("change_pct")) or Decimal("0"),
@@ -448,6 +619,9 @@ class SectorRotationService:
                         main_strength=self._to_decimal(row.get("main_strength")),
                         top_stock=top_stock,
                         signals=signals,
+                        limit_up_count=int(row.get("limit_up_count") or 0),
+                        limit_up_stocks=cell_limit_up_stocks,
+                        dragon_stock=dragon_stock,
                     ))
 
             # Calculate sorting metrics
