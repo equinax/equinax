@@ -12,16 +12,20 @@ type MetricKey = 'change' | 'volume' | 'flow' | 'momentum'
 
 interface ColorRangeBarProps {
   metric: MetricKey
+  isWeighted: boolean  // Whether metric is in weighted state
   onHoverRange: (range: { min: number; max: number } | null) => void
 }
 
-// Metric configuration for range and colors
-const METRIC_CONFIG: Record<MetricKey, {
+// Metric config type
+interface MetricConfig {
   min: number
   max: number
   hue: (t: number) => number  // t: 0 to 1, returns hue
   label: (value: number) => string
-}> = {
+}
+
+// Raw metric configuration for range and colors
+const METRIC_CONFIG: Record<MetricKey, MetricConfig> = {
   change: {
     min: -8,
     max: 8,
@@ -49,6 +53,22 @@ const METRIC_CONFIG: Record<MetricKey, {
   },
 }
 
+// Weighted metric configuration (only for metrics that support weighted mode)
+const METRIC_CONFIG_WEIGHTED: Partial<Record<MetricKey, MetricConfig>> = {
+  change: {
+    min: -6,    // 超额收益 typical range ±6%
+    max: 6,
+    hue: (t) => t < 0.5 ? 145 : 0,  // Same diverging colors
+    label: (v) => `${v > 0 ? '+' : ''}${v.toFixed(1)}%`,
+  },
+  volume: {
+    min: -50,   // Deviation from baseline ±50%
+    max: 50,
+    hue: () => 210,  // Blue (same as raw)
+    label: (v) => `${v > 0 ? '+' : ''}${v.toFixed(0)}%`,
+  },
+}
+
 /**
  * HSB to Hex conversion (copied from MatrixCell for consistency)
  */
@@ -63,20 +83,23 @@ function hsbToHex(h: number, s: number, b: number): string {
 
 /**
  * Generate gradient color for a normalized position (0-1)
+ * @param metric - The metric type
+ * @param t - Position from 0 to 1
+ * @param isDiverging - Whether to use diverging scale (white at center)
+ * @param hue - Base hue for the color (used for sequential/weighted volume)
  */
-function getGradientColor(metric: MetricKey, t: number): string {
-  const config = METRIC_CONFIG[metric]
-
-  if (metric === 'change') {
-    // Diverging: green at 0, white at 0.5, red at 1
+function getGradientColor(metric: MetricKey, t: number, isDiverging: boolean, hue: number): string {
+  if (isDiverging) {
+    // Diverging: color1 at 0, white at 0.5, color2 at 1
     const magnitude = Math.abs(t - 0.5) * 2  // 0 at center, 1 at edges
-    const hue = t < 0.5 ? 145 : 0
+    // For change: green (145) at low end, red (0) at high end
+    // For weighted volume: blue (210) on both ends
+    const effectiveHue = metric === 'change' ? (t < 0.5 ? 145 : 0) : hue
     const saturation = magnitude * 85
     const brightness = 100 - magnitude * 15
-    return hsbToHex(hue, saturation, brightness)
+    return hsbToHex(effectiveHue, saturation, brightness)
   } else {
     // Sequential: light at 0, dark at 1
-    const hue = config.hue(t)
     const saturation = 5 + t * 75
     const brightness = 100 - t * 30
     return hsbToHex(hue, saturation, brightness)
@@ -88,10 +111,13 @@ const BAR_WIDTH = 160
 const BAR_HEIGHT = 14
 const HOVER_RANGE_PCT = 0.1  // 10% of total range
 
-export function ColorRangeBar({ metric, onHoverRange }: ColorRangeBarProps) {
+export function ColorRangeBar({ metric, isWeighted, onHoverRange }: ColorRangeBarProps) {
   const barRef = useRef<SVGRectElement>(null)
   const [hoverPosition, setHoverPosition] = useState<number | null>(null)
-  const config = METRIC_CONFIG[metric]
+  // Use weighted config when available and in weighted mode
+  const config = isWeighted && METRIC_CONFIG_WEIGHTED[metric]
+    ? METRIC_CONFIG_WEIGHTED[metric]
+    : METRIC_CONFIG[metric]
 
   // Calculate value from mouse position
   const handleMouseMove = useCallback((e: React.MouseEvent<SVGSVGElement>) => {
@@ -118,16 +144,24 @@ export function ColorRangeBar({ metric, onHoverRange }: ColorRangeBarProps) {
     onHoverRange(null)
   }, [onHoverRange])
 
+  // Determine if we should use diverging scale
+  // Change always uses diverging, weighted volume also uses diverging
+  const isDiverging = metric === 'change' || (isWeighted && metric === 'volume')
+  const hue = config.hue(0.5) // Get base hue for this metric
+
   // Generate gradient stops
   const gradientStops = Array.from({ length: 20 }, (_, i) => {
     const t = i / 19
-    return { offset: `${t * 100}%`, color: getGradientColor(metric, t) }
+    return { offset: `${t * 100}%`, color: getGradientColor(metric, t, isDiverging, hue) }
   })
 
   // Calculate hover indicator position and label
   const hoverValue = hoverPosition !== null
     ? config.min + hoverPosition * (config.max - config.min)
     : null
+
+  // Unique gradient id for each metric/weighted combination
+  const gradientId = `gradient-${metric}-${isWeighted ? 'weighted' : 'raw'}`
 
   return (
     <svg
@@ -138,7 +172,7 @@ export function ColorRangeBar({ metric, onHoverRange }: ColorRangeBarProps) {
       onMouseLeave={handleMouseLeave}
     >
       <defs>
-        <linearGradient id={`gradient-${metric}`} x1="0%" y1="0%" x2="100%" y2="0%">
+        <linearGradient id={gradientId} x1="0%" y1="0%" x2="100%" y2="0%">
           {gradientStops.map((stop, i) => (
             <stop key={i} offset={stop.offset} stopColor={stop.color} />
           ))}
@@ -153,7 +187,7 @@ export function ColorRangeBar({ metric, onHoverRange }: ColorRangeBarProps) {
         width={BAR_WIDTH}
         height={BAR_HEIGHT}
         rx={3}
-        fill={`url(#gradient-${metric})`}
+        fill={`url(#${gradientId})`}
         className="stroke-border"
         strokeWidth={0.5}
       />

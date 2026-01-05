@@ -10,7 +10,7 @@
 import { useState, useRef, useCallback, useEffect, useMemo } from 'react'
 import { motion, AnimatePresence } from 'motion/react'
 import { ChevronDown, ArrowUp, ArrowDown } from 'lucide-react'
-import type { SectorRotationResponse, RotationSortBy } from '@/api/generated/schemas'
+import type { SectorRotationResponse } from '@/api/generated/schemas'
 import {
   Select,
   SelectContent,
@@ -29,6 +29,16 @@ type MetricKey = 'change' | 'volume' | 'flow' | 'momentum'
 // 3-state metric: off/raw/weighted
 type MetricState = 'off' | 'raw' | 'weighted'
 
+// Frontend-only sort options (7 options)
+export type SortOption =
+  | 'upstream'         // 产业链 - fixed order
+  | 'change'           // 涨跌
+  | 'change_weighted'  // 涨跌加权
+  | 'volume'           // 成交量
+  | 'volume_weighted'  // 成交量加权
+  | 'flow'             // 资金流入
+  | 'momentum'         // 动量
+
 // Highlight range for color filtering
 interface HighlightRange {
   metric: MetricKey
@@ -41,26 +51,34 @@ interface RotationMatrixProps {
   visibleMetrics: MetricKey[]
   metricStates: Record<MetricKey, MetricState>
   highlightRange?: HighlightRange | null
-  sortBy: RotationSortBy
-  onSortChange: (value: RotationSortBy) => void
   // Infinite scroll props
   isLoadingMore?: boolean
   hasMore?: boolean
   onLoadMore?: () => void
 }
 
-// Sort options for dropdown
-const SORT_OPTIONS: { value: RotationSortBy; label: string }[] = [
+// Sort options for dropdown (7 options - all frontend handled)
+const SORT_OPTIONS: { value: SortOption; label: string }[] = [
   { value: 'upstream', label: '产业链' },
-  { value: 'today_change', label: '今日涨跌' },
-  { value: 'money_flow', label: '资金流向' },
+  { value: 'change', label: '涨跌' },
+  { value: 'change_weighted', label: '涨跌加权' },
+  { value: 'volume', label: '成交量' },
+  { value: 'volume_weighted', label: '成交量加权' },
+  { value: 'flow', label: '资金流入' },
   { value: 'momentum', label: '动量' },
 ]
 
 // Get short label for current sort option
-const getSortLabel = (value: RotationSortBy): string => {
+const getSortLabel = (value: SortOption): string => {
   const opt = SORT_OPTIONS.find((o) => o.value === value)
   return opt ? opt.label.slice(0, 2) : '排序'
+}
+
+// Calculate weighted volume deviation percentage
+const calculateWeightedVolume = (volume: number | null | undefined, baseline: number | null | undefined): number => {
+  if (volume == null || baseline == null || baseline === 0) return 0
+  const yi = Number(volume) / 100000000 // Convert to 亿
+  return ((yi - baseline) / baseline) * 100 // Deviation percentage
 }
 
 // Layout constants
@@ -76,8 +94,6 @@ export function RotationMatrix({
   visibleMetrics,
   metricStates,
   highlightRange,
-  sortBy,
-  onSortChange,
   isLoadingMore = false,
   hasMore = true,
   onLoadMore,
@@ -90,6 +106,8 @@ export function RotationMatrix({
   const [hiddenIndustries, setHiddenIndustries] = useState<Set<string>>(new Set())
   // Hover state for collapsed icons
   const [collapsedHover, setCollapsedHover] = useState<string | null>(null)
+  // Frontend sort state (completely frontend-controlled)
+  const [sortBy, setSortBy] = useState<SortOption>('change')
   // Frontend date-based sorting
   const [sortByDate, setSortByDate] = useState<string | null>(null)
   const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('desc')
@@ -145,38 +163,74 @@ export function RotationMatrix({
 
   // Handle date click for frontend sorting
   const handleDateClick = useCallback((dateStr: string) => {
+    // Disabled for upstream sort (fixed industry chain order)
+    if (sortBy === 'upstream') return
+
     if (sortByDate === dateStr) {
-      // Toggle direction or clear
-      if (sortDirection === 'desc') {
-        setSortDirection('asc')
-      } else {
-        setSortByDate(null)
-        setSortDirection('desc')
-      }
+      // Toggle direction between desc and asc
+      setSortDirection(sortDirection === 'desc' ? 'asc' : 'desc')
     } else {
+      // New date selected - start with descending
       setSortByDate(dateStr)
       setSortDirection('desc')
     }
-  }, [sortByDate, sortDirection])
+  }, [sortBy, sortByDate, sortDirection])
 
-  // Reset date sort when backend sort changes
+  // Reset date sort when sort option changes
   useEffect(() => {
     setSortByDate(null)
     setSortDirection('desc')
   }, [sortBy])
 
-  // Industries sorted by date or backend (with animation via order change)
+  // Industries sorted by selected option and date (with animation via order change)
   const allIndustries = useMemo(() => {
-    if (!sortByDate) return data.industries
+    // Upstream = fixed industry chain order (backend returns this order)
+    if (sortBy === 'upstream') {
+      return data.industries
+    }
+
+    // Determine target date for sorting (clicked date or most recent)
+    const targetDate = sortByDate || data.trading_days[0]
+    if (!targetDate) return data.industries
 
     return [...data.industries].sort((a, b) => {
-      const cellA = a.cells.find((c) => c.date === sortByDate)
-      const cellB = b.cells.find((c) => c.date === sortByDate)
-      const valA = cellA ? Number(cellA.change_pct) : 0
-      const valB = cellB ? Number(cellB.change_pct) : 0
+      const cellA = a.cells.find((c) => c.date === targetDate)
+      const cellB = b.cells.find((c) => c.date === targetDate)
+      const marketChange = data.market_changes?.[targetDate] ?? 0
+
+      let valA = 0
+      let valB = 0
+
+      switch (sortBy) {
+        case 'change':
+          valA = cellA ? Number(cellA.change_pct) : 0
+          valB = cellB ? Number(cellB.change_pct) : 0
+          break
+        case 'change_weighted':
+          valA = (cellA ? Number(cellA.change_pct) : 0) - Number(marketChange)
+          valB = (cellB ? Number(cellB.change_pct) : 0) - Number(marketChange)
+          break
+        case 'volume':
+          valA = cellA?.money_flow ? Number(cellA.money_flow) : 0
+          valB = cellB?.money_flow ? Number(cellB.money_flow) : 0
+          break
+        case 'volume_weighted':
+          valA = calculateWeightedVolume(cellA?.money_flow ? Number(cellA.money_flow) : null, a.volume_baseline ? Number(a.volume_baseline) : null)
+          valB = calculateWeightedVolume(cellB?.money_flow ? Number(cellB.money_flow) : null, b.volume_baseline ? Number(b.volume_baseline) : null)
+          break
+        case 'flow':
+          valA = cellA?.main_strength ? Number(cellA.main_strength) : 0
+          valB = cellB?.main_strength ? Number(cellB.main_strength) : 0
+          break
+        case 'momentum':
+          valA = cellA?.main_strength ? Number(cellA.main_strength) : 0
+          valB = cellB?.main_strength ? Number(cellB.main_strength) : 0
+          break
+      }
+
       return sortDirection === 'desc' ? valB - valA : valA - valB
     })
-  }, [data.industries, sortByDate, sortDirection])
+  }, [data.industries, data.trading_days, data.market_changes, sortBy, sortByDate, sortDirection])
 
   // Separate visible and hidden industries, group hidden by slot position
   const { visibleIndustries, hiddenGroups } = useMemo(() => {
@@ -347,7 +401,7 @@ export function RotationMatrix({
             height={HEADER_HEIGHT}
           >
             <div className="flex items-center justify-center h-full">
-              <Select value={sortBy} onValueChange={onSortChange}>
+              <Select value={sortBy} onValueChange={(v) => setSortBy(v as SortOption)}>
                 <SelectTrigger className="w-[32px] h-[24px] p-0 border-0 bg-transparent focus:ring-0 focus:ring-offset-0 [&>svg]:hidden">
                   <SelectValue>
                     <span className="text-xs text-muted-foreground">{getSortLabel(sortBy)}</span>

@@ -269,12 +269,31 @@ export const MatrixCell = memo(function MatrixCell({
     momentum,
   }
 
-  // Get metric values for range comparison (volume needs to be in 亿 units)
+  // Get metric values for range comparison
+  // When in weighted mode, compare against weighted values (used by ColorRangeBar filter)
   const getComparisonValue = (metric: MetricKey): number | null => {
+    // Change: use weighted value when in weighted mode
+    if (metric === 'change') {
+      if (metricStates.change === 'weighted') {
+        return weightedChange // Already calculated: changePct - marketChange
+      }
+      return changePct
+    }
+
+    // Volume: use deviation % when in weighted mode, raw 亿 when raw
+    if (metric === 'volume') {
+      if (metricStates.volume === 'weighted') {
+        if (volume === null || volumeBaseline == null || volumeBaseline === 0) return null
+        const yi = volume / 100000000 // Convert to 亿
+        const baseline = Number(volumeBaseline)
+        return ((yi - baseline) / baseline) * 100 // Deviation %
+      }
+      // Raw mode: convert to 亿 for comparison
+      return volume !== null ? volume / 100000000 : null
+    }
+
+    // Flow and momentum: use raw values
     const value = metricValues[metric]
-    if (value === null) return null
-    // Volume is in yuan, convert to 亿 for comparison
-    if (metric === 'volume') return value / 100000000
     return value
   }
 

@@ -23,7 +23,7 @@ import {
   useGetSectorRotationApiV1AlphaRadarSectorRotationGet,
   getSectorRotationApiV1AlphaRadarSectorRotationGet,
 } from '@/api/generated/alpha-radar/alpha-radar'
-import { RotationSortBy, SectorRotationResponse } from '@/api/generated/schemas'
+import { SectorRotationResponse } from '@/api/generated/schemas'
 import { RotationMatrix, ColorRangeBar } from '@/components/industry-rotation'
 
 // Metric options for cell display
@@ -115,8 +115,6 @@ export default function IndustryRotationPage() {
   })
   // Track last selected metric for color range bar
   const [lastSelectedMetric, setLastSelectedMetric] = useState<MetricKey>('change')
-  // Sort order for columns
-  const [sortBy, setSortBy] = useState<RotationSortBy>('upstream')
   // Highlight range for filtering cells by color
   const [highlightRange, setHighlightRange] = useState<HighlightRange | null>(null)
 
@@ -168,11 +166,10 @@ export default function IndustryRotationPage() {
     [lastSelectedMetric]
   )
 
-  // Initial data fetch (30 days)
+  // Initial data fetch (30 days) - backend always returns upstream order
   const { data: initialData, isLoading, isFetching } = useGetSectorRotationApiV1AlphaRadarSectorRotationGet(
     {
       days: DAYS_PER_PAGE,
-      sort_by: sortBy,
     },
     {
       query: {
@@ -181,7 +178,7 @@ export default function IndustryRotationPage() {
     }
   )
 
-  // Update allData when initial data changes (including sort changes)
+  // Update allData when initial data changes
   useEffect(() => {
     if (initialData) {
       setAllData(initialData)
@@ -189,13 +186,7 @@ export default function IndustryRotationPage() {
     }
   }, [initialData])
 
-  // Reset data when sort changes
-  useEffect(() => {
-    setAllData(null)
-    setHasMore(true)
-  }, [sortBy])
-
-  // Load more data
+  // Load more data - backend always returns upstream order
   const loadMore = useCallback(async () => {
     if (isLoadingMore || !hasMore || !allData || loadMoreRef.current) return
 
@@ -209,7 +200,6 @@ export default function IndustryRotationPage() {
       const moreData = await getSectorRotationApiV1AlphaRadarSectorRotationGet({
         days: DAYS_PER_PAGE,
         end_date: getDateBefore(earliestDate),
-        sort_by: sortBy,
       })
 
       setAllData((prev) => (prev ? mergeRotationData(prev, moreData) : moreData))
@@ -220,7 +210,7 @@ export default function IndustryRotationPage() {
       setIsLoadingMore(false)
       loadMoreRef.current = false
     }
-  }, [isLoadingMore, hasMore, allData, sortBy])
+  }, [isLoadingMore, hasMore, allData])
 
   // Loading state
   const showInitialLoading = isLoading && !allData
@@ -247,8 +237,12 @@ export default function IndustryRotationPage() {
 
             {/* Color Range Bar + Metric Group Buttons */}
             <div className="flex items-center gap-3">
-              {/* Color range filter bar */}
-              <ColorRangeBar metric={lastSelectedMetric} onHoverRange={handleColorRangeHover} />
+              {/* Color range filter bar - uses weighted scale when metric is weighted */}
+              <ColorRangeBar
+                metric={lastSelectedMetric}
+                isWeighted={metricStates[lastSelectedMetric] === 'weighted'}
+                onHoverRange={handleColorRangeHover}
+              />
 
               {/* Metric Group Buttons - 3 states: off/raw/weighted */}
               <div className="flex items-center border rounded-md overflow-hidden">
@@ -284,8 +278,6 @@ export default function IndustryRotationPage() {
               visibleMetrics={visibleMetrics}
               metricStates={metricStates}
               highlightRange={highlightRange}
-              sortBy={sortBy}
-              onSortChange={setSortBy}
               isLoadingMore={isLoadingMore}
               hasMore={hasMore}
               onLoadMore={loadMore}

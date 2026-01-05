@@ -491,18 +491,9 @@ class SectorRotationService:
                 volume_baseline=industry_volume_baseline,
             ))
 
-        # Sort columns based on sort_by
-        if sort_by == "today_change":
-            columns.sort(key=lambda c: float(c.today_change), reverse=True)
-        elif sort_by == "period_change":
-            columns.sort(key=lambda c: float(c.period_change), reverse=True)
-        elif sort_by == "money_flow":
-            columns.sort(key=lambda c: float(c.total_flow), reverse=True)
-        elif sort_by == "momentum":
-            columns.sort(key=lambda c: float(c.momentum_score), reverse=True)
-        elif sort_by == "upstream":
-            # Sort by industry chain order (upstream first)
-            columns.sort(key=lambda c: INDUSTRY_CHAIN_ORDER.get(c.name, 99))
+        # Always return in upstream order (industry chain order)
+        # Frontend handles all sorting logic
+        columns.sort(key=lambda c: INDUSTRY_CHAIN_ORDER.get(c.name, 99))
 
         return columns
 
