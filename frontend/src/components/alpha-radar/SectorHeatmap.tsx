@@ -10,6 +10,7 @@
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { keepPreviousData } from '@tanstack/react-query'
+import { format } from 'date-fns'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { ComputingConsole } from '@/components/ui/computing-console'
@@ -54,9 +55,9 @@ export function SectorHeatmap({
     {
       metric,
       mode: timeMode,
-      date: selectedDate?.toISOString().split('T')[0],
-      start_date: dateRange?.from?.toISOString().split('T')[0],
-      end_date: dateRange?.to?.toISOString().split('T')[0],
+      date: selectedDate ? format(selectedDate, 'yyyy-MM-dd') : undefined,
+      start_date: dateRange?.from ? format(dateRange.from, 'yyyy-MM-dd') : undefined,
+      end_date: dateRange?.to ? format(dateRange.to, 'yyyy-MM-dd') : undefined,
     },
     {
       query: {

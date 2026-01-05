@@ -108,6 +108,9 @@ export function TimeController({
   // Scroll offset in pixels (positive = showing earlier dates)
   const [scrollOffset, setScrollOffset] = useState(0)
 
+  // Track if we've done the initial scroll to selectedDate
+  const hasInitialScrolled = useRef(false)
+
   // Track how far back we've loaded calendar data
   const [loadedStartDate, setLoadedStartDate] = useState(() => subDays(today, INITIAL_LOAD_DAYS))
 
@@ -177,6 +180,32 @@ export function TimeController({
     const cellWidth = getCellWidth()
     return (scrollOffset % cellWidth)
   }, [scrollOffset, getCellWidth])
+
+  // Auto-scroll to show selectedDate when it's set externally (e.g., from URL)
+  useEffect(() => {
+    // Only scroll once on initial load with a date from URL
+    if (hasInitialScrolled.current) return
+
+    const targetDate = selectedDate
+    if (!targetDate) return
+
+    // Calculate days from today to target date
+    const daysFromToday = differenceInDays(today, targetDate)
+
+    // If date is in the future or within visible range, no need to scroll
+    if (daysFromToday <= 0 || daysFromToday < DAYS_TO_SHOW - 10) {
+      hasInitialScrolled.current = true
+      return
+    }
+
+    // Calculate scroll offset to center the target date
+    const cellWidth = getCellWidth()
+    if (cellWidth <= 0) return // Container not ready yet
+
+    const targetOffset = Math.max(0, (daysFromToday - Math.floor(DAYS_TO_SHOW / 2)) * cellWidth)
+    setScrollOffset(clampOffset(targetOffset))
+    hasInitialScrolled.current = true
+  }, [selectedDate, today, getCellWidth, clampOffset])
 
   // Initial calendar data load
   const initialCalendarParams = useMemo(() => ({

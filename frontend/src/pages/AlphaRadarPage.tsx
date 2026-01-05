@@ -100,18 +100,18 @@ export default function AlphaRadarPage() {
   // Fetch dashboard data
   const { data: dashboard, isLoading: isLoadingDashboard } = useGetDashboardApiV1AlphaRadarDashboardGet({
     mode: timeMode,
-    date: selectedDate?.toISOString().split('T')[0],
-    start_date: dateRange.from?.toISOString().split('T')[0],
-    end_date: dateRange.to?.toISOString().split('T')[0],
+    date: selectedDate ? formatDateString(selectedDate) : undefined,
+    start_date: dateRange.from ? formatDateString(dateRange.from) : undefined,
+    end_date: dateRange.to ? formatDateString(dateRange.to) : undefined,
   })
 
   // Fetch screener data
   const { data: screener, isLoading: isLoadingScreener } = useGetScreenerApiV1AlphaRadarScreenerGet({
     tab: activeTab,
     mode: timeMode,
-    date: selectedDate?.toISOString().split('T')[0],
-    start_date: dateRange.from?.toISOString().split('T')[0],
-    end_date: dateRange.to?.toISOString().split('T')[0],
+    date: selectedDate ? formatDateString(selectedDate) : undefined,
+    start_date: dateRange.from ? formatDateString(dateRange.from) : undefined,
+    end_date: dateRange.to ? formatDateString(dateRange.to) : undefined,
     page,
     page_size: pageSize,
     sort_by: sortBy as 'score' | 'change' | 'volume' | 'valuation' | 'main_strength' | 'code',
@@ -164,7 +164,7 @@ export default function AlphaRadarPage() {
           <h1 className="text-2xl font-bold">α Radar</h1>
           <p className="text-sm text-muted-foreground font-mono h-5">
             {selectedDate
-              ? selectedDate.toISOString().split('T')[0]
+              ? formatDateString(selectedDate)
               : screener?.date ?? <span className="invisible">0000-00-00</span>}
           </p>
         </div>
