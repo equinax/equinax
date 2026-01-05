@@ -129,7 +129,7 @@ export default function UniverseDetailPage() {
           <CardTitle className="text-sm">行情走势</CardTitle>
         </CardHeader>
         <CardContent className="p-0">
-          <StockChart code={code || ''} height={500} />
+          <StockChart code={code || ''} height={500} endDate={activeDate || undefined} />
         </CardContent>
       </Card>
 

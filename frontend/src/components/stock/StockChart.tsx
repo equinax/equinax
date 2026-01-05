@@ -18,8 +18,10 @@ import {
   CandlestickData,
   LineData,
   HistogramData,
+  Coordinate,
+  ISeriesPrimitive,
+  SeriesType,
 } from 'lightweight-charts'
-import { subMonths, subYears, format } from 'date-fns'
 import { useTheme } from '@/components/theme-provider'
 import { getMarketColorsForTheme } from '@/lib/market-colors'
 import { getChartThemeColors, INDICATOR_COLORS } from '@/lib/chart-theme'
@@ -31,6 +33,8 @@ import { calcMA, calcMACD, calcRSI } from '@/lib/indicators'
 interface StockChartProps {
   code: string
   height?: number
+  /** Optional end date (yyyy-MM-dd format). If provided, chart shows data ending at this date. */
+  endDate?: string
 }
 
 type TimeRange = '1M' | '3M' | '6M' | '1Y' | '3Y' | '5Y' | 'ALL'
@@ -56,30 +60,126 @@ const TIME_RANGES: { key: TimeRange; label: string }[] = [
   { key: 'ALL', label: '全部' },
 ]
 
-// Calculate date range based on selected time range
-function getDateRange(range: TimeRange): { startDate?: string; endDate: string; limit: number } {
-  const end = new Date()
-  const endStr = format(end, 'yyyy-MM-dd')
+// Trading days per time range (approximate)
+const TRADING_DAYS_MAP: Record<TimeRange, number> = {
+  '1M': 22,
+  '3M': 66,
+  '6M': 132,
+  '1Y': 250,
+  '3Y': 750,
+  '5Y': 1000,
+  'ALL': Infinity,
+}
 
-  switch (range) {
-    case '1M':
-      return { startDate: format(subMonths(end, 1), 'yyyy-MM-dd'), endDate: endStr, limit: 30 }
-    case '3M':
-      return { startDate: format(subMonths(end, 3), 'yyyy-MM-dd'), endDate: endStr, limit: 90 }
-    case '6M':
-      return { startDate: format(subMonths(end, 6), 'yyyy-MM-dd'), endDate: endStr, limit: 180 }
-    case '1Y':
-      return { startDate: format(subYears(end, 1), 'yyyy-MM-dd'), endDate: endStr, limit: 250 }
-    case '3Y':
-      return { startDate: format(subYears(end, 3), 'yyyy-MM-dd'), endDate: endStr, limit: 750 }
-    case '5Y':
-      return { startDate: format(subYears(end, 5), 'yyyy-MM-dd'), endDate: endStr, limit: 1000 }
-    case 'ALL':
-      return { endDate: endStr, limit: 1000 }
+// Calculate visible logical range based on time range and reference date
+function getVisibleRange(
+  range: TimeRange,
+  dataLength: number,
+  referenceDate?: string,
+  sortedDates?: string[]
+): { from: number; to: number } {
+  // Default: show all data
+  if (range === 'ALL' || dataLength === 0) {
+    return { from: 0, to: dataLength - 1 }
+  }
+
+  // Find reference point index (either referenceDate or last data point)
+  let refIndex = dataLength - 1
+  if (referenceDate && sortedDates) {
+    const idx = sortedDates.indexOf(referenceDate)
+    if (idx >= 0) refIndex = idx
+  }
+
+  const visibleDays = TRADING_DAYS_MAP[range]
+
+  // If reference date is provided, center the view on it
+  if (referenceDate && sortedDates) {
+    const halfDays = Math.floor(visibleDays / 2)
+    const from = Math.max(0, refIndex - halfDays)
+    const to = Math.min(dataLength - 1, refIndex + halfDays)
+    return { from, to }
+  }
+
+  // Otherwise, show most recent data
+  const from = Math.max(0, dataLength - visibleDays)
+  const to = dataLength - 1
+  return { from, to }
+}
+
+// Vertical line primitive renderer
+class VertLinePaneRenderer {
+  _x: Coordinate | null = null
+  _color: string
+
+  constructor(x: Coordinate | null, color: string) {
+    this._x = x
+    this._color = color
+  }
+
+  draw(target: { useBitmapCoordinateSpace: (fn: (scope: { context: CanvasRenderingContext2D; bitmapSize: { width: number; height: number }; horizontalPixelRatio: number }) => void) => void }) {
+    target.useBitmapCoordinateSpace(scope => {
+      if (this._x === null) return
+      const ctx = scope.context
+      const x = Math.round(this._x * scope.horizontalPixelRatio)
+
+      ctx.save()
+      ctx.strokeStyle = this._color
+      ctx.lineWidth = 1 * scope.horizontalPixelRatio
+      ctx.setLineDash([4 * scope.horizontalPixelRatio, 4 * scope.horizontalPixelRatio])
+      ctx.beginPath()
+      ctx.moveTo(x + 0.5, 0)
+      ctx.lineTo(x + 0.5, scope.bitmapSize.height)
+      ctx.stroke()
+      ctx.restore()
+    })
   }
 }
 
-export function StockChart({ code, height = 500 }: StockChartProps) {
+// Vertical line primitive pane view
+class VertLinePaneView {
+  _source: VertLine
+  _x: Coordinate | null = null
+
+  constructor(source: VertLine) {
+    this._source = source
+  }
+
+  update() {
+    const timeScale = this._source._chart.timeScale()
+    this._x = timeScale.timeToCoordinate(this._source._time)
+  }
+
+  renderer() {
+    return new VertLinePaneRenderer(this._x, this._source._color)
+  }
+}
+
+// Vertical line primitive - draws a dashed vertical line at specified time
+class VertLine implements ISeriesPrimitive<Time> {
+  _chart: IChartApi
+  _series: ISeriesApi<SeriesType>
+  _time: Time
+  _color: string
+  _paneViews: VertLinePaneView[]
+
+  constructor(chart: IChartApi, series: ISeriesApi<SeriesType>, time: Time, color: string = '#1E40AF') {
+    this._chart = chart
+    this._series = series
+    this._time = time
+    this._color = color
+    this._paneViews = [new VertLinePaneView(this)]
+  }
+
+  updateAllViews() {
+    this._paneViews.forEach(pw => pw.update())
+  }
+
+  paneViews() {
+    return this._paneViews
+  }
+}
+
+export function StockChart({ code, height = 500, endDate }: StockChartProps) {
   const containerRef = useRef<HTMLDivElement>(null)
   const chartRef = useRef<HTMLDivElement>(null)
   const chartApiRef = useRef<IChartApi | null>(null)
@@ -101,17 +201,10 @@ export function StockChart({ code, height = 500 }: StockChartProps) {
     rsi: false,
   })
 
-  // Calculate API parameters based on time range
-  const dateParams = useMemo(() => getDateRange(timeRange), [timeRange])
-
-  // Fetch K-line data
+  // Fetch all K-line data once (time range buttons control zoom, not data fetching)
   const { data: klineData, isLoading } = useGetKlineApiV1StocksCodeKlineGet(
     code,
-    {
-      start_date: dateParams.startDate,
-      end_date: dateParams.endDate,
-      limit: dateParams.limit,
-    },
+    { limit: 1000 },
     {
       query: {
         enabled: !!code,
@@ -200,6 +293,10 @@ export function StockChart({ code, height = 500 }: StockChartProps) {
       timeScale: {
         borderColor: chartColors.border,
         timeVisible: false,
+        fixLeftEdge: true,
+        fixRightEdge: true,
+        rightOffset: 5,
+        minBarSpacing: 3,
       },
       rightPriceScale: {
         visible: true,
@@ -233,6 +330,15 @@ export function StockChart({ code, height = 500 }: StockChartProps) {
       close: Number(d.close) || 0,
     }))
     candleSeries.setData(candleData)
+
+    // Add vertical line primitive for reference date
+    if (endDate) {
+      const dateExists = sortedKline.some(d => d.date === endDate)
+      if (dateExists) {
+        const vertLine = new VertLine(chart, candleSeries, endDate as Time, '#1E40AF')
+        candleSeries.attachPrimitive(vertLine)
+      }
+    }
 
     // MA line series storage
     const lineSeries: { [key: string]: ISeriesApi<'Line'> } = {}
@@ -377,7 +483,12 @@ export function StockChart({ code, height = 500 }: StockChartProps) {
       rsiSeries.setData(mapToLineData(calculatedIndicators.rsi))
     }
 
-    chart.timeScale().fitContent()
+    // Set initial visible range based on timeRange and endDate
+    const sortedDates = sortedKline.map(d => d.date)
+    const { from, to } = getVisibleRange(timeRange, sortedKline.length, endDate, sortedDates)
+    if (sortedKline.length > 0) {
+      chart.timeScale().setVisibleLogicalRange({ from, to })
+    }
 
     // Resize handler
     const resizeObserver = new ResizeObserver((entries) => {
@@ -405,7 +516,7 @@ export function StockChart({ code, height = 500 }: StockChartProps) {
         // Chart already disposed
       }
     }
-  }, [isDark, height, klineData, calculatedIndicators, indicators, colors, chartColors, subChartCount])
+  }, [isDark, height, klineData, calculatedIndicators, indicators, colors, chartColors, subChartCount, timeRange, endDate])
 
   return (
     <div className="space-y-2" ref={containerRef}>
