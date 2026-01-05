@@ -85,19 +85,24 @@ function hsbToHex(h: number, s: number, b: number): string {
  * Generate gradient color for a normalized position (0-1)
  * @param metric - The metric type
  * @param t - Position from 0 to 1
- * @param isDiverging - Whether to use diverging scale (white at center)
- * @param hue - Base hue for the color (used for sequential/weighted volume)
+ * @param colorMode - 'diverging' (white at center), 'sequential' (light to dark), 'weighted-volume' (white at low, dark at high)
+ * @param hue - Base hue for the color
  */
-function getGradientColor(metric: MetricKey, t: number, isDiverging: boolean, hue: number): string {
-  if (isDiverging) {
+function getGradientColor(metric: MetricKey, t: number, colorMode: 'diverging' | 'sequential' | 'weighted-volume', hue: number): string {
+  if (colorMode === 'diverging') {
     // Diverging: color1 at 0, white at 0.5, color2 at 1
     const magnitude = Math.abs(t - 0.5) * 2  // 0 at center, 1 at edges
     // For change: green (145) at low end, red (0) at high end
-    // For weighted volume: blue (210) on both ends
     const effectiveHue = metric === 'change' ? (t < 0.5 ? 145 : 0) : hue
     const saturation = magnitude * 85
     const brightness = 100 - magnitude * 15
     return hsbToHex(effectiveHue, saturation, brightness)
+  } else if (colorMode === 'weighted-volume') {
+    // Weighted volume: white at -50% (t=0), dark blue at +50% (t=1)
+    // This is a sequential scale from white to dark blue
+    const saturation = 5 + t * 75  // 5% to 80%
+    const brightness = 100 - t * 30  // 100% to 70%
+    return hsbToHex(hue, saturation, brightness)
   } else {
     // Sequential: light at 0, dark at 1
     const saturation = 5 + t * 75
@@ -144,15 +149,18 @@ export function ColorRangeBar({ metric, isWeighted, onHoverRange }: ColorRangeBa
     onHoverRange(null)
   }, [onHoverRange])
 
-  // Determine if we should use diverging scale
-  // Change always uses diverging, weighted volume also uses diverging
-  const isDiverging = metric === 'change' || (isWeighted && metric === 'volume')
+  // Determine color mode
+  // Change uses diverging (green-white-red), weighted volume uses sequential (white-blue)
+  const colorMode: 'diverging' | 'sequential' | 'weighted-volume' =
+    metric === 'change' ? 'diverging' :
+    (isWeighted && metric === 'volume') ? 'weighted-volume' :
+    'sequential'
   const hue = config.hue(0.5) // Get base hue for this metric
 
   // Generate gradient stops
   const gradientStops = Array.from({ length: 20 }, (_, i) => {
     const t = i / 19
-    return { offset: `${t * 100}%`, color: getGradientColor(metric, t, isDiverging, hue) }
+    return { offset: `${t * 100}%`, color: getGradientColor(metric, t, colorMode, hue) }
   })
 
   // Calculate hover indicator position and label

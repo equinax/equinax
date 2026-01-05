@@ -74,6 +74,29 @@ const getSortLabel = (value: SortOption): string => {
   return opt ? opt.label.slice(0, 2) : '排序'
 }
 
+// HSB to Hex conversion for volume baseline color
+function hsbToHex(h: number, s: number, b: number): string {
+  s /= 100
+  b /= 100
+  const k = (n: number) => (n + h / 60) % 6
+  const f = (n: number) => b * (1 - s * Math.max(0, Math.min(k(n), 4 - k(n), 1)))
+  const toHex = (x: number) => Math.round(x * 255).toString(16).padStart(2, '0')
+  return `#${toHex(f(5))}${toHex(f(3))}${toHex(f(1))}`
+}
+
+// Get color for volume baseline (sequential blue gradient)
+// Uses log scale: 100亿 → light, 500亿 → medium, 2000亿 → dark
+function getVolumeBaselineColor(baseline: number | null | undefined): string {
+  if (baseline == null || baseline <= 0) return 'transparent'
+  // Log scale normalization: 100亿 → 0.2, 500亿 → 0.5, 2000亿 → 0.8
+  const logValue = Math.log10(Math.max(baseline, 50)) / Math.log10(3000)
+  const t = Math.min(Math.max(logValue, 0.15), 0.85)
+  // Blue hue (210), sequential scale - more saturated for better contrast
+  const saturation = 25 + t * 50  // 25% to 75%
+  const brightness = 92 - t * 20  // 92% to 72%
+  return hsbToHex(210, saturation, brightness)
+}
+
 // Calculate weighted volume deviation percentage
 const calculateWeightedVolume = (volume: number | null | undefined, baseline: number | null | undefined): number => {
   if (volume == null || baseline == null || baseline === 0) return 0
@@ -339,6 +362,8 @@ export function RotationMatrix({
 
   // State for date hover tooltip
   const [dateHover, setDateHover] = useState<{ date: string; x: number; y: number } | null>(null)
+  // State for header hover tooltip (baseline volume)
+  const [headerHover, setHeaderHover] = useState<{ industry: string; baseline: number; x: number; y: number } | null>(null)
 
   return (
     <div ref={containerRef} className="relative w-full flex-1 min-h-0 flex flex-col" onMouseMove={handleMouseMove}>
@@ -430,28 +455,58 @@ export function RotationMatrix({
               className="fill-muted"
             />
             <AnimatePresence>
-              {visibleIndustries.map((industry, colIndex) => (
-                <motion.g
-                  key={industry.code}
-                  initial={{ x: colIndex * cellWidth }}
-                  animate={{ x: colIndex * cellWidth }}
-                  transition={{ duration: 0.4, ease: [0.4, 0, 0.2, 1] }}
-                  style={{ cursor: 'pointer' }}
-                  onClick={() => toggleIndustry(industry.code)}
-                >
-                  <text
-                    x={cellWidth / 2}
-                    y={HEADER_HEIGHT / 2}
-                    textAnchor="middle"
-                    dominantBaseline="middle"
-                    fontSize={9}
-                    fill="currentColor"
-                    className="text-muted-foreground hover:text-foreground transition-colors"
+              {visibleIndustries.map((industry, colIndex) => {
+                // Show volume baseline color when weighted volume mode is active
+                const showBaselineColor = metricStates.volume === 'weighted'
+                const baselineValue = industry.volume_baseline ? Number(industry.volume_baseline) : null
+                const baselineColor = showBaselineColor
+                  ? getVolumeBaselineColor(baselineValue)
+                  : 'transparent'
+
+                return (
+                  <motion.g
+                    key={industry.code}
+                    initial={{ x: colIndex * cellWidth }}
+                    animate={{ x: colIndex * cellWidth }}
+                    transition={{ duration: 0.4, ease: [0.4, 0, 0.2, 1] }}
+                    style={{ cursor: 'pointer' }}
+                    onClick={() => toggleIndustry(industry.code)}
+                    onMouseEnter={(e) => {
+                      if (showBaselineColor && baselineValue) {
+                        setHeaderHover({
+                          industry: industry.name,
+                          baseline: baselineValue,
+                          x: e.clientX,
+                          y: e.clientY,
+                        })
+                      }
+                    }}
+                    onMouseLeave={() => setHeaderHover(null)}
                   >
-                    {industry.name.length > 4 ? industry.name.slice(0, 4) : industry.name}
-                  </text>
-                </motion.g>
-              ))}
+                    {/* Background rect for baseline color */}
+                    {showBaselineColor && (
+                      <rect
+                        x={0}
+                        y={0}
+                        width={cellWidth}
+                        height={HEADER_HEIGHT}
+                        fill={baselineColor}
+                      />
+                    )}
+                    <text
+                      x={cellWidth / 2}
+                      y={HEADER_HEIGHT / 2}
+                      textAnchor="middle"
+                      dominantBaseline="middle"
+                      fontSize={9}
+                      fill={showBaselineColor ? '#1e3a5f' : 'currentColor'}
+                      className={showBaselineColor ? 'font-medium' : 'text-muted-foreground hover:text-foreground transition-colors'}
+                    >
+                      {industry.name.length > 4 ? industry.name.slice(0, 4) : industry.name}
+                    </text>
+                  </motion.g>
+                )
+              })}
             </AnimatePresence>
           </g>
 
@@ -639,6 +694,23 @@ export function RotationMatrix({
           <span className={`font-mono font-medium ${Number(data.market_changes[dateHover.date]) > 0 ? 'text-[#c93b3b]' : Number(data.market_changes[dateHover.date]) < 0 ? 'text-[#22c55e]' : ''}`}>
             {Number(data.market_changes[dateHover.date]) > 0 ? '+' : ''}
             {Number(data.market_changes[dateHover.date]).toFixed(2)}%
+          </span>
+        </div>
+      )}
+
+      {/* Header hover tooltip for baseline volume */}
+      {headerHover && (
+        <div
+          className="fixed z-50 px-2 py-1 text-xs bg-popover border rounded shadow-lg pointer-events-none"
+          style={{
+            left: headerHover.x + 10,
+            top: headerHover.y + 10,
+          }}
+        >
+          <span className="font-medium">{headerHover.industry}</span>
+          <span className="text-muted-foreground ml-2">基准成交: </span>
+          <span className="font-mono font-medium text-[#2989c9]">
+            {headerHover.baseline.toFixed(0)}亿
           </span>
         </div>
       )}
