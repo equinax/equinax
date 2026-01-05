@@ -33,11 +33,35 @@ export type MetricKey = 'change' | 'volume' | 'flow' | 'momentum'
 export type MetricState = 'off' | 'raw' | 'weighted'
 
 // Only change and volume support weighted mode
-const METRIC_OPTIONS: { key: MetricKey; label: string; activeColor: string; supportsWeighted: boolean }[] = [
-  { key: 'change', label: '涨跌幅', activeColor: 'bg-[#c93b3b]', supportsWeighted: true },
-  { key: 'volume', label: '成交量', activeColor: 'bg-[#2989c9]', supportsWeighted: true },
-  { key: 'flow', label: '资金流入', activeColor: 'bg-[#c47a30]', supportsWeighted: false },
-  { key: 'momentum', label: '动量', activeColor: 'bg-[#7a2eb0]', supportsWeighted: false },
+const METRIC_OPTIONS: { key: MetricKey; label: string; activeColor: string; supportsWeighted: boolean; tooltip: string }[] = [
+  {
+    key: 'change',
+    label: '涨跌幅',
+    activeColor: 'bg-[#c93b3b]',
+    supportsWeighted: true,
+    tooltip: '行业平均涨跌幅\n加权模式: 超额收益 = 涨跌幅 - 上证指数涨跌'
+  },
+  {
+    key: 'volume',
+    label: '成交量',
+    activeColor: 'bg-[#2989c9]',
+    supportsWeighted: true,
+    tooltip: '行业当日总成交额\n加权模式: 相对120日均值的偏离百分比'
+  },
+  {
+    key: 'flow',
+    label: '资金流入',
+    activeColor: 'bg-[#c47a30]',
+    supportsWeighted: false,
+    tooltip: '主力资金强度指标 (0-100)\n= 量比贡献(0-60) + 换手变化(0-30) + 价格位置(0-10)\n量比 = 当日成交量 / 5日均量\n换手变化 = 5日均换手率 / 20日均换手率'
+  },
+  {
+    key: 'momentum',
+    label: '动量',
+    activeColor: 'bg-[#7a2eb0]',
+    supportsWeighted: false,
+    tooltip: '动量强度指标 (0-100)\n同资金流入计算方式\n高值表示成交活跃、换手率上升、价格处于高位'
+  },
 ]
 
 // Get button label with weighted indicator
@@ -260,6 +284,7 @@ export default function IndustryRotationPage() {
                     <button
                       key={opt.key}
                       onClick={() => toggleMetric(opt.key)}
+                      title={opt.tooltip}
                       className={`px-2.5 py-1 text-xs font-medium transition-colors ${
                         state === 'weighted'
                           ? `${opt.activeColor} text-white ring-2 ring-white/30 ring-inset`

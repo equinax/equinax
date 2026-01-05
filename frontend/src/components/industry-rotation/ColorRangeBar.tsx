@@ -40,13 +40,13 @@ const METRIC_CONFIG: Record<MetricKey, MetricConfig> = {
     label: (v) => `${v.toFixed(0)}亿`,
   },
   flow: {
-    min: 10,
+    min: 25,
     max: 55,
     hue: () => 35,  // Amber
     label: (v) => v.toFixed(0),
   },
   momentum: {
-    min: 10,
+    min: 25,
     max: 55,
     hue: () => 280,  // Purple
     label: (v) => v.toFixed(0),

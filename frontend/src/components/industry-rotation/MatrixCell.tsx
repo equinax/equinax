@@ -124,23 +124,25 @@ function getVolumeColor(value: number | null): string {
 /**
  * Get color for flow (continuous amber/yellow gradient)
  * Higher flow = deeper amber
+ * Actual range is typically 30-55, so we use 25-55 for better contrast
  */
 function getFlowColor(value: number | null): string {
   if (value === null) return '#f5f5f5'
-  // Normalize: typical range is 15-50, map to 0-1
-  const normalized = (value - 10) / 45 // 10→0, 55→1
-  return getSequentialColor(normalized, 35) // Amber hue
+  // Normalize: actual range is 25-55, map to 0-1 for better contrast
+  const normalized = (value - 25) / 30 // 25→0, 55→1
+  return getSequentialColor(Math.max(0, normalized), 35) // Amber hue
 }
 
 /**
  * Get color for momentum (continuous purple gradient)
  * Higher momentum = deeper purple
+ * Actual range is typically 30-55, so we use 25-55 for better contrast
  */
 function getMomentumColor(value: number | null): string {
   if (value === null) return '#f5f5f5'
-  // Normalize: typical range is 15-50, map to 0-1
-  const normalized = (value - 10) / 45 // 10→0, 55→1
-  return getSequentialColor(normalized, 280) // Purple hue
+  // Normalize: actual range is 25-55, map to 0-1 for better contrast
+  const normalized = (value - 25) / 30 // 25→0, 55→1
+  return getSequentialColor(Math.max(0, normalized), 280) // Purple hue
 }
 
 /**
