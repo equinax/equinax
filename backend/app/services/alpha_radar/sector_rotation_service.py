@@ -328,7 +328,15 @@ class SectorRotationService:
             ).alias("is_limit_up"),
 
             # Is one-line board (can't buy in - amplitude < 0.5%)
-            ((pl.col("high") - pl.col("low")) / pl.col("preclose") * 100 < 0.5)
+            # Use preclose if available, fallback to close for amplitude calculation
+            pl.when(pl.col("preclose").is_not_null() & (pl.col("preclose") > 0))
+            .then((pl.col("high") - pl.col("low")) / pl.col("preclose") * 100 < 0.5)
+            .otherwise(
+                # Fallback: use close if preclose is missing
+                pl.when(pl.col("close").is_not_null() & (pl.col("close") > 0))
+                .then((pl.col("high") - pl.col("low")) / pl.col("close") * 100 < 0.5)
+                .otherwise(False)  # If no price data, assume not one-line
+            )
             .alias("is_one_line"),
         ])
 
