@@ -74,7 +74,7 @@ export function MatrixTooltip({ data }: MatrixTooltipProps) {
 
   return createPortal(
     <div
-      className="fixed z-50 bg-white/70 backdrop-blur-sm text-gray-900 rounded p-3 shadow-xl text-sm pointer-events-none border border-gray-200"
+      className="fixed z-50 bg-white/60 backdrop-blur-[2px] text-gray-900 rounded p-3 shadow-lg text-sm pointer-events-none border border-gray-300"
       style={tooltipStyle}
     >
       {/* Header */}
