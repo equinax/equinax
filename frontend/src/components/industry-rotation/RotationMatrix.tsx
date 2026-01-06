@@ -134,6 +134,8 @@ export function RotationMatrix({
   // Frontend date-based sorting
   const [sortByDate, setSortByDate] = useState<string | null>(null)
   const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('desc')
+  // 连板路径高亮：追踪当前悬浮的股票代码
+  const [hoveredStockCode, setHoveredStockCode] = useState<string | null>(null)
 
   // Toggle industry visibility (supports multiple codes for grouped expansion)
   const toggleIndustry = useCallback((codes: string | string[]) => {
@@ -284,6 +286,51 @@ export function RotationMatrix({
     return { visibleIndustries: visible, hiddenGroups: groups }
   }, [allIndustries, hiddenIndustries])
 
+  // 连板路径：构建股票代码到单元格的映射
+  // 记录每只股票在哪些 (行业, 日期) 单元格中出现（作为龙头或涨停股）
+  const stockToCellsMap = useMemo(() => {
+    const map = new Map<string, Array<{ industryCode: string; date: string; isDragon: boolean }>>()
+
+    data.industries.forEach((industry) => {
+      industry.cells.forEach((cell) => {
+        // 龙头股
+        if (cell.dragon_stock?.code) {
+          const code = cell.dragon_stock.code
+          const existing = map.get(code) || []
+          existing.push({ industryCode: industry.code, date: cell.date, isDragon: true })
+          map.set(code, existing)
+        }
+
+        // 涨停股列表（包含非龙头但涨停的股票）
+        if (cell.limit_up_stocks) {
+          cell.limit_up_stocks.forEach((stock) => {
+            if (stock.code) {
+              const existing = map.get(stock.code) || []
+              // 避免重复添加（如果已经是龙头）
+              const alreadyExists = existing.some(
+                (e) => e.industryCode === industry.code && e.date === cell.date
+              )
+              if (!alreadyExists) {
+                existing.push({ industryCode: industry.code, date: cell.date, isDragon: false })
+                map.set(stock.code, existing)
+              }
+            }
+          })
+        }
+      })
+    })
+
+    return map
+  }, [data.industries])
+
+  // 获取需要高亮的单元格集合（基于当前悬浮的股票）
+  const highlightedCells = useMemo(() => {
+    if (!hoveredStockCode) return new Set<string>()
+
+    const cells = stockToCellsMap.get(hoveredStockCode) || []
+    return new Set(cells.map((c) => `${c.industryCode}-${c.date}`))
+  }, [hoveredStockCode, stockToCellsMap])
+
   // Calculate dimensions - responsive cell width based on VISIBLE industries
   const numIndustries = visibleIndustries.length
   const hasHiddenIndustries = hiddenGroups.length > 0
@@ -302,7 +349,7 @@ export function RotationMatrix({
 
   // Handle cell hover
   const handleCellHover = useCallback(
-    (industry: string, date: string, event: React.MouseEvent) => {
+    (industry: string, date: string, event: React.MouseEvent, _industryCode: string) => {
       const industryData = data.industries.find((i) => i.name === industry)
       const cell = industryData?.cells.find((c) => c.date === date)
 
@@ -324,13 +371,19 @@ export function RotationMatrix({
           // 龙头战法筛选
           dragon_stock: cell.dragon_stock,
         })
+
+        // 连板路径高亮：当龙头模式激活且有龙头股时，设置悬浮股票代码
+        if (visibleMetrics.includes('dragon') && cell.dragon_stock?.code) {
+          setHoveredStockCode(cell.dragon_stock.code)
+        }
       }
     },
-    [data.industries]
+    [data.industries, visibleMetrics]
   )
 
   const handleCellLeave = useCallback(() => {
     setTooltip(null)
+    setHoveredStockCode(null)
   }, [])
 
   // Track mouse position for tooltip
@@ -673,7 +726,10 @@ export function RotationMatrix({
                           marketChange={marketChange !== undefined ? Number(marketChange) : undefined}
                           volumeBaseline={industry.volume_baseline !== undefined ? Number(industry.volume_baseline) : null}
                           highlightRange={highlightRange}
-                          onHover={(e) => handleCellHover(industry.name, dateStr, e)}
+                          // 连板路径高亮
+                          isPathHighlighted={highlightedCells.has(`${industry.code}-${dateStr}`)}
+                          hasPathHighlight={hoveredStockCode !== null}
+                          onHover={(e) => handleCellHover(industry.name, dateStr, e, industry.code)}
                           onLeave={handleCellLeave}
                         />
                       )

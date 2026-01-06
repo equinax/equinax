@@ -48,6 +48,9 @@ interface MatrixCellProps {
   marketChange?: number // For weighted change (超额收益)
   volumeBaseline?: number | null // Industry's 120-day avg volume (亿)
   highlightRange?: HighlightRange | null
+  // 连板路径高亮
+  isPathHighlighted?: boolean // 此单元格是否在连板路径中
+  hasPathHighlight?: boolean  // 是否有任何路径高亮激活
   onHover: (event: React.MouseEvent) => void
   onLeave: () => void
 }
@@ -366,6 +369,8 @@ export const MatrixCell = memo(function MatrixCell({
   marketChange,
   volumeBaseline,
   highlightRange,
+  isPathHighlighted = false,
+  hasPathHighlight = false,
   onHover,
   onLeave,
 }: MatrixCellProps) {
@@ -433,11 +438,18 @@ export const MatrixCell = memo(function MatrixCell({
     return value >= highlightRange.min && value <= highlightRange.max
   })()
 
-  // Opacity: 1 if highlighted or no filter, 0.15 if dimmed
-  const cellOpacity = isHighlighted ? 1 : 0.15
+  // 连板路径高亮优先级：路径高亮 > 范围高亮
+  // 当有路径高亮激活时，非路径单元格变暗
+  const pathDimmed = hasPathHighlight && !isPathHighlighted
+
+  // Opacity: 考虑范围高亮和路径高亮两种情况
+  const cellOpacity = pathDimmed ? 0.2 : (isHighlighted ? 1 : 0.15)
 
   // Show border when cell is highlighted with an active filter (helps visibility for near-white cells)
   const showHighlightBorder = highlightRange && isHighlighted
+
+  // 连板路径高亮边框（金色发光效果）
+  const showPathBorder = isPathHighlighted
 
   // Get border color based on metric theme
   const getBorderColor = (): string => {
@@ -566,6 +578,35 @@ export const MatrixCell = memo(function MatrixCell({
           strokeWidth={1.5}
           style={{ pointerEvents: 'none' }}
         />
+      )}
+
+      {/* 连板路径高亮边框 - 金色发光效果 */}
+      {showPathBorder && (
+        <>
+          {/* 外发光效果 */}
+          <rect
+            x={-1}
+            y={y - 1}
+            width={width + 2}
+            height={height + 2}
+            fill="none"
+            stroke="#fbbf24"
+            strokeWidth={3}
+            opacity={0.5}
+            style={{ pointerEvents: 'none' }}
+          />
+          {/* 内边框 */}
+          <rect
+            x={0}
+            y={y}
+            width={width}
+            height={height}
+            fill="none"
+            stroke="#f59e0b"
+            strokeWidth={2}
+            style={{ pointerEvents: 'none' }}
+          />
+        </>
       )}
     </motion.g>
   )
