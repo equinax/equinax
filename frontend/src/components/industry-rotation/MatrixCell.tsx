@@ -439,11 +439,12 @@ export const MatrixCell = memo(function MatrixCell({
   })()
 
   // 连板路径高亮优先级：路径高亮 > 范围高亮
-  // 当有路径高亮激活时，非路径单元格变暗
+  // 当有路径高亮激活时，非路径单元格变暗（但不要太暗）
   const pathDimmed = hasPathHighlight && !isPathHighlighted
 
   // Opacity: 考虑范围高亮和路径高亮两种情况
-  const cellOpacity = pathDimmed ? 0.2 : (isHighlighted ? 1 : 0.15)
+  // 路径变暗用 0.5，保持可读性
+  const cellOpacity = pathDimmed ? 0.5 : (isHighlighted ? 1 : 0.15)
 
   // Show border when cell is highlighted with an active filter (helps visibility for near-white cells)
   const showHighlightBorder = highlightRange && isHighlighted

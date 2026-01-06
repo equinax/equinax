@@ -74,20 +74,20 @@ export function MatrixTooltip({ data }: MatrixTooltipProps) {
 
   return createPortal(
     <div
-      className="fixed z-50 bg-gray-900/95 text-white rounded-lg p-3 shadow-xl text-sm pointer-events-none"
+      className="fixed z-50 bg-white/70 backdrop-blur-sm text-gray-900 rounded p-3 shadow-xl text-sm pointer-events-none border border-gray-200"
       style={tooltipStyle}
     >
       {/* Header */}
       <div className="flex justify-between items-center gap-4 mb-2">
-        <span className="text-gray-400">{date}</span>
+        <span className="text-gray-500">{date}</span>
         <span className="font-bold">{industry}</span>
       </div>
 
       {/* Metrics */}
-      <div className="border-t border-gray-700 pt-2 space-y-1">
+      <div className="border-t border-gray-200 pt-2 space-y-1">
         {/* Change */}
         <div className="flex justify-between">
-          <span className="text-gray-400">涨跌幅</span>
+          <span className="text-gray-500">涨跌幅</span>
           <span
             className={
               change_pct > 0
@@ -104,7 +104,7 @@ export function MatrixTooltip({ data }: MatrixTooltipProps) {
         {/* Money Flow */}
         {money_flow !== null && (
           <div className="flex justify-between">
-            <span className="text-gray-400">成交额</span>
+            <span className="text-gray-500">成交额</span>
             <span className="font-mono">{formatAmount(money_flow)}</span>
           </div>
         )}
@@ -112,15 +112,15 @@ export function MatrixTooltip({ data }: MatrixTooltipProps) {
         {/* Volume Baseline (for weighted volume) */}
         {volume_baseline !== null && volume_baseline !== undefined && (
           <div className="flex justify-between">
-            <span className="text-gray-400">基准成交</span>
-            <span className="font-mono text-gray-300">{formatAmount(volume_baseline * 1e8)}</span>
+            <span className="text-gray-500">基准成交</span>
+            <span className="font-mono text-gray-600">{formatAmount(volume_baseline * 1e8)}</span>
           </div>
         )}
 
         {/* Main Strength */}
         {main_strength !== null && (
           <div className="flex justify-between">
-            <span className="text-gray-400">主力强度</span>
+            <span className="text-gray-500">主力强度</span>
             <span className="font-mono">{main_strength.toFixed(1)}</span>
           </div>
         )}
@@ -128,7 +128,7 @@ export function MatrixTooltip({ data }: MatrixTooltipProps) {
         {/* Top Stock */}
         {top_stock && (
           <div className="flex justify-between">
-            <span className="text-gray-400">涨幅最大</span>
+            <span className="text-gray-500">涨幅最大</span>
             <span>
               {top_stock.name}{' '}
               <span
@@ -160,16 +160,16 @@ export function MatrixTooltip({ data }: MatrixTooltipProps) {
 
       {/* Limit-up stocks section */}
       {limit_up_count !== undefined && limit_up_count > 0 && (
-        <div className="border-t border-gray-700 pt-2 mt-2">
+        <div className="border-t border-gray-200 pt-2 mt-2">
           <div className="flex justify-between mb-1">
-            <span className="text-gray-400">涨停家数</span>
+            <span className="text-gray-500">涨停家数</span>
             <span className="font-mono text-orange-400 font-bold">{limit_up_count}</span>
           </div>
           {/* Limit-up stocks list (show all) */}
           {limit_up_stocks && limit_up_stocks.length > 0 && (
             <div className="text-xs space-y-0.5 mt-1 max-h-48 overflow-y-auto">
               {limit_up_stocks.map((stock) => (
-                <div key={stock.code} className="flex justify-between text-gray-300">
+                <div key={stock.code} className="flex justify-between text-gray-600">
                   <span>{stock.name}</span>
                   <span className="text-red-400 font-mono">{formatPercent(Number(stock.change_pct))}</span>
                 </div>
@@ -181,7 +181,7 @@ export function MatrixTooltip({ data }: MatrixTooltipProps) {
 
       {/* Signals */}
       {signals.length > 0 && (
-        <div className="border-t border-gray-700 pt-2 mt-2 text-xs text-yellow-400">
+        <div className="border-t border-gray-200 pt-2 mt-2 text-xs text-yellow-400">
           {signals.map((s, i) => (
             <span key={i} className="mr-2">
               {s.label}
