@@ -609,6 +609,9 @@ async def api_triggered_sync(ctx: Dict[str, Any], sync_record_id: str) -> Dict[s
                     "duration_seconds": round(step_duration, 1),
                     "detail": stock_result.get("message", ""),
                     "message": f"同步股票数据: {stock_count} 条 ({step_duration:.1f}s)",
+                    "failed_assets": stock_result.get("failed_assets", []),
+                    "success_count": stock_result.get("stocks_synced", 0),
+                    "fail_count": len(stock_result.get("failed_assets", [])),
                 }, session, sync_record)
             else:
                 sync_record.details["steps"]["sync_stocks"] = {"status": "skip", "message": "数据已是最新"}
@@ -667,12 +670,23 @@ async def api_triggered_sync(ctx: Dict[str, Any], sync_record_id: str) -> Dict[s
                     "duration_seconds": round(step_duration, 1),
                     "detail": detail_msg,
                     "message": f"同步ETF数据: {etf_count} 条, 估值: {valuation_count} 条 ({step_duration:.1f}s)",
+                    "failed_assets": etf_result.get("failed_assets", []),
+                    "success_count": etf_result.get("etfs_synced", 0),
+                    "fail_count": len(etf_result.get("failed_assets", [])),
                 }, session, sync_record)
             except Exception as e:
                 step_duration = (datetime.now() - step_start).total_seconds()
                 error_msg = f"ETF同步失败: {str(e)}"
                 step_errors.append(error_msg)
                 logger.warning(f"ETF sync failed (continuing with other steps): {e}")
+
+                # Rollback failed transaction before continuing
+                await session.rollback()
+
+                # Re-fetch sync_record after rollback
+                sync_record = await session.get(SyncHistory, sync_record_id)
+                if sync_record.details is None:
+                    sync_record.details = {"steps": {}, "event_log": []}
                 sync_record.details["steps"]["sync_etfs"] = {"status": "error", "message": error_msg}
 
                 await _publish_and_persist("step_complete", sync_record_id, {
@@ -721,12 +735,23 @@ async def api_triggered_sync(ctx: Dict[str, Any], sync_record_id: str) -> Dict[s
                         "duration_seconds": round(step_duration, 1),
                         "detail": index_result.get("message", ""),
                         "message": f"同步指数数据: {index_count} 条 ({step_duration:.1f}s)",
+                        "failed_assets": index_result.get("failed_assets", []),
+                        "success_count": index_result.get("indices_synced", 0),
+                        "fail_count": len(index_result.get("failed_assets", [])),
                     }, session, sync_record)
                 except Exception as e:
                     step_duration = (datetime.now() - step_start).total_seconds()
                     error_msg = f"指数同步失败: {str(e)}"
                     step_errors.append(error_msg)
                     logger.warning(f"Index sync failed (continuing with other steps): {e}")
+
+                    # Rollback failed transaction before continuing
+                    await session.rollback()
+
+                    # Re-fetch sync_record after rollback
+                    sync_record = await session.get(SyncHistory, sync_record_id)
+                    if sync_record.details is None:
+                        sync_record.details = {"steps": {}, "event_log": []}
                     sync_record.details["steps"]["sync_indices"] = {"status": "error", "message": error_msg}
 
                     await _publish_and_persist("step_complete", sync_record_id, {
@@ -795,6 +820,14 @@ async def api_triggered_sync(ctx: Dict[str, Any], sync_record_id: str) -> Dict[s
                 error_msg = f"复权因子同步失败: {str(e)}"
                 step_errors.append(error_msg)
                 logger.warning(f"Adjust factor sync failed (continuing): {e}")
+
+                # Rollback failed transaction before continuing
+                await session.rollback()
+
+                # Re-fetch sync_record after rollback
+                sync_record = await session.get(SyncHistory, sync_record_id)
+                if sync_record.details is None:
+                    sync_record.details = {"steps": {}, "event_log": []}
                 sync_record.details["steps"]["adjust_factors"] = {"status": "error", "message": error_msg}
 
                 await _publish_and_persist("step_complete", sync_record_id, {
@@ -898,19 +931,41 @@ async def api_triggered_sync(ctx: Dict[str, Any], sync_record_id: str) -> Dict[s
         except Exception as e:
             logger.exception(f"API-triggered sync failed: {sync_record_id}")
 
-            # Publish error event
-            await _publish_and_persist("error", sync_record_id, {
-                "status": "failed",
-                "message": str(e),
-            }, session, sync_record)
+            # Rollback any failed transaction before error handling
+            try:
+                await session.rollback()
+            except Exception:
+                pass  # Ignore rollback errors
 
-            # Update sync record with failure
-            sync_record.status = "failed"
-            sync_record.completed_at = datetime.now()
-            sync_record.duration_seconds = (datetime.now() - start_time).total_seconds()
-            sync_record.error_message = str(e)
-            flag_modified(sync_record, "details")
-            await session.commit()
+            # Re-fetch sync_record after rollback
+            try:
+                sync_record = await session.get(SyncHistory, sync_record_id)
+                if sync_record is None:
+                    # Record doesn't exist, can't update
+                    return {
+                        "status": "error",
+                        "sync_record_id": sync_record_id,
+                        "message": str(e),
+                    }
+
+                if sync_record.details is None:
+                    sync_record.details = {"steps": {}, "event_log": []}
+
+                # Publish error event
+                await _publish_and_persist("error", sync_record_id, {
+                    "status": "failed",
+                    "message": str(e),
+                }, session, sync_record)
+
+                # Update sync record with failure
+                sync_record.status = "failed"
+                sync_record.completed_at = datetime.now()
+                sync_record.duration_seconds = (datetime.now() - start_time).total_seconds()
+                sync_record.error_message = str(e)
+                flag_modified(sync_record, "details")
+                await session.commit()
+            except Exception as persist_error:
+                logger.error(f"Failed to persist error state: {persist_error}")
 
             return {
                 "status": "error",

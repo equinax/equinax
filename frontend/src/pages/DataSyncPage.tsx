@@ -24,7 +24,7 @@ import {
   useGetSyncJobDetailApiV1DataSyncJobJobIdDetailGet,
   useCancelSyncJobApiV1DataSyncCancelJobIdPost,
 } from '@/api/generated/data-sync/data-sync'
-import { useSyncSSE, type SyncStep, type EventLogEntry } from '@/hooks/useSyncSSE'
+import { useSyncSSE, type SyncStep, type EventLogEntry, type FailedAsset } from '@/hooks/useSyncSSE'
 import type { DataTableStatus, HealthDeduction } from '@/api/generated/schemas'
 import {
   Tooltip,
@@ -285,6 +285,11 @@ export default function DataSyncPage() {
                 </p>
                 <p className="text-xs text-muted-foreground mt-0.5">
                   最新数据: {analysis.latest_data_date || '无'} | 最近交易日: {analysis.latest_trading_day || analysis.today}
+                  {analysis.trading_day_source && analysis.trading_day_source !== 'baostock' && (
+                    <span className="ml-2 text-amber-500">
+                      (来源: {analysis.trading_day_source})
+                    </span>
+                  )}
                 </p>
               </div>
               {analysis.needs_sync && (
@@ -352,37 +357,68 @@ export default function DataSyncPage() {
               {syncSteps.length > 0 && (
                 <div className="space-y-2">
                   {syncSteps.map((step: SyncStep) => (
-                    <div key={step.id} className="flex items-center gap-3 text-sm">
-                      {step.status === 'running' && (
-                        <Loader2 className="h-4 w-4 animate-spin text-blue-500 flex-shrink-0" />
-                      )}
-                      {step.status === 'complete' && (
-                        <CheckCircle className="h-4 w-4 text-green-500 flex-shrink-0" />
-                      )}
-                      {step.status === 'pending' && (
-                        <Clock className="h-4 w-4 text-muted-foreground flex-shrink-0" />
-                      )}
-                      {step.status === 'error' && (
-                        <XCircle className="h-4 w-4 text-red-500 flex-shrink-0" />
-                      )}
-                      <span className={step.status === 'running' ? 'font-medium text-blue-500' : step.status === 'complete' ? 'text-muted-foreground' : ''}>
-                        {step.name}
-                      </span>
-                      {/* Show real-time progress for running steps */}
-                      {step.status === 'running' && step.runningMessage && (
-                        <span className="text-xs text-blue-400 ml-auto animate-pulse">
-                          {step.runningMessage}
+                    <div key={step.id} className="space-y-1">
+                      <div className="flex items-center gap-3 text-sm">
+                        {step.status === 'running' && (
+                          <Loader2 className="h-4 w-4 animate-spin text-blue-500 flex-shrink-0" />
+                        )}
+                        {step.status === 'complete' && (
+                          <CheckCircle className="h-4 w-4 text-green-500 flex-shrink-0" />
+                        )}
+                        {step.status === 'partial' && (
+                          <AlertCircle className="h-4 w-4 text-amber-500 flex-shrink-0" />
+                        )}
+                        {step.status === 'pending' && (
+                          <Clock className="h-4 w-4 text-muted-foreground flex-shrink-0" />
+                        )}
+                        {step.status === 'error' && (
+                          <XCircle className="h-4 w-4 text-red-500 flex-shrink-0" />
+                        )}
+                        <span className={
+                          step.status === 'running' ? 'font-medium text-blue-500' :
+                          step.status === 'partial' ? 'text-amber-500' :
+                          step.status === 'complete' ? 'text-muted-foreground' : ''
+                        }>
+                          {step.name}
                         </span>
-                      )}
-                      {/* Show detailed info for completed steps */}
-                      {step.status === 'complete' && (step.records_count !== undefined || step.duration_seconds !== undefined) && (
-                        <span className="text-xs text-muted-foreground ml-auto">
-                          {step.records_count !== undefined && `${step.records_count} 条`}
-                          {step.duration_seconds !== undefined && ` (${step.duration_seconds}s)`}
-                          {step.detail && (
-                            <span className="text-green-500/70 ml-1">- {step.detail}</span>
-                          )}
-                        </span>
+                        {/* Show real-time progress for running steps */}
+                        {step.status === 'running' && step.runningMessage && (
+                          <span className="text-xs text-blue-400 ml-auto animate-pulse">
+                            {step.runningMessage}
+                          </span>
+                        )}
+                        {/* Show detailed info for completed/partial steps */}
+                        {(step.status === 'complete' || step.status === 'partial') && (step.records_count !== undefined || step.duration_seconds !== undefined) && (
+                          <span className="text-xs text-muted-foreground ml-auto">
+                            {step.records_count !== undefined && `${step.records_count} 条`}
+                            {step.fail_count !== undefined && step.fail_count > 0 && (
+                              <span className="text-amber-500 ml-1">({step.fail_count} 失败)</span>
+                            )}
+                            {step.duration_seconds !== undefined && ` (${step.duration_seconds}s)`}
+                            {step.detail && (
+                              <span className="text-green-500/70 ml-1">- {step.detail}</span>
+                            )}
+                          </span>
+                        )}
+                      </div>
+                      {/* Failed assets list */}
+                      {step.failed_assets && step.failed_assets.length > 0 && (
+                        <div className="ml-7 p-2 bg-amber-500/10 rounded border border-amber-500/30 text-xs">
+                          <div className="flex items-center gap-1 text-amber-500 font-medium mb-1">
+                            <AlertCircle className="h-3 w-3" />
+                            {step.failed_assets.length} 个资产同步失败（下次同步时重试）
+                          </div>
+                          <div className="space-y-0.5 max-h-24 overflow-y-auto">
+                            {step.failed_assets.map((asset: FailedAsset) => (
+                              <div key={asset.code} className="flex justify-between text-muted-foreground">
+                                <span>{asset.code} {asset.name}</span>
+                                <span className="text-red-400 truncate ml-2 max-w-[150px]" title={asset.error}>
+                                  {asset.error}
+                                </span>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
                       )}
                     </div>
                   ))}

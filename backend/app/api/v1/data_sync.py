@@ -95,6 +95,7 @@ class SyncAnalysis(BaseModel):
     """Pre-sync data analysis."""
     latest_data_date: Optional[str] = None
     latest_trading_day: Optional[str] = None
+    trading_day_source: str = "baostock"  # baostock, akshare, rule-based
     today: str
     days_to_update: int
     needs_sync: bool
@@ -259,9 +260,25 @@ async def trigger_sync(
     Manually trigger a data sync.
 
     This enqueues a sync job to the ARQ worker queue.
+    Only one sync job can run at a time - rejects if another is already running.
     """
     from uuid import uuid4
     from app.core.arq import get_arq_pool
+
+    # Check if there's already a running or queued sync job
+    existing_job = await db.execute(
+        select(SyncHistory)
+        .where(SyncHistory.status.in_(["running", "queued"]))
+        .order_by(desc(SyncHistory.started_at))
+        .limit(1)
+    )
+    existing = existing_job.scalar_one_or_none()
+
+    if existing:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=f"同步任务已在进行中 (ID: {existing.id[:8]}..., 状态: {existing.status}). 请等待当前任务完成后再试。",
+        )
 
     job_id = str(uuid4())
 
@@ -552,53 +569,72 @@ async def analyze_sync_requirements(
     Analyze what data needs to be synced.
 
     Returns details about current data state and what would be updated.
+    Checks all data types: stocks, ETF, and indices.
     Compares with latest trading day (not today) to account for weekends/holidays.
-    Shows message like "当前最新数据日期是 2025-12-23，需要更新 1 天".
     """
     from datetime import date
-    from workers.batch_sync import get_latest_trading_day, get_trading_days_between
+    from workers.batch_sync import (
+        get_latest_trading_day_with_source,
+        get_trading_days_between,
+        get_pg_max_date,
+        get_pg_index_max_date,
+    )
 
     today = date.today()
     today_str = today.strftime("%Y-%m-%d")
 
-    # Get latest trading day (accounting for weekends/holidays)
-    latest_trading_day = get_latest_trading_day()
+    # Get latest trading day (accounting for weekends/holidays) with source info
+    latest_trading_day, trading_day_source = get_latest_trading_day_with_source()
     latest_trading_day_str = latest_trading_day.strftime("%Y-%m-%d")
 
-    # Get latest data date from market_daily
-    result = await db.execute(
-        select(func.max(MarketDaily.date))
-    )
-    latest_date = result.scalar()
+    # Get latest data date for each data type
+    stock_date = await get_pg_max_date(db, 'stock')
+    etf_date = await get_pg_max_date(db, 'etf')
+    index_date = await get_pg_index_max_date(db)
+
+    # Determine which data types need sync
+    stock_needs_sync = stock_date is None or stock_date < latest_trading_day
+    etf_needs_sync = etf_date is None or etf_date < latest_trading_day
+    index_needs_sync = index_date is None or index_date < latest_trading_day
+
+    # Use the minimum date across all data types for overall status
+    all_dates = [d for d in [stock_date, etf_date, index_date] if d is not None]
+    latest_date = min(all_dates) if all_dates else None
     latest_date_str = str(latest_date) if latest_date else None
 
-    # Calculate trading days to update (not calendar days)
-    if latest_date:
-        if latest_date >= latest_trading_day:
-            # Data is up to date
-            days_diff = 0
-            needs_sync = False
-            message = f"数据已是最新 ({latest_date_str})，无需同步"
-        else:
-            # Get the actual trading days that need updating
-            missing_days = get_trading_days_between(latest_date, latest_trading_day)
-            days_diff = len(missing_days)
-            needs_sync = days_diff > 0
+    # Determine overall sync need
+    needs_sync = stock_needs_sync or etf_needs_sync or index_needs_sync
 
-            if days_diff == 0:
-                message = f"数据已是最新 ({latest_date_str})，无需同步"
-            elif days_diff == 1:
-                message = f"当前最新数据日期是 {latest_date_str}，需要更新 1 个交易日数据"
-            else:
-                message = f"当前最新数据日期是 {latest_date_str}，需要更新 {days_diff} 个交易日数据"
-    else:
+    # Build detailed message showing status of each data type
+    if latest_date is None:
         days_diff = 0
-        needs_sync = True
         message = "数据库为空，需要进行完整数据同步"
+    elif not needs_sync:
+        days_diff = 0
+        message = f"数据已是最新 ({latest_date_str})，无需同步"
+    else:
+        # Find which types need updating and calculate days
+        stale_types = []
+        if stock_needs_sync:
+            stale_types.append(f"股票:{stock_date or '空'}")
+        if etf_needs_sync:
+            stale_types.append(f"ETF:{etf_date or '空'}")
+        if index_needs_sync:
+            stale_types.append(f"指数:{index_date or '空'}")
+
+        # Calculate trading days from the oldest date
+        missing_days = get_trading_days_between(latest_date, latest_trading_day)
+        days_diff = len(missing_days)
+
+        if len(stale_types) == 1:
+            message = f"需更新 {stale_types[0]} (目标: {latest_trading_day_str})"
+        else:
+            message = f"需更新: {', '.join(stale_types)} (目标: {latest_trading_day_str})"
 
     return SyncAnalysis(
         latest_data_date=latest_date_str,
         latest_trading_day=latest_trading_day_str,
+        trading_day_source=trading_day_source,
         today=today_str,
         days_to_update=days_diff,
         needs_sync=needs_sync,

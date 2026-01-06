@@ -103,12 +103,46 @@ export function RadarDataTable({
             )}
           </button>
         ),
-        cell: ({ row }) => (
-          <div className="flex items-center gap-2 whitespace-nowrap">
-            <span className="font-mono text-sm">{row.original.code}</span>
-            <span className="text-xs text-muted-foreground">{row.original.name}</span>
-          </div>
-        ),
+        cell: ({ row }) => {
+          const code = row.original.code
+          const name = row.original.name || ''
+
+          // Derive board type from code
+          // sh.6xxxxx or sz.0xxxxx → 主板
+          // sz.3xxxxx → 创业板
+          // sh.68xxxx → 科创板
+          // bj.xxxxxx → 北交所
+          const getBoardBadge = () => {
+            if (code.startsWith('sz.3')) {
+              return <span className="inline-flex items-center justify-center w-4 h-4 text-[10px] rounded bg-orange-500 text-white font-medium">创</span>
+            }
+            if (code.startsWith('sh.68')) {
+              return <span className="inline-flex items-center justify-center w-4 h-4 text-[10px] rounded bg-blue-500 text-white font-medium">科</span>
+            }
+            if (code.startsWith('bj.')) {
+              return <span className="inline-flex items-center justify-center w-4 h-4 text-[10px] rounded bg-purple-500 text-white font-medium">北</span>
+            }
+            // Main board (sh.6xxxxx or sz.0xxxxx)
+            if (code.startsWith('sh.6') || code.startsWith('sz.0')) {
+              return <span className="inline-flex items-center justify-center w-4 h-4 text-[10px] rounded bg-gray-500 text-white font-medium">主</span>
+            }
+            return null
+          }
+
+          // Check if ST stock
+          const isSTStock = name.includes('ST') || name.includes('st')
+
+          return (
+            <div className="flex items-center gap-1.5 whitespace-nowrap">
+              <span className="font-mono text-sm">{code}</span>
+              <span className="text-xs text-muted-foreground">{name}</span>
+              {getBoardBadge()}
+              {isSTStock && (
+                <span className="inline-flex items-center justify-center px-1 h-4 text-[10px] rounded bg-red-500 text-white font-medium">ST</span>
+              )}
+            </div>
+          )
+        },
       },
       // Composite Score
       {

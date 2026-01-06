@@ -8,6 +8,7 @@
 import asyncio
 import logging
 from concurrent.futures import ThreadPoolExecutor
+from dataclasses import dataclass, field
 from datetime import date, timedelta
 from decimal import Decimal
 from typing import Optional, Dict, Any, List, Tuple, Callable
@@ -30,6 +31,187 @@ PROGRESS_REPORT_INTERVAL = 1
 
 # 并行下载的线程数
 PARALLEL_WORKERS = 10
+
+# 增量同步最大重试次数
+MAX_SYNC_RETRIES = 3
+
+
+# =============================================================================
+# 增量同步数据结构
+# =============================================================================
+
+@dataclass
+class AssetGap:
+    """资产数据缺口信息"""
+    code: str
+    name: str
+    asset_type: str  # 'STOCK', 'ETF', 'INDEX'
+    latest_data_date: Optional[date]
+    days_behind: Optional[int]
+    sync_status: str  # 'NO_DATA', 'OUTDATED'
+
+
+@dataclass
+class SyncRetryTracker:
+    """
+    同步重试追踪器
+
+    在单次同步过程中追踪每个资产的失败次数。
+    达到最大重试次数后跳过该资产，下次同步时重置。
+    """
+    max_retries: int = MAX_SYNC_RETRIES
+    retry_counts: Dict[str, int] = field(default_factory=dict)
+    last_errors: Dict[str, str] = field(default_factory=dict)
+    asset_names: Dict[str, str] = field(default_factory=dict)
+
+    def should_skip(self, code: str) -> bool:
+        """判断是否应跳过该资产（已达到最大重试次数）"""
+        return self.retry_counts.get(code, 0) >= self.max_retries
+
+    def record_failure(self, code: str, error: str, name: str = "") -> bool:
+        """
+        记录失败
+
+        Returns:
+            True if asset should now be skipped (exceeded max retries)
+        """
+        self.retry_counts[code] = self.retry_counts.get(code, 0) + 1
+        self.last_errors[code] = error
+        if name:
+            self.asset_names[code] = name
+        return self.retry_counts[code] >= self.max_retries
+
+    def record_success(self, code: str) -> None:
+        """记录成功（清除重试计数）"""
+        self.retry_counts.pop(code, None)
+        self.last_errors.pop(code, None)
+        self.asset_names.pop(code, None)
+
+    def get_failed_assets(self) -> List[Dict[str, Any]]:
+        """获取失败资产列表（重试次数达到上限的）"""
+        return [
+            {
+                "code": code,
+                "name": self.asset_names.get(code, ""),
+                "retries": count,
+                "error": self.last_errors.get(code, "Unknown error"),
+            }
+            for code, count in self.retry_counts.items()
+            if count >= self.max_retries
+        ]
+
+    def get_stats(self) -> Dict[str, int]:
+        """获取统计信息"""
+        failed_count = sum(1 for c in self.retry_counts.values() if c >= self.max_retries)
+        return {
+            "total_tracked": len(self.retry_counts),
+            "failed": failed_count,
+            "retrying": len(self.retry_counts) - failed_count,
+        }
+
+
+async def get_assets_needing_sync(
+    session: AsyncSession,
+    latest_trading_day: date,
+    asset_type: Optional[str] = None,
+) -> Tuple[List[AssetGap], Dict[str, int]]:
+    """
+    查询所有需要同步的资产
+
+    通过比较 asset_meta 和 market_daily 表，找出数据缺失或过期的资产。
+
+    Args:
+        session: 数据库会话
+        latest_trading_day: 最新交易日
+        asset_type: 可选，按资产类型过滤 ('STOCK', 'ETF', 'INDEX')
+
+    Returns:
+        Tuple of:
+        - assets: 需要同步的资产列表，按优先级排序（无数据的优先）
+        - summary: 统计摘要 {
+            'total': 150, 'no_data': 5,
+            'stocks': 120, 'etfs': 20, 'indices': 10
+          }
+    """
+    # 构建资产类型过滤条件
+    type_filter = ""
+    if asset_type:
+        type_filter = f"AND am.asset_type = '{asset_type}'"
+
+    query = text(f"""
+        WITH asset_status AS (
+            SELECT
+                am.code,
+                am.name,
+                am.asset_type::text as asset_type,
+                MAX(md.date) AS latest_data_date
+            FROM asset_meta am
+            LEFT JOIN market_daily md ON am.code = md.code
+            WHERE am.status = 1
+            {type_filter}
+            GROUP BY am.code, am.name, am.asset_type
+        )
+        SELECT
+            code,
+            name,
+            asset_type,
+            latest_data_date,
+            CASE
+                WHEN latest_data_date IS NULL THEN NULL
+                ELSE (:latest_trading_day - latest_data_date)
+            END as days_behind,
+            CASE
+                WHEN latest_data_date IS NULL THEN 'NO_DATA'
+                WHEN latest_data_date < :latest_trading_day THEN 'OUTDATED'
+                ELSE 'UP_TO_DATE'
+            END AS sync_status
+        FROM asset_status
+        WHERE latest_data_date IS NULL
+           OR latest_data_date < :latest_trading_day
+        ORDER BY
+            asset_type,
+            latest_data_date NULLS FIRST,
+            code
+    """)
+
+    result = await session.execute(query, {"latest_trading_day": latest_trading_day})
+    rows = result.fetchall()
+
+    assets = []
+    summary = {
+        "total": 0,
+        "no_data": 0,
+        "stocks": 0,
+        "etfs": 0,
+        "indices": 0,
+    }
+
+    for row in rows:
+        assets.append(AssetGap(
+            code=row.code,
+            name=row.name,
+            asset_type=row.asset_type,
+            latest_data_date=row.latest_data_date,
+            days_behind=int(row.days_behind) if row.days_behind is not None else None,
+            sync_status=row.sync_status,
+        ))
+
+        summary["total"] += 1
+        if row.sync_status == "NO_DATA":
+            summary["no_data"] += 1
+
+        # 统计各类型数量
+        type_key = row.asset_type.lower() + "s" if row.asset_type else "unknown"
+        if type_key in summary:
+            summary[type_key] += 1
+
+    logger.info(
+        f"Found {summary['total']} assets needing sync: "
+        f"{summary['stocks']} stocks, {summary['etfs']} ETFs, {summary['indices']} indices "
+        f"({summary['no_data']} with no data)"
+    )
+
+    return assets, summary
 
 
 # =============================================================================
@@ -83,23 +265,112 @@ def _fetch_latest_trading_day_from_baostock() -> date:
         bs.logout()
 
 
-def get_latest_trading_day() -> date:
+def _detect_latest_trading_day_akshare() -> Optional[date]:
     """
-    获取最近的交易日（今天或之前）
+    Fallback: 用 akshare 实时数据检测是否今天有交易
 
-    使用 Redis 缓存，每天只查询一次 baostock。
-    缓存 key 区分盘中(before17)/盘后(after17)，避免早上的缓存影响下午的查询。
+    通过检查 stock_zh_a_spot_em (东财实时行情) 是否有成交量来判断。
+    如果当前时间 < 10:00，返回 None（太早无法判断）
+
+    Returns:
+        如果今天有交易且 >= 17:00，返回今天
+        如果今天有交易且 < 17:00，返回昨天
+        无法判断时返回 None
+    """
+    import akshare as ak
+    from datetime import datetime
+
+    today = date.today()
+    now = datetime.now()
+
+    # 太早无法判断（开盘前）
+    if now.hour < 10:
+        return None
+
+    try:
+        # 获取实时行情数据
+        df = ak.stock_zh_a_spot_em()
+        if df is not None and not df.empty:
+            # 检查是否有成交量（有交易活动）
+            total_volume = df['成交量'].sum()
+            if total_volume > 0:
+                # 有交易数据
+                if now.hour >= 17:
+                    # 收盘后，返回今天
+                    return today
+                else:
+                    # 盘中，返回昨天（今天数据不完整）
+                    return today - timedelta(days=1)
+    except Exception as e:
+        logger.debug(f"akshare trading day detection failed: {e}")
+
+    return None
+
+
+def _get_latest_trading_day_with_fallback() -> Tuple[date, str]:
+    """
+    获取最近交易日，带多源 fallback
+
+    Returns:
+        (交易日, 数据来源)
+        来源可能是: "baostock", "akshare", "rule-based"
+    """
+    from datetime import datetime
+
+    today = date.today()
+    now = datetime.now()
+
+    # 1. 先尝试 baostock
+    baostock_result = _fetch_latest_trading_day_from_baostock()
+
+    # 验证: 如果 baostock 返回的日期在合理范围内（7天内），直接使用
+    if baostock_result and (today - baostock_result).days <= 7:
+        return baostock_result, "baostock"
+
+    # baostock 数据可能过期（例如年初没有新年数据）
+    logger.warning(f"baostock returned stale date: {baostock_result}, trying fallbacks...")
+
+    # 2. Fallback: 尝试 akshare 实时检测
+    akshare_result = _detect_latest_trading_day_akshare()
+    if akshare_result:
+        logger.info(f"Using akshare-detected trading day: {akshare_result}")
+        return akshare_result, "akshare"
+
+    # 3. Fallback: 规则推断（排除周末）
+    candidate = today if now.hour >= 17 else today - timedelta(days=1)
+    for _ in range(10):  # 最多回溯10天
+        if candidate.weekday() < 5:  # 非周末
+            logger.info(f"Using rule-based trading day: {candidate}")
+            return candidate, "rule-based"
+        candidate -= timedelta(days=1)
+
+    # 最后保底返回 baostock 结果
+    logger.warning(f"All fallbacks exhausted, using baostock result: {baostock_result}")
+    return baostock_result, "baostock"
+
+
+def get_latest_trading_day_with_source() -> Tuple[date, str]:
+    """
+    获取最近的交易日及其数据来源
+
+    使用 Redis 缓存，每天只查询一次。
+    缓存 key 区分盘中(before17)/盘后(after17)。
+
+    Returns:
+        (交易日, 数据来源)
+        来源可能是: "baostock", "akshare", "rule-based"
     """
     import redis
     from datetime import datetime
     import os
+    import json
 
     today = date.today()
     now = datetime.now()
 
     # 缓存 key 区分盘中/盘后
     time_segment = "after17" if now.hour >= 17 else "before17"
-    cache_key = f"latest_trading_day:{today.isoformat()}:{time_segment}"
+    cache_key = f"latest_trading_day_v2:{today.isoformat()}:{time_segment}"
 
     # 获取 Redis 连接
     redis_url = os.environ.get("REDIS_URL", "redis://localhost:6379/0")
@@ -110,25 +381,40 @@ def get_latest_trading_day() -> date:
         # 尝试从缓存获取
         cached = r.get(cache_key)
         if cached:
-            logger.debug(f"Using cached latest trading day: {cached}")
-            return date.fromisoformat(cached)
+            data = json.loads(cached)
+            logger.debug(f"Using cached latest trading day: {data['date']} (source: {data['source']})")
+            return date.fromisoformat(data['date']), data['source']
 
-        # 缓存未命中，从 baostock 获取
-        latest_trading_day = _fetch_latest_trading_day_from_baostock()
+        # 缓存未命中，使用 fallback 机制获取
+        latest_trading_day, source = _get_latest_trading_day_with_fallback()
 
         # 计算到今天结束的秒数
         end_of_day = datetime(now.year, now.month, now.day, 23, 59, 59)
         ttl_seconds = int((end_of_day - now).total_seconds()) + 1
 
-        # 缓存结果
-        r.setex(cache_key, ttl_seconds, latest_trading_day.isoformat())
-        logger.info(f"Cached latest trading day: {latest_trading_day} (TTL: {ttl_seconds}s)")
+        # 缓存结果（包含日期和来源）
+        cache_data = json.dumps({"date": latest_trading_day.isoformat(), "source": source})
+        r.setex(cache_key, ttl_seconds, cache_data)
+        logger.info(f"Cached latest trading day: {latest_trading_day} (source: {source}, TTL: {ttl_seconds}s)")
 
-        return latest_trading_day
+        return latest_trading_day, source
 
     except redis.RedisError as e:
-        logger.warning(f"Redis error, falling back to direct baostock call: {e}")
-        return _fetch_latest_trading_day_from_baostock()
+        logger.warning(f"Redis error, falling back to direct detection: {e}")
+        return _get_latest_trading_day_with_fallback()
+
+
+def get_latest_trading_day() -> date:
+    """
+    获取最近的交易日（今天或之前）
+
+    使用 Redis 缓存，每天只查询一次。
+    缓存 key 区分盘中(before17)/盘后(after17)。
+
+    注意：如果需要知道数据来源，请使用 get_latest_trading_day_with_source()
+    """
+    trading_day, _ = get_latest_trading_day_with_source()
+    return trading_day
 
 
 def get_trading_days_between(start_date: date, end_date: date) -> List[date]:
@@ -268,7 +554,12 @@ def get_etf_list() -> List[str]:
     return codes
 
 
-def _fetch_etf_history_sync(code: str, start_str: str, end_str: str, missing_days_set: set) -> List[Dict]:
+def _fetch_etf_history_sync(
+    code: str,
+    start_str: str,
+    end_str: str,
+    missing_days_set: set
+) -> Tuple[List[Dict], Optional[str]]:
     """
     同步下载单只 ETF 的历史数据（供并行调用）
 
@@ -279,7 +570,8 @@ def _fetch_etf_history_sync(code: str, start_str: str, end_str: str, missing_day
         missing_days_set: 需要的日期集合
 
     Returns:
-        市场数据记录列表
+        Tuple of (records, error_message)
+        error_message 为 None 表示成功
     """
     import akshare as ak
 
@@ -319,10 +611,12 @@ def _fetch_etf_history_sync(code: str, start_str: str, end_str: str, missing_day
                     'pct_chg': safe_decimal(row.get('涨跌幅')),
                     'trade_status': 1,
                 })
-    except Exception:
-        pass  # 静默处理失败（可能是无效代码）
 
-    return records
+        return records, None
+
+    except Exception as e:
+        error_msg = str(e)[:100]
+        return [], error_msg
 
 
 def fetch_all_etfs_batch() -> Tuple[pd.DataFrame, date]:
@@ -628,60 +922,70 @@ async def sync_stocks_batch(
     progress_callback: Callable[[str, int, Dict], Any] = None,
 ) -> Dict[str, Any]:
     """
-    批量同步股票数据 - 智能补全 + 进度展示
+    批量同步股票数据 - 增量模式 + 智能补全 + 进度展示
 
     策略：
-    - 仅缺 1 天（最新一天）：用批量 API（秒级完成）
-    - 缺多天：用历史 API 一次性下载所有天（包括最新一天）
+    1. 查询哪些股票需要同步（增量检测）
+    2. 所有股票仅缺最新一天：用批量 API（秒级完成）
+    3. 部分股票缺多天：只为这些股票调用历史 API
+    4. 失败资产使用重试追踪器记录
 
     Args:
         session: 数据库会话
         progress_callback: 进度回调函数 (message, progress_pct, detail) -> awaitable
 
     Returns:
-        同步结果
+        同步结果（包含 failed_assets 列表）
     """
-    # 1. 检查是否需要更新
-    pg_max_date = await get_pg_max_date(session, 'stock')
     latest_trading_day = get_latest_trading_day()
 
-    logger.info(f"Stock sync check: PG max date = {pg_max_date}, latest trading day = {latest_trading_day}")
+    # 1. 查询需要同步的股票（增量检测）
+    if progress_callback:
+        await progress_callback("检查股票数据状态...", 5, {"action": "check_status"})
 
-    if pg_max_date and pg_max_date >= latest_trading_day:
+    assets, summary = await get_assets_needing_sync(session, latest_trading_day, 'STOCK')
+
+    logger.info(f"Stock sync check: {len(assets)} stocks need sync, latest trading day = {latest_trading_day}")
+    logger.info(f"Summary: {summary}")
+
+    if not assets:
         return {
             "status": "skip",
-            "message": f"数据已是最新 (PG: {pg_max_date}, 最近交易日: {latest_trading_day})",
+            "message": f"股票数据已是最新 (最近交易日: {latest_trading_day})",
             "records": 0,
+            "failed_assets": [],
         }
 
-    # 2. 计算缺失的交易日
-    missing_days = get_trading_days_between(pg_max_date, latest_trading_day) if pg_max_date else [latest_trading_day]
+    # 2. 分析缺失情况
+    # 只缺最新一天的股票
+    just_latest_day = [a for a in assets if a.days_behind == 1]
+    # 缺多天或无数据的股票
+    need_backfill = [a for a in assets if a.days_behind is None or a.days_behind > 1]
 
     total_market_count = 0
     total_valuation_count = 0
     messages = []
+    all_failed_assets = []
 
-    # 3. 检查是否超过阈值
-    if len(missing_days) > MAX_BACKFILL_DAYS:
-        # 超过阈值，只同步最新一天
-        skip_msg = f"跳过历史补全 (缺失 {len(missing_days)} 天 > {MAX_BACKFILL_DAYS} 天阈值，请使用手动导入)"
-        messages.append(skip_msg)
-        logger.warning(skip_msg)
-        missing_days = [latest_trading_day]
-
-    # 4. 根据缺失天数选择同步策略
-    if len(missing_days) == 1 and missing_days[0] == latest_trading_day:
-        # 仅缺最新一天：使用批量 API（秒级完成）
+    # 3. 处理只缺最新一天的情况（使用批量 API）
+    if just_latest_day and not need_backfill:
+        # 所有股票都只缺最新一天，使用高效的批量 API
         if progress_callback:
-            await progress_callback(f"同步 {latest_trading_day} (批量模式)...", 50, {
+            await progress_callback(f"同步 {latest_trading_day} (批量模式, {len(just_latest_day)} 只股票)...", 50, {
                 "action": "batch_sync",
                 "date": str(latest_trading_day),
+                "stocks_count": len(just_latest_day),
             })
 
-        logger.info(f"Syncing {latest_trading_day} using batch API (single day mode)...")
+        logger.info(f"Syncing {latest_trading_day} using batch API ({len(just_latest_day)} stocks)...")
 
         df, _ = fetch_all_stocks_batch()
         market_records, valuation_records = transform_stock_data(df, latest_trading_day)
+
+        # 过滤：只插入需要更新的股票
+        stale_codes = {a.code for a in just_latest_day}
+        market_records = [r for r in market_records if r['code'] in stale_codes]
+        valuation_records = [r for r in valuation_records if r['code'] in stale_codes]
 
         market_count = await batch_insert_market_daily(session, market_records)
         valuation_count = await batch_insert_valuation(session, valuation_records)
@@ -692,45 +996,104 @@ async def sync_stocks_batch(
 
         await session.commit()
 
-    else:
-        # 缺多天：使用历史 API 一次性下载所有天（包括最新一天）
+    elif need_backfill:
+        # 4. 增量补全模式：只为缺数据的股票调用历史 API
+        # 计算缺失天数范围
+        min_latest_date = min(
+            (a.latest_data_date for a in need_backfill if a.latest_data_date),
+            default=None
+        )
+        if min_latest_date:
+            missing_days = get_trading_days_between(min_latest_date, latest_trading_day)
+        else:
+            # 有些股票完全没有数据，使用默认范围
+            missing_days = [latest_trading_day]
+
+        # 检查是否超过阈值
+        if len(missing_days) > MAX_BACKFILL_DAYS:
+            skip_msg = f"跳过历史补全 (缺失 {len(missing_days)} 天 > {MAX_BACKFILL_DAYS} 天阈值)"
+            messages.append(skip_msg)
+            logger.warning(skip_msg)
+            missing_days = [latest_trading_day]
+
         if progress_callback:
-            await progress_callback(f"开始补全 {len(missing_days)} 个交易日...", 10, {
-                "action": "backfill_start",
-                "days_to_backfill": len(missing_days),
-            })
+            await progress_callback(
+                f"开始增量补全 {len(need_backfill)} 只股票, {len(missing_days)} 天...", 10,
+                {"action": "backfill_start", "stocks_count": len(need_backfill), "days_to_backfill": len(missing_days)}
+            )
+
+        # 准备增量同步：只传入需要补全的股票代码
+        # 注意：代码格式需要从 sh.600000 转为 600000（akshare 格式）
+        stock_codes = [a.code.split('.')[1] for a in need_backfill]
+        stock_names = {a.code.split('.')[1]: a.name for a in need_backfill}
+
+        # 创建重试追踪器
+        tracker = SyncRetryTracker(max_retries=MAX_SYNC_RETRIES)
 
         backfill_result = await backfill_stock_history_with_progress(
             session,
-            missing_days,  # 包括最新一天
+            missing_days,
             progress_callback,
+            stock_codes=stock_codes,
+            retry_tracker=tracker,
+            stock_names=stock_names,
         )
 
-        if backfill_result.get("status") == "success":
-            total_market_count = backfill_result.get("records", 0)
-            messages.append(f"补全 {len(missing_days)} 天: {total_market_count} 条")
+        total_market_count = backfill_result.get("records", 0)
+        all_failed_assets.extend(backfill_result.get("failed_assets", []))
+        messages.append(f"增量补全 {len(need_backfill)} 只股票: {total_market_count} 条")
+
+        # 如果有只缺最新一天的股票，也用批量 API 补充
+        if just_latest_day:
+            if progress_callback:
+                await progress_callback(f"补充最新数据 ({len(just_latest_day)} 只股票)...", 92, {
+                    "action": "batch_sync_supplement",
+                })
+
+            df, _ = fetch_all_stocks_batch()
+            market_records, valuation_records = transform_stock_data(df, latest_trading_day)
+
+            stale_codes = {a.code for a in just_latest_day}
+            market_records = [r for r in market_records if r['code'] in stale_codes]
+            valuation_records = [r for r in valuation_records if r['code'] in stale_codes]
+
+            market_count = await batch_insert_market_daily(session, market_records)
+            valuation_count = await batch_insert_valuation(session, valuation_records)
+
+            total_market_count += market_count
+            total_valuation_count += valuation_count
+
+            await session.commit()
 
         # 补充获取最新一天的 PE/PB 数据（历史 API 不返回 PE/PB）
         if latest_trading_day in missing_days:
             if progress_callback:
-                await progress_callback("补充获取 PE/PB 数据...", 95, {
-                    "action": "fetch_pe_pb",
-                })
+                await progress_callback("补充获取 PE/PB 数据...", 95, {"action": "fetch_pe_pb"})
+
             logger.info(f"Fetching PE/PB data for {latest_trading_day} from spot API...")
             df, _ = fetch_all_stocks_batch()
             _, valuation_records = transform_stock_data(df, latest_trading_day)
+
+            # 只更新补全过的股票的 PE/PB
+            backfill_codes = {a.code for a in need_backfill}
+            valuation_records = [r for r in valuation_records if r['code'] in backfill_codes]
+
             valuation_count = await batch_insert_valuation(session, valuation_records)
-            total_valuation_count = valuation_count
+            total_valuation_count += valuation_count
             logger.info(f"Updated {valuation_count} valuation records with PE/PB")
             await session.commit()
 
+    # 确定最终状态
+    status = "success" if not all_failed_assets else "partial"
+
     return {
-        "status": "success",
+        "status": status,
         "message": " | ".join(messages) if messages else "同步完成",
         "trading_date": str(latest_trading_day),
         "market_daily_count": total_market_count,
         "valuation_count": total_valuation_count,
-        "days_backfilled": len(missing_days),
+        "stocks_synced": len(assets),
+        "failed_assets": all_failed_assets,
     }
 
 
@@ -738,22 +1101,29 @@ async def backfill_etf_history(
     session: AsyncSession,
     missing_days: List[date],
     progress_callback: Callable[[str, int, Dict], Any] = None,
+    etf_codes_list: List[str] = None,
+    retry_tracker: SyncRetryTracker = None,
+    etf_names: Dict[str, str] = None,
 ) -> Dict[str, Any]:
     """
     并行下载 ETF 历史数据
 
     使用 fund_etf_hist_em 接口，比 fund_etf_spot_em 更稳定。
+    支持增量模式：只下载指定 ETF 列表。
 
     Args:
         session: 数据库会话
         missing_days: 需要补全的交易日列表
         progress_callback: 进度回调函数 (message, progress_pct, detail) -> awaitable
+        etf_codes_list: 可选，指定要下载的 ETF 代码列表（增量模式）
+        retry_tracker: 可选，重试追踪器
+        etf_names: 可选，ETF 名称字典 {code: name}
 
     Returns:
         补全结果
     """
     if not missing_days:
-        return {"status": "skip", "message": "没有需要补全的日期", "records": 0}
+        return {"status": "skip", "message": "没有需要补全的日期", "records": 0, "failed_assets": []}
 
     # 计算日期范围
     start_date = min(missing_days)
@@ -764,40 +1134,57 @@ async def backfill_etf_history(
 
     logger.info(f"Starting ETF backfill for {len(missing_days)} days: {start_date} to {end_date}")
 
-    # 获取 ETF 列表
-    etf_codes = get_etf_list()
+    # 获取 ETF 列表（增量模式用传入的列表，否则获取全部）
+    if etf_codes_list:
+        etf_codes = etf_codes_list
+        logger.info(f"Incremental mode: {len(etf_codes)} ETFs to backfill")
+    else:
+        etf_codes = get_etf_list()
     total_etfs = len(etf_codes)
     logger.info(f"Found {total_etfs} ETFs to backfill")
 
     total_records = 0
     all_records = []
     completed_count = 0
+    success_count = 0
+    fail_count = 0
     lock = asyncio.Lock()
 
     loop = asyncio.get_event_loop()
 
+    def fetch_with_code(code: str):
+        """包装函数，返回 (code, records, error)"""
+        records, error = _fetch_etf_history_sync(code, start_str, end_str, missing_days_set)
+        return code, records, error
+
     # 使用线程池并行下载
     with ThreadPoolExecutor(max_workers=PARALLEL_WORKERS) as executor:
         futures = [
-            loop.run_in_executor(
-                executor,
-                _fetch_etf_history_sync,
-                code, start_str, end_str, missing_days_set
-            )
+            loop.run_in_executor(executor, fetch_with_code, code)
             for code in etf_codes
         ]
 
         for future in asyncio.as_completed(futures):
-            records = await future
+            code, records, error = await future
             async with lock:
-                all_records.extend(records)
+                if error:
+                    fail_count += 1
+                    if retry_tracker:
+                        etf_name = etf_names.get(code, "") if etf_names else ""
+                        retry_tracker.record_failure(code, error, etf_name)
+                    logger.debug(f"ETF {code} download failed: {error}")
+                else:
+                    success_count += 1
+                    all_records.extend(records)
+                    if retry_tracker:
+                        retry_tracker.record_success(code)
                 completed_count += 1
 
                 # 每个 ETF 都更新进度
                 if completed_count % PROGRESS_REPORT_INTERVAL == 0 or completed_count == total_etfs:
                     # 进度: 60-75% 区间给 ETF
                     overall_pct = 60 + (completed_count / total_etfs) * 15
-                    msg = f"ETF 下载中 [{completed_count}/{total_etfs}]"
+                    msg = f"ETF 下载中 [{completed_count}/{total_etfs}] (成功:{success_count} 失败:{fail_count})"
 
                     if completed_count % 100 == 0 or completed_count == total_etfs:
                         logger.info(msg)
@@ -807,6 +1194,8 @@ async def backfill_etf_history(
                             "action": "etf_backfill_progress",
                             "etfs_done": completed_count,
                             "etfs_total": total_etfs,
+                            "success_count": success_count,
+                            "fail_count": fail_count,
                             "days_count": len(missing_days),
                             "date_range": f"{start_date} ~ {end_date}",
                         })
@@ -817,13 +1206,21 @@ async def backfill_etf_history(
         total_records = count
         await session.commit()
 
-    logger.info(f"ETF backfill complete: {total_records} records for {len(missing_days)} days")
+    # 获取失败资产列表
+    failed_assets = retry_tracker.get_failed_assets() if retry_tracker else []
+
+    logger.info(f"ETF backfill complete: {total_records} records for {len(missing_days)} days (success:{success_count}, failed:{fail_count})")
+
+    status = "success" if not failed_assets else "partial"
 
     return {
-        "status": "success",
-        "message": f"ETF补全了 {len(missing_days)} 个交易日的数据",
+        "status": status,
+        "message": f"ETF补全了 {len(missing_days)} 个交易日的数据 (成功:{success_count}, 失败:{fail_count})",
         "records": total_records,
         "days_backfilled": len(missing_days),
+        "success_count": success_count,
+        "fail_count": fail_count,
+        "failed_assets": failed_assets,
     }
 
 
@@ -884,25 +1281,36 @@ async def sync_etfs_batch(
     progress_callback: Callable[[str, int, Dict], Any] = None,
 ) -> Dict[str, Any]:
     """
-    同步 ETF 数据 - 使用历史 API（更稳定）
+    同步 ETF 数据 - 增量模式 + 历史 API
+
+    策略：
+    1. 查询哪些 ETF 需要同步（增量检测）
+    2. 只为缺数据的 ETF 调用历史 API
+    3. 失败资产使用重试追踪器记录
 
     Args:
         session: 数据库会话
         progress_callback: 进度回调函数 (message, progress_pct, detail) -> awaitable
 
     Returns:
-        同步结果
+        同步结果（包含 failed_assets 列表）
     """
-    # 1. 检查是否需要更新
-    pg_max_date = await get_pg_max_date(session, 'etf')
     latest_trading_day = get_latest_trading_day()
 
-    logger.info(f"ETF sync check: PG max date = {pg_max_date}, latest trading day = {latest_trading_day}")
+    # 1. 查询需要同步的 ETF（增量检测）
+    if progress_callback:
+        await progress_callback("检查 ETF 数据状态...", 55, {"action": "check_etf_status"})
 
-    if pg_max_date and pg_max_date >= latest_trading_day:
+    assets, summary = await get_assets_needing_sync(session, latest_trading_day, 'ETF')
+
+    logger.info(f"ETF sync check: {len(assets)} ETFs need sync, latest trading day = {latest_trading_day}")
+    logger.info(f"Summary: {summary}")
+
+    valuation_count = 0
+
+    if not assets:
         # 市值数据仍需每日更新（即使行情数据已是最新）
         etf_valuation_records = await asyncio.to_thread(fetch_etf_valuation_batch)
-        valuation_count = 0
         if etf_valuation_records:
             valuation_count = await batch_insert_valuation(session, etf_valuation_records)
             await session.commit()
@@ -910,32 +1318,65 @@ async def sync_etfs_batch(
 
         return {
             "status": "skip",
-            "message": f"ETF数据已是最新 (PG: {pg_max_date}, 最近交易日: {latest_trading_day})",
+            "message": f"ETF数据已是最新 (最近交易日: {latest_trading_day})",
             "records": 0,
             "valuation_count": valuation_count,
+            "failed_assets": [],
         }
 
-    # 2. 计算缺失的交易日
-    missing_days = get_trading_days_between(pg_max_date, latest_trading_day) if pg_max_date else [latest_trading_day]
+    # 2. 计算缺失天数范围
+    min_latest_date = min(
+        (a.latest_data_date for a in assets if a.latest_data_date),
+        default=None
+    )
+    if min_latest_date:
+        missing_days = get_trading_days_between(min_latest_date, latest_trading_day)
+    else:
+        missing_days = [latest_trading_day]
 
-    # 3. 使用历史 API 并行下载（比 fund_etf_spot_em 更稳定）
-    result = await backfill_etf_history(session, missing_days, progress_callback)
+    if progress_callback:
+        await progress_callback(
+            f"开始增量补全 {len(assets)} 只 ETF, {len(missing_days)} 天...", 58,
+            {"action": "etf_backfill_start", "etfs_count": len(assets), "days_to_backfill": len(missing_days)}
+        )
 
-    # 4. 获取并保存 ETF 市值数据（每日更新）
+    # 3. 准备增量同步：只传入需要补全的 ETF 代码
+    # 注意：代码格式需要从 sh.510050 转为 510050（akshare 格式）
+    etf_codes = [a.code.split('.')[1] for a in assets]
+    etf_names = {a.code.split('.')[1]: a.name for a in assets}
+
+    # 创建重试追踪器
+    tracker = SyncRetryTracker(max_retries=MAX_SYNC_RETRIES)
+
+    # 4. 使用历史 API 并行下载
+    result = await backfill_etf_history(
+        session,
+        missing_days,
+        progress_callback,
+        etf_codes_list=etf_codes,
+        retry_tracker=tracker,
+        etf_names=etf_names,
+    )
+
+    all_failed_assets = result.get("failed_assets", [])
+
+    # 5. 获取并保存 ETF 市值数据（每日更新）
     etf_valuation_records = await asyncio.to_thread(fetch_etf_valuation_batch)
-    valuation_count = 0
     if etf_valuation_records:
         valuation_count = await batch_insert_valuation(session, etf_valuation_records)
         await session.commit()
         logger.info(f"ETF valuation synced: {valuation_count} records")
 
+    status = "success" if not all_failed_assets else "partial"
+
     return {
-        "status": result.get("status", "success"),
-        "message": f"ETF数据同步完成",
+        "status": status,
+        "message": f"ETF数据同步完成 (成功:{result.get('success_count', 0)}, 失败:{result.get('fail_count', 0)})",
         "trading_date": str(latest_trading_day),
         "market_daily_count": result.get("records", 0),
-        "total_etfs": result.get("records", 0),
+        "etfs_synced": len(assets),
         "valuation_count": valuation_count,
+        "failed_assets": all_failed_assets,
     }
 
 
@@ -1055,7 +1496,12 @@ def transform_history_data(df: pd.DataFrame) -> Tuple[List[Dict], List[Dict]]:
     return market_daily_records, valuation_records
 
 
-def _fetch_stock_history_sync(code: str, start_str: str, end_str: str, missing_days_set: set) -> Tuple[List[Dict], List[Dict]]:
+def _fetch_stock_history_sync(
+    code: str,
+    start_str: str,
+    end_str: str,
+    missing_days_set: set
+) -> Tuple[List[Dict], List[Dict], Optional[str]]:
     """
     同步下载单只股票的历史数据（供并行调用）
 
@@ -1066,7 +1512,8 @@ def _fetch_stock_history_sync(code: str, start_str: str, end_str: str, missing_d
         missing_days_set: 需要的日期集合
 
     Returns:
-        Tuple of (market_records, valuation_records)
+        Tuple of (market_records, valuation_records, error_message)
+        error_message 为 None 表示成功
     """
     import akshare as ak
 
@@ -1123,16 +1570,22 @@ def _fetch_stock_history_sync(code: str, start_str: str, end_str: str, missing_d
                     'circ_mv': circ_mv,
                     'is_st': 0,  # 历史数据无法判断 ST
                 })
-    except Exception:
-        pass  # 静默处理失败
 
-    return market_records, valuation_records
+        return market_records, valuation_records, None
+
+    except Exception as e:
+        # 返回错误信息，不再静默失败
+        error_msg = str(e)[:100]  # 截断过长的错误信息
+        return [], [], error_msg
 
 
 async def backfill_stock_history_with_progress(
     session: AsyncSession,
     missing_days: List[date],
     progress_callback: Callable[[str, int, Dict], Any] = None,
+    stock_codes: List[str] = None,
+    retry_tracker: SyncRetryTracker = None,
+    stock_names: Dict[str, str] = None,
 ) -> Dict[str, Any]:
     """
     并行下载历史数据，支持进度回调
@@ -1141,11 +1594,15 @@ async def backfill_stock_history_with_progress(
     1. 每只股票只调用一次 API，一次性下载所有缺失日期
     2. 使用线程池并行下载，提高速度 10 倍
     3. 同时保存 market_daily 和 indicator_valuation 数据
+    4. 支持增量模式：只下载指定股票列表
 
     Args:
         session: 数据库会话
         missing_days: 需要补全的交易日列表
         progress_callback: 进度回调函数 (message, progress_pct, detail) -> awaitable
+        stock_codes: 可选，指定要下载的股票代码列表（增量模式）
+        retry_tracker: 可选，重试追踪器
+        stock_names: 可选，股票名称字典 {code: name}
 
     Returns:
         补全结果
@@ -1153,7 +1610,7 @@ async def backfill_stock_history_with_progress(
     import akshare as ak
 
     if not missing_days:
-        return {"status": "skip", "message": "没有需要补全的日期", "records": 0}
+        return {"status": "skip", "message": "没有需要补全的日期", "records": 0, "failed_assets": []}
 
     # 计算日期范围
     start_date = min(missing_days)
@@ -1164,10 +1621,14 @@ async def backfill_stock_history_with_progress(
 
     logger.info(f"Starting parallel backfill for {len(missing_days)} days: {start_date} to {end_date}")
 
-    # 获取股票列表
-    logger.info("Fetching stock list for backfill...")
-    stock_list_df = ak.stock_zh_a_spot_em()
-    codes = stock_list_df['代码'].tolist()
+    # 获取股票列表（增量模式用传入的列表，否则获取全部）
+    if stock_codes:
+        codes = stock_codes
+        logger.info(f"Incremental mode: {len(codes)} stocks to backfill")
+    else:
+        logger.info("Fetching stock list for backfill...")
+        stock_list_df = ak.stock_zh_a_spot_em()
+        codes = stock_list_df['代码'].tolist()
     total_stocks = len(codes)
     logger.info(f"Found {total_stocks} stocks to backfill ({len(missing_days)} days, {PARALLEL_WORKERS} workers)")
 
@@ -1181,33 +1642,50 @@ async def backfill_stock_history_with_progress(
     # 使用线程池并行下载
     loop = asyncio.get_event_loop()
 
+    success_count = 0
+    fail_count = 0
+
+    def fetch_with_code(code: str):
+        """包装函数，返回 (code, market_records, valuation_records, error)"""
+        market_records, valuation_records, error = _fetch_stock_history_sync(
+            code, start_str, end_str, missing_days_set
+        )
+        return code, market_records, valuation_records, error
+
     async def process_batch(batch_codes: List[str], batch_start_idx: int):
         """处理一批股票的下载"""
-        nonlocal completed_count, all_market_records, all_valuation_records, total_records
+        nonlocal completed_count, all_market_records, all_valuation_records, success_count, fail_count
 
         with ThreadPoolExecutor(max_workers=PARALLEL_WORKERS) as executor:
             # 并行下载这批股票
             futures = [
-                loop.run_in_executor(
-                    executor,
-                    _fetch_stock_history_sync,
-                    code, start_str, end_str, missing_days_set
-                )
+                loop.run_in_executor(executor, fetch_with_code, code)
                 for code in batch_codes
             ]
 
-            for i, future in enumerate(asyncio.as_completed(futures)):
-                market_records, valuation_records = await future
+            for future in asyncio.as_completed(futures):
+                code, market_records, valuation_records, error = await future
                 async with lock:
-                    all_market_records.extend(market_records)
-                    all_valuation_records.extend(valuation_records)
+                    if error:
+                        fail_count += 1
+                        # 使用重试追踪器记录失败
+                        if retry_tracker:
+                            stock_name = stock_names.get(code, "") if stock_names else ""
+                            retry_tracker.record_failure(code, error, stock_name)
+                        logger.debug(f"Stock {code} download failed: {error}")
+                    else:
+                        success_count += 1
+                        all_market_records.extend(market_records)
+                        all_valuation_records.extend(valuation_records)
+                        if retry_tracker:
+                            retry_tracker.record_success(code)
                     completed_count += 1
 
                     # 进度报告
                     if completed_count % PROGRESS_REPORT_INTERVAL == 0 or completed_count == total_stocks:
                         overall_pct = 10 + (completed_count / total_stocks) * 80
 
-                        msg = f"下载中 [{completed_count}/{total_stocks}]"
+                        msg = f"下载中 [{completed_count}/{total_stocks}] (成功:{success_count} 失败:{fail_count})"
 
                         if completed_count % 100 == 0 or completed_count == total_stocks:
                             logger.info(msg)
@@ -1217,6 +1695,8 @@ async def backfill_stock_history_with_progress(
                                 "action": "backfill_progress",
                                 "stocks_done": completed_count,
                                 "stocks_total": total_stocks,
+                                "success_count": success_count,
+                                "fail_count": fail_count,
                                 "days_count": len(missing_days),
                                 "date_range": f"{start_date} ~ {end_date}",
                             })
@@ -1252,14 +1732,23 @@ async def backfill_stock_history_with_progress(
 
     await session.commit()
 
-    logger.info(f"Backfill complete: {total_records} market, {total_valuation_records} valuation records for {len(missing_days)} days")
+    # 获取失败资产列表
+    failed_assets = retry_tracker.get_failed_assets() if retry_tracker else []
+
+    logger.info(f"Backfill complete: {total_records} market, {total_valuation_records} valuation records for {len(missing_days)} days (success:{success_count}, failed:{fail_count})")
+
+    # 根据是否有失败决定状态
+    status = "success" if not failed_assets else "partial"
 
     return {
-        "status": "success",
-        "message": f"补全了 {len(missing_days)} 个交易日的数据",
+        "status": status,
+        "message": f"补全了 {len(missing_days)} 个交易日的数据 (成功:{success_count}, 失败:{fail_count})",
         "records": total_records,
         "valuation_records": total_valuation_records,
         "days_backfilled": len(missing_days),
+        "success_count": success_count,
+        "fail_count": fail_count,
+        "failed_assets": failed_assets,
     }
 
 
@@ -1355,7 +1844,9 @@ def get_index_list() -> List[str]:
     return codes
 
 
-def _fetch_index_history_sync(index_code: str, start_str: str, end_str: str, missing_days_set: set) -> List[Dict]:
+def _fetch_index_history_sync(
+    index_code: str, start_str: str, end_str: str, missing_days_set: set
+) -> Tuple[List[Dict], Optional[str]]:
     """
     同步下载单个指数的历史数据（供并行调用）
 
@@ -1366,7 +1857,7 @@ def _fetch_index_history_sync(index_code: str, start_str: str, end_str: str, mis
         missing_days_set: 需要的日期集合
 
     Returns:
-        市场数据记录列表
+        (市场数据记录列表, 错误信息) - 错误信息为 None 表示成功
     """
     import akshare as ak
 
@@ -1402,10 +1893,11 @@ def _fetch_index_history_sync(index_code: str, start_str: str, end_str: str, mis
                     'pct_chg': None,
                     'trade_status': 1,
                 })
-    except Exception:
-        pass  # 静默处理失败
+    except Exception as e:
+        error_msg = str(e)[:200]  # 截断错误信息
+        return [], error_msg
 
-    return records
+    return records, None
 
 
 def fetch_index_history(index_code: str, start_date: date, end_date: date) -> pd.DataFrame:
@@ -1532,23 +2024,37 @@ def transform_index_history(df: pd.DataFrame, index_code: str) -> List[Dict]:
     return market_daily_records
 
 
+# 核心指数列表 - 用于判断指数数据是否需要同步
+# 这些是主要市场指数，数据源一定会更新，避免因小众指数数据缺失导致反复同步
+CORE_INDEX_CODES = [
+    'sh.000001',  # 上证综指
+    'sh.000016',  # 上证50
+    'sh.000300',  # 沪深300
+    'sh.000905',  # 中证500
+    'sz.399001',  # 深证成指
+    'sz.399006',  # 创业板指
+]
+
+
 async def get_pg_index_max_date(session: AsyncSession) -> Optional[date]:
     """
-    获取所有指数中最小的最大日期，确保所有指数都被同步到相同日期。
+    获取核心指数中最小的最大日期。
 
-    使用 MIN(MAX(date)) 策略：
-    - 对每个指数取其最大日期
-    - 然后取所有指数中最小的那个日期
-    - 这样可以确保所有指数都被同步，而不是只检查 sh.000001
+    只检查核心指数（上证综指、沪深300等），避免因小众指数数据缺失
+    而导致的反复同步问题。
+
+    Returns:
+        核心指数中最小的最大日期，如果没有数据则返回 None
     """
-    query = text("""
+    # 使用核心指数列表进行检查
+    core_codes_str = ", ".join(f"'{c}'" for c in CORE_INDEX_CODES)
+    query = text(f"""
         SELECT MIN(max_date) as min_max_date
         FROM (
             SELECT code, MAX(date) as max_date
             FROM market_daily
-            WHERE code LIKE 'sh.0%' OR code LIKE 'sz.39%'
+            WHERE code IN ({core_codes_str})
             GROUP BY code
-            HAVING COUNT(*) > 10
         ) sub
     """)
     result = await session.execute(query)
@@ -1559,20 +2065,28 @@ async def backfill_index_history(
     session: AsyncSession,
     missing_days: List[date],
     progress_callback: Callable[[str, int, Dict], Any] = None,
+    index_codes_list: List[str] = None,
+    retry_tracker: SyncRetryTracker = None,
+    index_names: Dict[str, str] = None,
 ) -> Dict[str, Any]:
     """
     并行下载指数历史数据
+
+    支持增量模式：只下载指定指数列表。
 
     Args:
         session: 数据库会话
         missing_days: 需要补全的交易日列表
         progress_callback: 进度回调函数
+        index_codes_list: 可选，指定要下载的指数代码列表（增量模式，格式: sh000001）
+        retry_tracker: 可选，重试追踪器
+        index_names: 可选，指数名称字典 {code: name}
 
     Returns:
         补全结果
     """
     if not missing_days:
-        return {"status": "skip", "message": "没有需要补全的日期", "records": 0}
+        return {"status": "skip", "message": "没有需要补全的日期", "records": 0, "failed_assets": []}
 
     # 计算日期范围
     start_date = min(missing_days)
@@ -1583,51 +2097,79 @@ async def backfill_index_history(
 
     logger.info(f"Starting index backfill for {len(missing_days)} days: {start_date} to {end_date}")
 
-    # 获取指数列表
-    index_codes = get_index_list()
+    # 获取指数列表（增量模式用传入的列表，否则获取全部）
+    if index_codes_list:
+        index_codes = index_codes_list
+        logger.info(f"Incremental mode: {len(index_codes)} indices to backfill")
+    else:
+        index_codes = get_index_list()
     total_indices = len(index_codes)
     logger.info(f"Found {total_indices} indices to backfill")
 
     total_records = 0
     all_records = []
     completed_count = 0
+    success_count = 0
+    fail_count = 0
     lock = asyncio.Lock()
 
     loop = asyncio.get_event_loop()
 
+    def fetch_with_code(code: str):
+        """包装函数，返回 (code, records, error)"""
+        records, error = _fetch_index_history_sync(code, start_str, end_str, missing_days_set)
+        return code, records, error
+
     # 使用线程池并行下载
     with ThreadPoolExecutor(max_workers=PARALLEL_WORKERS) as executor:
         futures = [
-            loop.run_in_executor(
-                executor,
-                _fetch_index_history_sync,
-                code, start_str, end_str, missing_days_set
-            )
+            loop.run_in_executor(executor, fetch_with_code, code)
             for code in index_codes
         ]
 
         for future in asyncio.as_completed(futures):
-            records = await future
+            code, records, error = await future
             async with lock:
-                all_records.extend(records)
+                if error:
+                    fail_count += 1
+                    if retry_tracker:
+                        idx_name = index_names.get(code, "") if index_names else ""
+                        retry_tracker.record_failure(code, error, idx_name)
+                    logger.warning(f"Index {code} fetch error: {error}")
+                else:
+                    success_count += 1
+                    all_records.extend(records)
+                    if retry_tracker:
+                        retry_tracker.record_success(code)
                 completed_count += 1
 
                 # 每个指数都更新进度
                 if completed_count % PROGRESS_REPORT_INTERVAL == 0 or completed_count == total_indices:
                     # 进度: 75-90% 区间给指数
                     overall_pct = 75 + (completed_count / total_indices) * 15
-                    msg = f"指数下载中 [{completed_count}/{total_indices}]"
+
+                    # 获取当前资产名称
+                    idx_name = index_names.get(code, "") if index_names else ""
+                    records_str = f"+{len(records)}条" if records else ""
+                    error_str = f"[失败: {error[:30]}...]" if error else ""
+
+                    msg = f"指数 [{completed_count}/{total_indices}]: {code} {idx_name} {records_str}{error_str}"
 
                     if completed_count % 50 == 0 or completed_count == total_indices:
-                        logger.info(msg)
+                        logger.info(f"Index progress: {completed_count}/{total_indices} (success:{success_count}, failed:{fail_count})")
 
                     if progress_callback:
                         await progress_callback(msg, int(overall_pct), {
                             "action": "index_backfill_progress",
+                            "current_code": code,
+                            "current_name": idx_name,
                             "indices_done": completed_count,
                             "indices_total": total_indices,
+                            "success_count": success_count,
+                            "fail_count": fail_count,
                             "days_count": len(missing_days),
                             "date_range": f"{start_date} ~ {end_date}",
+                            "records_added": len(records) if records else 0,
                         })
 
     # 批量写入
@@ -1636,13 +2178,21 @@ async def backfill_index_history(
         total_records = count
         await session.commit()
 
-    logger.info(f"Index backfill complete: {total_records} records for {len(missing_days)} days")
+    # 获取失败资产列表
+    failed_assets = retry_tracker.get_failed_assets() if retry_tracker else []
+
+    logger.info(f"Index backfill complete: {total_records} records for {len(missing_days)} days (success:{success_count}, failed:{fail_count})")
+
+    status = "success" if not failed_assets else "partial"
 
     return {
-        "status": "success",
-        "message": f"指数补全了 {len(missing_days)} 个交易日的数据",
+        "status": status,
+        "message": f"指数补全了 {len(missing_days)} 个交易日的数据 (成功:{success_count}, 失败:{fail_count})",
         "records": total_records,
         "days_backfilled": len(missing_days),
+        "success_count": success_count,
+        "fail_count": fail_count,
+        "failed_assets": failed_assets,
     }
 
 
@@ -1692,45 +2242,89 @@ async def sync_indices_batch(
     progress_callback: Callable[[str, int, Dict], Any] = None,
 ) -> Dict[str, Any]:
     """
-    同步指数数据 - 使用历史 API（更稳定）
+    同步指数数据 - 增量模式 + 历史 API
+
+    策略：
+    1. 查询哪些指数需要同步（增量检测）
+    2. 只为缺数据的指数调用历史 API
+    3. 失败资产使用重试追踪器记录
 
     Args:
         session: 数据库会话
         progress_callback: 进度回调函数
 
     Returns:
-        同步结果
+        同步结果（包含 failed_assets 列表）
     """
-    # 1. 检查是否需要更新
-    pg_max_date = await get_pg_index_max_date(session)
     latest_trading_day = get_latest_trading_day()
 
-    logger.info(f"Index sync check: PG max date = {pg_max_date}, latest trading day = {latest_trading_day}")
+    # 1. 查询需要同步的指数（增量检测）
+    if progress_callback:
+        await progress_callback("检查指数数据状态...", 70, {"action": "check_index_status"})
 
-    if pg_max_date and pg_max_date >= latest_trading_day:
+    assets, summary = await get_assets_needing_sync(session, latest_trading_day, 'INDEX')
+
+    logger.info(f"Index sync check: {len(assets)} indices need sync, latest trading day = {latest_trading_day}")
+    logger.info(f"Summary: {summary}")
+
+    if not assets:
         return {
             "status": "skip",
-            "message": f"指数数据已是最新 (PG: {pg_max_date}, 最近交易日: {latest_trading_day})",
+            "message": f"指数数据已是最新 (最近交易日: {latest_trading_day})",
             "records": 0,
+            "failed_assets": [],
         }
 
-    # 2. 计算缺失的交易日
-    missing_days = get_trading_days_between(pg_max_date, latest_trading_day) if pg_max_date else [latest_trading_day]
+    # 2. 计算缺失天数范围
+    min_latest_date = min(
+        (a.latest_data_date for a in assets if a.latest_data_date),
+        default=None
+    )
+    if min_latest_date:
+        missing_days = get_trading_days_between(min_latest_date, latest_trading_day)
+    else:
+        missing_days = [latest_trading_day]
 
-    # 3. 使用历史 API 并行下载所有指数
-    result = await backfill_index_history(session, missing_days, progress_callback)
+    if progress_callback:
+        await progress_callback(
+            f"开始增量补全 {len(assets)} 只指数, {len(missing_days)} 天...", 73,
+            {"action": "index_backfill_start", "indices_count": len(assets), "days_to_backfill": len(missing_days)}
+        )
 
-    # 4. 计算指数的 pct_chg (历史 API 不返回此字段)
+    # 3. 准备增量同步：只传入需要补全的指数代码
+    # 注意：代码格式需要从 sh.000001 转为 sh000001（akshare 格式，去掉点号）
+    index_codes = [a.code.replace('.', '') for a in assets]
+    index_names = {a.code.replace('.', ''): a.name for a in assets}
+
+    # 创建重试追踪器
+    tracker = SyncRetryTracker(max_retries=MAX_SYNC_RETRIES)
+
+    # 4. 使用历史 API 并行下载
+    result = await backfill_index_history(
+        session,
+        missing_days,
+        progress_callback,
+        index_codes_list=index_codes,
+        retry_tracker=tracker,
+        index_names=index_names,
+    )
+
+    all_failed_assets = result.get("failed_assets", [])
+
+    # 5. 计算指数的 pct_chg (历史 API 不返回此字段)
     pct_chg_updated = await calculate_index_pct_chg(session)
     await session.commit()
 
+    status = "success" if not all_failed_assets else "partial"
+
     return {
-        "status": result.get("status", "success"),
-        "message": f"指数数据同步完成",
+        "status": status,
+        "message": f"指数数据同步完成 (成功:{result.get('success_count', 0)}, 失败:{result.get('fail_count', 0)})",
         "trading_date": str(latest_trading_day),
         "market_daily_count": result.get("records", 0),
-        "total_indices": result.get("records", 0),
+        "indices_synced": len(assets),
         "pct_chg_calculated": pct_chg_updated,
+        "failed_assets": all_failed_assets,
     }
 
 
@@ -1826,9 +2420,50 @@ async def batch_insert_adjust_factors(
     return len(records)
 
 
+def _fetch_single_adjust_factor(code: str, start_date: str) -> Tuple[str, List[Dict], Optional[str]]:
+    """
+    获取单只股票的复权因子
+
+    Args:
+        code: 股票代码 (sh.xxxxxx 或 sz.xxxxxx 格式)
+        start_date: 开始日期 YYYY-MM-DD
+
+    Returns:
+        (code, records, error) 元组
+    """
+    import baostock as bs
+
+    records = []
+    error = None
+    try:
+        lg = bs.login()
+        if lg.error_code != '0':
+            return code, [], f"baostock login failed: {lg.error_msg}"
+
+        rs = bs.query_adjust_factor(code=code, start_date=start_date)
+
+        while (rs.error_code == '0') and rs.next():
+            row = rs.get_row_data()
+            # row: [code, dividOperateDate, foreAdjustFactor, backAdjustFactor, adjustFactor]
+            if len(row) >= 5:
+                records.append({
+                    'code': row[0],
+                    'divid_operate_date': date.fromisoformat(row[1]),
+                    'fore_adjust_factor': Decimal(row[2]) if row[2] else None,
+                    'back_adjust_factor': Decimal(row[3]) if row[3] else None,
+                    'adjust_factor': Decimal(row[4]) if row[4] else None,
+                })
+
+        bs.logout()
+    except Exception as e:
+        error = str(e)
+
+    return code, records, error
+
+
 def _fetch_adjust_factor_batch(codes: List[str], start_date: str) -> List[Dict]:
     """
-    批量获取复权因子（使用单个 baostock 会话）
+    批量获取复权因子（使用单个 baostock 会话）- 保留用于兼容
 
     baostock 不是线程安全的，所以使用单线程顺序处理。
 
@@ -1839,37 +2474,10 @@ def _fetch_adjust_factor_batch(codes: List[str], start_date: str) -> List[Dict]:
     Returns:
         复权因子记录列表
     """
-    import baostock as bs
-
     all_records = []
-    try:
-        lg = bs.login()
-        if lg.error_code != '0':
-            logger.error(f"baostock login failed: {lg.error_msg}")
-            return all_records
-
-        for code in codes:
-            try:
-                rs = bs.query_adjust_factor(code=code, start_date=start_date)
-
-                while (rs.error_code == '0') and rs.next():
-                    row = rs.get_row_data()
-                    # row: [code, dividOperateDate, foreAdjustFactor, backAdjustFactor, adjustFactor]
-                    if len(row) >= 5:
-                        all_records.append({
-                            'code': row[0],
-                            'divid_operate_date': date.fromisoformat(row[1]),
-                            'fore_adjust_factor': Decimal(row[2]) if row[2] else None,
-                            'back_adjust_factor': Decimal(row[3]) if row[3] else None,
-                            'adjust_factor': Decimal(row[4]) if row[4] else None,
-                        })
-            except Exception as e:
-                logger.debug(f"Failed to fetch adjust factor for {code}: {e}")
-
-        bs.logout()
-    except Exception as e:
-        logger.error(f"baostock session error: {e}")
-
+    for code in codes:
+        _, records, _ = _fetch_single_adjust_factor(code, start_date)
+        all_records.extend(records)
     return all_records
 
 
@@ -1878,7 +2486,12 @@ async def sync_adjust_factors(
     progress_callback: Callable[[str, int, Dict], Any] = None,
 ) -> Dict[str, Any]:
     """
-    同步复权因子数据
+    同步复权因子数据 - 增量模式
+
+    优化策略：
+    1. 只同步最近有市场数据更新的活跃股票
+    2. 使用较短的回溯窗口（7天而非30天）
+    3. 逐条报告进度，展示当前股票代码和名称
 
     使用 baostock query_adjust_factor 接口获取复权因子，
     用于计算复权价格进行回测。
@@ -1892,26 +2505,6 @@ async def sync_adjust_factors(
     """
     from app.db.models.asset import AssetMeta, AssetType
 
-    # 获取所有股票代码
-    stocks_query = select(AssetMeta.code).where(
-        AssetMeta.asset_type == AssetType.STOCK,
-        AssetMeta.status == 1
-    )
-    stocks_result = await session.execute(stocks_query)
-    stock_codes = [row[0] for row in stocks_result]
-
-    if not stock_codes:
-        return {"status": "skip", "message": "没有股票需要同步", "records": 0}
-
-    total_stocks = len(stock_codes)
-    logger.info(f"Starting adjust factor sync for {total_stocks} stocks")
-
-    if progress_callback:
-        await progress_callback("开始同步复权因子...", 0, {
-            "action": "adjust_factor_start",
-            "total_stocks": total_stocks,
-        })
-
     # 获取数据库中已有的最新复权日期
     max_date_query = text("""
         SELECT MAX(divid_operate_date) FROM adjust_factor
@@ -1919,48 +2512,98 @@ async def sync_adjust_factors(
     result = await session.execute(max_date_query)
     max_date = result.scalar()
 
-    # 如果有历史数据，从最新日期开始；否则从 2020-01-01 开始
-    start_date = (max_date - timedelta(days=30)).strftime('%Y-%m-%d') if max_date else '2020-01-01'
+    latest_trading_day = get_latest_trading_day()
+
+    # 如果已经是最新，跳过（复权因子通常不是每天都有）
+    if max_date and max_date >= latest_trading_day:
+        logger.info(f"Adjust factor data is up to date (max_date={max_date})")
+        return {"status": "skip", "message": "复权因子已是最新", "records": 0}
+
+    # 使用较短的回溯窗口（7天），复权事件是稀疏的
+    lookback_days = 7
+    start_date = (max_date - timedelta(days=lookback_days)).strftime('%Y-%m-%d') if max_date else '2020-01-01'
+
+    # 增量模式：只获取最近有市场数据更新的活跃股票
+    # 这些股票才可能有新的复权因子
+    active_stocks_query = text("""
+        SELECT DISTINCT am.code, am.name
+        FROM asset_meta am
+        INNER JOIN market_daily md ON am.code = md.code
+        WHERE am.asset_type = 'STOCK'
+          AND am.status = 1
+          AND md.date >= :since_date
+        ORDER BY am.code
+    """)
+
+    # 只查询最近交易过的股票
+    since_date = max_date - timedelta(days=30) if max_date else date(2020, 1, 1)
+    active_result = await session.execute(active_stocks_query, {"since_date": since_date})
+    active_stocks = [(row[0], row[1]) for row in active_result]
+
+    if not active_stocks:
+        return {"status": "skip", "message": "没有活跃股票需要同步", "records": 0}
+
+    total_stocks = len(active_stocks)
+    logger.info(f"Starting incremental adjust factor sync for {total_stocks} active stocks (since {since_date})")
+
+    if progress_callback:
+        await progress_callback("开始同步复权因子...", 0, {
+            "action": "adjust_factor_start",
+            "total_stocks": total_stocks,
+            "lookback_days": lookback_days,
+        })
+
     logger.info(f"Fetching adjust factors from {start_date}")
 
     total_records = 0
+    completed_count = 0
     loop = asyncio.get_event_loop()
 
-    # 分批处理 - 使用单线程顺序处理以避免 baostock 线程安全问题
-    batch_size = 200  # 每批处理的股票数
-    for batch_start in range(0, total_stocks, batch_size):
-        batch_codes = stock_codes[batch_start:batch_start + batch_size]
-        batch_end = min(batch_start + batch_size, total_stocks)
-
+    # 逐条处理，实时报告进度（baostock 不是线程安全的）
+    for code, name in active_stocks:
         # 在线程池中执行同步代码
-        records = await loop.run_in_executor(
+        _, records, error = await loop.run_in_executor(
             None,
-            _fetch_adjust_factor_batch,
-            batch_codes, start_date
+            _fetch_single_adjust_factor,
+            code, start_date
         )
 
         # 写入数据库
+        count = 0
         if records:
             count = await batch_insert_adjust_factors(session, records)
             total_records += count
 
-        pct = int(batch_end / total_stocks * 100)
-        logger.info(f"Adjust factor progress: {batch_end}/{total_stocks} ({len(records)} records)")
+        completed_count += 1
 
-        if progress_callback:
-            await progress_callback(
-                f"复权因子 [{batch_end}/{total_stocks}]",
-                pct,
-                {"action": "adjust_factor_progress", "done": batch_end}
-            )
+        # 每条都报告进度
+        if completed_count % PROGRESS_REPORT_INTERVAL == 0 or completed_count == total_stocks:
+            pct = int(completed_count / total_stocks * 100)
+            records_str = f"+{count}条" if count > 0 else ""
+            error_str = f"[错误]" if error else ""
+
+            msg = f"复权因子 [{completed_count}/{total_stocks}]: {code} {name} {records_str}{error_str}"
+
+            if completed_count % 100 == 0 or completed_count == total_stocks:
+                logger.info(f"Adjust factor progress: {completed_count}/{total_stocks}, total records: {total_records}")
+
+            if progress_callback:
+                await progress_callback(msg, pct, {
+                    "action": "adjust_factor_progress",
+                    "current_code": code,
+                    "current_name": name,
+                    "done": completed_count,
+                    "total": total_stocks,
+                    "records_added": count,
+                })
 
     await session.commit()
 
-    logger.info(f"Adjust factor sync complete: {total_records} records")
+    logger.info(f"Adjust factor sync complete: {total_records} records for {total_stocks} stocks")
 
     return {
         "status": "success",
-        "message": f"复权因子同步完成",
+        "message": f"复权因子同步完成 ({total_stocks}只股票)",
         "records": total_records,
         "stocks_processed": total_stocks,
     }

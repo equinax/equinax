@@ -13,4 +13,5 @@ export interface SyncAnalysis {
   message: string;
   needs_sync: boolean;
   today: string;
+  trading_day_source?: string;
 }

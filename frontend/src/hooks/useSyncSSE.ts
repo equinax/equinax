@@ -14,15 +14,26 @@
 import { useEffect, useRef, useState, useCallback } from 'react'
 import { useQueryClient } from '@tanstack/react-query'
 
+// Failed asset from incremental sync
+export interface FailedAsset {
+  code: string
+  name: string
+  retries: number
+  error: string
+}
+
 export interface SyncStep {
   id: string
   name: string
   progress: number
-  status: 'pending' | 'running' | 'complete' | 'error'
+  status: 'pending' | 'running' | 'complete' | 'error' | 'partial'  // partial = some assets failed
   records_count?: number
   duration_seconds?: number
   detail?: string
   runningMessage?: string  // Real-time progress message for running steps
+  failed_assets?: FailedAsset[]  // Assets that failed to sync
+  success_count?: number
+  fail_count?: number
 }
 
 export interface PlanEvent {
@@ -46,13 +57,16 @@ export interface StepCompleteEvent {
   type: 'step_complete'
   job_id: string
   step: string
-  status?: string
+  status?: string  // 'success' | 'partial' | 'error'
   message?: string
   records_imported?: number
   records_count?: number
   duration_seconds?: number
   detail?: string
   timestamp: string
+  failed_assets?: FailedAsset[]  // Assets that failed during this step
+  success_count?: number
+  fail_count?: number
 }
 
 export interface JobCompleteEvent {
@@ -156,15 +170,22 @@ export function useSyncSSE({
       case 'step_complete': {
         // Mark step as complete with detailed info
         const stepData = data as StepCompleteEvent
+        // Determine status: partial if there are failed assets, otherwise complete
+        const stepStatus = (stepData.failed_assets && stepData.failed_assets.length > 0)
+          ? 'partial'
+          : 'complete'
         setSteps((prev) =>
           prev.map((s) =>
             s.id === stepData.step
               ? {
                   ...s,
-                  status: 'complete',
+                  status: stepStatus,
                   records_count: stepData.records_count,
                   duration_seconds: stepData.duration_seconds,
                   detail: stepData.detail,
+                  failed_assets: stepData.failed_assets,
+                  success_count: stepData.success_count,
+                  fail_count: stepData.fail_count,
                 }
               : s
           )
