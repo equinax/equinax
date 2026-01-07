@@ -1,4 +1,6 @@
 export { TimeController } from './TimeController'
 export { MarketDashboard } from './MarketDashboard'
 export { RadarDataTable } from './RadarDataTable'
+export { EtfDataTable } from './EtfDataTable'
 export { SectorHeatmap } from './SectorHeatmap'
+export { EtfCategoryHeatmap } from './EtfCategoryHeatmap'

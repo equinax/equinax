@@ -69,6 +69,24 @@ class CellSignalType(str, Enum):
     OVERCROWDED = "overcrowded" # 极致拥挤 ⚠️
 
 
+class EtfCategory(str, Enum):
+    """ETF category for filtering."""
+    BROAD = "broad"                 # 宽基/大盘
+    SECTOR = "sector"               # 行业/赛道
+    CROSS_BORDER = "cross_border"   # 跨境/QDII
+    COMMODITY = "commodity"         # 商品
+    BOND = "bond"                   # 债券
+
+
+class EtfSortField(str, Enum):
+    """Sort field options for ETF screener."""
+    AMOUNT = "amount"
+    DISCOUNT_RATE = "discount_rate"
+    SCORE = "score"
+    CHANGE = "change"
+    TURN = "turn"
+
+
 class ValuationLevel(str, Enum):
     """Valuation level based on historical percentile."""
     LOW = "LOW"           # 0-25%
@@ -221,6 +239,71 @@ class ScreenerResponse(BaseModel):
     date: Optional[datetime.date] = None
     start_date: Optional[datetime.date] = None
     end_date: Optional[datetime.date] = None
+
+
+# ============================================
+# ETF Screener Schemas
+# ============================================
+
+class EtfScreenerItem(BaseModel):
+    """Single ETF item in screener results."""
+    code: str
+    name: str
+    etf_type: Optional[str] = Field(default=None, description="BROAD_BASED, SECTOR, THEME, etc.")
+    underlying_index_code: Optional[str] = None
+    underlying_index_name: Optional[str] = None
+    price: Optional[Decimal] = None
+    change_pct: Optional[Decimal] = None
+    amount: Optional[Decimal] = Field(default=None, description="Trading amount")
+    turn: Optional[Decimal] = Field(default=None, description="Turnover rate")
+    discount_rate: Optional[Decimal] = Field(default=None, description="Premium/discount rate (%)")
+    unit_total: Optional[Decimal] = Field(default=None, description="Fund units (万份)")
+    fund_company: Optional[str] = None
+    management_fee: Optional[Decimal] = None
+    score: Optional[Decimal] = Field(default=None, description="Composite score (0-100)")
+    is_representative: bool = Field(default=False, description="Is representative ETF for this index")
+    labels: List[str] = Field(default_factory=list, description="ETF labels: liquidity_king, high_premium, etc.")
+
+    class Config:
+        from_attributes = True
+
+
+class EtfScreenerResponse(BaseModel):
+    """Paginated ETF screener response."""
+    items: List[EtfScreenerItem]
+    total: int
+    page: int
+    page_size: int
+    pages: int
+    date: Optional[datetime.date] = None
+
+
+# ============================================
+# ETF Heatmap Schemas
+# ============================================
+
+class EtfHeatmapItem(BaseModel):
+    """Single ETF item in heatmap."""
+    code: str
+    name: str = Field(description="Simplified name (e.g., '沪深300')")
+    full_name: str = Field(description="Full ETF name")
+    change_pct: Optional[Decimal] = Field(default=None, description="Daily change %")
+    amount: Optional[Decimal] = Field(default=None, description="Trading amount")
+    is_representative: bool = Field(default=True, description="Is representative for this sub-category")
+
+
+class EtfHeatmapCategory(BaseModel):
+    """Single category row in ETF heatmap."""
+    category: str = Field(description="Category key: broad, sector, theme, cross_border, commodity, bond")
+    label: str = Field(description="Display label: 宽基, 行业, 赛道, 跨境, 商品, 债券")
+    items: List[EtfHeatmapItem] = Field(description="ETFs in this category")
+    avg_change_pct: Optional[Decimal] = Field(default=None, description="Category average change %")
+
+
+class EtfHeatmapResponse(BaseModel):
+    """ETF heatmap response with 6 category rows."""
+    date: Optional[datetime.date] = None
+    categories: List[EtfHeatmapCategory] = Field(description="6 rows: broad, sector, theme, cross_border, commodity, bond")
 
 
 # ============================================
@@ -629,6 +712,143 @@ async def get_screener(
         date=result.get("date"),
         start_date=result.get("start_date"),
         end_date=result.get("end_date"),
+    )
+
+
+@router.get("/etf-screener", response_model=EtfScreenerResponse)
+async def get_etf_screener(
+    # Category filter
+    category: Optional[EtfCategory] = Query(default=None, description="ETF category filter"),
+
+    # Date
+    date: Optional[datetime.date] = Query(default=None, description="Target date"),
+
+    # Pagination
+    page: int = Query(default=1, ge=1),
+    page_size: int = Query(default=50, ge=1, le=200),
+
+    # Sorting
+    sort_by: EtfSortField = Query(default=EtfSortField.AMOUNT),
+    sort_order: SortOrder = Query(default=SortOrder.DESC),
+
+    # Representative filter
+    representative_only: bool = Query(default=True, description="Only show representative ETF per index"),
+
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    Get ETF screener results with category filtering and representative logic.
+
+    Categories:
+    - broad: 宽基/大盘 (沪深300, 中证500, 科创50)
+    - sector: 行业/赛道 (银行, 证券, 医药, 半导体)
+    - cross_border: 跨境/QDII (纳指, 标普, 恒生科技)
+    - commodity: 商品 (黄金, 豆粕, 原油)
+    - bond: 债券 (国债, 城投债)
+
+    Labels returned:
+    - liquidity_king: Highest volume in category
+    - high_premium: Premium > 5%
+    - medium_premium: Premium 3-5%
+    - discount: Discount < -3%
+    - t_plus_zero: Supports T+0 trading
+    """
+    from app.services.alpha_radar.etf_screener_service import ETFScreenerService
+
+    service = ETFScreenerService(db)
+    result = await service.get_etf_screener_results(
+        category=category.value if category else None,
+        target_date=date,
+        representative_only=representative_only,
+        page=page,
+        page_size=page_size,
+        sort_by=sort_by.value,
+        sort_order=sort_order.value,
+    )
+
+    # Convert items to response models
+    items = [
+        EtfScreenerItem(
+            code=item["code"],
+            name=item["name"],
+            etf_type=item.get("etf_type"),
+            underlying_index_code=item.get("underlying_index_code"),
+            underlying_index_name=item.get("underlying_index_name"),
+            price=item.get("price"),
+            change_pct=item.get("change_pct"),
+            amount=item.get("amount"),
+            turn=item.get("turn"),
+            discount_rate=item.get("discount_rate"),
+            unit_total=item.get("unit_total"),
+            fund_company=item.get("fund_company"),
+            management_fee=item.get("management_fee"),
+            score=item.get("score"),
+            is_representative=item.get("is_representative", False),
+            labels=item.get("labels", []),
+        )
+        for item in result["items"]
+    ]
+
+    return EtfScreenerResponse(
+        items=items,
+        total=result["total"],
+        page=result["page"],
+        page_size=result["page_size"],
+        pages=result["pages"],
+        date=result.get("date"),
+    )
+
+
+@router.get("/etf-heatmap", response_model=EtfHeatmapResponse)
+async def get_etf_heatmap(
+    date: Optional[datetime.date] = Query(default=None, description="Target date"),
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    Get ETF heatmap data grouped by category.
+
+    Returns 6 category rows:
+    - broad (宽基): 沪深300, 中证500, 科创50, A500, 红利
+    - sector (行业): 银行, 证券, 医药, 化工, 煤炭
+    - theme (赛道): AI, 芯片, 机器人, 新能源, 储能
+    - cross_border (跨境): 纳指, 标普, 恒科, 港股, 日经
+    - commodity (商品): 黄金, 白银, 原油, 豆粕
+    - bond (债券): 国债, 城投, 信用债
+
+    Each cell shows:
+    - Simplified name (e.g., "沪深300" instead of "沪深300ETF华夏")
+    - Change percentage with red/green coloring
+    - Representative ETF (highest volume per sub-category)
+    """
+    from app.services.alpha_radar.etf_heatmap_service import ETFHeatmapService
+
+    service = ETFHeatmapService(db)
+    result = await service.get_etf_heatmap(target_date=date)
+
+    # Convert to response models
+    categories = [
+        EtfHeatmapCategory(
+            category=cat["category"],
+            label=cat["label"],
+            items=[
+                EtfHeatmapItem(
+                    code=item["code"],
+                    name=item["name"],
+                    full_name=item["full_name"],
+                    change_pct=item.get("change_pct"),
+                    amount=item.get("amount"),
+                    is_representative=item.get("is_representative", True),
+                )
+                for item in cat["items"]
+            ],
+            avg_change_pct=cat.get("avg_change_pct"),
+        )
+        for cat in result["categories"]
+    ]
+
+    return EtfHeatmapResponse(
+        date=result.get("date"),
+        categories=categories,
     )
 
 

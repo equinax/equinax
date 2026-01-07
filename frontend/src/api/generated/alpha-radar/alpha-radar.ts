@@ -16,8 +16,12 @@ import type {
 import type {
   CalendarDayInfo,
   DashboardResponse,
+  EtfHeatmapResponse,
+  EtfScreenerResponse,
   GetCalendarApiV1AlphaRadarCalendarGetParams,
   GetDashboardApiV1AlphaRadarDashboardGetParams,
+  GetEtfHeatmapApiV1AlphaRadarEtfHeatmapGetParams,
+  GetEtfScreenerApiV1AlphaRadarEtfScreenerGetParams,
   GetScreenerApiV1AlphaRadarScreenerGetParams,
   GetSectorHeatmapApiV1AlphaRadarSectorHeatmapGetParams,
   GetSectorRotationApiV1AlphaRadarSectorRotationGetParams,
@@ -691,6 +695,421 @@ export const useGetScreenerApiV1AlphaRadarScreenerGet = <
   },
 ): UseQueryResult<TData, TError> & { queryKey: QueryKey } => {
   const queryOptions = getGetScreenerApiV1AlphaRadarScreenerGetQueryOptions(
+    params,
+    options,
+  );
+
+  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
+    queryKey: QueryKey;
+  };
+
+  query.queryKey = queryOptions.queryKey;
+
+  return query;
+};
+
+/**
+ * Get ETF screener results with category filtering and representative logic.
+
+Categories:
+- broad: 宽基/大盘 (沪深300, 中证500, 科创50)
+- sector: 行业/赛道 (银行, 证券, 医药, 半导体)
+- cross_border: 跨境/QDII (纳指, 标普, 恒生科技)
+- commodity: 商品 (黄金, 豆粕, 原油)
+- bond: 债券 (国债, 城投债)
+
+Labels returned:
+- liquidity_king: Highest volume in category
+- high_premium: Premium > 5%
+- medium_premium: Premium 3-5%
+- discount: Discount < -3%
+- t_plus_zero: Supports T+0 trading
+ * @summary Get Etf Screener
+ */
+export const getEtfScreenerApiV1AlphaRadarEtfScreenerGet = (
+  params?: GetEtfScreenerApiV1AlphaRadarEtfScreenerGetParams,
+  signal?: AbortSignal,
+) => {
+  return customInstance<EtfScreenerResponse>({
+    url: `/api/v1/alpha-radar/etf-screener`,
+    method: "GET",
+    params,
+    signal,
+  });
+};
+
+export const getGetEtfScreenerApiV1AlphaRadarEtfScreenerGetQueryKey = (
+  params?: GetEtfScreenerApiV1AlphaRadarEtfScreenerGetParams,
+) => {
+  return [
+    `/api/v1/alpha-radar/etf-screener`,
+    ...(params ? [params] : []),
+  ] as const;
+};
+
+export const getGetEtfScreenerApiV1AlphaRadarEtfScreenerGetInfiniteQueryOptions =
+  <
+    TData = InfiniteData<
+      Awaited<ReturnType<typeof getEtfScreenerApiV1AlphaRadarEtfScreenerGet>>,
+      GetEtfScreenerApiV1AlphaRadarEtfScreenerGetParams["page"]
+    >,
+    TError = HTTPValidationError,
+  >(
+    params?: GetEtfScreenerApiV1AlphaRadarEtfScreenerGetParams,
+    options?: {
+      query?: Partial<
+        UseInfiniteQueryOptions<
+          Awaited<
+            ReturnType<typeof getEtfScreenerApiV1AlphaRadarEtfScreenerGet>
+          >,
+          TError,
+          TData,
+          Awaited<
+            ReturnType<typeof getEtfScreenerApiV1AlphaRadarEtfScreenerGet>
+          >,
+          QueryKey,
+          GetEtfScreenerApiV1AlphaRadarEtfScreenerGetParams["page"]
+        >
+      >;
+    },
+  ) => {
+    const { query: queryOptions } = options ?? {};
+
+    const queryKey =
+      queryOptions?.queryKey ??
+      getGetEtfScreenerApiV1AlphaRadarEtfScreenerGetQueryKey(params);
+
+    const queryFn: QueryFunction<
+      Awaited<ReturnType<typeof getEtfScreenerApiV1AlphaRadarEtfScreenerGet>>,
+      QueryKey,
+      GetEtfScreenerApiV1AlphaRadarEtfScreenerGetParams["page"]
+    > = ({ signal, pageParam }) =>
+      getEtfScreenerApiV1AlphaRadarEtfScreenerGet(
+        { ...params, page: pageParam || params?.["page"] },
+        signal,
+      );
+
+    return { queryKey, queryFn, ...queryOptions } as UseInfiniteQueryOptions<
+      Awaited<ReturnType<typeof getEtfScreenerApiV1AlphaRadarEtfScreenerGet>>,
+      TError,
+      TData,
+      Awaited<ReturnType<typeof getEtfScreenerApiV1AlphaRadarEtfScreenerGet>>,
+      QueryKey,
+      GetEtfScreenerApiV1AlphaRadarEtfScreenerGetParams["page"]
+    > & { queryKey: QueryKey };
+  };
+
+export type GetEtfScreenerApiV1AlphaRadarEtfScreenerGetInfiniteQueryResult =
+  NonNullable<
+    Awaited<ReturnType<typeof getEtfScreenerApiV1AlphaRadarEtfScreenerGet>>
+  >;
+export type GetEtfScreenerApiV1AlphaRadarEtfScreenerGetInfiniteQueryError =
+  HTTPValidationError;
+
+/**
+ * @summary Get Etf Screener
+ */
+export const useGetEtfScreenerApiV1AlphaRadarEtfScreenerGetInfinite = <
+  TData = InfiniteData<
+    Awaited<ReturnType<typeof getEtfScreenerApiV1AlphaRadarEtfScreenerGet>>,
+    GetEtfScreenerApiV1AlphaRadarEtfScreenerGetParams["page"]
+  >,
+  TError = HTTPValidationError,
+>(
+  params?: GetEtfScreenerApiV1AlphaRadarEtfScreenerGetParams,
+  options?: {
+    query?: Partial<
+      UseInfiniteQueryOptions<
+        Awaited<ReturnType<typeof getEtfScreenerApiV1AlphaRadarEtfScreenerGet>>,
+        TError,
+        TData,
+        Awaited<ReturnType<typeof getEtfScreenerApiV1AlphaRadarEtfScreenerGet>>,
+        QueryKey,
+        GetEtfScreenerApiV1AlphaRadarEtfScreenerGetParams["page"]
+      >
+    >;
+  },
+): UseInfiniteQueryResult<TData, TError> & { queryKey: QueryKey } => {
+  const queryOptions =
+    getGetEtfScreenerApiV1AlphaRadarEtfScreenerGetInfiniteQueryOptions(
+      params,
+      options,
+    );
+
+  const query = useInfiniteQuery(queryOptions) as UseInfiniteQueryResult<
+    TData,
+    TError
+  > & { queryKey: QueryKey };
+
+  query.queryKey = queryOptions.queryKey;
+
+  return query;
+};
+
+export const getGetEtfScreenerApiV1AlphaRadarEtfScreenerGetQueryOptions = <
+  TData = Awaited<
+    ReturnType<typeof getEtfScreenerApiV1AlphaRadarEtfScreenerGet>
+  >,
+  TError = HTTPValidationError,
+>(
+  params?: GetEtfScreenerApiV1AlphaRadarEtfScreenerGetParams,
+  options?: {
+    query?: Partial<
+      UseQueryOptions<
+        Awaited<ReturnType<typeof getEtfScreenerApiV1AlphaRadarEtfScreenerGet>>,
+        TError,
+        TData
+      >
+    >;
+  },
+) => {
+  const { query: queryOptions } = options ?? {};
+
+  const queryKey =
+    queryOptions?.queryKey ??
+    getGetEtfScreenerApiV1AlphaRadarEtfScreenerGetQueryKey(params);
+
+  const queryFn: QueryFunction<
+    Awaited<ReturnType<typeof getEtfScreenerApiV1AlphaRadarEtfScreenerGet>>
+  > = ({ signal }) =>
+    getEtfScreenerApiV1AlphaRadarEtfScreenerGet(params, signal);
+
+  return { queryKey, queryFn, ...queryOptions } as UseQueryOptions<
+    Awaited<ReturnType<typeof getEtfScreenerApiV1AlphaRadarEtfScreenerGet>>,
+    TError,
+    TData
+  > & { queryKey: QueryKey };
+};
+
+export type GetEtfScreenerApiV1AlphaRadarEtfScreenerGetQueryResult =
+  NonNullable<
+    Awaited<ReturnType<typeof getEtfScreenerApiV1AlphaRadarEtfScreenerGet>>
+  >;
+export type GetEtfScreenerApiV1AlphaRadarEtfScreenerGetQueryError =
+  HTTPValidationError;
+
+/**
+ * @summary Get Etf Screener
+ */
+export const useGetEtfScreenerApiV1AlphaRadarEtfScreenerGet = <
+  TData = Awaited<
+    ReturnType<typeof getEtfScreenerApiV1AlphaRadarEtfScreenerGet>
+  >,
+  TError = HTTPValidationError,
+>(
+  params?: GetEtfScreenerApiV1AlphaRadarEtfScreenerGetParams,
+  options?: {
+    query?: Partial<
+      UseQueryOptions<
+        Awaited<ReturnType<typeof getEtfScreenerApiV1AlphaRadarEtfScreenerGet>>,
+        TError,
+        TData
+      >
+    >;
+  },
+): UseQueryResult<TData, TError> & { queryKey: QueryKey } => {
+  const queryOptions =
+    getGetEtfScreenerApiV1AlphaRadarEtfScreenerGetQueryOptions(params, options);
+
+  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
+    queryKey: QueryKey;
+  };
+
+  query.queryKey = queryOptions.queryKey;
+
+  return query;
+};
+
+/**
+ * Get ETF heatmap data grouped by category.
+
+Returns 6 category rows:
+- broad (宽基): 沪深300, 中证500, 科创50, A500, 红利
+- sector (行业): 银行, 证券, 医药, 化工, 煤炭
+- theme (赛道): AI, 芯片, 机器人, 新能源, 储能
+- cross_border (跨境): 纳指, 标普, 恒科, 港股, 日经
+- commodity (商品): 黄金, 白银, 原油, 豆粕
+- bond (债券): 国债, 城投, 信用债
+
+Each cell shows:
+- Simplified name (e.g., "沪深300" instead of "沪深300ETF华夏")
+- Change percentage with red/green coloring
+- Representative ETF (highest volume per sub-category)
+ * @summary Get Etf Heatmap
+ */
+export const getEtfHeatmapApiV1AlphaRadarEtfHeatmapGet = (
+  params?: GetEtfHeatmapApiV1AlphaRadarEtfHeatmapGetParams,
+  signal?: AbortSignal,
+) => {
+  return customInstance<EtfHeatmapResponse>({
+    url: `/api/v1/alpha-radar/etf-heatmap`,
+    method: "GET",
+    params,
+    signal,
+  });
+};
+
+export const getGetEtfHeatmapApiV1AlphaRadarEtfHeatmapGetQueryKey = (
+  params?: GetEtfHeatmapApiV1AlphaRadarEtfHeatmapGetParams,
+) => {
+  return [
+    `/api/v1/alpha-radar/etf-heatmap`,
+    ...(params ? [params] : []),
+  ] as const;
+};
+
+export const getGetEtfHeatmapApiV1AlphaRadarEtfHeatmapGetInfiniteQueryOptions =
+  <
+    TData = InfiniteData<
+      Awaited<ReturnType<typeof getEtfHeatmapApiV1AlphaRadarEtfHeatmapGet>>,
+      GetEtfHeatmapApiV1AlphaRadarEtfHeatmapGetParams["page"]
+    >,
+    TError = HTTPValidationError,
+  >(
+    params?: GetEtfHeatmapApiV1AlphaRadarEtfHeatmapGetParams,
+    options?: {
+      query?: Partial<
+        UseInfiniteQueryOptions<
+          Awaited<ReturnType<typeof getEtfHeatmapApiV1AlphaRadarEtfHeatmapGet>>,
+          TError,
+          TData,
+          Awaited<ReturnType<typeof getEtfHeatmapApiV1AlphaRadarEtfHeatmapGet>>,
+          QueryKey,
+          GetEtfHeatmapApiV1AlphaRadarEtfHeatmapGetParams["page"]
+        >
+      >;
+    },
+  ) => {
+    const { query: queryOptions } = options ?? {};
+
+    const queryKey =
+      queryOptions?.queryKey ??
+      getGetEtfHeatmapApiV1AlphaRadarEtfHeatmapGetQueryKey(params);
+
+    const queryFn: QueryFunction<
+      Awaited<ReturnType<typeof getEtfHeatmapApiV1AlphaRadarEtfHeatmapGet>>,
+      QueryKey,
+      GetEtfHeatmapApiV1AlphaRadarEtfHeatmapGetParams["page"]
+    > = ({ signal, pageParam }) =>
+      getEtfHeatmapApiV1AlphaRadarEtfHeatmapGet(
+        { ...params, page: pageParam || params?.["page"] },
+        signal,
+      );
+
+    return { queryKey, queryFn, ...queryOptions } as UseInfiniteQueryOptions<
+      Awaited<ReturnType<typeof getEtfHeatmapApiV1AlphaRadarEtfHeatmapGet>>,
+      TError,
+      TData,
+      Awaited<ReturnType<typeof getEtfHeatmapApiV1AlphaRadarEtfHeatmapGet>>,
+      QueryKey,
+      GetEtfHeatmapApiV1AlphaRadarEtfHeatmapGetParams["page"]
+    > & { queryKey: QueryKey };
+  };
+
+export type GetEtfHeatmapApiV1AlphaRadarEtfHeatmapGetInfiniteQueryResult =
+  NonNullable<
+    Awaited<ReturnType<typeof getEtfHeatmapApiV1AlphaRadarEtfHeatmapGet>>
+  >;
+export type GetEtfHeatmapApiV1AlphaRadarEtfHeatmapGetInfiniteQueryError =
+  HTTPValidationError;
+
+/**
+ * @summary Get Etf Heatmap
+ */
+export const useGetEtfHeatmapApiV1AlphaRadarEtfHeatmapGetInfinite = <
+  TData = InfiniteData<
+    Awaited<ReturnType<typeof getEtfHeatmapApiV1AlphaRadarEtfHeatmapGet>>,
+    GetEtfHeatmapApiV1AlphaRadarEtfHeatmapGetParams["page"]
+  >,
+  TError = HTTPValidationError,
+>(
+  params?: GetEtfHeatmapApiV1AlphaRadarEtfHeatmapGetParams,
+  options?: {
+    query?: Partial<
+      UseInfiniteQueryOptions<
+        Awaited<ReturnType<typeof getEtfHeatmapApiV1AlphaRadarEtfHeatmapGet>>,
+        TError,
+        TData,
+        Awaited<ReturnType<typeof getEtfHeatmapApiV1AlphaRadarEtfHeatmapGet>>,
+        QueryKey,
+        GetEtfHeatmapApiV1AlphaRadarEtfHeatmapGetParams["page"]
+      >
+    >;
+  },
+): UseInfiniteQueryResult<TData, TError> & { queryKey: QueryKey } => {
+  const queryOptions =
+    getGetEtfHeatmapApiV1AlphaRadarEtfHeatmapGetInfiniteQueryOptions(
+      params,
+      options,
+    );
+
+  const query = useInfiniteQuery(queryOptions) as UseInfiniteQueryResult<
+    TData,
+    TError
+  > & { queryKey: QueryKey };
+
+  query.queryKey = queryOptions.queryKey;
+
+  return query;
+};
+
+export const getGetEtfHeatmapApiV1AlphaRadarEtfHeatmapGetQueryOptions = <
+  TData = Awaited<ReturnType<typeof getEtfHeatmapApiV1AlphaRadarEtfHeatmapGet>>,
+  TError = HTTPValidationError,
+>(
+  params?: GetEtfHeatmapApiV1AlphaRadarEtfHeatmapGetParams,
+  options?: {
+    query?: Partial<
+      UseQueryOptions<
+        Awaited<ReturnType<typeof getEtfHeatmapApiV1AlphaRadarEtfHeatmapGet>>,
+        TError,
+        TData
+      >
+    >;
+  },
+) => {
+  const { query: queryOptions } = options ?? {};
+
+  const queryKey =
+    queryOptions?.queryKey ??
+    getGetEtfHeatmapApiV1AlphaRadarEtfHeatmapGetQueryKey(params);
+
+  const queryFn: QueryFunction<
+    Awaited<ReturnType<typeof getEtfHeatmapApiV1AlphaRadarEtfHeatmapGet>>
+  > = ({ signal }) => getEtfHeatmapApiV1AlphaRadarEtfHeatmapGet(params, signal);
+
+  return { queryKey, queryFn, ...queryOptions } as UseQueryOptions<
+    Awaited<ReturnType<typeof getEtfHeatmapApiV1AlphaRadarEtfHeatmapGet>>,
+    TError,
+    TData
+  > & { queryKey: QueryKey };
+};
+
+export type GetEtfHeatmapApiV1AlphaRadarEtfHeatmapGetQueryResult = NonNullable<
+  Awaited<ReturnType<typeof getEtfHeatmapApiV1AlphaRadarEtfHeatmapGet>>
+>;
+export type GetEtfHeatmapApiV1AlphaRadarEtfHeatmapGetQueryError =
+  HTTPValidationError;
+
+/**
+ * @summary Get Etf Heatmap
+ */
+export const useGetEtfHeatmapApiV1AlphaRadarEtfHeatmapGet = <
+  TData = Awaited<ReturnType<typeof getEtfHeatmapApiV1AlphaRadarEtfHeatmapGet>>,
+  TError = HTTPValidationError,
+>(
+  params?: GetEtfHeatmapApiV1AlphaRadarEtfHeatmapGetParams,
+  options?: {
+    query?: Partial<
+      UseQueryOptions<
+        Awaited<ReturnType<typeof getEtfHeatmapApiV1AlphaRadarEtfHeatmapGet>>,
+        TError,
+        TData
+      >
+    >;
+  },
+): UseQueryResult<TData, TError> & { queryKey: QueryKey } => {
+  const queryOptions = getGetEtfHeatmapApiV1AlphaRadarEtfHeatmapGetQueryOptions(
     params,
     options,
   );

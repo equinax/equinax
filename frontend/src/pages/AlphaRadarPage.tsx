@@ -9,19 +9,35 @@ import { format } from 'date-fns'
 import {
   useGetDashboardApiV1AlphaRadarDashboardGet,
   useGetScreenerApiV1AlphaRadarScreenerGet,
+  useGetEtfScreenerApiV1AlphaRadarEtfScreenerGet,
 } from '@/api/generated/alpha-radar/alpha-radar'
-import type { ScreenerTab, TimeMode } from '@/api/generated/schemas'
+import type { EtfCategory, ScreenerTab, TimeMode } from '@/api/generated/schemas'
 import { MarketDashboard } from '@/components/alpha-radar/MarketDashboard'
 import { RadarDataTable } from '@/components/alpha-radar/RadarDataTable'
+import { EtfDataTable } from '@/components/alpha-radar/EtfDataTable'
 import { TimeController } from '@/components/alpha-radar/TimeController'
 import { SectorHeatmap } from '@/components/alpha-radar/SectorHeatmap'
+import { EtfCategoryHeatmap } from '@/components/alpha-radar/EtfCategoryHeatmap'
 
-// Tab configuration
-const TABS = [
+// Radar mode type
+type RadarMode = 'stock' | 'etf'
+
+// Tab configuration for stock screener
+const STOCK_TABS = [
   { value: 'panorama', label: '全景综合', description: '动量+估值+质量+主力+技术' },
   { value: 'smart', label: '聪明钱吸筹', description: '主力强度+量价+价格位置' },
   { value: 'value', label: '深度价值', description: '低估+质量+稳定+分红' },
   { value: 'trend', label: '超级趋势', description: '动量+突破+量能+趋势' },
+] as const
+
+// Tab configuration for ETF screener
+const ETF_TABS = [
+  { value: 'all', label: '全部', description: '所有ETF' },
+  { value: 'broad', label: '宽基/大盘', description: '沪深300/中证500/科创50' },
+  { value: 'sector', label: '行业/赛道', description: '银行/证券/医药/半导体' },
+  { value: 'cross_border', label: '跨境/QDII', description: '纳指/标普/恒生科技' },
+  { value: 'commodity', label: '商品', description: '黄金/豆粕/原油' },
+  { value: 'bond', label: '债券', description: '国债/城投债' },
 ] as const
 
 // Map frontend sorting to backend sort_by parameter
@@ -35,6 +51,9 @@ const sortFieldMap: Record<string, string> = {
 
 export default function AlphaRadarPage() {
   const [searchParams, setSearchParams] = useSearchParams()
+
+  // Radar mode: stock or etf
+  const [radarMode, setRadarMode] = useState<RadarMode>('stock')
 
   // Time controller state
   const [timeMode, setTimeMode] = useState<TimeMode>('snapshot')
@@ -75,8 +94,11 @@ export default function AlphaRadarPage() {
     }
   }, [selectedDate, searchParams, setSearchParams])
 
-  // Tab state
+  // Tab state (for stock screener)
   const [activeTab, setActiveTab] = useState<ScreenerTab>('panorama')
+
+  // ETF category state (for ETF screener)
+  const [etfCategory, setEtfCategory] = useState<EtfCategory | 'all'>('all')
 
   // Pagination state
   const [page, setPage] = useState(1)
@@ -105,21 +127,38 @@ export default function AlphaRadarPage() {
     end_date: dateRange.to ? formatDateString(dateRange.to) : undefined,
   })
 
-  // Fetch screener data
-  const { data: screener, isLoading: isLoadingScreener } = useGetScreenerApiV1AlphaRadarScreenerGet({
-    tab: activeTab,
-    mode: timeMode,
-    date: selectedDate ? formatDateString(selectedDate) : undefined,
-    start_date: dateRange.from ? formatDateString(dateRange.from) : undefined,
-    end_date: dateRange.to ? formatDateString(dateRange.to) : undefined,
-    page,
-    page_size: pageSize,
-    sort_by: sortBy as 'score' | 'change' | 'volume' | 'valuation' | 'main_strength' | 'code',
-    sort_order: sortOrder as 'asc' | 'desc',
-  })
+  // Fetch stock screener data (only when in stock mode)
+  const { data: screener, isLoading: isLoadingScreener } = useGetScreenerApiV1AlphaRadarScreenerGet(
+    {
+      tab: activeTab,
+      mode: timeMode,
+      date: selectedDate ? formatDateString(selectedDate) : undefined,
+      start_date: dateRange.from ? formatDateString(dateRange.from) : undefined,
+      end_date: dateRange.to ? formatDateString(dateRange.to) : undefined,
+      page,
+      page_size: pageSize,
+      sort_by: sortBy as 'score' | 'change' | 'volume' | 'valuation' | 'main_strength' | 'code',
+      sort_order: sortOrder as 'asc' | 'desc',
+    },
+    { query: { enabled: radarMode === 'stock' } }
+  )
+
+  // Fetch ETF screener data (only when in ETF mode)
+  const { data: etfScreener, isLoading: isLoadingEtfScreener } = useGetEtfScreenerApiV1AlphaRadarEtfScreenerGet(
+    {
+      category: etfCategory === 'all' ? undefined : (etfCategory as EtfCategory),
+      date: selectedDate ? formatDateString(selectedDate) : undefined,
+      page,
+      page_size: pageSize,
+      sort_by: 'amount',
+      sort_order: 'desc',
+      representative_only: true,
+    },
+    { query: { enabled: radarMode === 'etf' } }
+  )
 
   // Loading lock - prevent rapid date changes while data is loading
-  const isAnyLoading = isLoadingDashboard || isLoadingScreener
+  const isAnyLoading = isLoadingDashboard || isLoadingScreener || isLoadingEtfScreener
 
   // Handle date change with loading lock
   const handleDateChange = useCallback((date: Date | undefined) => {
@@ -133,9 +172,21 @@ export default function AlphaRadarPage() {
     setDateRange(range)
   }, [isAnyLoading])
 
-  // Handle tab change - reset to page 1
+  // Handle radar mode change - reset to page 1
+  const handleRadarModeChange = (mode: RadarMode) => {
+    setRadarMode(mode)
+    setPage(1)
+  }
+
+  // Handle tab change (stock screener) - reset to page 1
   const handleTabChange = (tab: string) => {
     setActiveTab(tab as ScreenerTab)
+    setPage(1)
+  }
+
+  // Handle ETF category change - reset to page 1
+  const handleEtfCategoryChange = (category: string) => {
+    setEtfCategory(category as EtfCategory | 'all')
     setPage(1)
   }
 
@@ -154,7 +205,10 @@ export default function AlphaRadarPage() {
     setPage(1)
   }
 
-  const totalPages = screener?.pages || 1
+  // Get active screener data based on mode
+  const activeScreener = radarMode === 'stock' ? screener : etfScreener
+  const isLoadingActiveScreener = radarMode === 'stock' ? isLoadingScreener : isLoadingEtfScreener
+  const totalPages = activeScreener?.pages || 1
 
   return (
     <div className="space-y-4">
@@ -165,7 +219,7 @@ export default function AlphaRadarPage() {
           <p className="text-sm text-muted-foreground font-mono h-5">
             {selectedDate
               ? formatDateString(selectedDate)
-              : screener?.date ?? <span className="invisible">0000-00-00</span>}
+              : activeScreener?.date ?? <span className="invisible">0000-00-00</span>}
           </p>
         </div>
         <div className="flex-1">
@@ -177,76 +231,129 @@ export default function AlphaRadarPage() {
             dateRange={dateRange}
             onDateRangeChange={handleDateRangeChange}
             disabled={isAnyLoading}
-            defaultActiveDate={screener?.date ?? undefined}
+            defaultActiveDate={activeScreener?.date ?? undefined}
           />
+        </div>
+        {/* Mode Toggle */}
+        <div className="flex items-center gap-1 border rounded-lg p-1 shrink-0">
+          <Button
+            variant={radarMode === 'stock' ? 'default' : 'ghost'}
+            size="sm"
+            className="text-xs h-7 px-3"
+            onClick={() => handleRadarModeChange('stock')}
+          >
+            股票
+          </Button>
+          <Button
+            variant={radarMode === 'etf' ? 'default' : 'ghost'}
+            size="sm"
+            className="text-xs h-7 px-3"
+            onClick={() => handleRadarModeChange('etf')}
+          >
+            ETF
+          </Button>
         </div>
       </div>
 
       {/* Market Dashboard - 4 Cards */}
       <MarketDashboard data={dashboard} isLoading={isLoadingDashboard} />
 
-      {/* Sector Heatmap */}
-      <SectorHeatmap
-        timeMode={timeMode}
-        selectedDate={selectedDate}
-        dateRange={dateRange}
-      />
+      {/* Sector Heatmap - Only show in stock mode */}
+      {radarMode === 'stock' && (
+        <SectorHeatmap
+          timeMode={timeMode}
+          selectedDate={selectedDate}
+          dateRange={dateRange}
+        />
+      )}
 
-      {/* Intelligent Screener */}
+      {/* ETF Category Heatmap - Only show in ETF mode */}
+      {radarMode === 'etf' && (
+        <EtfCategoryHeatmap selectedDate={selectedDate} />
+      )}
+
+      {/* Screener Section */}
       <Card>
         <CardHeader className="pb-3 pt-3">
           <div className="flex items-center gap-4">
             {/* Title */}
-            <CardTitle className="text-lg shrink-0">智能选股</CardTitle>
+            <CardTitle className="text-lg shrink-0">
+              {radarMode === 'stock' ? '智能选股' : 'ETF雷达'}
+            </CardTitle>
 
-            {/* Tabs */}
-            <Tabs value={activeTab} onValueChange={handleTabChange} className="shrink-0">
-              <TabsList>
-                {TABS.map((tab) => (
-                  <TabsTrigger key={tab.value} value={tab.value} className="text-xs px-3">
-                    {tab.label}
-                  </TabsTrigger>
-                ))}
-              </TabsList>
-            </Tabs>
-
-            {/* Description */}
-            <span className="text-xs text-muted-foreground shrink-0">
-              {TABS.find((t) => t.value === activeTab)?.description}
-            </span>
+            {/* Tabs - conditional based on mode */}
+            {radarMode === 'stock' ? (
+              <>
+                <Tabs value={activeTab} onValueChange={handleTabChange} className="shrink-0">
+                  <TabsList>
+                    {STOCK_TABS.map((tab) => (
+                      <TabsTrigger key={tab.value} value={tab.value} className="text-xs px-3">
+                        {tab.label}
+                      </TabsTrigger>
+                    ))}
+                  </TabsList>
+                </Tabs>
+                <span className="text-xs text-muted-foreground shrink-0">
+                  {STOCK_TABS.find((t) => t.value === activeTab)?.description}
+                </span>
+              </>
+            ) : (
+              <>
+                <Tabs value={etfCategory} onValueChange={handleEtfCategoryChange} className="shrink-0">
+                  <TabsList>
+                    {ETF_TABS.map((tab) => (
+                      <TabsTrigger key={tab.value} value={tab.value} className="text-xs px-3">
+                        {tab.label}
+                      </TabsTrigger>
+                    ))}
+                  </TabsList>
+                </Tabs>
+                <span className="text-xs text-muted-foreground shrink-0">
+                  {ETF_TABS.find((t) => t.value === etfCategory)?.description}
+                </span>
+              </>
+            )}
 
             {/* Spacer */}
             <div className="flex-1" />
 
             {/* Count */}
             <span className="text-sm text-muted-foreground shrink-0">
-              共 {screener?.total?.toLocaleString() || 0} 只
+              共 {activeScreener?.total?.toLocaleString() || 0} 只
             </span>
           </div>
         </CardHeader>
         <CardContent className="pt-0">
-          {/* Data Table */}
-          <RadarDataTable
-            data={screener?.items || []}
-            isLoading={isLoadingScreener}
-            sorting={sorting}
-            onSortingChange={handleSortingChange}
-            timeMode={timeMode}
-            activeDate={screener?.date ?? undefined}
-          />
+          {/* Data Table - conditional based on mode */}
+          {radarMode === 'stock' ? (
+            <RadarDataTable
+              data={screener?.items || []}
+              isLoading={isLoadingScreener}
+              sorting={sorting}
+              onSortingChange={handleSortingChange}
+              timeMode={timeMode}
+              activeDate={screener?.date ?? undefined}
+            />
+          ) : (
+            <EtfDataTable
+              data={etfScreener?.items || []}
+              isLoading={isLoadingEtfScreener}
+              activeDate={etfScreener?.date ?? undefined}
+            />
+          )}
 
           {/* Pagination */}
-          {screener && screener.pages > 1 && (
+          {activeScreener && activeScreener.pages > 1 && (
             <div className="flex items-center justify-between mt-4 pt-4 border-t">
               <p className="text-sm text-muted-foreground">
-                第 {page} / {totalPages} 页，共 {screener.total.toLocaleString()} 条
+                第 {page} / {totalPages} 页，共 {activeScreener.total.toLocaleString()} 条
               </p>
               <div className="flex items-center gap-2">
                 <Button
                   variant="outline"
                   size="sm"
                   onClick={() => setPage((p) => Math.max(1, p - 1))}
-                  disabled={page <= 1 || isLoadingScreener}
+                  disabled={page <= 1 || isLoadingActiveScreener}
                 >
                   <ChevronLeft className="h-4 w-4" />
                   上一页
@@ -255,7 +362,7 @@ export default function AlphaRadarPage() {
                   variant="outline"
                   size="sm"
                   onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
-                  disabled={page >= totalPages || isLoadingScreener}
+                  disabled={page >= totalPages || isLoadingActiveScreener}
                 >
                   下一页
                   <ChevronRight className="h-4 w-4" />

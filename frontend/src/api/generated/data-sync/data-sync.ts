@@ -178,6 +178,7 @@ export const useGetSyncStatusApiV1DataSyncStatusGet = <
  * Manually trigger a data sync.
 
 This enqueues a sync job to the ARQ worker queue.
+Only one sync job can run at a time - rejects if another is already running.
  * @summary Trigger Sync
  */
 export const triggerSyncApiV1DataSyncTriggerPost = (
@@ -1217,8 +1218,8 @@ export const useGetDataCompletenessApiV1DataSyncCompletenessGet = <
  * Analyze what data needs to be synced.
 
 Returns details about current data state and what would be updated.
+Checks all data types: stocks, ETF, and indices.
 Compares with latest trading day (not today) to account for weekends/holidays.
-Shows message like "当前最新数据日期是 2025-12-23，需要更新 1 天".
  * @summary Analyze Sync Requirements
  */
 export const analyzeSyncRequirementsApiV1DataSyncAnalyzeGet = (

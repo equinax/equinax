@@ -8,6 +8,8 @@ from app.services.alpha_radar.scoring import ScoringEngine
 from app.services.alpha_radar.dashboard_service import DashboardService
 from app.services.alpha_radar.screener_service import ScreenerService
 from app.services.alpha_radar.sector_heatmap_service import SectorHeatmapService
+from app.services.alpha_radar.etf_classifier import ETFClassifier
+from app.services.alpha_radar.etf_heatmap_service import ETFHeatmapService
 
 __all__ = [
     "PolarsEngine",
@@ -15,4 +17,6 @@ __all__ = [
     "DashboardService",
     "ScreenerService",
     "SectorHeatmapService",
+    "ETFClassifier",
+    "ETFHeatmapService",
 ]
