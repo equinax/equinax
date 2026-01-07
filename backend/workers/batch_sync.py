@@ -2420,65 +2420,136 @@ async def batch_insert_adjust_factors(
     return len(records)
 
 
-def _fetch_single_adjust_factor(code: str, start_date: str) -> Tuple[str, List[Dict], Optional[str]]:
+def _deduplicate_adjust_records(records: List[Dict]) -> List[Dict]:
     """
-    获取单只股票的复权因子
+    去除复权因子记录中的重复项（相同的 code + divid_operate_date）
+
+    baostock API 有时会返回重复记录，这会导致 ON CONFLICT DO UPDATE 报错：
+    "ON CONFLICT DO UPDATE command cannot affect row a second time"
+    """
+    seen = set()
+    deduped = []
+    for record in records:
+        key = (record['code'], record['divid_operate_date'])
+        if key not in seen:
+            seen.add(key)
+            deduped.append(record)
+    return deduped
+
+
+def _fetch_adjust_factors_batch_sync(
+    codes_with_names: List[Tuple[str, str]],
+    start_date: str,
+) -> Tuple[List[Dict], Dict[str, str]]:
+    """
+    使用单个 baostock 会话批量获取复权因子（无进度回调，简化版本）
 
     Args:
-        code: 股票代码 (sh.xxxxxx 或 sz.xxxxxx 格式)
+        codes_with_names: [(code, name), ...] 股票代码和名称列表
         start_date: 开始日期 YYYY-MM-DD
 
     Returns:
-        (code, records, error) 元组
+        (all_records, errors_dict) 元组，records 已去重
     """
     import baostock as bs
 
-    records = []
-    error = None
+    all_records = []
+    errors = {}
+
+    # 单次登录
+    lg = bs.login()
+    if lg.error_code != '0':
+        return [], {"_login": f"baostock login failed: {lg.error_msg}"}
+
     try:
-        lg = bs.login()
-        if lg.error_code != '0':
-            return code, [], f"baostock login failed: {lg.error_msg}"
+        for code, name in codes_with_names:
+            try:
+                rs = bs.query_adjust_factor(code=code, start_date=start_date)
 
-        rs = bs.query_adjust_factor(code=code, start_date=start_date)
+                while (rs.error_code == '0') and rs.next():
+                    row = rs.get_row_data()
+                    # row: [code, dividOperateDate, foreAdjustFactor, backAdjustFactor, adjustFactor]
+                    if len(row) >= 5:
+                        all_records.append({
+                            'code': row[0],
+                            'divid_operate_date': date.fromisoformat(row[1]),
+                            'fore_adjust_factor': Decimal(row[2]) if row[2] else None,
+                            'back_adjust_factor': Decimal(row[3]) if row[3] else None,
+                            'adjust_factor': Decimal(row[4]) if row[4] else None,
+                        })
 
-        while (rs.error_code == '0') and rs.next():
-            row = rs.get_row_data()
-            # row: [code, dividOperateDate, foreAdjustFactor, backAdjustFactor, adjustFactor]
-            if len(row) >= 5:
-                records.append({
-                    'code': row[0],
-                    'divid_operate_date': date.fromisoformat(row[1]),
-                    'fore_adjust_factor': Decimal(row[2]) if row[2] else None,
-                    'back_adjust_factor': Decimal(row[3]) if row[3] else None,
-                    'adjust_factor': Decimal(row[4]) if row[4] else None,
-                })
+            except Exception as e:
+                errors[code] = str(e)
 
+    finally:
+        # 确保登出
         bs.logout()
-    except Exception as e:
-        error = str(e)
 
-    return code, records, error
+    # 去重
+    all_records = _deduplicate_adjust_records(all_records)
+
+    return all_records, errors
 
 
-def _fetch_adjust_factor_batch(codes: List[str], start_date: str) -> List[Dict]:
+def _fetch_adjust_factors_with_session(
+    codes_with_names: List[Tuple[str, str]],
+    start_date: str,
+    progress_callback: Optional[Callable] = None,
+) -> Tuple[List[Dict], Dict[str, str]]:
     """
-    批量获取复权因子（使用单个 baostock 会话）- 保留用于兼容
-
-    baostock 不是线程安全的，所以使用单线程顺序处理。
+    使用单个 baostock 会话批量获取复权因子
 
     Args:
-        codes: 股票代码列表 (sh.xxxxxx 或 sz.xxxxxx 格式)
+        codes_with_names: [(code, name), ...] 股票代码和名称列表
         start_date: 开始日期 YYYY-MM-DD
+        progress_callback: 进度回调 (code, name, idx, total, records_count)
 
     Returns:
-        复权因子记录列表
+        (all_records, errors_dict) 元组
     """
+    import baostock as bs
+
     all_records = []
-    for code in codes:
-        _, records, _ = _fetch_single_adjust_factor(code, start_date)
-        all_records.extend(records)
-    return all_records
+    errors = {}
+    total = len(codes_with_names)
+
+    # 单次登录
+    lg = bs.login()
+    if lg.error_code != '0':
+        return [], {"_login": f"baostock login failed: {lg.error_msg}"}
+
+    try:
+        for idx, (code, name) in enumerate(codes_with_names):
+            records = []
+            try:
+                rs = bs.query_adjust_factor(code=code, start_date=start_date)
+
+                while (rs.error_code == '0') and rs.next():
+                    row = rs.get_row_data()
+                    # row: [code, dividOperateDate, foreAdjustFactor, backAdjustFactor, adjustFactor]
+                    if len(row) >= 5:
+                        records.append({
+                            'code': row[0],
+                            'divid_operate_date': date.fromisoformat(row[1]),
+                            'fore_adjust_factor': Decimal(row[2]) if row[2] else None,
+                            'back_adjust_factor': Decimal(row[3]) if row[3] else None,
+                            'adjust_factor': Decimal(row[4]) if row[4] else None,
+                        })
+
+                all_records.extend(records)
+
+                # 进度回调
+                if progress_callback:
+                    progress_callback(code, name, idx + 1, total, len(records))
+
+            except Exception as e:
+                errors[code] = str(e)
+
+    finally:
+        # 确保登出
+        bs.logout()
+
+    return all_records, errors
 
 
 async def sync_adjust_factors(
@@ -2486,12 +2557,13 @@ async def sync_adjust_factors(
     progress_callback: Callable[[str, int, Dict], Any] = None,
 ) -> Dict[str, Any]:
     """
-    同步复权因子数据 - 增量模式
+    同步复权因子数据 - 分批增量模式
 
     优化策略：
-    1. 只同步最近有市场数据更新的活跃股票
-    2. 使用较短的回溯窗口（7天而非30天）
-    3. 逐条报告进度，展示当前股票代码和名称
+    1. 3天内已同步则跳过（复权因子是稀疏事件）
+    2. 只同步最近有市场数据更新的活跃股票
+    3. 分批处理（每批100只），每批直接发送进度
+    4. 去重后批量写入，避免重复记录错误
 
     使用 baostock query_adjust_factor 接口获取复权因子，
     用于计算复权价格进行回测。
@@ -2503,8 +2575,6 @@ async def sync_adjust_factors(
     Returns:
         同步结果
     """
-    from app.db.models.asset import AssetMeta, AssetType
-
     # 获取数据库中已有的最新复权日期
     max_date_query = text("""
         SELECT MAX(divid_operate_date) FROM adjust_factor
@@ -2513,18 +2583,25 @@ async def sync_adjust_factors(
     max_date = result.scalar()
 
     latest_trading_day = get_latest_trading_day()
+    today = date.today()
 
-    # 如果已经是最新，跳过（复权因子通常不是每天都有）
+    # 如果已经是最新，跳过
     if max_date and max_date >= latest_trading_day:
         logger.info(f"Adjust factor data is up to date (max_date={max_date})")
         return {"status": "skip", "message": "复权因子已是最新", "records": 0}
+
+    # 3天内已同步则跳过（复权因子是稀疏事件，不需要每天同步）
+    if max_date:
+        days_since_last = (today - max_date).days
+        if days_since_last <= 3:
+            logger.info(f"Adjust factor recently synced ({days_since_last} days ago), skipping")
+            return {"status": "skip", "message": f"复权因子已是最新（{days_since_last}天前已同步）", "records": 0}
 
     # 使用较短的回溯窗口（7天），复权事件是稀疏的
     lookback_days = 7
     start_date = (max_date - timedelta(days=lookback_days)).strftime('%Y-%m-%d') if max_date else '2020-01-01'
 
     # 增量模式：只获取最近有市场数据更新的活跃股票
-    # 这些股票才可能有新的复权因子
     active_stocks_query = text("""
         SELECT DISTINCT am.code, am.name
         FROM asset_meta am
@@ -2555,55 +2632,72 @@ async def sync_adjust_factors(
 
     logger.info(f"Fetching adjust factors from {start_date}")
 
+    # 分批处理，每批100只股票
+    BATCH_SIZE = 100
     total_records = 0
-    completed_count = 0
+    total_errors = {}
     loop = asyncio.get_event_loop()
 
-    # 逐条处理，实时报告进度（baostock 不是线程安全的）
-    for code, name in active_stocks:
-        # 在线程池中执行同步代码
-        _, records, error = await loop.run_in_executor(
+    total_batches = (total_stocks + BATCH_SIZE - 1) // BATCH_SIZE
+
+    for batch_idx in range(0, total_stocks, BATCH_SIZE):
+        batch = active_stocks[batch_idx:batch_idx + BATCH_SIZE]
+        batch_num = batch_idx // BATCH_SIZE + 1
+
+        # 在线程池中执行这一批（单次登录登出）
+        records, batch_errors = await loop.run_in_executor(
             None,
-            _fetch_single_adjust_factor,
-            code, start_date
+            _fetch_adjust_factors_batch_sync,
+            batch,
+            start_date,
         )
 
-        # 写入数据库
-        count = 0
+        total_errors.update(batch_errors)
+
+        # 写入数据库（记录已在 _fetch_adjust_factors_batch_sync 中去重）
         if records:
-            count = await batch_insert_adjust_factors(session, records)
-            total_records += count
+            try:
+                await batch_insert_adjust_factors(session, records)
+                await session.flush()  # 立即刷新，不等到最后
+                total_records += len(records)
+            except Exception as e:
+                await session.rollback()
+                logger.warning(f"Failed to insert adjust factors for batch {batch_num}: {e}")
+                total_errors[f"batch_{batch_num}"] = str(e)
 
-        completed_count += 1
+        # 发送进度（直接在主协程中调用，不用队列）
+        done_count = min(batch_idx + BATCH_SIZE, total_stocks)
+        progress_pct = int(done_count / total_stocks * 100)
 
-        # 每条都报告进度
-        if completed_count % PROGRESS_REPORT_INTERVAL == 0 or completed_count == total_stocks:
-            pct = int(completed_count / total_stocks * 100)
-            records_str = f"+{count}条" if count > 0 else ""
-            error_str = f"[错误]" if error else ""
+        # 获取最后一只股票的信息用于显示
+        last_code, last_name = batch[-1] if batch else ("", "")
+        records_str = f"+{len(records)}条" if records else ""
+        msg = f"复权因子 [{done_count}/{total_stocks}]: {last_code} {last_name} {records_str}"
 
-            msg = f"复权因子 [{completed_count}/{total_stocks}]: {code} {name} {records_str}{error_str}"
+        logger.info(f"Adjust factor batch {batch_num}/{total_batches}: {len(records)} records, total: {total_records}")
 
-            if completed_count % 100 == 0 or completed_count == total_stocks:
-                logger.info(f"Adjust factor progress: {completed_count}/{total_stocks}, total records: {total_records}")
-
-            if progress_callback:
-                await progress_callback(msg, pct, {
-                    "action": "adjust_factor_progress",
-                    "current_code": code,
-                    "current_name": name,
-                    "done": completed_count,
-                    "total": total_stocks,
-                    "records_added": count,
-                })
+        if progress_callback:
+            await progress_callback(msg, progress_pct, {
+                "action": "adjust_factor_progress",
+                "batch": batch_num,
+                "total_batches": total_batches,
+                "done": done_count,
+                "total": total_stocks,
+                "records_added": len(records),
+            })
 
     await session.commit()
 
-    logger.info(f"Adjust factor sync complete: {total_records} records for {total_stocks} stocks")
+    error_count = len(total_errors)
+    logger.info(f"Adjust factor sync complete: {total_records} records for {total_stocks} stocks, {error_count} errors")
+
+    if error_count > 0:
+        logger.warning(f"Adjust factor errors: {list(total_errors.keys())[:10]}...")
 
     return {
-        "status": "success",
-        "message": f"复权因子同步完成 ({total_stocks}只股票)",
+        "status": "success" if error_count == 0 else "partial",
+        "message": f"复权因子同步完成 ({total_stocks}只股票, {total_records}条记录)",
         "records": total_records,
         "stocks_processed": total_stocks,
+        "error_count": error_count,
     }
