@@ -226,11 +226,14 @@ def _fetch_latest_trading_day_from_baostock() -> date:
     """
     import baostock as bs
     from datetime import datetime
+    from zoneinfo import ZoneInfo
 
-    today = date.today()
-    now = datetime.now()
+    # 使用中国时区
+    china_tz = ZoneInfo("Asia/Shanghai")
+    now = datetime.now(china_tz)
+    today = now.date()
 
-    # 如果当前时间 < 17:00，不考虑今天（盘中数据不完整）
+    # 如果当前时间 < 17:00（中国时间），不考虑今天（盘中数据不完整）
     if now.hour < 17:
         query_end_date = today - timedelta(days=1)
     else:
@@ -316,9 +319,12 @@ def _get_latest_trading_day_with_fallback() -> Tuple[date, str]:
         来源可能是: "baostock", "akshare", "rule-based"
     """
     from datetime import datetime
+    from zoneinfo import ZoneInfo
 
-    today = date.today()
-    now = datetime.now()
+    # 使用中国时区
+    china_tz = ZoneInfo("Asia/Shanghai")
+    now = datetime.now(china_tz)
+    today = now.date()
 
     # 1. 先尝试 baostock
     baostock_result = _fetch_latest_trading_day_from_baostock()
@@ -362,14 +368,17 @@ def get_latest_trading_day_with_source() -> Tuple[date, str]:
     """
     import redis
     from datetime import datetime
+    from zoneinfo import ZoneInfo
     import os
     import json
 
-    today = date.today()
-    now = datetime.now()
+    # 使用中国时区（Asia/Shanghai）而不是系统时区
+    china_tz = ZoneInfo("Asia/Shanghai")
+    now_china = datetime.now(china_tz)
+    today = now_china.date()
 
-    # 缓存 key 区分盘中/盘后
-    time_segment = "after17" if now.hour >= 17 else "before17"
+    # 缓存 key 区分盘中/盘后 (基于中国时间)
+    time_segment = "after17" if now_china.hour >= 17 else "before17"
     cache_key = f"latest_trading_day_v2:{today.isoformat()}:{time_segment}"
 
     # 获取 Redis 连接
@@ -388,9 +397,9 @@ def get_latest_trading_day_with_source() -> Tuple[date, str]:
         # 缓存未命中，使用 fallback 机制获取
         latest_trading_day, source = _get_latest_trading_day_with_fallback()
 
-        # 计算到今天结束的秒数
-        end_of_day = datetime(now.year, now.month, now.day, 23, 59, 59)
-        ttl_seconds = int((end_of_day - now).total_seconds()) + 1
+        # 计算到今天结束的秒数（基于中国时间）
+        end_of_day = datetime(now_china.year, now_china.month, now_china.day, 23, 59, 59, tzinfo=china_tz)
+        ttl_seconds = int((end_of_day - now_china).total_seconds()) + 1
 
         # 缓存结果（包含日期和来源）
         cache_data = json.dumps({"date": latest_trading_day.isoformat(), "source": source})
