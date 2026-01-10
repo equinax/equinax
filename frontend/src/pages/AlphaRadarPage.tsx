@@ -34,7 +34,8 @@ const STOCK_TABS = [
 const ETF_TABS = [
   { value: 'all', label: '全部', description: '所有ETF' },
   { value: 'broad', label: '宽基/大盘', description: '沪深300/中证500/科创50' },
-  { value: 'sector', label: '行业/赛道', description: '银行/证券/医药/半导体' },
+  { value: 'sector', label: '行业', description: '银行/证券/医药/消费' },
+  { value: 'theme', label: '赛道', description: '半导体/新能源/AI' },
   { value: 'cross_border', label: '跨境/QDII', description: '纳指/标普/恒生科技' },
   { value: 'commodity', label: '商品', description: '黄金/豆粕/原油' },
   { value: 'bond', label: '债券', description: '国债/城投债' },

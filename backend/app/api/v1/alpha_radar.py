@@ -72,7 +72,8 @@ class CellSignalType(str, Enum):
 class EtfCategory(str, Enum):
     """ETF category for filtering."""
     BROAD = "broad"                 # 宽基/大盘
-    SECTOR = "sector"               # 行业/赛道
+    SECTOR = "sector"               # 行业
+    THEME = "theme"                 # 赛道
     CROSS_BORDER = "cross_border"   # 跨境/QDII
     COMMODITY = "commodity"         # 商品
     BOND = "bond"                   # 债券

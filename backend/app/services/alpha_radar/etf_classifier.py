@@ -5,7 +5,17 @@ Uses ETF name patterns to classify into: broad, sector, theme, cross_border, com
 """
 
 import re
+from dataclasses import dataclass
 from typing import Tuple, List, Optional
+
+
+@dataclass
+class ClassificationResult:
+    """Result of ETF classification with confidence level."""
+    category: str           # broad, sector, theme, cross_border, commodity, bond, other
+    sub_category: str       # Simplified name: 沪深300, 银行, 新能源 等
+    confidence: str         # HIGH, MEDIUM, LOW
+    matched_keyword: Optional[str] = None  # The keyword that matched
 
 
 # ==============================================================================
@@ -202,6 +212,100 @@ class ETFClassifier:
 
         # 7. Default
         return ("other", ETFClassifier._simplify_name(name, None))
+
+    @staticmethod
+    def classify_with_confidence(name: str) -> ClassificationResult:
+        """
+        Classify an ETF by name with confidence level.
+
+        Args:
+            name: Full ETF name (e.g., "沪深300ETF华夏")
+
+        Returns:
+            ClassificationResult with category, sub_category, confidence, and matched_keyword
+        """
+        if not name:
+            return ClassificationResult(
+                category="other",
+                sub_category="未分类",
+                confidence="LOW",
+                matched_keyword=None
+            )
+
+        # Track all matches across categories to determine confidence
+        all_matches = []
+
+        # Check each category and collect matches
+        cross_border_match = ETFClassifier._match_keywords(name, CROSS_BORDER_KEYWORDS)
+        if cross_border_match:
+            all_matches.append(("cross_border", cross_border_match))
+
+        commodity_match = ETFClassifier._match_keywords(name, COMMODITY_KEYWORDS)
+        if commodity_match:
+            all_matches.append(("commodity", commodity_match))
+
+        bond_match = ETFClassifier._match_keywords(name, BOND_KEYWORDS)
+        if bond_match:
+            all_matches.append(("bond", bond_match))
+
+        broad_match = ETFClassifier._match_keywords(name, BROAD_KEYWORDS)
+        if broad_match:
+            all_matches.append(("broad", broad_match))
+
+        sector_match = ETFClassifier._match_keywords(name, SECTOR_KEYWORDS)
+        if sector_match:
+            all_matches.append(("sector", sector_match))
+
+        theme_match = ETFClassifier._match_keywords(name, THEME_KEYWORDS)
+        if theme_match:
+            all_matches.append(("theme", theme_match))
+
+        # Determine category and confidence based on matches
+        if not all_matches:
+            # No matches - LOW confidence
+            return ClassificationResult(
+                category="other",
+                sub_category=ETFClassifier._simplify_name(name, None),
+                confidence="LOW",
+                matched_keyword=None
+            )
+
+        # Use priority order: cross_border > commodity > bond > broad > sector > theme
+        priority_order = ["cross_border", "commodity", "bond", "broad", "sector", "theme"]
+        primary_match = None
+        for priority in priority_order:
+            for match in all_matches:
+                if match[0] == priority:
+                    primary_match = match
+                    break
+            if primary_match:
+                break
+
+        category, matched_keyword = primary_match
+        sub_category = ETFClassifier._simplify_name(name, matched_keyword)
+
+        # Determine confidence:
+        # - HIGH: Single match or clear priority match
+        # - MEDIUM: Multiple matches from different categories
+        # - LOW: Only "other" category
+        if len(all_matches) == 1:
+            confidence = "HIGH"
+        elif len(all_matches) > 1:
+            # Multiple matches - check if they conflict
+            categories = set(m[0] for m in all_matches)
+            if len(categories) == 1:
+                confidence = "HIGH"  # All matches in same category
+            else:
+                confidence = "MEDIUM"  # Matches across different categories
+        else:
+            confidence = "LOW"
+
+        return ClassificationResult(
+            category=category,
+            sub_category=sub_category,
+            confidence=confidence,
+            matched_keyword=matched_keyword
+        )
 
     @staticmethod
     def _match_keywords(name: str, keywords: List[str]) -> Optional[str]:

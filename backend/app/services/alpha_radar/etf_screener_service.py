@@ -25,9 +25,11 @@ class ETFScreenerService:
     """
 
     # ETF type mapping from category to database values
+    # Note: "sector" and "theme" are now separate categories (previously combined)
     CATEGORY_TO_ETF_TYPES = {
         "broad": ["BROAD_BASED"],
-        "sector": ["SECTOR", "THEME"],
+        "sector": ["SECTOR"],
+        "theme": ["THEME"],
         "cross_border": ["CROSS_BORDER"],
         "commodity": ["COMMODITY"],
         "bond": ["BOND"],

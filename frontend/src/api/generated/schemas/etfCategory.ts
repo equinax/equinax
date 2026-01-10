@@ -10,6 +10,7 @@ export type EtfCategory = (typeof EtfCategory)[keyof typeof EtfCategory];
 export const EtfCategory = {
   broad: "broad",
   sector: "sector",
+  theme: "theme",
   cross_border: "cross_border",
   commodity: "commodity",
   bond: "bond",

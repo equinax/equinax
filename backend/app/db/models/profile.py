@@ -2,6 +2,7 @@
 
 from datetime import datetime
 from decimal import Decimal
+from enum import Enum
 from typing import Optional, List
 
 from sqlalchemy import String, Date, DateTime, Numeric, BigInteger, Index, ForeignKey, func
@@ -10,6 +11,19 @@ from sqlalchemy.orm import Mapped, mapped_column
 
 from app.db.base import Base
 from app.db.models.asset import ETFType
+
+
+class ClassificationSource(str, Enum):
+    """ETF分类来源枚举"""
+    AUTO = "AUTO"      # 算法自动分类
+    MANUAL = "MANUAL"  # 人工手动设置
+
+
+class ClassificationConfidence(str, Enum):
+    """ETF分类置信度枚举"""
+    HIGH = "HIGH"      # 高置信度（精确匹配关键词）
+    MEDIUM = "MEDIUM"  # 中置信度（模糊匹配）
+    LOW = "LOW"        # 低置信度（默认分类或推断）
 
 
 class StockProfile(Base):
@@ -100,6 +114,12 @@ class ETFProfile(Base):
     # 规模信息
     fund_size: Mapped[Optional[Decimal]] = mapped_column(Numeric(18, 2), nullable=True)  # 基金规模(亿元)
 
+    # 分类扩展字段
+    etf_sub_category: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)  # 子品类：银行, 医药, 新能源 等
+    classification_source: Mapped[Optional[str]] = mapped_column(String(20), nullable=True)  # AUTO/MANUAL
+    classification_confidence: Mapped[Optional[str]] = mapped_column(String(20), nullable=True)  # HIGH/MEDIUM/LOW
+    classified_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)  # 分类时间
+
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
         server_default=func.now(),
@@ -114,10 +134,12 @@ class ETFProfile(Base):
         Index("idx_etf_profile_type", "etf_type"),
         Index("idx_etf_profile_index", "underlying_index_code"),
         Index("idx_etf_profile_company", "fund_company"),
+        Index("idx_etf_profile_sub_category", "etf_sub_category"),
+        Index("idx_etf_profile_source", "classification_source"),
     )
 
     def __repr__(self) -> str:
-        return f"<ETFProfile(code={self.code}, type={self.etf_type})>"
+        return f"<ETFProfile(code={self.code}, type={self.etf_type}, sub={self.etf_sub_category})>"
 
 
 class IndexProfile(Base):
