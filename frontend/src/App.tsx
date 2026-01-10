@@ -14,6 +14,7 @@ import SettingsPage from '@/pages/SettingsPage'
 import DataSyncPage from '@/pages/DataSyncPage'
 import AlphaRadarPage from '@/pages/AlphaRadarPage'
 import IndustryRotationPage from '@/pages/IndustryRotationPage'
+import EtfRotationPage from '@/pages/EtfRotationPage'
 
 function App() {
   return (
@@ -34,6 +35,7 @@ function App() {
           <Route path="data-sync" element={<DataSyncPage />} />
           <Route path="alpha-radar" element={<AlphaRadarPage />} />
           <Route path="industry-rotation" element={<IndustryRotationPage />} />
+          <Route path="etf-rotation" element={<EtfRotationPage />} />
         </Route>
       </Routes>
     </ThemeProvider>

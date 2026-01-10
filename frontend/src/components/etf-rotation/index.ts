@@ -1,0 +1,5 @@
+export { EtfRotationMatrix } from './EtfRotationMatrix'
+export { EtfMatrixCell } from './EtfMatrixCell'
+export { EtfMatrixTooltip } from './EtfMatrixTooltip'
+export { CATEGORY_COLORS } from './types'
+export type { EtfTooltipData } from './types'

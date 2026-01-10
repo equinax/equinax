@@ -5,11 +5,14 @@
  * - Sector name and change percentage
  * - Stock counts (total, up, down)
  * - Trading amount
+ * - Related ETFs (for L1 industries)
  */
 
 import { memo, useEffect, useState } from 'react'
 import { createPortal } from 'react-dom'
+import { Loader2, Package } from 'lucide-react'
 import type { SectorMetric } from '@/api/generated/schemas'
+import { useGetIndustryEtfMappingApiV1AlphaRadarIndustryEtfMappingIndustryGet } from '@/api/generated/alpha-radar/alpha-radar'
 import type { ProcessedL1Item, ProcessedL2Item } from './types'
 
 // Metric labels and descriptions
@@ -36,6 +39,15 @@ function isL1Item(
   return 'children' in segment
 }
 
+// Format amount in Chinese units
+function formatAmount(value: number | null | undefined): string {
+  if (value === null || value === undefined) return '-'
+  const num = Number(value)
+  if (num >= 1e8) return `${(num / 1e8).toFixed(2)}亿`
+  if (num >= 1e4) return `${(num / 1e4).toFixed(0)}万`
+  return num.toFixed(0)
+}
+
 export const SectorTooltip = memo(function SectorTooltip({
   segment,
   type,
@@ -46,12 +58,26 @@ export const SectorTooltip = memo(function SectorTooltip({
 }: SectorTooltipProps) {
   const [position, setPosition] = useState({ x: 0, y: 0 })
 
+  // Fetch related ETFs for L1 industries
+  const industryName = type === 'l1' && segment ? segment.name : ''
+  const { data: etfData, isLoading: isLoadingEtfs } = useGetIndustryEtfMappingApiV1AlphaRadarIndustryEtfMappingIndustryGet(
+    industryName,
+    { limit: 3 },
+    {
+      query: {
+        enabled: type === 'l1' && !!industryName,
+        staleTime: 5 * 60 * 1000, // Cache for 5 minutes
+      },
+    }
+  )
+
   useEffect(() => {
     if (!segment) return
 
     // Calculate tooltip position to avoid viewport overflow
-    const tooltipWidth = 200
-    const tooltipHeight = 120
+    const tooltipWidth = 220
+    // Adjust height for ETF section when on L1
+    const tooltipHeight = type === 'l1' ? 280 : 180
     const padding = 12
 
     let x = mouseX + padding
@@ -78,7 +104,7 @@ export const SectorTooltip = memo(function SectorTooltip({
     }
 
     setPosition({ x, y })
-  }, [segment, mouseX, mouseY])
+  }, [segment, mouseX, mouseY, type])
 
   if (!segment) return null
 
@@ -188,6 +214,52 @@ export const SectorTooltip = memo(function SectorTooltip({
             </div>
           )}
         </div>
+
+        {/* Related ETFs section (L1 only) */}
+        {type === 'l1' && (
+          <div className="mt-2 pt-2 border-t border-gray-700">
+            <div className="flex items-center gap-1 text-[10px] text-gray-400 mb-1.5">
+              <Package className="h-3 w-3" />
+              <span>相关ETF</span>
+            </div>
+            {isLoadingEtfs ? (
+              <div className="flex items-center justify-center py-1">
+                <Loader2 className="h-3 w-3 animate-spin text-gray-500" />
+              </div>
+            ) : etfData?.etfs && etfData.etfs.length > 0 ? (
+              <div className="space-y-1">
+                {etfData.etfs.map((etf) => (
+                  <div key={etf.code} className="flex items-center justify-between text-xs">
+                    <span className="text-gray-300 truncate max-w-[100px]">
+                      {etf.name}
+                    </span>
+                    <div className="flex items-center gap-2">
+                      <span className="font-mono text-gray-500 text-[10px]">
+                        {formatAmount(etf.amount)}
+                      </span>
+                      <span className={`font-mono ${
+                        etf.change_pct != null
+                          ? etf.change_pct >= 0
+                            ? 'text-red-400'
+                            : 'text-green-400'
+                          : 'text-gray-500'
+                      }`}>
+                        {etf.change_pct != null
+                          ? `${etf.change_pct >= 0 ? '+' : ''}${etf.change_pct.toFixed(2)}%`
+                          : '-'
+                        }
+                      </span>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <div className="text-[10px] text-gray-500 text-center py-1">
+                暂无相关ETF
+              </div>
+            )}
+          </div>
+        )}
 
         {/* Click hint for L1 */}
         {type === 'l1' && (

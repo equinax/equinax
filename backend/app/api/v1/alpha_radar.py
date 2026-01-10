@@ -291,6 +291,7 @@ class EtfHeatmapItem(BaseModel):
     change_pct: Optional[Decimal] = Field(default=None, description="Daily change %")
     amount: Optional[Decimal] = Field(default=None, description="Trading amount")
     is_representative: bool = Field(default=True, description="Is representative for this sub-category")
+    category: Optional[str] = Field(default=None, description="ETF category (for top_movers)")
 
 
 class EtfHeatmapCategory(BaseModel):
@@ -302,9 +303,123 @@ class EtfHeatmapCategory(BaseModel):
 
 
 class EtfHeatmapResponse(BaseModel):
-    """ETF heatmap response with 6 category rows."""
+    """ETF heatmap response with top movers and 6 category rows."""
     date: Optional[datetime.date] = None
+    top_movers: List[EtfHeatmapItem] = Field(default_factory=list, description="Top 10 ETFs by daily change (bubble-up)")
     categories: List[EtfHeatmapCategory] = Field(description="6 rows: broad, sector, theme, cross_border, commodity, bond")
+
+
+# ============================================
+# ETF Rotation Schemas
+# ============================================
+
+class EtfRotationCategoryInfo(BaseModel):
+    """Category info for rotation matrix header."""
+    key: str = Field(description="Category key: broad, sector, theme, etc.")
+    label: str = Field(description="Display label: 宽基, 行业, 赛道, etc.")
+
+
+class EtfRotationCategoryData(BaseModel):
+    """Category data for a single cell in the rotation matrix."""
+    avg_change_pct: Optional[Decimal] = Field(default=None, description="Category average change %")
+    total_amount: Optional[Decimal] = Field(default=None, description="Total trading amount")
+    etf_count: int = Field(default=0, description="Number of ETFs in category")
+    top_change_pct: Optional[Decimal] = Field(default=None, description="Top performer change %")
+
+
+class EtfRotationRow(BaseModel):
+    """Single row (date) in ETF rotation matrix."""
+    date: datetime.date
+    categories: dict[str, EtfRotationCategoryData] = Field(description="Category data keyed by category")
+
+
+class EtfRotationResponse(BaseModel):
+    """ETF rotation matrix response (category summary view)."""
+    rows: List[EtfRotationRow] = Field(description="Matrix rows (one per date)")
+    total: int = Field(description="Total trading days available")
+    page: int
+    page_size: int
+    pages: int
+    categories: List[EtfRotationCategoryInfo] = Field(description="Category headers")
+
+
+class EtfRotationSubCategoryData(BaseModel):
+    """Sub-category data for expanded view."""
+    change_pct: Optional[Decimal] = Field(default=None, description="Representative ETF change %")
+    amount: Optional[Decimal] = Field(default=None, description="Trading amount")
+    rep_code: Optional[str] = Field(default=None, description="Representative ETF code")
+    rep_name: Optional[str] = Field(default=None, description="Representative ETF name")
+
+
+class EtfRotationDetailRow(BaseModel):
+    """Single row in expanded category detail view."""
+    date: datetime.date
+    sub_categories: dict[str, EtfRotationSubCategoryData] = Field(description="Sub-category data")
+
+
+class EtfRotationDetailResponse(BaseModel):
+    """ETF rotation detail response (expanded sub-category view)."""
+    category: str = Field(description="Expanded category key")
+    category_label: str = Field(description="Expanded category label")
+    rows: List[EtfRotationDetailRow] = Field(description="Detail rows")
+    sub_categories: List[str] = Field(description="Sub-category names in order")
+    total: int
+    page: int
+    page_size: int
+    pages: int
+
+
+# ============================================
+# ETF Rotation Flat Schemas (SVG Matrix)
+# ============================================
+
+class EtfFlatDayCell(BaseModel):
+    """单元格数据 (日期 × 子品类)."""
+    date: datetime.date
+    change_pct: Optional[Decimal] = Field(default=None, description="涨跌幅 %")
+    amount: Optional[Decimal] = Field(default=None, description="成交额")
+    rep_code: Optional[str] = Field(default=None, description="代表 ETF 代码")
+    rep_name: Optional[str] = Field(default=None, description="代表 ETF 名称")
+
+
+class EtfRotationColumn(BaseModel):
+    """子品类列 (用于 SVG 矩阵)."""
+    name: str = Field(description="子品类名 (如 '沪深300')")
+    category: str = Field(description="父类 key (如 'broad')")
+    category_label: str = Field(description="父类名 (如 '宽基')")
+    cells: List[EtfFlatDayCell] = Field(description="日期维度数据")
+    today_change: Optional[Decimal] = Field(default=None, description="今日涨跌幅")
+    period_change: Optional[Decimal] = Field(default=None, description="周期累计涨跌幅")
+    total_amount: Optional[Decimal] = Field(default=None, description="周期总成交额")
+
+
+class EtfRotationFlatResponse(BaseModel):
+    """扁平化 ETF 轮动矩阵响应 (所有子品类作为列)."""
+    trading_days: List[datetime.date] = Field(description="交易日列表 (Y轴)")
+    sub_categories: List[EtfRotationColumn] = Field(description="子品类列 (X轴)")
+    category_order: List[str] = Field(description="大类顺序", default=["broad", "sector", "theme", "cross_border", "commodity", "bond"])
+    category_labels: dict[str, str] = Field(description="大类标签映射")
+    days: int = Field(description="请求的交易日数量")
+
+
+# ============================================
+# Industry-ETF Mapping Schemas
+# ============================================
+
+class IndustryRelatedEtf(BaseModel):
+    """Single ETF related to an industry."""
+    code: str
+    name: str
+    change_pct: Optional[float] = Field(default=None, description="Daily change %")
+    amount: Optional[float] = Field(default=None, description="Trading amount")
+
+
+class IndustryEtfMappingResponse(BaseModel):
+    """Response for industry-ETF mapping lookup."""
+    industry: str = Field(description="SW L1 industry name")
+    sub_categories: List[str] = Field(description="Matched ETF sub-categories")
+    etfs: List[IndustryRelatedEtf] = Field(description="Related ETFs")
+    date: Optional[str] = Field(default=None, description="Data date")
 
 
 # ============================================
@@ -808,13 +923,15 @@ async def get_etf_heatmap(
     """
     Get ETF heatmap data grouped by category.
 
-    Returns 6 category rows:
-    - broad (宽基): 沪深300, 中证500, 科创50, A500, 红利
-    - sector (行业): 银行, 证券, 医药, 化工, 煤炭
-    - theme (赛道): AI, 芯片, 机器人, 新能源, 储能
-    - cross_border (跨境): 纳指, 标普, 恒科, 港股, 日经
-    - commodity (商品): 黄金, 白银, 原油, 豆粕
-    - bond (债券): 国债, 城投, 信用债
+    Returns:
+    - top_movers: Top 10 ETFs by daily change (bubble-up mechanism, min 1000万 amount)
+    - 6 category rows:
+      - broad (宽基): 沪深300, 中证500, 科创50, A500, 红利
+      - sector (行业): 银行, 证券, 医药, 化工, 煤炭
+      - theme (赛道): AI, 芯片, 机器人, 新能源, 储能
+      - cross_border (跨境): 纳指, 标普, 恒科, 港股, 日经
+      - commodity (商品): 黄金, 白银, 原油, 豆粕
+      - bond (债券): 国债, 城投, 信用债
 
     Each cell shows:
     - Simplified name (e.g., "沪深300" instead of "沪深300ETF华夏")
@@ -826,7 +943,21 @@ async def get_etf_heatmap(
     service = ETFHeatmapService(db)
     result = await service.get_etf_heatmap(target_date=date)
 
-    # Convert to response models
+    # Convert top_movers to response models
+    top_movers = [
+        EtfHeatmapItem(
+            code=item["code"],
+            name=item["name"],
+            full_name=item["full_name"],
+            change_pct=item.get("change_pct"),
+            amount=item.get("amount"),
+            is_representative=item.get("is_representative", True),
+            category=item.get("category"),
+        )
+        for item in result.get("top_movers", [])
+    ]
+
+    # Convert categories to response models
     categories = [
         EtfHeatmapCategory(
             category=cat["category"],
@@ -849,6 +980,7 @@ async def get_etf_heatmap(
 
     return EtfHeatmapResponse(
         date=result.get("date"),
+        top_movers=top_movers,
         categories=categories,
     )
 
@@ -968,4 +1100,245 @@ async def get_sector_rotation(
         days=days,
         end_date=end_date,
         sort_by=sort_by.value,
+    )
+
+
+@router.get("/etf-rotation", response_model=EtfRotationResponse)
+async def get_etf_rotation(
+    # Time range
+    days: int = Query(default=30, ge=5, le=60, description="Number of trading days"),
+    end_date: Optional[datetime.date] = Query(default=None, description="End date (default: latest)"),
+
+    # Pagination
+    page: int = Query(default=1, ge=1),
+    page_size: int = Query(default=30, ge=1, le=60),
+
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    Get ETF rotation matrix (category summary view).
+
+    Returns a date × category matrix showing:
+    - 6 main categories: broad, sector, theme, cross_border, commodity, bond
+    - Each cell shows avg change %, total amount, top performer
+
+    Use cases:
+    - Identify ETF category rotation patterns
+    - Compare performance across asset classes
+    - Spot macro trends
+    """
+    from app.services.alpha_radar.etf_rotation_service import ETFRotationService
+
+    service = ETFRotationService(db)
+    result = await service.get_rotation_matrix(
+        days=days,
+        end_date=end_date,
+        page=page,
+        page_size=page_size,
+    )
+
+    # Convert to response models
+    rows = [
+        EtfRotationRow(
+            date=row["date"],
+            categories={
+                cat: EtfRotationCategoryData(
+                    avg_change_pct=data.get("avg_change_pct"),
+                    total_amount=data.get("total_amount"),
+                    etf_count=data.get("etf_count", 0),
+                    top_change_pct=data.get("top_change_pct"),
+                )
+                for cat, data in row["categories"].items()
+            }
+        )
+        for row in result.get("rows", [])
+    ]
+
+    categories = [
+        EtfRotationCategoryInfo(key=cat["key"], label=cat["label"])
+        for cat in result.get("categories", [])
+    ]
+
+    return EtfRotationResponse(
+        rows=rows,
+        total=result.get("total", 0),
+        page=result.get("page", 1),
+        page_size=result.get("page_size", 30),
+        pages=result.get("pages", 0),
+        categories=categories,
+    )
+
+
+@router.get("/etf-rotation/{category}", response_model=EtfRotationDetailResponse)
+async def get_etf_rotation_detail(
+    category: EtfCategory,
+
+    # Time range
+    days: int = Query(default=30, ge=5, le=60, description="Number of trading days"),
+    end_date: Optional[datetime.date] = Query(default=None, description="End date (default: latest)"),
+
+    # Pagination
+    page: int = Query(default=1, ge=1),
+    page_size: int = Query(default=30, ge=1, le=60),
+
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    Get expanded sub-category detail for a specific ETF category.
+
+    Expands a category (e.g., "sector") to show sub-categories (e.g., "银行", "医药", "传媒").
+    Each cell shows the representative ETF's performance for that sub-category.
+
+    Use cases:
+    - Drill down into category performance
+    - Identify hot sub-sectors within a category
+    - Compare specific ETFs within a theme
+    """
+    from app.services.alpha_radar.etf_rotation_service import ETFRotationService
+
+    service = ETFRotationService(db)
+    result = await service.get_category_detail(
+        category=category.value,
+        days=days,
+        end_date=end_date,
+        page=page,
+        page_size=page_size,
+    )
+
+    # Convert to response models
+    rows = [
+        EtfRotationDetailRow(
+            date=row["date"],
+            sub_categories={
+                sub: EtfRotationSubCategoryData(
+                    change_pct=data.get("change_pct"),
+                    amount=data.get("amount"),
+                    rep_code=data.get("rep_code"),
+                    rep_name=data.get("rep_name"),
+                )
+                for sub, data in row["sub_categories"].items()
+            }
+        )
+        for row in result.get("rows", [])
+    ]
+
+    return EtfRotationDetailResponse(
+        category=result.get("category", category.value),
+        category_label=result.get("category_label", ""),
+        rows=rows,
+        sub_categories=result.get("sub_categories", []),
+        total=result.get("total", 0),
+        page=result.get("page", 1),
+        page_size=result.get("page_size", 30),
+        pages=result.get("pages", 0),
+    )
+
+
+@router.get("/etf-rotation-flat", response_model=EtfRotationFlatResponse)
+async def get_etf_rotation_flat(
+    # Time range
+    days: int = Query(default=60, ge=5, le=120, description="Number of trading days"),
+    end_date: Optional[datetime.date] = Query(default=None, description="End date (for pagination)"),
+
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    获取扁平化 ETF 轮动矩阵 (SVG 渲染用).
+
+    返回所有子品类作为列的矩阵数据，类似行业轮动矩阵。
+    用于 SVG 渲染，支持无限滚动加载更早日期。
+
+    数据结构:
+    - trading_days: Y轴日期列表 (最新日期在前)
+    - sub_categories: X轴子品类列 (按大类分组，类内按成交额排序)
+    - category_order: 大类顺序
+    - category_labels: 大类名称映射
+
+    使用场景:
+    - SVG 矩阵渲染所有子品类
+    - 无限滚动加载历史数据 (通过 end_date 分页)
+    """
+    from app.services.alpha_radar.etf_rotation_service import ETFRotationService
+
+    service = ETFRotationService(db)
+    result = await service.get_flat_rotation_matrix(
+        days=days,
+        end_date=end_date,
+    )
+
+    # Convert to response models
+    sub_categories = [
+        EtfRotationColumn(
+            name=col["name"],
+            category=col["category"],
+            category_label=col["category_label"],
+            cells=[
+                EtfFlatDayCell(
+                    date=cell["date"],
+                    change_pct=cell.get("change_pct"),
+                    amount=cell.get("amount"),
+                    rep_code=cell.get("rep_code"),
+                    rep_name=cell.get("rep_name"),
+                )
+                for cell in col["cells"]
+            ],
+            today_change=col.get("today_change"),
+            period_change=col.get("period_change"),
+            total_amount=col.get("total_amount"),
+        )
+        for col in result.get("sub_categories", [])
+    ]
+
+    return EtfRotationFlatResponse(
+        trading_days=result.get("trading_days", []),
+        sub_categories=sub_categories,
+        category_order=result.get("category_order", []),
+        category_labels=result.get("category_labels", {}),
+        days=result.get("days", days),
+    )
+
+
+@router.get("/industry-etf-mapping/{industry}", response_model=IndustryEtfMappingResponse)
+async def get_industry_etf_mapping(
+    industry: str,
+    date: Optional[datetime.date] = Query(default=None, description="Target date"),
+    limit: int = Query(default=5, ge=1, le=10, description="Max ETFs to return"),
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    Get ETFs related to a Shenwan L1 industry.
+
+    Maps SW L1 industries to related ETF sub-categories and returns
+    the top ETFs by trading volume.
+
+    Example:
+    - "银行" -> ETF sub-categories: ["银行"]
+    - "传媒" -> ETF sub-categories: ["传媒", "游戏", "影视", "文化", "动漫"]
+
+    Use cases:
+    - Show related ETFs when hovering on industry cells in SectorHeatmap
+    - Link industry performance to tradable ETF alternatives
+    """
+    from app.services.alpha_radar.industry_etf_mapping import IndustryETFMappingService
+
+    service = IndustryETFMappingService(db)
+    result = await service.get_related_etfs(
+        industry=industry,
+        target_date=date,
+        limit=limit,
+    )
+
+    return IndustryEtfMappingResponse(
+        industry=result["industry"],
+        sub_categories=result["sub_categories"],
+        etfs=[
+            IndustryRelatedEtf(
+                code=etf["code"],
+                name=etf["name"],
+                change_pct=etf.get("change_pct"),
+                amount=etf.get("amount"),
+            )
+            for etf in result.get("etfs", [])
+        ],
+        date=result.get("date"),
     )

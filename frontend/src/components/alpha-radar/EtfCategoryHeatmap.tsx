@@ -1,19 +1,22 @@
 /**
  * ETF Category Heatmap Component
  *
- * Displays ETF performance grouped by category in 6 horizontal rows:
- * - broad (宽基): 沪深300, 中证500, 科创50
- * - sector (行业): 银行, 证券, 医药
- * - theme (赛道): AI, 芯片, 机器人
- * - cross_border (跨境): 纳指, 标普, 恒科
- * - commodity (商品): 黄金, 白银, 原油
- * - bond (债券): 国债, 城投, 信用债
+ * Displays ETF performance grouped by category:
+ * - Top movers row: Top 10 ETFs by daily change (bubble-up mechanism)
+ * - 6 category rows:
+ *   - broad (宽基): 沪深300, 中证500, 科创50
+ *   - sector (行业): 银行, 证券, 医药
+ *   - theme (赛道): AI, 芯片, 机器人
+ *   - cross_border (跨境): 纳指, 标普, 恒科
+ *   - commodity (商品): 黄金, 白银, 原油
+ *   - bond (债券): 国债, 城投, 信用债
  */
 
-import { useNavigate } from 'react-router-dom'
+import { useNavigate, Link } from 'react-router-dom'
 import { keepPreviousData } from '@tanstack/react-query'
 import { format } from 'date-fns'
 import { motion } from 'motion/react'
+import { Flame, ArrowRight } from 'lucide-react'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { ComputingConsole } from '@/components/ui/computing-console'
 import { Tooltip, TooltipContent, TooltipTrigger, TooltipProvider } from '@/components/ui/tooltip'
@@ -21,6 +24,16 @@ import { useComputingProgress } from '@/hooks/useComputingProgress'
 import { useGetEtfHeatmapApiV1AlphaRadarEtfHeatmapGet } from '@/api/generated/alpha-radar/alpha-radar'
 import type { EtfHeatmapItem } from '@/api/generated/schemas'
 import { cn } from '@/lib/utils'
+
+// Category label mapping for top movers
+const CATEGORY_LABELS: Record<string, string> = {
+  broad: '宽基',
+  sector: '行业',
+  theme: '赛道',
+  cross_border: '跨境',
+  commodity: '商品',
+  bond: '债券',
+}
 
 interface EtfCategoryHeatmapProps {
   selectedDate?: Date
@@ -101,6 +114,53 @@ function EtfCell({
   )
 }
 
+// Top mover cell with category badge
+function TopMoverCell({
+  item,
+  onClick,
+  index,
+}: {
+  item: EtfHeatmapItem
+  onClick: () => void
+  index: number
+}) {
+  const changePct = item.change_pct ? Number(item.change_pct) : null
+  const categoryLabel = item.category ? CATEGORY_LABELS[item.category] || item.category : ''
+
+  return (
+    <Tooltip>
+      <TooltipTrigger asChild>
+        <motion.button
+          initial={{ opacity: 0, scale: 0.95 }}
+          animate={{ opacity: 1, scale: 1 }}
+          transition={{ duration: 0.2, delay: index * 0.02 }}
+          onClick={onClick}
+          className={cn(
+            'shrink-0 px-2 py-1.5 rounded text-xs font-medium',
+            'transition-all hover:scale-105 hover:shadow-md',
+            'cursor-pointer whitespace-nowrap',
+            'ring-1 ring-orange-300 dark:ring-orange-700',
+            getChangeColor(changePct)
+          )}
+        >
+          <div className="flex flex-col items-center gap-0.5">
+            <span className="font-medium">{item.name}</span>
+            <span className="font-mono text-[10px]">{formatChangePct(changePct)}</span>
+          </div>
+        </motion.button>
+      </TooltipTrigger>
+      <TooltipContent side="bottom" className="text-xs">
+        <div className="space-y-1">
+          <div className="font-medium">{item.full_name}</div>
+          <div className="text-muted-foreground">代码: {item.code}</div>
+          <div className="text-muted-foreground">品类: {categoryLabel}</div>
+          <div className="text-muted-foreground">成交额: {formatAmount(item.amount ? Number(item.amount) : null)}</div>
+        </div>
+      </TooltipContent>
+    </Tooltip>
+  )
+}
+
 export function EtfCategoryHeatmap({
   selectedDate,
   onItemClick,
@@ -174,6 +234,13 @@ export function EtfCategoryHeatmap({
               {data.date}
             </span>
           )}
+          <Link
+            to="/etf-rotation"
+            className="text-xs text-muted-foreground hover:text-foreground transition-colors flex items-center gap-1"
+          >
+            轮动详情
+            <ArrowRight className="h-3 w-3" />
+          </Link>
         </div>
       </CardHeader>
       <CardContent className="pt-0">
@@ -199,8 +266,33 @@ export function EtfCategoryHeatmap({
             </div>
           )}
 
-          {/* Category rows */}
+          {/* Top Movers Row (Bubble-up mechanism) */}
           <TooltipProvider delayDuration={200}>
+            {data?.top_movers && data.top_movers.length > 0 && (
+              <div className="mb-3 pb-3 border-b border-dashed border-orange-200 dark:border-orange-800">
+                <div className="flex items-center gap-2">
+                  {/* Label with flame icon */}
+                  <div className="w-10 shrink-0 flex items-center gap-0.5">
+                    <Flame className="h-3.5 w-3.5 text-orange-500" />
+                    <span className="text-xs font-medium text-orange-600 dark:text-orange-400">飙升</span>
+                  </div>
+
+                  {/* Top mover cards */}
+                  <div className="flex-1 flex gap-2 overflow-x-auto scrollbar-thin scrollbar-thumb-muted scrollbar-track-transparent pb-1">
+                    {data.top_movers.map((item, index) => (
+                      <TopMoverCell
+                        key={item.code}
+                        item={item}
+                        index={index}
+                        onClick={() => handleItemClick(item.code)}
+                      />
+                    ))}
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* Category rows */}
             <div className="space-y-2">
               {categories.map((category) => (
                 <div key={category.category} className="flex items-center gap-2">

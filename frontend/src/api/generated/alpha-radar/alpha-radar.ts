@@ -16,16 +16,25 @@ import type {
 import type {
   CalendarDayInfo,
   DashboardResponse,
+  EtfCategory,
   EtfHeatmapResponse,
+  EtfRotationDetailResponse,
+  EtfRotationFlatResponse,
+  EtfRotationResponse,
   EtfScreenerResponse,
   GetCalendarApiV1AlphaRadarCalendarGetParams,
   GetDashboardApiV1AlphaRadarDashboardGetParams,
   GetEtfHeatmapApiV1AlphaRadarEtfHeatmapGetParams,
+  GetEtfRotationApiV1AlphaRadarEtfRotationGetParams,
+  GetEtfRotationDetailApiV1AlphaRadarEtfRotationCategoryGetParams,
+  GetEtfRotationFlatApiV1AlphaRadarEtfRotationFlatGetParams,
   GetEtfScreenerApiV1AlphaRadarEtfScreenerGetParams,
+  GetIndustryEtfMappingApiV1AlphaRadarIndustryEtfMappingIndustryGetParams,
   GetScreenerApiV1AlphaRadarScreenerGetParams,
   GetSectorHeatmapApiV1AlphaRadarSectorHeatmapGetParams,
   GetSectorRotationApiV1AlphaRadarSectorRotationGetParams,
   HTTPValidationError,
+  IndustryEtfMappingResponse,
   ScreenerResponse,
   SectorHeatmapResponse,
   SectorRotationResponse,
@@ -923,13 +932,15 @@ export const useGetEtfScreenerApiV1AlphaRadarEtfScreenerGet = <
 /**
  * Get ETF heatmap data grouped by category.
 
-Returns 6 category rows:
-- broad (宽基): 沪深300, 中证500, 科创50, A500, 红利
-- sector (行业): 银行, 证券, 医药, 化工, 煤炭
-- theme (赛道): AI, 芯片, 机器人, 新能源, 储能
-- cross_border (跨境): 纳指, 标普, 恒科, 港股, 日经
-- commodity (商品): 黄金, 白银, 原油, 豆粕
-- bond (债券): 国债, 城投, 信用债
+Returns:
+- top_movers: Top 10 ETFs by daily change (bubble-up mechanism, min 1000万 amount)
+- 6 category rows:
+  - broad (宽基): 沪深300, 中证500, 科创50, A500, 红利
+  - sector (行业): 银行, 证券, 医药, 化工, 煤炭
+  - theme (赛道): AI, 芯片, 机器人, 新能源, 储能
+  - cross_border (跨境): 纳指, 标普, 恒科, 港股, 日经
+  - commodity (商品): 黄金, 白银, 原油, 豆粕
+  - bond (债券): 国债, 城投, 信用债
 
 Each cell shows:
 - Simplified name (e.g., "沪深300" instead of "沪深300ETF华夏")
@@ -1587,3 +1598,1062 @@ export const useGetSectorRotationApiV1AlphaRadarSectorRotationGet = <
 
   return query;
 };
+
+/**
+ * Get ETF rotation matrix (category summary view).
+
+Returns a date × category matrix showing:
+- 6 main categories: broad, sector, theme, cross_border, commodity, bond
+- Each cell shows avg change %, total amount, top performer
+
+Use cases:
+- Identify ETF category rotation patterns
+- Compare performance across asset classes
+- Spot macro trends
+ * @summary Get Etf Rotation
+ */
+export const getEtfRotationApiV1AlphaRadarEtfRotationGet = (
+  params?: GetEtfRotationApiV1AlphaRadarEtfRotationGetParams,
+  signal?: AbortSignal,
+) => {
+  return customInstance<EtfRotationResponse>({
+    url: `/api/v1/alpha-radar/etf-rotation`,
+    method: "GET",
+    params,
+    signal,
+  });
+};
+
+export const getGetEtfRotationApiV1AlphaRadarEtfRotationGetQueryKey = (
+  params?: GetEtfRotationApiV1AlphaRadarEtfRotationGetParams,
+) => {
+  return [
+    `/api/v1/alpha-radar/etf-rotation`,
+    ...(params ? [params] : []),
+  ] as const;
+};
+
+export const getGetEtfRotationApiV1AlphaRadarEtfRotationGetInfiniteQueryOptions =
+  <
+    TData = InfiniteData<
+      Awaited<ReturnType<typeof getEtfRotationApiV1AlphaRadarEtfRotationGet>>,
+      GetEtfRotationApiV1AlphaRadarEtfRotationGetParams["page"]
+    >,
+    TError = HTTPValidationError,
+  >(
+    params?: GetEtfRotationApiV1AlphaRadarEtfRotationGetParams,
+    options?: {
+      query?: Partial<
+        UseInfiniteQueryOptions<
+          Awaited<
+            ReturnType<typeof getEtfRotationApiV1AlphaRadarEtfRotationGet>
+          >,
+          TError,
+          TData,
+          Awaited<
+            ReturnType<typeof getEtfRotationApiV1AlphaRadarEtfRotationGet>
+          >,
+          QueryKey,
+          GetEtfRotationApiV1AlphaRadarEtfRotationGetParams["page"]
+        >
+      >;
+    },
+  ) => {
+    const { query: queryOptions } = options ?? {};
+
+    const queryKey =
+      queryOptions?.queryKey ??
+      getGetEtfRotationApiV1AlphaRadarEtfRotationGetQueryKey(params);
+
+    const queryFn: QueryFunction<
+      Awaited<ReturnType<typeof getEtfRotationApiV1AlphaRadarEtfRotationGet>>,
+      QueryKey,
+      GetEtfRotationApiV1AlphaRadarEtfRotationGetParams["page"]
+    > = ({ signal, pageParam }) =>
+      getEtfRotationApiV1AlphaRadarEtfRotationGet(
+        { ...params, page: pageParam || params?.["page"] },
+        signal,
+      );
+
+    return { queryKey, queryFn, ...queryOptions } as UseInfiniteQueryOptions<
+      Awaited<ReturnType<typeof getEtfRotationApiV1AlphaRadarEtfRotationGet>>,
+      TError,
+      TData,
+      Awaited<ReturnType<typeof getEtfRotationApiV1AlphaRadarEtfRotationGet>>,
+      QueryKey,
+      GetEtfRotationApiV1AlphaRadarEtfRotationGetParams["page"]
+    > & { queryKey: QueryKey };
+  };
+
+export type GetEtfRotationApiV1AlphaRadarEtfRotationGetInfiniteQueryResult =
+  NonNullable<
+    Awaited<ReturnType<typeof getEtfRotationApiV1AlphaRadarEtfRotationGet>>
+  >;
+export type GetEtfRotationApiV1AlphaRadarEtfRotationGetInfiniteQueryError =
+  HTTPValidationError;
+
+/**
+ * @summary Get Etf Rotation
+ */
+export const useGetEtfRotationApiV1AlphaRadarEtfRotationGetInfinite = <
+  TData = InfiniteData<
+    Awaited<ReturnType<typeof getEtfRotationApiV1AlphaRadarEtfRotationGet>>,
+    GetEtfRotationApiV1AlphaRadarEtfRotationGetParams["page"]
+  >,
+  TError = HTTPValidationError,
+>(
+  params?: GetEtfRotationApiV1AlphaRadarEtfRotationGetParams,
+  options?: {
+    query?: Partial<
+      UseInfiniteQueryOptions<
+        Awaited<ReturnType<typeof getEtfRotationApiV1AlphaRadarEtfRotationGet>>,
+        TError,
+        TData,
+        Awaited<ReturnType<typeof getEtfRotationApiV1AlphaRadarEtfRotationGet>>,
+        QueryKey,
+        GetEtfRotationApiV1AlphaRadarEtfRotationGetParams["page"]
+      >
+    >;
+  },
+): UseInfiniteQueryResult<TData, TError> & { queryKey: QueryKey } => {
+  const queryOptions =
+    getGetEtfRotationApiV1AlphaRadarEtfRotationGetInfiniteQueryOptions(
+      params,
+      options,
+    );
+
+  const query = useInfiniteQuery(queryOptions) as UseInfiniteQueryResult<
+    TData,
+    TError
+  > & { queryKey: QueryKey };
+
+  query.queryKey = queryOptions.queryKey;
+
+  return query;
+};
+
+export const getGetEtfRotationApiV1AlphaRadarEtfRotationGetQueryOptions = <
+  TData = Awaited<
+    ReturnType<typeof getEtfRotationApiV1AlphaRadarEtfRotationGet>
+  >,
+  TError = HTTPValidationError,
+>(
+  params?: GetEtfRotationApiV1AlphaRadarEtfRotationGetParams,
+  options?: {
+    query?: Partial<
+      UseQueryOptions<
+        Awaited<ReturnType<typeof getEtfRotationApiV1AlphaRadarEtfRotationGet>>,
+        TError,
+        TData
+      >
+    >;
+  },
+) => {
+  const { query: queryOptions } = options ?? {};
+
+  const queryKey =
+    queryOptions?.queryKey ??
+    getGetEtfRotationApiV1AlphaRadarEtfRotationGetQueryKey(params);
+
+  const queryFn: QueryFunction<
+    Awaited<ReturnType<typeof getEtfRotationApiV1AlphaRadarEtfRotationGet>>
+  > = ({ signal }) =>
+    getEtfRotationApiV1AlphaRadarEtfRotationGet(params, signal);
+
+  return { queryKey, queryFn, ...queryOptions } as UseQueryOptions<
+    Awaited<ReturnType<typeof getEtfRotationApiV1AlphaRadarEtfRotationGet>>,
+    TError,
+    TData
+  > & { queryKey: QueryKey };
+};
+
+export type GetEtfRotationApiV1AlphaRadarEtfRotationGetQueryResult =
+  NonNullable<
+    Awaited<ReturnType<typeof getEtfRotationApiV1AlphaRadarEtfRotationGet>>
+  >;
+export type GetEtfRotationApiV1AlphaRadarEtfRotationGetQueryError =
+  HTTPValidationError;
+
+/**
+ * @summary Get Etf Rotation
+ */
+export const useGetEtfRotationApiV1AlphaRadarEtfRotationGet = <
+  TData = Awaited<
+    ReturnType<typeof getEtfRotationApiV1AlphaRadarEtfRotationGet>
+  >,
+  TError = HTTPValidationError,
+>(
+  params?: GetEtfRotationApiV1AlphaRadarEtfRotationGetParams,
+  options?: {
+    query?: Partial<
+      UseQueryOptions<
+        Awaited<ReturnType<typeof getEtfRotationApiV1AlphaRadarEtfRotationGet>>,
+        TError,
+        TData
+      >
+    >;
+  },
+): UseQueryResult<TData, TError> & { queryKey: QueryKey } => {
+  const queryOptions =
+    getGetEtfRotationApiV1AlphaRadarEtfRotationGetQueryOptions(params, options);
+
+  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
+    queryKey: QueryKey;
+  };
+
+  query.queryKey = queryOptions.queryKey;
+
+  return query;
+};
+
+/**
+ * Get expanded sub-category detail for a specific ETF category.
+
+Expands a category (e.g., "sector") to show sub-categories (e.g., "银行", "医药", "传媒").
+Each cell shows the representative ETF's performance for that sub-category.
+
+Use cases:
+- Drill down into category performance
+- Identify hot sub-sectors within a category
+- Compare specific ETFs within a theme
+ * @summary Get Etf Rotation Detail
+ */
+export const getEtfRotationDetailApiV1AlphaRadarEtfRotationCategoryGet = (
+  category: EtfCategory,
+  params?: GetEtfRotationDetailApiV1AlphaRadarEtfRotationCategoryGetParams,
+  signal?: AbortSignal,
+) => {
+  return customInstance<EtfRotationDetailResponse>({
+    url: `/api/v1/alpha-radar/etf-rotation/${category}`,
+    method: "GET",
+    params,
+    signal,
+  });
+};
+
+export const getGetEtfRotationDetailApiV1AlphaRadarEtfRotationCategoryGetQueryKey =
+  (
+    category: EtfCategory,
+    params?: GetEtfRotationDetailApiV1AlphaRadarEtfRotationCategoryGetParams,
+  ) => {
+    return [
+      `/api/v1/alpha-radar/etf-rotation/${category}`,
+      ...(params ? [params] : []),
+    ] as const;
+  };
+
+export const getGetEtfRotationDetailApiV1AlphaRadarEtfRotationCategoryGetInfiniteQueryOptions =
+  <
+    TData = InfiniteData<
+      Awaited<
+        ReturnType<
+          typeof getEtfRotationDetailApiV1AlphaRadarEtfRotationCategoryGet
+        >
+      >,
+      GetEtfRotationDetailApiV1AlphaRadarEtfRotationCategoryGetParams["page"]
+    >,
+    TError = HTTPValidationError,
+  >(
+    category: EtfCategory,
+    params?: GetEtfRotationDetailApiV1AlphaRadarEtfRotationCategoryGetParams,
+    options?: {
+      query?: Partial<
+        UseInfiniteQueryOptions<
+          Awaited<
+            ReturnType<
+              typeof getEtfRotationDetailApiV1AlphaRadarEtfRotationCategoryGet
+            >
+          >,
+          TError,
+          TData,
+          Awaited<
+            ReturnType<
+              typeof getEtfRotationDetailApiV1AlphaRadarEtfRotationCategoryGet
+            >
+          >,
+          QueryKey,
+          GetEtfRotationDetailApiV1AlphaRadarEtfRotationCategoryGetParams["page"]
+        >
+      >;
+    },
+  ) => {
+    const { query: queryOptions } = options ?? {};
+
+    const queryKey =
+      queryOptions?.queryKey ??
+      getGetEtfRotationDetailApiV1AlphaRadarEtfRotationCategoryGetQueryKey(
+        category,
+        params,
+      );
+
+    const queryFn: QueryFunction<
+      Awaited<
+        ReturnType<
+          typeof getEtfRotationDetailApiV1AlphaRadarEtfRotationCategoryGet
+        >
+      >,
+      QueryKey,
+      GetEtfRotationDetailApiV1AlphaRadarEtfRotationCategoryGetParams["page"]
+    > = ({ signal, pageParam }) =>
+      getEtfRotationDetailApiV1AlphaRadarEtfRotationCategoryGet(
+        category,
+        { ...params, page: pageParam || params?.["page"] },
+        signal,
+      );
+
+    return {
+      queryKey,
+      queryFn,
+      enabled: !!category,
+      ...queryOptions,
+    } as UseInfiniteQueryOptions<
+      Awaited<
+        ReturnType<
+          typeof getEtfRotationDetailApiV1AlphaRadarEtfRotationCategoryGet
+        >
+      >,
+      TError,
+      TData,
+      Awaited<
+        ReturnType<
+          typeof getEtfRotationDetailApiV1AlphaRadarEtfRotationCategoryGet
+        >
+      >,
+      QueryKey,
+      GetEtfRotationDetailApiV1AlphaRadarEtfRotationCategoryGetParams["page"]
+    > & { queryKey: QueryKey };
+  };
+
+export type GetEtfRotationDetailApiV1AlphaRadarEtfRotationCategoryGetInfiniteQueryResult =
+  NonNullable<
+    Awaited<
+      ReturnType<
+        typeof getEtfRotationDetailApiV1AlphaRadarEtfRotationCategoryGet
+      >
+    >
+  >;
+export type GetEtfRotationDetailApiV1AlphaRadarEtfRotationCategoryGetInfiniteQueryError =
+  HTTPValidationError;
+
+/**
+ * @summary Get Etf Rotation Detail
+ */
+export const useGetEtfRotationDetailApiV1AlphaRadarEtfRotationCategoryGetInfinite =
+  <
+    TData = InfiniteData<
+      Awaited<
+        ReturnType<
+          typeof getEtfRotationDetailApiV1AlphaRadarEtfRotationCategoryGet
+        >
+      >,
+      GetEtfRotationDetailApiV1AlphaRadarEtfRotationCategoryGetParams["page"]
+    >,
+    TError = HTTPValidationError,
+  >(
+    category: EtfCategory,
+    params?: GetEtfRotationDetailApiV1AlphaRadarEtfRotationCategoryGetParams,
+    options?: {
+      query?: Partial<
+        UseInfiniteQueryOptions<
+          Awaited<
+            ReturnType<
+              typeof getEtfRotationDetailApiV1AlphaRadarEtfRotationCategoryGet
+            >
+          >,
+          TError,
+          TData,
+          Awaited<
+            ReturnType<
+              typeof getEtfRotationDetailApiV1AlphaRadarEtfRotationCategoryGet
+            >
+          >,
+          QueryKey,
+          GetEtfRotationDetailApiV1AlphaRadarEtfRotationCategoryGetParams["page"]
+        >
+      >;
+    },
+  ): UseInfiniteQueryResult<TData, TError> & { queryKey: QueryKey } => {
+    const queryOptions =
+      getGetEtfRotationDetailApiV1AlphaRadarEtfRotationCategoryGetInfiniteQueryOptions(
+        category,
+        params,
+        options,
+      );
+
+    const query = useInfiniteQuery(queryOptions) as UseInfiniteQueryResult<
+      TData,
+      TError
+    > & { queryKey: QueryKey };
+
+    query.queryKey = queryOptions.queryKey;
+
+    return query;
+  };
+
+export const getGetEtfRotationDetailApiV1AlphaRadarEtfRotationCategoryGetQueryOptions =
+  <
+    TData = Awaited<
+      ReturnType<
+        typeof getEtfRotationDetailApiV1AlphaRadarEtfRotationCategoryGet
+      >
+    >,
+    TError = HTTPValidationError,
+  >(
+    category: EtfCategory,
+    params?: GetEtfRotationDetailApiV1AlphaRadarEtfRotationCategoryGetParams,
+    options?: {
+      query?: Partial<
+        UseQueryOptions<
+          Awaited<
+            ReturnType<
+              typeof getEtfRotationDetailApiV1AlphaRadarEtfRotationCategoryGet
+            >
+          >,
+          TError,
+          TData
+        >
+      >;
+    },
+  ) => {
+    const { query: queryOptions } = options ?? {};
+
+    const queryKey =
+      queryOptions?.queryKey ??
+      getGetEtfRotationDetailApiV1AlphaRadarEtfRotationCategoryGetQueryKey(
+        category,
+        params,
+      );
+
+    const queryFn: QueryFunction<
+      Awaited<
+        ReturnType<
+          typeof getEtfRotationDetailApiV1AlphaRadarEtfRotationCategoryGet
+        >
+      >
+    > = ({ signal }) =>
+      getEtfRotationDetailApiV1AlphaRadarEtfRotationCategoryGet(
+        category,
+        params,
+        signal,
+      );
+
+    return {
+      queryKey,
+      queryFn,
+      enabled: !!category,
+      ...queryOptions,
+    } as UseQueryOptions<
+      Awaited<
+        ReturnType<
+          typeof getEtfRotationDetailApiV1AlphaRadarEtfRotationCategoryGet
+        >
+      >,
+      TError,
+      TData
+    > & { queryKey: QueryKey };
+  };
+
+export type GetEtfRotationDetailApiV1AlphaRadarEtfRotationCategoryGetQueryResult =
+  NonNullable<
+    Awaited<
+      ReturnType<
+        typeof getEtfRotationDetailApiV1AlphaRadarEtfRotationCategoryGet
+      >
+    >
+  >;
+export type GetEtfRotationDetailApiV1AlphaRadarEtfRotationCategoryGetQueryError =
+  HTTPValidationError;
+
+/**
+ * @summary Get Etf Rotation Detail
+ */
+export const useGetEtfRotationDetailApiV1AlphaRadarEtfRotationCategoryGet = <
+  TData = Awaited<
+    ReturnType<typeof getEtfRotationDetailApiV1AlphaRadarEtfRotationCategoryGet>
+  >,
+  TError = HTTPValidationError,
+>(
+  category: EtfCategory,
+  params?: GetEtfRotationDetailApiV1AlphaRadarEtfRotationCategoryGetParams,
+  options?: {
+    query?: Partial<
+      UseQueryOptions<
+        Awaited<
+          ReturnType<
+            typeof getEtfRotationDetailApiV1AlphaRadarEtfRotationCategoryGet
+          >
+        >,
+        TError,
+        TData
+      >
+    >;
+  },
+): UseQueryResult<TData, TError> & { queryKey: QueryKey } => {
+  const queryOptions =
+    getGetEtfRotationDetailApiV1AlphaRadarEtfRotationCategoryGetQueryOptions(
+      category,
+      params,
+      options,
+    );
+
+  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
+    queryKey: QueryKey;
+  };
+
+  query.queryKey = queryOptions.queryKey;
+
+  return query;
+};
+
+/**
+ * 获取扁平化 ETF 轮动矩阵 (SVG 渲染用).
+
+返回所有子品类作为列的矩阵数据，类似行业轮动矩阵。
+用于 SVG 渲染，支持无限滚动加载更早日期。
+
+数据结构:
+- trading_days: Y轴日期列表 (最新日期在前)
+- sub_categories: X轴子品类列 (按大类分组，类内按成交额排序)
+- category_order: 大类顺序
+- category_labels: 大类名称映射
+
+使用场景:
+- SVG 矩阵渲染所有子品类
+- 无限滚动加载历史数据 (通过 end_date 分页)
+ * @summary Get Etf Rotation Flat
+ */
+export const getEtfRotationFlatApiV1AlphaRadarEtfRotationFlatGet = (
+  params?: GetEtfRotationFlatApiV1AlphaRadarEtfRotationFlatGetParams,
+  signal?: AbortSignal,
+) => {
+  return customInstance<EtfRotationFlatResponse>({
+    url: `/api/v1/alpha-radar/etf-rotation-flat`,
+    method: "GET",
+    params,
+    signal,
+  });
+};
+
+export const getGetEtfRotationFlatApiV1AlphaRadarEtfRotationFlatGetQueryKey = (
+  params?: GetEtfRotationFlatApiV1AlphaRadarEtfRotationFlatGetParams,
+) => {
+  return [
+    `/api/v1/alpha-radar/etf-rotation-flat`,
+    ...(params ? [params] : []),
+  ] as const;
+};
+
+export const getGetEtfRotationFlatApiV1AlphaRadarEtfRotationFlatGetInfiniteQueryOptions =
+  <
+    TData = InfiniteData<
+      Awaited<
+        ReturnType<typeof getEtfRotationFlatApiV1AlphaRadarEtfRotationFlatGet>
+      >,
+      GetEtfRotationFlatApiV1AlphaRadarEtfRotationFlatGetParams["page"]
+    >,
+    TError = HTTPValidationError,
+  >(
+    params?: GetEtfRotationFlatApiV1AlphaRadarEtfRotationFlatGetParams,
+    options?: {
+      query?: Partial<
+        UseInfiniteQueryOptions<
+          Awaited<
+            ReturnType<
+              typeof getEtfRotationFlatApiV1AlphaRadarEtfRotationFlatGet
+            >
+          >,
+          TError,
+          TData,
+          Awaited<
+            ReturnType<
+              typeof getEtfRotationFlatApiV1AlphaRadarEtfRotationFlatGet
+            >
+          >,
+          QueryKey,
+          GetEtfRotationFlatApiV1AlphaRadarEtfRotationFlatGetParams["page"]
+        >
+      >;
+    },
+  ) => {
+    const { query: queryOptions } = options ?? {};
+
+    const queryKey =
+      queryOptions?.queryKey ??
+      getGetEtfRotationFlatApiV1AlphaRadarEtfRotationFlatGetQueryKey(params);
+
+    const queryFn: QueryFunction<
+      Awaited<
+        ReturnType<typeof getEtfRotationFlatApiV1AlphaRadarEtfRotationFlatGet>
+      >,
+      QueryKey,
+      GetEtfRotationFlatApiV1AlphaRadarEtfRotationFlatGetParams["page"]
+    > = ({ signal, pageParam }) =>
+      getEtfRotationFlatApiV1AlphaRadarEtfRotationFlatGet(
+        { ...params, page: pageParam || params?.["page"] },
+        signal,
+      );
+
+    return { queryKey, queryFn, ...queryOptions } as UseInfiniteQueryOptions<
+      Awaited<
+        ReturnType<typeof getEtfRotationFlatApiV1AlphaRadarEtfRotationFlatGet>
+      >,
+      TError,
+      TData,
+      Awaited<
+        ReturnType<typeof getEtfRotationFlatApiV1AlphaRadarEtfRotationFlatGet>
+      >,
+      QueryKey,
+      GetEtfRotationFlatApiV1AlphaRadarEtfRotationFlatGetParams["page"]
+    > & { queryKey: QueryKey };
+  };
+
+export type GetEtfRotationFlatApiV1AlphaRadarEtfRotationFlatGetInfiniteQueryResult =
+  NonNullable<
+    Awaited<
+      ReturnType<typeof getEtfRotationFlatApiV1AlphaRadarEtfRotationFlatGet>
+    >
+  >;
+export type GetEtfRotationFlatApiV1AlphaRadarEtfRotationFlatGetInfiniteQueryError =
+  HTTPValidationError;
+
+/**
+ * @summary Get Etf Rotation Flat
+ */
+export const useGetEtfRotationFlatApiV1AlphaRadarEtfRotationFlatGetInfinite = <
+  TData = InfiniteData<
+    Awaited<
+      ReturnType<typeof getEtfRotationFlatApiV1AlphaRadarEtfRotationFlatGet>
+    >,
+    GetEtfRotationFlatApiV1AlphaRadarEtfRotationFlatGetParams["page"]
+  >,
+  TError = HTTPValidationError,
+>(
+  params?: GetEtfRotationFlatApiV1AlphaRadarEtfRotationFlatGetParams,
+  options?: {
+    query?: Partial<
+      UseInfiniteQueryOptions<
+        Awaited<
+          ReturnType<typeof getEtfRotationFlatApiV1AlphaRadarEtfRotationFlatGet>
+        >,
+        TError,
+        TData,
+        Awaited<
+          ReturnType<typeof getEtfRotationFlatApiV1AlphaRadarEtfRotationFlatGet>
+        >,
+        QueryKey,
+        GetEtfRotationFlatApiV1AlphaRadarEtfRotationFlatGetParams["page"]
+      >
+    >;
+  },
+): UseInfiniteQueryResult<TData, TError> & { queryKey: QueryKey } => {
+  const queryOptions =
+    getGetEtfRotationFlatApiV1AlphaRadarEtfRotationFlatGetInfiniteQueryOptions(
+      params,
+      options,
+    );
+
+  const query = useInfiniteQuery(queryOptions) as UseInfiniteQueryResult<
+    TData,
+    TError
+  > & { queryKey: QueryKey };
+
+  query.queryKey = queryOptions.queryKey;
+
+  return query;
+};
+
+export const getGetEtfRotationFlatApiV1AlphaRadarEtfRotationFlatGetQueryOptions =
+  <
+    TData = Awaited<
+      ReturnType<typeof getEtfRotationFlatApiV1AlphaRadarEtfRotationFlatGet>
+    >,
+    TError = HTTPValidationError,
+  >(
+    params?: GetEtfRotationFlatApiV1AlphaRadarEtfRotationFlatGetParams,
+    options?: {
+      query?: Partial<
+        UseQueryOptions<
+          Awaited<
+            ReturnType<
+              typeof getEtfRotationFlatApiV1AlphaRadarEtfRotationFlatGet
+            >
+          >,
+          TError,
+          TData
+        >
+      >;
+    },
+  ) => {
+    const { query: queryOptions } = options ?? {};
+
+    const queryKey =
+      queryOptions?.queryKey ??
+      getGetEtfRotationFlatApiV1AlphaRadarEtfRotationFlatGetQueryKey(params);
+
+    const queryFn: QueryFunction<
+      Awaited<
+        ReturnType<typeof getEtfRotationFlatApiV1AlphaRadarEtfRotationFlatGet>
+      >
+    > = ({ signal }) =>
+      getEtfRotationFlatApiV1AlphaRadarEtfRotationFlatGet(params, signal);
+
+    return { queryKey, queryFn, ...queryOptions } as UseQueryOptions<
+      Awaited<
+        ReturnType<typeof getEtfRotationFlatApiV1AlphaRadarEtfRotationFlatGet>
+      >,
+      TError,
+      TData
+    > & { queryKey: QueryKey };
+  };
+
+export type GetEtfRotationFlatApiV1AlphaRadarEtfRotationFlatGetQueryResult =
+  NonNullable<
+    Awaited<
+      ReturnType<typeof getEtfRotationFlatApiV1AlphaRadarEtfRotationFlatGet>
+    >
+  >;
+export type GetEtfRotationFlatApiV1AlphaRadarEtfRotationFlatGetQueryError =
+  HTTPValidationError;
+
+/**
+ * @summary Get Etf Rotation Flat
+ */
+export const useGetEtfRotationFlatApiV1AlphaRadarEtfRotationFlatGet = <
+  TData = Awaited<
+    ReturnType<typeof getEtfRotationFlatApiV1AlphaRadarEtfRotationFlatGet>
+  >,
+  TError = HTTPValidationError,
+>(
+  params?: GetEtfRotationFlatApiV1AlphaRadarEtfRotationFlatGetParams,
+  options?: {
+    query?: Partial<
+      UseQueryOptions<
+        Awaited<
+          ReturnType<typeof getEtfRotationFlatApiV1AlphaRadarEtfRotationFlatGet>
+        >,
+        TError,
+        TData
+      >
+    >;
+  },
+): UseQueryResult<TData, TError> & { queryKey: QueryKey } => {
+  const queryOptions =
+    getGetEtfRotationFlatApiV1AlphaRadarEtfRotationFlatGetQueryOptions(
+      params,
+      options,
+    );
+
+  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
+    queryKey: QueryKey;
+  };
+
+  query.queryKey = queryOptions.queryKey;
+
+  return query;
+};
+
+/**
+ * Get ETFs related to a Shenwan L1 industry.
+
+Maps SW L1 industries to related ETF sub-categories and returns
+the top ETFs by trading volume.
+
+Example:
+- "银行" -> ETF sub-categories: ["银行"]
+- "传媒" -> ETF sub-categories: ["传媒", "游戏", "影视", "文化", "动漫"]
+
+Use cases:
+- Show related ETFs when hovering on industry cells in SectorHeatmap
+- Link industry performance to tradable ETF alternatives
+ * @summary Get Industry Etf Mapping
+ */
+export const getIndustryEtfMappingApiV1AlphaRadarIndustryEtfMappingIndustryGet =
+  (
+    industry: string,
+    params?: GetIndustryEtfMappingApiV1AlphaRadarIndustryEtfMappingIndustryGetParams,
+    signal?: AbortSignal,
+  ) => {
+    return customInstance<IndustryEtfMappingResponse>({
+      url: `/api/v1/alpha-radar/industry-etf-mapping/${industry}`,
+      method: "GET",
+      params,
+      signal,
+    });
+  };
+
+export const getGetIndustryEtfMappingApiV1AlphaRadarIndustryEtfMappingIndustryGetQueryKey =
+  (
+    industry: string,
+    params?: GetIndustryEtfMappingApiV1AlphaRadarIndustryEtfMappingIndustryGetParams,
+  ) => {
+    return [
+      `/api/v1/alpha-radar/industry-etf-mapping/${industry}`,
+      ...(params ? [params] : []),
+    ] as const;
+  };
+
+export const getGetIndustryEtfMappingApiV1AlphaRadarIndustryEtfMappingIndustryGetInfiniteQueryOptions =
+  <
+    TData = InfiniteData<
+      Awaited<
+        ReturnType<
+          typeof getIndustryEtfMappingApiV1AlphaRadarIndustryEtfMappingIndustryGet
+        >
+      >,
+      GetIndustryEtfMappingApiV1AlphaRadarIndustryEtfMappingIndustryGetParams["page"]
+    >,
+    TError = HTTPValidationError,
+  >(
+    industry: string,
+    params?: GetIndustryEtfMappingApiV1AlphaRadarIndustryEtfMappingIndustryGetParams,
+    options?: {
+      query?: Partial<
+        UseInfiniteQueryOptions<
+          Awaited<
+            ReturnType<
+              typeof getIndustryEtfMappingApiV1AlphaRadarIndustryEtfMappingIndustryGet
+            >
+          >,
+          TError,
+          TData,
+          Awaited<
+            ReturnType<
+              typeof getIndustryEtfMappingApiV1AlphaRadarIndustryEtfMappingIndustryGet
+            >
+          >,
+          QueryKey,
+          GetIndustryEtfMappingApiV1AlphaRadarIndustryEtfMappingIndustryGetParams["page"]
+        >
+      >;
+    },
+  ) => {
+    const { query: queryOptions } = options ?? {};
+
+    const queryKey =
+      queryOptions?.queryKey ??
+      getGetIndustryEtfMappingApiV1AlphaRadarIndustryEtfMappingIndustryGetQueryKey(
+        industry,
+        params,
+      );
+
+    const queryFn: QueryFunction<
+      Awaited<
+        ReturnType<
+          typeof getIndustryEtfMappingApiV1AlphaRadarIndustryEtfMappingIndustryGet
+        >
+      >,
+      QueryKey,
+      GetIndustryEtfMappingApiV1AlphaRadarIndustryEtfMappingIndustryGetParams["page"]
+    > = ({ signal, pageParam }) =>
+      getIndustryEtfMappingApiV1AlphaRadarIndustryEtfMappingIndustryGet(
+        industry,
+        { ...params, page: pageParam || params?.["page"] },
+        signal,
+      );
+
+    return {
+      queryKey,
+      queryFn,
+      enabled: !!industry,
+      ...queryOptions,
+    } as UseInfiniteQueryOptions<
+      Awaited<
+        ReturnType<
+          typeof getIndustryEtfMappingApiV1AlphaRadarIndustryEtfMappingIndustryGet
+        >
+      >,
+      TError,
+      TData,
+      Awaited<
+        ReturnType<
+          typeof getIndustryEtfMappingApiV1AlphaRadarIndustryEtfMappingIndustryGet
+        >
+      >,
+      QueryKey,
+      GetIndustryEtfMappingApiV1AlphaRadarIndustryEtfMappingIndustryGetParams["page"]
+    > & { queryKey: QueryKey };
+  };
+
+export type GetIndustryEtfMappingApiV1AlphaRadarIndustryEtfMappingIndustryGetInfiniteQueryResult =
+  NonNullable<
+    Awaited<
+      ReturnType<
+        typeof getIndustryEtfMappingApiV1AlphaRadarIndustryEtfMappingIndustryGet
+      >
+    >
+  >;
+export type GetIndustryEtfMappingApiV1AlphaRadarIndustryEtfMappingIndustryGetInfiniteQueryError =
+  HTTPValidationError;
+
+/**
+ * @summary Get Industry Etf Mapping
+ */
+export const useGetIndustryEtfMappingApiV1AlphaRadarIndustryEtfMappingIndustryGetInfinite =
+  <
+    TData = InfiniteData<
+      Awaited<
+        ReturnType<
+          typeof getIndustryEtfMappingApiV1AlphaRadarIndustryEtfMappingIndustryGet
+        >
+      >,
+      GetIndustryEtfMappingApiV1AlphaRadarIndustryEtfMappingIndustryGetParams["page"]
+    >,
+    TError = HTTPValidationError,
+  >(
+    industry: string,
+    params?: GetIndustryEtfMappingApiV1AlphaRadarIndustryEtfMappingIndustryGetParams,
+    options?: {
+      query?: Partial<
+        UseInfiniteQueryOptions<
+          Awaited<
+            ReturnType<
+              typeof getIndustryEtfMappingApiV1AlphaRadarIndustryEtfMappingIndustryGet
+            >
+          >,
+          TError,
+          TData,
+          Awaited<
+            ReturnType<
+              typeof getIndustryEtfMappingApiV1AlphaRadarIndustryEtfMappingIndustryGet
+            >
+          >,
+          QueryKey,
+          GetIndustryEtfMappingApiV1AlphaRadarIndustryEtfMappingIndustryGetParams["page"]
+        >
+      >;
+    },
+  ): UseInfiniteQueryResult<TData, TError> & { queryKey: QueryKey } => {
+    const queryOptions =
+      getGetIndustryEtfMappingApiV1AlphaRadarIndustryEtfMappingIndustryGetInfiniteQueryOptions(
+        industry,
+        params,
+        options,
+      );
+
+    const query = useInfiniteQuery(queryOptions) as UseInfiniteQueryResult<
+      TData,
+      TError
+    > & { queryKey: QueryKey };
+
+    query.queryKey = queryOptions.queryKey;
+
+    return query;
+  };
+
+export const getGetIndustryEtfMappingApiV1AlphaRadarIndustryEtfMappingIndustryGetQueryOptions =
+  <
+    TData = Awaited<
+      ReturnType<
+        typeof getIndustryEtfMappingApiV1AlphaRadarIndustryEtfMappingIndustryGet
+      >
+    >,
+    TError = HTTPValidationError,
+  >(
+    industry: string,
+    params?: GetIndustryEtfMappingApiV1AlphaRadarIndustryEtfMappingIndustryGetParams,
+    options?: {
+      query?: Partial<
+        UseQueryOptions<
+          Awaited<
+            ReturnType<
+              typeof getIndustryEtfMappingApiV1AlphaRadarIndustryEtfMappingIndustryGet
+            >
+          >,
+          TError,
+          TData
+        >
+      >;
+    },
+  ) => {
+    const { query: queryOptions } = options ?? {};
+
+    const queryKey =
+      queryOptions?.queryKey ??
+      getGetIndustryEtfMappingApiV1AlphaRadarIndustryEtfMappingIndustryGetQueryKey(
+        industry,
+        params,
+      );
+
+    const queryFn: QueryFunction<
+      Awaited<
+        ReturnType<
+          typeof getIndustryEtfMappingApiV1AlphaRadarIndustryEtfMappingIndustryGet
+        >
+      >
+    > = ({ signal }) =>
+      getIndustryEtfMappingApiV1AlphaRadarIndustryEtfMappingIndustryGet(
+        industry,
+        params,
+        signal,
+      );
+
+    return {
+      queryKey,
+      queryFn,
+      enabled: !!industry,
+      ...queryOptions,
+    } as UseQueryOptions<
+      Awaited<
+        ReturnType<
+          typeof getIndustryEtfMappingApiV1AlphaRadarIndustryEtfMappingIndustryGet
+        >
+      >,
+      TError,
+      TData
+    > & { queryKey: QueryKey };
+  };
+
+export type GetIndustryEtfMappingApiV1AlphaRadarIndustryEtfMappingIndustryGetQueryResult =
+  NonNullable<
+    Awaited<
+      ReturnType<
+        typeof getIndustryEtfMappingApiV1AlphaRadarIndustryEtfMappingIndustryGet
+      >
+    >
+  >;
+export type GetIndustryEtfMappingApiV1AlphaRadarIndustryEtfMappingIndustryGetQueryError =
+  HTTPValidationError;
+
+/**
+ * @summary Get Industry Etf Mapping
+ */
+export const useGetIndustryEtfMappingApiV1AlphaRadarIndustryEtfMappingIndustryGet =
+  <
+    TData = Awaited<
+      ReturnType<
+        typeof getIndustryEtfMappingApiV1AlphaRadarIndustryEtfMappingIndustryGet
+      >
+    >,
+    TError = HTTPValidationError,
+  >(
+    industry: string,
+    params?: GetIndustryEtfMappingApiV1AlphaRadarIndustryEtfMappingIndustryGetParams,
+    options?: {
+      query?: Partial<
+        UseQueryOptions<
+          Awaited<
+            ReturnType<
+              typeof getIndustryEtfMappingApiV1AlphaRadarIndustryEtfMappingIndustryGet
+            >
+          >,
+          TError,
+          TData
+        >
+      >;
+    },
+  ): UseQueryResult<TData, TError> & { queryKey: QueryKey } => {
+    const queryOptions =
+      getGetIndustryEtfMappingApiV1AlphaRadarIndustryEtfMappingIndustryGetQueryOptions(
+        industry,
+        params,
+        options,
+      );
+
+    const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
+      queryKey: QueryKey;
+    };
+
+    query.queryKey = queryOptions.queryKey;
+
+    return query;
+  };

@@ -24,10 +24,15 @@ class ETFHeatmapService:
     2. Groups by category and sub-category
     3. Selects representative ETF (highest volume) per sub-category
     4. Returns 6 rows: broad, sector, theme, cross_border, commodity, bond
+    5. Top movers row: top 10 ETFs by daily change (bubble-up mechanism)
     """
 
     # Maximum items per category row
     MAX_ITEMS_PER_CATEGORY = 10
+
+    # Top movers settings
+    TOP_MOVERS_LIMIT = 10
+    MIN_AMOUNT_FOR_TOP_MOVERS = 10000000  # 1000万成交额过滤僵尸ETF
 
     def __init__(self, db: AsyncSession):
         self.db = db
@@ -43,7 +48,7 @@ class ETFHeatmapService:
             target_date: Target date (default: latest trading date)
 
         Returns:
-            Dict with date and categories (6 rows of ETF data)
+            Dict with date, top_movers, and categories (6 rows of ETF data)
         """
         # Resolve date
         if target_date is None:
@@ -56,6 +61,9 @@ class ETFHeatmapService:
         if df.is_empty():
             return self._empty_response(target_date)
 
+        # Get top movers (by change_pct, not limited by category)
+        top_movers = self._get_top_movers(df)
+
         # Classify all ETFs
         df = self._classify_etfs(df)
 
@@ -64,6 +72,7 @@ class ETFHeatmapService:
 
         return {
             "date": target_date,
+            "top_movers": top_movers,
             "categories": categories,
         }
 
@@ -126,6 +135,44 @@ class ETFHeatmapService:
         df = df.join(class_df, on="code", how="left")
 
         return df
+
+    def _get_top_movers(self, df: pl.DataFrame) -> List[Dict[str, Any]]:
+        """
+        Get top movers by daily change percentage.
+
+        Filters:
+        - amount > MIN_AMOUNT_FOR_TOP_MOVERS (filter zombie ETFs)
+
+        Returns:
+        - Top N ETFs sorted by change_pct descending
+        """
+        # Filter by minimum amount
+        filtered = df.filter(pl.col("amount") > self.MIN_AMOUNT_FOR_TOP_MOVERS)
+
+        if filtered.is_empty():
+            return []
+
+        # Sort by change_pct descending
+        sorted_df = filtered.sort("change_pct", descending=True, nulls_last=True)
+
+        # Take top N
+        top_df = sorted_df.head(self.TOP_MOVERS_LIMIT)
+
+        # Classify and build items
+        items = []
+        for row in top_df.iter_rows(named=True):
+            category, sub_category = ETFClassifier.classify(row["name"])
+            items.append({
+                "code": row["code"],
+                "name": sub_category,  # Simplified name
+                "full_name": row["name"],
+                "change_pct": self._to_decimal(row["change_pct"]),
+                "amount": self._to_decimal(row["amount"]),
+                "category": category,
+                "is_representative": True,
+            })
+
+        return items
 
     def _build_category_data(self, df: pl.DataFrame) -> List[Dict[str, Any]]:
         """
@@ -208,6 +255,7 @@ class ETFHeatmapService:
         """Return empty response structure."""
         return {
             "date": target_date,
+            "top_movers": [],
             "categories": [
                 {
                     "category": cat_key,
