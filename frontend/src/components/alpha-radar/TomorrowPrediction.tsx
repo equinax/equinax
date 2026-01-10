@@ -72,9 +72,11 @@ interface TomorrowPredictionProps {
 function PredictionChip({
   item,
   rank,
+  factors,
 }: {
   item: EtfPredictionItem
   rank: number
+  factors: PredictionConfigInput
 }) {
   const ambushScore = Number(item.ambush_score) || 0
   // V2: 5 factor scores
@@ -85,6 +87,22 @@ function PredictionChip({
   const activationScore = Number(item.activation_score) || 0
   const change5d = item.change_5d ? Number(item.change_5d) : null
   const repChange = item.rep_change ? Number(item.rep_change) : null
+
+  // Calculate normalized weights for enabled factors only
+  const factorList = [
+    { key: 'divergence', label: '背离', color: 'bg-blue-500', score: divergenceScore, config: factors.divergence },
+    { key: 'rsi', label: '成交', color: 'bg-purple-500', score: rsiScore, config: factors.rsi },
+    { key: 'relative_strength', label: '强度', color: 'bg-green-500', score: rsScore, config: factors.relative_strength },
+    { key: 'momentum', label: '趋势', color: 'bg-orange-500', score: momentumScore, config: factors.momentum },
+    { key: 'activation', label: '小盘', color: 'bg-yellow-500', score: activationScore, config: factors.activation },
+  ]
+
+  const enabledFactors = factorList.filter(f => f.config?.enabled !== false)
+  const totalWeight = enabledFactors.reduce((sum, f) => sum + (f.config?.weight ?? 0.2), 0)
+  const normalizedFactors = enabledFactors.map(f => ({
+    ...f,
+    normalizedWeight: totalWeight > 0 ? (f.config?.weight ?? 0.2) / totalWeight : 0,
+  }))
 
   // Color gradient (gray → red)
   // Score 0 = gray, 100 = red
@@ -208,49 +226,31 @@ function PredictionChip({
               <span className="text-xs font-normal text-muted-foreground ml-0.5">/100</span>
             </span>
           </div>
-          {/* Score breakdown bar - shows total score as % of 100 */}
+          {/* Score breakdown bar - shows enabled factors only */}
           <div className="h-2 bg-muted rounded-full overflow-hidden flex">
-            <div className="bg-blue-500 transition-all" style={{ width: `${divergenceScore}%` }} />
-            <div className="bg-purple-500 transition-all" style={{ width: `${rsiScore}%` }} />
-            <div className="bg-green-500 transition-all" style={{ width: `${rsScore}%` }} />
-            <div className="bg-orange-500 transition-all" style={{ width: `${momentumScore}%` }} />
-            <div className="bg-yellow-500 transition-all" style={{ width: `${activationScore}%` }} />
+            {normalizedFactors.map((f) => (
+              <div key={f.key} className={cn(f.color, 'transition-all')} style={{ width: `${f.score}%` }} />
+            ))}
           </div>
-          {/* Weight indicators */}
+          {/* Weight indicators - only enabled factors */}
           <div className="flex mt-1 text-[9px] text-muted-foreground/60">
-            <span style={{ width: '20%' }}>20%</span>
-            <span style={{ width: '15%' }}>15%</span>
-            <span style={{ width: '30%' }}>30%</span>
-            <span style={{ width: '25%' }}>25%</span>
-            <span style={{ width: '10%' }}>10%</span>
+            {normalizedFactors.map((f) => (
+              <span key={f.key} style={{ width: `${f.normalizedWeight * 100}%` }}>
+                {(f.normalizedWeight * 100).toFixed(0)}%
+              </span>
+            ))}
           </div>
-          {/* Factor breakdown - all 5 factors in one row */}
-          <div className="flex justify-between mt-1.5 text-[10px]">
-            <div className="flex items-center gap-0.5">
-              <div className="w-1.5 h-1.5 rounded-full bg-blue-500" />
-              <span className="text-muted-foreground">背离</span>
-              <span className="font-semibold tabular-nums">{divergenceScore.toFixed(0)}</span>
-            </div>
-            <div className="flex items-center gap-0.5">
-              <div className="w-1.5 h-1.5 rounded-full bg-purple-500" />
-              <span className="text-muted-foreground">成交</span>
-              <span className="font-semibold tabular-nums">{rsiScore.toFixed(0)}</span>
-            </div>
-            <div className="flex items-center gap-0.5">
-              <div className="w-1.5 h-1.5 rounded-full bg-green-500" />
-              <span className="text-muted-foreground">强度</span>
-              <span className="font-semibold tabular-nums">{rsScore.toFixed(0)}</span>
-            </div>
-            <div className="flex items-center gap-0.5">
-              <div className="w-1.5 h-1.5 rounded-full bg-orange-500" />
-              <span className="text-muted-foreground">趋势</span>
-              <span className="font-semibold tabular-nums">{momentumScore.toFixed(0)}</span>
-            </div>
-            <div className="flex items-center gap-0.5">
-              <div className="w-1.5 h-1.5 rounded-full bg-yellow-500" />
-              <span className="text-muted-foreground">小盘</span>
-              <span className="font-semibold tabular-nums">{activationScore.toFixed(0)}</span>
-            </div>
+          {/* Factor breakdown - enabled factors with score > 0 in one row */}
+          <div className="flex flex-wrap gap-x-2 gap-y-0.5 mt-1.5 text-[10px]">
+            {normalizedFactors
+              .filter((f) => f.score > 0)
+              .map((f) => (
+                <div key={f.key} className="flex items-center gap-0.5">
+                  <div className={cn('w-1.5 h-1.5 rounded-full', f.color)} />
+                  <span className="text-muted-foreground">{f.label}</span>
+                  <span className="font-semibold tabular-nums">{f.score.toFixed(0)}</span>
+                </div>
+              ))}
           </div>
         </div>
 
@@ -571,7 +571,7 @@ export function TomorrowPrediction({ selectedDate }: TomorrowPredictionProps) {
                 <Settings2 className="h-3 w-3" />
               </Button>
             </PopoverTrigger>
-            <PopoverContent align="end" className="w-64">
+            <PopoverContent side="left" align="start" sideOffset={8} className="w-64">
               <FactorConfigPanel
                 factors={factors}
                 onChange={handleFactorChange}
@@ -626,6 +626,7 @@ export function TomorrowPrediction({ selectedDate }: TomorrowPredictionProps) {
                     key={`${item.category}-${item.sub_category}`}
                     item={item}
                     rank={startIdx + index + 1}
+                    factors={factors}
                   />
                 ))}
               </motion.div>
