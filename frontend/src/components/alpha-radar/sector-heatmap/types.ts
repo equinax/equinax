@@ -54,7 +54,7 @@ export const DEFAULT_DIMENSIONS: ChartDimensions = {
   L1_BAR_HEIGHT: 48,
   L2_MAX_HEIGHT: 300,
   L2_MIN_BAR_HEIGHT: 24,
-  L2_GAP: 2,
+  L2_GAP: 0,
   LABEL_PADDING: 8,
   MIN_SEGMENT_WIDTH: 40,
 }

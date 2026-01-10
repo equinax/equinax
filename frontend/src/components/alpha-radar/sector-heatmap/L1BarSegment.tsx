@@ -55,12 +55,11 @@ export const L1BarSegment = memo(function L1BarSegment({
         }
       }}
     >
-      {/* Background rect */}
+      {/* Background rect - add 0.5px overlap to prevent sub-pixel gaps */}
       <motion.rect
         height={height}
-        rx={2}
         animate={{
-          width,
+          width: width + 0.5,
           fill: color,
           opacity: isHovered ? 1 : 0.95,
           filter: isHovered ? 'brightness(1.08)' : 'brightness(1)',

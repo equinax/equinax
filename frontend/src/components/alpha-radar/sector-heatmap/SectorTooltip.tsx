@@ -117,7 +117,7 @@ export const SectorTooltip = memo(function SectorTooltip({
   // For metric display color - positive values red, negative green (for change metric)
   const metricColor = metric === 'change'
     ? (metricValue >= 0 ? 'text-red-500' : 'text-green-500')
-    : 'text-blue-400'
+    : 'text-blue-600'
 
   // Format amount (in 亿)
   const amountInYi = amount / 100000000
@@ -138,14 +138,14 @@ export const SectorTooltip = memo(function SectorTooltip({
         top: position.y,
       }}
     >
-      <div className="bg-gray-900/95 text-white rounded-lg shadow-xl p-3 min-w-[180px] border border-gray-700">
+      <div className="bg-white dark:bg-gray-900 text-foreground rounded-lg shadow-xl p-3 min-w-[180px] border border-border">
         {/* Header */}
         <div className="flex items-center justify-between mb-2">
           <div className="flex flex-col">
             {type === 'l2' && parentName && (
-              <span className="text-[10px] text-gray-400">{parentName}</span>
+              <span className="text-[10px] text-muted-foreground">{parentName}</span>
             )}
-            <span className="font-semibold text-sm">{name}</span>
+            <span className="font-semibold text-sm text-foreground">{name}</span>
           </div>
           <span className={`font-mono font-bold ${metricColor}`}>
             {metricLabel}
@@ -153,41 +153,41 @@ export const SectorTooltip = memo(function SectorTooltip({
         </div>
 
         {/* Current metric description */}
-        <div className="text-[10px] text-gray-500 mb-2">
+        <div className="text-[10px] text-muted-foreground mb-2">
           {metricInfo.name}：{metricInfo.desc}
         </div>
 
         {/* Divider */}
-        <div className="border-t border-gray-700 my-2" />
+        <div className="border-t border-border my-2" />
 
         {/* Stats */}
         <div className="space-y-1.5 text-xs">
           {/* Change percentage (show when not the current metric) */}
           {metric !== 'change' && (
             <div className="flex justify-between">
-              <span className="text-gray-400">涨跌幅</span>
+              <span className="text-muted-foreground">涨跌幅</span>
               <span className={`font-mono ${changeColor}`}>{changeStr}</span>
             </div>
           )}
 
           {/* Stock count */}
           <div className="flex justify-between">
-            <span className="text-gray-400">股票数量</span>
+            <span className="text-muted-foreground">股票数量</span>
             <span>{stockCount}</span>
           </div>
 
           {/* Up/Down counts with visual bar */}
           <div className="flex justify-between items-center">
-            <span className="text-gray-400">涨跌分布</span>
+            <span className="text-muted-foreground">涨跌分布</span>
             <div className="flex items-center gap-1.5">
-              <span className="text-red-400">{upCount}</span>
-              <span className="text-gray-500">/</span>
-              <span className="text-green-400">{downCount}</span>
+              <span className="text-red-500">{upCount}</span>
+              <span className="text-muted-foreground">/</span>
+              <span className="text-green-500">{downCount}</span>
             </div>
           </div>
 
           {/* Visual ratio bar */}
-          <div className="h-1.5 w-full bg-gray-700 rounded-full overflow-hidden flex">
+          <div className="h-1.5 w-full bg-muted rounded-full overflow-hidden flex">
             <div
               className="h-full bg-red-500 transition-all"
               style={{ width: `${upRatio}%` }}
@@ -200,14 +200,14 @@ export const SectorTooltip = memo(function SectorTooltip({
 
           {/* Amount */}
           <div className="flex justify-between">
-            <span className="text-gray-400">成交额</span>
+            <span className="text-muted-foreground">成交额</span>
             <span className="font-mono">{amountStr}</span>
           </div>
 
           {/* L1 specific: children count */}
           {type === 'l1' && isL1Item(segment) && (
             <div className="flex justify-between">
-              <span className="text-gray-400">子行业</span>
+              <span className="text-muted-foreground">子行业</span>
               <span>
                 {segment.children.gainers.length + segment.children.losers.length}个
               </span>
@@ -217,32 +217,32 @@ export const SectorTooltip = memo(function SectorTooltip({
 
         {/* Related ETFs section (L1 only) */}
         {type === 'l1' && (
-          <div className="mt-2 pt-2 border-t border-gray-700">
-            <div className="flex items-center gap-1 text-[10px] text-gray-400 mb-1.5">
+          <div className="mt-2 pt-2 border-t border-border">
+            <div className="flex items-center gap-1 text-[10px] text-muted-foreground mb-1.5">
               <Package className="h-3 w-3" />
               <span>相关ETF</span>
             </div>
             {isLoadingEtfs ? (
               <div className="flex items-center justify-center py-1">
-                <Loader2 className="h-3 w-3 animate-spin text-gray-500" />
+                <Loader2 className="h-3 w-3 animate-spin text-muted-foreground" />
               </div>
             ) : etfData?.etfs && etfData.etfs.length > 0 ? (
               <div className="space-y-1">
                 {etfData.etfs.map((etf) => (
                   <div key={etf.code} className="flex items-center justify-between text-xs">
-                    <span className="text-gray-300 truncate max-w-[100px]">
+                    <span className="text-foreground truncate max-w-[100px]">
                       {etf.name}
                     </span>
                     <div className="flex items-center gap-2">
-                      <span className="font-mono text-gray-500 text-[10px]">
+                      <span className="font-mono text-muted-foreground text-[10px]">
                         {formatAmount(etf.amount)}
                       </span>
                       <span className={`font-mono ${
                         etf.change_pct != null
                           ? etf.change_pct >= 0
-                            ? 'text-red-400'
-                            : 'text-green-400'
-                          : 'text-gray-500'
+                            ? 'text-red-500'
+                            : 'text-green-500'
+                          : 'text-muted-foreground'
                       }`}>
                         {etf.change_pct != null
                           ? `${etf.change_pct >= 0 ? '+' : ''}${etf.change_pct.toFixed(2)}%`
@@ -254,7 +254,7 @@ export const SectorTooltip = memo(function SectorTooltip({
                 ))}
               </div>
             ) : (
-              <div className="text-[10px] text-gray-500 text-center py-1">
+              <div className="text-[10px] text-muted-foreground text-center py-1">
                 暂无相关ETF
               </div>
             )}
@@ -263,7 +263,7 @@ export const SectorTooltip = memo(function SectorTooltip({
 
         {/* Click hint for L1 */}
         {type === 'l1' && (
-          <div className="mt-2 pt-2 border-t border-gray-700 text-[10px] text-gray-500 text-center">
+          <div className="mt-2 pt-2 border-t border-border text-[10px] text-muted-foreground text-center">
             点击展开/收起子行业
           </div>
         )}

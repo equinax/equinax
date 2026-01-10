@@ -57,27 +57,14 @@ const L2Bar = memo(function L2Bar({
       onMouseLeave={() => onHover(false)}
       onClick={onClick}
     >
-      {/* Bar background */}
+      {/* Bar background - add 0.5px overlap to prevent sub-pixel gaps */}
       <motion.rect
         x={x}
         y={y}
-        width={width}
-        height={height}
-        rx={2}
+        width={width + 0.5}
+        height={height + 0.5}
         animate={{ fill: color }}
         transition={{ fill: { duration: 0.3 } }}
-      />
-
-      {/* Border for visibility */}
-      <rect
-        x={x}
-        y={y}
-        width={width}
-        height={height}
-        fill="none"
-        stroke={textColor === 'light' ? 'rgba(255,255,255,0.2)' : 'rgba(0,0,0,0.1)'}
-        strokeWidth={0.5}
-        rx={2}
       />
 
       {/* L2 name */}
