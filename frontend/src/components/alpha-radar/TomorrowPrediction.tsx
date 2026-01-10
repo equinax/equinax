@@ -401,7 +401,10 @@ function FactorConfigPanel({
 export function TomorrowPrediction({ selectedDate }: TomorrowPredictionProps) {
   const [minScore, setMinScore] = useState(0)
   const [currentPage, setCurrentPage] = useState(0)
-  const [factors, setFactors] = useState<PredictionConfigInput>(DEFAULT_FACTORS)
+  // Applied factors (used for actual queries)
+  const [appliedFactors, setAppliedFactors] = useState<PredictionConfigInput>(DEFAULT_FACTORS)
+  // Pending factors (edited in config panel, not yet applied)
+  const [pendingFactors, setPendingFactors] = useState<PredictionConfigInput>(DEFAULT_FACTORS)
   const [useCustomFactors, setUseCustomFactors] = useState(false)
   const [configOpen, setConfigOpen] = useState(false)
 
@@ -420,13 +423,20 @@ export function TomorrowPrediction({ selectedDate }: TomorrowPredictionProps) {
       if (useCustomFactors) {
         previewMutation.mutate({
           data: {
-            ...factors,
+            ...appliedFactors,
             date: selectedDate ? format(selectedDate, 'yyyy-MM-dd') : undefined,
           },
         })
       }
     }
-  }, [selectedDate, useCustomFactors, factors, previewMutation])
+  }, [selectedDate, useCustomFactors, appliedFactors, previewMutation])
+
+  // Sync pending factors when opening config panel
+  useEffect(() => {
+    if (configOpen) {
+      setPendingFactors(appliedFactors)
+    }
+  }, [configOpen, appliedFactors])
 
   // Default API call
   const defaultQuery = useGetEtfPredictionApiV1AlphaRadarEtfPredictionGet(
@@ -442,32 +452,34 @@ export function TomorrowPrediction({ selectedDate }: TomorrowPredictionProps) {
     }
   )
 
-  // Handle factor change
+  // Handle factor change in config panel (only updates pending state)
   const handleFactorChange = useCallback((key: FactorKey, enabled: boolean, weight: number) => {
-    setFactors((prev) => ({
+    setPendingFactors((prev) => ({
       ...prev,
       [key]: { enabled, weight },
     }))
-    setUseCustomFactors(true)
   }, [])
 
-  // Reset to defaults
+  // Reset pending factors to defaults (doesn't apply until clicking Apply)
   const handleReset = useCallback(() => {
-    setFactors(DEFAULT_FACTORS)
-    setUseCustomFactors(false)
+    setPendingFactors(DEFAULT_FACTORS)
   }, [])
 
-  // Trigger preview when factors change
+  // Apply pending factors and trigger API
   const handleApplyFactors = useCallback(() => {
-    if (!useCustomFactors) return
-    previewMutation.mutate({
-      data: {
-        ...factors,
-        date: selectedDate ? format(selectedDate, 'yyyy-MM-dd') : undefined,
-      },
-    })
+    const isDefault = JSON.stringify(pendingFactors) === JSON.stringify(DEFAULT_FACTORS)
+    setAppliedFactors(pendingFactors)
+    setUseCustomFactors(!isDefault)
+    if (!isDefault) {
+      previewMutation.mutate({
+        data: {
+          ...pendingFactors,
+          date: selectedDate ? format(selectedDate, 'yyyy-MM-dd') : undefined,
+        },
+      })
+    }
     setConfigOpen(false)
-  }, [factors, selectedDate, useCustomFactors, previewMutation])
+  }, [pendingFactors, selectedDate, previewMutation])
 
   // Use preview data if custom, otherwise default
   const data = useCustomFactors && previewMutation.data
@@ -578,7 +590,7 @@ export function TomorrowPrediction({ selectedDate }: TomorrowPredictionProps) {
             </PopoverTrigger>
             <PopoverContent side="left" align="start" sideOffset={8} className="w-64">
               <FactorConfigPanel
-                factors={factors}
+                factors={pendingFactors}
                 onChange={handleFactorChange}
                 onReset={handleReset}
                 isLoading={previewMutation.isPending}
@@ -631,7 +643,7 @@ export function TomorrowPrediction({ selectedDate }: TomorrowPredictionProps) {
                     key={`${item.category}-${item.sub_category}`}
                     item={item}
                     rank={startIdx + index + 1}
-                    factors={factors}
+                    factors={appliedFactors}
                   />
                 ))}
               </motion.div>
