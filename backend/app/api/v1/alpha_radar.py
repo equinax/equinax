@@ -422,6 +422,57 @@ class EtfSubcategoryListResponse(BaseModel):
 
 
 # ============================================
+# ETF Prediction Schemas (Tomorrow's Alpha)
+# ============================================
+
+class AmbushSignalType(str, Enum):
+    """Types of ambush signals."""
+    DIVERGENCE = "divergence"     # 价量背离
+    COMPRESSION = "compression"   # 量能压缩
+    ACTIVATION = "activation"     # 小票激活
+
+
+class PredictionSignal(BaseModel):
+    """Individual signal in prediction."""
+    type: AmbushSignalType = Field(description="Signal type")
+    score: Decimal = Field(description="Signal score contribution")
+    description: str = Field(description="Human readable explanation")
+
+
+class EtfPredictionItem(BaseModel):
+    """Single ETF subcategory prediction."""
+    sub_category: str = Field(description="子品类名 (如 '半导体')")
+    category: str = Field(description="父类 key (如 'theme')")
+    category_label: str = Field(description="父类名 (如 '赛道')")
+    ambush_score: Decimal = Field(description="潜伏异动总评分 (0-100)")
+
+    # Component scores
+    divergence_score: Decimal = Field(description="背离因子 (0-40)")
+    compression_score: Decimal = Field(description="压缩因子 (0-30)")
+    activation_score: Decimal = Field(description="激活因子 (0-30)")
+
+    # Supporting metrics
+    change_5d: Optional[Decimal] = Field(default=None, description="5日累计涨幅 %")
+    flow_ratio: Optional[Decimal] = Field(default=None, description="资金流量比")
+    volume_percentile: Optional[Decimal] = Field(default=None, description="成交量60日分位 (0-1)")
+
+    # Signals with explanations
+    signals: List[PredictionSignal] = Field(default_factory=list, description="触发的信号列表")
+
+    # Representative ETF
+    rep_code: Optional[str] = Field(default=None, description="代表 ETF 代码")
+    rep_name: Optional[str] = Field(default=None, description="代表 ETF 名称")
+    rep_change: Optional[Decimal] = Field(default=None, description="代表 ETF 涨跌幅 %")
+
+
+class EtfPredictionResponse(BaseModel):
+    """ETF tomorrow prediction response."""
+    date: Optional[datetime.date] = Field(description="分析日期")
+    predictions: List[EtfPredictionItem] = Field(description="所有子品类预测 (按评分降序)")
+    total_subcategories: int = Field(description="子品类总数")
+
+
+# ============================================
 # Industry-ETF Mapping Schemas
 # ============================================
 
@@ -1401,4 +1452,71 @@ async def get_etf_subcategory_list(
             )
             for etf in result.get("etfs", [])
         ],
+    )
+
+
+@router.get("/etf-prediction", response_model=EtfPredictionResponse)
+async def get_etf_prediction(
+    date: Optional[datetime.date] = Query(default=None, description="分析日期 (默认最新交易日)"),
+    min_score: float = Query(default=0, ge=0, le=100, description="最低评分筛选"),
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    获取 ETF 子品类潜伏异动预测 (明日 Alpha).
+
+    计算每个 ETF 子品类的潜伏异动评分 (Ambush Score 0-100)，
+    识别可能在明日爆发的子品类。
+
+    三因子评分模型:
+    - 背离因子 (0-40): 价格横盘/下跌 + 资金流入上升
+    - 压缩因子 (0-30): 成交量萎缩至 60 日低位
+    - 激活因子 (0-30): 小市值 ETF 领先异动
+
+    信号类型:
+    - divergence: 资金背离 (价格低位但资金流入)
+    - compression: 量能压缩 (成交量接近 60 日最低)
+    - activation: 小票激活 (小 ETF 领先大 ETF)
+
+    使用场景:
+    - 识别明日可能爆发的 ETF 子品类
+    - 发现价量背离的潜伏机会
+    - 追踪资金异动信号
+    """
+    from app.services.alpha_radar.etf_prediction_service import ETFPredictionService
+
+    service = ETFPredictionService(db)
+    result = await service.get_predictions(
+        target_date=date,
+        min_score=min_score,
+    )
+
+    return EtfPredictionResponse(
+        date=result.get("date"),
+        predictions=[
+            EtfPredictionItem(
+                sub_category=pred["sub_category"],
+                category=pred["category"],
+                category_label=pred["category_label"],
+                ambush_score=pred["ambush_score"] or Decimal("0"),
+                divergence_score=pred["divergence_score"] or Decimal("0"),
+                compression_score=pred["compression_score"] or Decimal("0"),
+                activation_score=pred["activation_score"] or Decimal("0"),
+                change_5d=pred.get("change_5d"),
+                flow_ratio=pred.get("flow_ratio"),
+                volume_percentile=pred.get("volume_percentile"),
+                signals=[
+                    PredictionSignal(
+                        type=AmbushSignalType(sig["type"]),
+                        score=sig["score"] or Decimal("0"),
+                        description=sig["description"],
+                    )
+                    for sig in pred.get("signals", [])
+                ],
+                rep_code=pred.get("rep_code"),
+                rep_name=pred.get("rep_name"),
+                rep_change=pred.get("rep_change"),
+            )
+            for pred in result.get("predictions", [])
+        ],
+        total_subcategories=result.get("total_subcategories", 0),
     )

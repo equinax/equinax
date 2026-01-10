@@ -9,6 +9,7 @@
  * - Algorithm signals
  */
 
+import { useRef, useLayoutEffect, useState } from 'react'
 import { createPortal } from 'react-dom'
 import type { TooltipData } from './types'
 
@@ -55,25 +56,49 @@ export function MatrixTooltip({ data }: MatrixTooltipProps) {
     dragon_stock,
   } = data
 
-  // Position tooltip to avoid going off-screen
+  const tooltipRef = useRef<HTMLDivElement>(null)
+  const [position, setPosition] = useState<{ left: number; top: number } | null>(null)
+
+  // Measure tooltip and adjust position after render
+  useLayoutEffect(() => {
+    if (!tooltipRef.current) return
+
+    const rect = tooltipRef.current.getBoundingClientRect()
+    const tooltipWidth = rect.width
+    const tooltipHeight = rect.height
+    const padding = 12
+
+    let left = mouseX + padding
+    let top = mouseY + padding
+
+    // Adjust if too close to right edge
+    if (left + tooltipWidth > window.innerWidth - padding) {
+      left = mouseX - tooltipWidth - padding
+    }
+
+    // Adjust if too close to bottom edge
+    if (top + tooltipHeight > window.innerHeight - padding) {
+      top = mouseY - tooltipHeight - padding
+    }
+
+    // Ensure not off-screen on left/top
+    left = Math.max(padding, left)
+    top = Math.max(padding, top)
+
+    setPosition({ left, top })
+  }, [mouseX, mouseY])
+
+  // Initial position (will be adjusted after measurement)
   const tooltipStyle: React.CSSProperties = {
-    left: mouseX + 12,
-    top: mouseY + 12,
+    left: position?.left ?? mouseX + 12,
+    top: position?.top ?? mouseY + 12,
     maxWidth: 280,
-  }
-
-  // Adjust if too close to right edge
-  if (mouseX > window.innerWidth - 300) {
-    tooltipStyle.left = mouseX - 200
-  }
-
-  // Adjust if too close to bottom edge
-  if (mouseY > window.innerHeight - 200) {
-    tooltipStyle.top = mouseY - 150
+    visibility: position ? 'visible' : 'hidden', // Hide until positioned
   }
 
   return createPortal(
     <div
+      ref={tooltipRef}
       className="fixed z-50 bg-white/60 backdrop-blur-[2px] text-gray-900 rounded p-3 shadow-lg text-sm pointer-events-none border border-gray-300"
       style={tooltipStyle}
     >

@@ -42,13 +42,23 @@ const ETF_SCREENER_STEPS: StepConfig[] = [
   { id: 'rank', label: '排序结果', duration: 150 },
 ]
 
+// ETF Prediction 计算步骤（中文）
+const ETF_PREDICTION_STEPS: StepConfig[] = [
+  { id: 'fetch', label: '加载ETF历史数据', duration: 300 },
+  { id: 'classify', label: '分类子品类', duration: 200 },
+  { id: 'divergence', label: '计算背离因子', duration: 250 },
+  { id: 'compression', label: '计算压缩因子', duration: 200 },
+  { id: 'activation', label: '计算激活因子', duration: 200 },
+  { id: 'score', label: '生成综合评分', duration: 150 },
+]
+
 /**
  * Hook to simulate computing progress based on loading state
  * Shows animated step progression while data is being fetched
  */
 export function useComputingProgress(
   isLoading: boolean | undefined,
-  type: 'dashboard' | 'screener' | 'heatmap' | 'etf-screener'
+  type: 'dashboard' | 'screener' | 'heatmap' | 'etf-screener' | 'etf-prediction'
 ): { steps: ComputingStep[]; progress: number } {
   const baseSteps = type === 'dashboard'
     ? DASHBOARD_STEPS
@@ -56,7 +66,9 @@ export function useComputingProgress(
       ? HEATMAP_STEPS
       : type === 'etf-screener'
         ? ETF_SCREENER_STEPS
-        : SCREENER_STEPS
+        : type === 'etf-prediction'
+          ? ETF_PREDICTION_STEPS
+          : SCREENER_STEPS
   const [steps, setSteps] = useState<ComputingStep[]>(
     baseSteps.map((s) => ({ id: s.id, label: s.label, status: 'pending' as const }))
   )

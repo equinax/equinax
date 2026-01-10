@@ -18,6 +18,7 @@ import type {
   DashboardResponse,
   EtfCategory,
   EtfHeatmapResponse,
+  EtfPredictionResponse,
   EtfRotationDetailResponse,
   EtfRotationFlatResponse,
   EtfRotationResponse,
@@ -26,6 +27,7 @@ import type {
   GetCalendarApiV1AlphaRadarCalendarGetParams,
   GetDashboardApiV1AlphaRadarDashboardGetParams,
   GetEtfHeatmapApiV1AlphaRadarEtfHeatmapGetParams,
+  GetEtfPredictionApiV1AlphaRadarEtfPredictionGetParams,
   GetEtfRotationApiV1AlphaRadarEtfRotationGetParams,
   GetEtfRotationDetailApiV1AlphaRadarEtfRotationCategoryGetParams,
   GetEtfRotationFlatApiV1AlphaRadarEtfRotationFlatGetParams,
@@ -2918,6 +2920,241 @@ export const useGetEtfSubcategoryListApiV1AlphaRadarEtfSubcategoryListGet = <
 ): UseQueryResult<TData, TError> & { queryKey: QueryKey } => {
   const queryOptions =
     getGetEtfSubcategoryListApiV1AlphaRadarEtfSubcategoryListGetQueryOptions(
+      params,
+      options,
+    );
+
+  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
+    queryKey: QueryKey;
+  };
+
+  query.queryKey = queryOptions.queryKey;
+
+  return query;
+};
+
+/**
+ * 获取 ETF 子品类潜伏异动预测 (明日 Alpha).
+
+计算每个 ETF 子品类的潜伏异动评分 (Ambush Score 0-100)，
+识别可能在明日爆发的子品类。
+
+三因子评分模型:
+- 背离因子 (0-40): 价格横盘/下跌 + 资金流入上升
+- 压缩因子 (0-30): 成交量萎缩至 60 日低位
+- 激活因子 (0-30): 小市值 ETF 领先异动
+
+信号类型:
+- divergence: 资金背离 (价格低位但资金流入)
+- compression: 量能压缩 (成交量接近 60 日最低)
+- activation: 小票激活 (小 ETF 领先大 ETF)
+
+使用场景:
+- 识别明日可能爆发的 ETF 子品类
+- 发现价量背离的潜伏机会
+- 追踪资金异动信号
+ * @summary Get Etf Prediction
+ */
+export const getEtfPredictionApiV1AlphaRadarEtfPredictionGet = (
+  params?: GetEtfPredictionApiV1AlphaRadarEtfPredictionGetParams,
+  signal?: AbortSignal,
+) => {
+  return customInstance<EtfPredictionResponse>({
+    url: `/api/v1/alpha-radar/etf-prediction`,
+    method: "GET",
+    params,
+    signal,
+  });
+};
+
+export const getGetEtfPredictionApiV1AlphaRadarEtfPredictionGetQueryKey = (
+  params?: GetEtfPredictionApiV1AlphaRadarEtfPredictionGetParams,
+) => {
+  return [
+    `/api/v1/alpha-radar/etf-prediction`,
+    ...(params ? [params] : []),
+  ] as const;
+};
+
+export const getGetEtfPredictionApiV1AlphaRadarEtfPredictionGetInfiniteQueryOptions =
+  <
+    TData = InfiniteData<
+      Awaited<
+        ReturnType<typeof getEtfPredictionApiV1AlphaRadarEtfPredictionGet>
+      >,
+      GetEtfPredictionApiV1AlphaRadarEtfPredictionGetParams["page"]
+    >,
+    TError = HTTPValidationError,
+  >(
+    params?: GetEtfPredictionApiV1AlphaRadarEtfPredictionGetParams,
+    options?: {
+      query?: Partial<
+        UseInfiniteQueryOptions<
+          Awaited<
+            ReturnType<typeof getEtfPredictionApiV1AlphaRadarEtfPredictionGet>
+          >,
+          TError,
+          TData,
+          Awaited<
+            ReturnType<typeof getEtfPredictionApiV1AlphaRadarEtfPredictionGet>
+          >,
+          QueryKey,
+          GetEtfPredictionApiV1AlphaRadarEtfPredictionGetParams["page"]
+        >
+      >;
+    },
+  ) => {
+    const { query: queryOptions } = options ?? {};
+
+    const queryKey =
+      queryOptions?.queryKey ??
+      getGetEtfPredictionApiV1AlphaRadarEtfPredictionGetQueryKey(params);
+
+    const queryFn: QueryFunction<
+      Awaited<
+        ReturnType<typeof getEtfPredictionApiV1AlphaRadarEtfPredictionGet>
+      >,
+      QueryKey,
+      GetEtfPredictionApiV1AlphaRadarEtfPredictionGetParams["page"]
+    > = ({ signal, pageParam }) =>
+      getEtfPredictionApiV1AlphaRadarEtfPredictionGet(
+        { ...params, page: pageParam || params?.["page"] },
+        signal,
+      );
+
+    return { queryKey, queryFn, ...queryOptions } as UseInfiniteQueryOptions<
+      Awaited<
+        ReturnType<typeof getEtfPredictionApiV1AlphaRadarEtfPredictionGet>
+      >,
+      TError,
+      TData,
+      Awaited<
+        ReturnType<typeof getEtfPredictionApiV1AlphaRadarEtfPredictionGet>
+      >,
+      QueryKey,
+      GetEtfPredictionApiV1AlphaRadarEtfPredictionGetParams["page"]
+    > & { queryKey: QueryKey };
+  };
+
+export type GetEtfPredictionApiV1AlphaRadarEtfPredictionGetInfiniteQueryResult =
+  NonNullable<
+    Awaited<ReturnType<typeof getEtfPredictionApiV1AlphaRadarEtfPredictionGet>>
+  >;
+export type GetEtfPredictionApiV1AlphaRadarEtfPredictionGetInfiniteQueryError =
+  HTTPValidationError;
+
+/**
+ * @summary Get Etf Prediction
+ */
+export const useGetEtfPredictionApiV1AlphaRadarEtfPredictionGetInfinite = <
+  TData = InfiniteData<
+    Awaited<ReturnType<typeof getEtfPredictionApiV1AlphaRadarEtfPredictionGet>>,
+    GetEtfPredictionApiV1AlphaRadarEtfPredictionGetParams["page"]
+  >,
+  TError = HTTPValidationError,
+>(
+  params?: GetEtfPredictionApiV1AlphaRadarEtfPredictionGetParams,
+  options?: {
+    query?: Partial<
+      UseInfiniteQueryOptions<
+        Awaited<
+          ReturnType<typeof getEtfPredictionApiV1AlphaRadarEtfPredictionGet>
+        >,
+        TError,
+        TData,
+        Awaited<
+          ReturnType<typeof getEtfPredictionApiV1AlphaRadarEtfPredictionGet>
+        >,
+        QueryKey,
+        GetEtfPredictionApiV1AlphaRadarEtfPredictionGetParams["page"]
+      >
+    >;
+  },
+): UseInfiniteQueryResult<TData, TError> & { queryKey: QueryKey } => {
+  const queryOptions =
+    getGetEtfPredictionApiV1AlphaRadarEtfPredictionGetInfiniteQueryOptions(
+      params,
+      options,
+    );
+
+  const query = useInfiniteQuery(queryOptions) as UseInfiniteQueryResult<
+    TData,
+    TError
+  > & { queryKey: QueryKey };
+
+  query.queryKey = queryOptions.queryKey;
+
+  return query;
+};
+
+export const getGetEtfPredictionApiV1AlphaRadarEtfPredictionGetQueryOptions = <
+  TData = Awaited<
+    ReturnType<typeof getEtfPredictionApiV1AlphaRadarEtfPredictionGet>
+  >,
+  TError = HTTPValidationError,
+>(
+  params?: GetEtfPredictionApiV1AlphaRadarEtfPredictionGetParams,
+  options?: {
+    query?: Partial<
+      UseQueryOptions<
+        Awaited<
+          ReturnType<typeof getEtfPredictionApiV1AlphaRadarEtfPredictionGet>
+        >,
+        TError,
+        TData
+      >
+    >;
+  },
+) => {
+  const { query: queryOptions } = options ?? {};
+
+  const queryKey =
+    queryOptions?.queryKey ??
+    getGetEtfPredictionApiV1AlphaRadarEtfPredictionGetQueryKey(params);
+
+  const queryFn: QueryFunction<
+    Awaited<ReturnType<typeof getEtfPredictionApiV1AlphaRadarEtfPredictionGet>>
+  > = ({ signal }) =>
+    getEtfPredictionApiV1AlphaRadarEtfPredictionGet(params, signal);
+
+  return { queryKey, queryFn, ...queryOptions } as UseQueryOptions<
+    Awaited<ReturnType<typeof getEtfPredictionApiV1AlphaRadarEtfPredictionGet>>,
+    TError,
+    TData
+  > & { queryKey: QueryKey };
+};
+
+export type GetEtfPredictionApiV1AlphaRadarEtfPredictionGetQueryResult =
+  NonNullable<
+    Awaited<ReturnType<typeof getEtfPredictionApiV1AlphaRadarEtfPredictionGet>>
+  >;
+export type GetEtfPredictionApiV1AlphaRadarEtfPredictionGetQueryError =
+  HTTPValidationError;
+
+/**
+ * @summary Get Etf Prediction
+ */
+export const useGetEtfPredictionApiV1AlphaRadarEtfPredictionGet = <
+  TData = Awaited<
+    ReturnType<typeof getEtfPredictionApiV1AlphaRadarEtfPredictionGet>
+  >,
+  TError = HTTPValidationError,
+>(
+  params?: GetEtfPredictionApiV1AlphaRadarEtfPredictionGetParams,
+  options?: {
+    query?: Partial<
+      UseQueryOptions<
+        Awaited<
+          ReturnType<typeof getEtfPredictionApiV1AlphaRadarEtfPredictionGet>
+        >,
+        TError,
+        TData
+      >
+    >;
+  },
+): UseQueryResult<TData, TError> & { queryKey: QueryKey } => {
+  const queryOptions =
+    getGetEtfPredictionApiV1AlphaRadarEtfPredictionGetQueryOptions(
       params,
       options,
     );

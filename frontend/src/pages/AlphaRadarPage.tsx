@@ -18,6 +18,7 @@ import { EtfDataTable } from '@/components/alpha-radar/EtfDataTable'
 import { TimeController } from '@/components/alpha-radar/TimeController'
 import { SectorHeatmap } from '@/components/alpha-radar/SectorHeatmap'
 import { EtfCategoryHeatmap } from '@/components/alpha-radar/EtfCategoryHeatmap'
+import { TomorrowPrediction } from '@/components/alpha-radar/TomorrowPrediction'
 
 // Radar mode type
 type RadarMode = 'stock' | 'etf'
@@ -289,6 +290,11 @@ export default function AlphaRadarPage() {
       {/* ETF Category Heatmap - Only show in ETF mode */}
       {radarMode === 'etf' && (
         <EtfCategoryHeatmap selectedDate={selectedDate} />
+      )}
+
+      {/* Tomorrow Prediction - Only show in ETF mode */}
+      {radarMode === 'etf' && (
+        <TomorrowPrediction selectedDate={selectedDate} />
       )}
 
       {/* Screener Section */}
