@@ -103,9 +103,9 @@ function EtfCell({
           <span className="font-mono">{formatChangePct(changePct)}</span>
         </motion.button>
       </TooltipTrigger>
-      <TooltipContent side="bottom" className="text-xs">
+      <TooltipContent side="bottom" className="text-xs bg-white dark:bg-gray-900 border shadow-lg">
         <div className="space-y-1">
-          <div className="font-medium">{item.full_name}</div>
+          <div className="font-medium text-foreground">{item.full_name}</div>
           <div className="text-muted-foreground">代码: {item.code}</div>
           <div className="text-muted-foreground">成交额: {formatAmount(item.amount ? Number(item.amount) : null)}</div>
         </div>
@@ -136,22 +136,20 @@ function TopMoverCell({
           transition={{ duration: 0.2, delay: index * 0.02 }}
           onClick={onClick}
           className={cn(
-            'shrink-0 px-2 py-1.5 rounded text-xs font-medium',
+            'shrink-0 px-2 py-1 rounded text-xs font-medium',
             'transition-all hover:scale-105 hover:shadow-md',
             'cursor-pointer whitespace-nowrap',
             'ring-1 ring-orange-300 dark:ring-orange-700',
             getChangeColor(changePct)
           )}
         >
-          <div className="flex flex-col items-center gap-0.5">
-            <span className="font-medium">{item.name}</span>
-            <span className="font-mono text-[10px]">{formatChangePct(changePct)}</span>
-          </div>
+          <span className="mr-1">{item.name}</span>
+          <span className="font-mono">{formatChangePct(changePct)}</span>
         </motion.button>
       </TooltipTrigger>
-      <TooltipContent side="bottom" className="text-xs">
+      <TooltipContent side="bottom" className="text-xs bg-white dark:bg-gray-900 border shadow-lg">
         <div className="space-y-1">
-          <div className="font-medium">{item.full_name}</div>
+          <div className="font-medium text-foreground">{item.full_name}</div>
           <div className="text-muted-foreground">代码: {item.code}</div>
           <div className="text-muted-foreground">品类: {categoryLabel}</div>
           <div className="text-muted-foreground">成交额: {formatAmount(item.amount ? Number(item.amount) : null)}</div>
@@ -225,7 +223,7 @@ export function EtfCategoryHeatmap({
 
   return (
     <Card>
-      <CardHeader className="pb-3 pt-3">
+      <CardHeader className="pb-1 pt-2">
         <div className="flex items-center gap-4">
           <CardTitle className="text-lg shrink-0">ETF 概览</CardTitle>
           <div className="flex-1" />
@@ -269,7 +267,7 @@ export function EtfCategoryHeatmap({
           {/* Top Movers Row (Bubble-up mechanism) */}
           <TooltipProvider delayDuration={200}>
             {data?.top_movers && data.top_movers.length > 0 && (
-              <div className="mb-3 pb-3 border-b border-dashed border-orange-200 dark:border-orange-800">
+              <div className="mb-1 border-b border-dashed border-orange-200 dark:border-orange-800">
                 <div className="flex items-center gap-2">
                   {/* Label with flame icon */}
                   <div className="w-10 shrink-0 flex items-center gap-0.5">
@@ -278,7 +276,7 @@ export function EtfCategoryHeatmap({
                   </div>
 
                   {/* Top mover cards */}
-                  <div className="flex-1 flex gap-2 overflow-x-auto scrollbar-thin scrollbar-thumb-muted scrollbar-track-transparent pb-1">
+                  <div className="flex-1 flex gap-1 overflow-x-auto scrollbar-thin scrollbar-thumb-muted scrollbar-track-transparent pb-1">
                     {data.top_movers.map((item, index) => (
                       <TopMoverCell
                         key={item.code}
@@ -293,7 +291,7 @@ export function EtfCategoryHeatmap({
             )}
 
             {/* Category rows */}
-            <div className="space-y-2">
+            <div className="space-y-0">
               {categories.map((category) => (
                 <div key={category.category} className="flex items-center gap-2">
                   {/* Category label */}
@@ -302,7 +300,7 @@ export function EtfCategoryHeatmap({
                   </div>
 
                   {/* ETF cards - horizontal scroll */}
-                  <div className="flex-1 flex gap-1.5 overflow-x-auto scrollbar-thin scrollbar-thumb-muted scrollbar-track-transparent pb-1">
+                  <div className="flex-1 flex gap-1 overflow-x-auto scrollbar-thin scrollbar-thumb-muted scrollbar-track-transparent pb-1">
                     {category.items.map((item, index) => (
                       <EtfCell
                         key={item.code}
