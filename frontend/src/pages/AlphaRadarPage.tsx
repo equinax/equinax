@@ -53,13 +53,6 @@ const sortFieldMap: Record<string, string> = {
 export default function AlphaRadarPage() {
   const [searchParams, setSearchParams] = useSearchParams()
 
-  // Radar mode: stock or etf
-  const [radarMode, setRadarMode] = useState<RadarMode>('stock')
-
-  // Time controller state
-  const [timeMode, setTimeMode] = useState<TimeMode>('snapshot')
-  const [dateRange, setDateRange] = useState<{ from?: Date; to?: Date }>({})
-
   // Parse date string to Date object (avoiding timezone issues)
   const parseDateString = (dateStr: string): Date => {
     // Parse as local date to avoid timezone shift
@@ -72,34 +65,59 @@ export default function AlphaRadarPage() {
     return format(date, 'yyyy-MM-dd')
   }
 
+  // Initialize radarMode from URL params (default: stock)
+  const [radarMode, setRadarMode] = useState<RadarMode>(() => {
+    const modeParam = searchParams.get('mode')
+    return modeParam === 'etf' ? 'etf' : 'stock'
+  })
+
+  // Time controller state
+  const [timeMode, setTimeMode] = useState<TimeMode>('snapshot')
+  const [dateRange, setDateRange] = useState<{ from?: Date; to?: Date }>({})
+
   // Initialize selectedDate from URL params
   const [selectedDate, setSelectedDate] = useState<Date | undefined>(() => {
     const dateParam = searchParams.get('date')
     return dateParam ? parseDateString(dateParam) : undefined
   })
 
-  // Sync selectedDate to URL
-  useEffect(() => {
-    const currentDateParam = searchParams.get('date')
-    const newDateStr = selectedDate ? formatDateString(selectedDate) : undefined
-
-    if (newDateStr !== currentDateParam) {
-      setSearchParams(prev => {
-        if (newDateStr) {
-          prev.set('date', newDateStr)
-        } else {
-          prev.delete('date')
-        }
-        return prev
-      }, { replace: true })
-    }
-  }, [selectedDate, searchParams, setSearchParams])
-
   // Tab state (for stock screener)
   const [activeTab, setActiveTab] = useState<ScreenerTab>('panorama')
 
-  // ETF category state (for ETF screener)
-  const [etfCategory, setEtfCategory] = useState<EtfCategory | 'all'>('all')
+  // Initialize ETF category from URL params (default: all)
+  const [etfCategory, setEtfCategory] = useState<EtfCategory | 'all'>(() => {
+    const categoryParam = searchParams.get('category')
+    const validCategories = ['all', 'broad', 'sector', 'theme', 'cross_border', 'commodity', 'bond']
+    return validCategories.includes(categoryParam || '') ? (categoryParam as EtfCategory | 'all') : 'all'
+  })
+
+  // Sync state to URL (radarMode, selectedDate, etfCategory)
+  useEffect(() => {
+    setSearchParams(prev => {
+      // Sync radarMode
+      if (radarMode === 'etf') {
+        prev.set('mode', 'etf')
+      } else {
+        prev.delete('mode')
+      }
+
+      // Sync selectedDate
+      if (selectedDate) {
+        prev.set('date', formatDateString(selectedDate))
+      } else {
+        prev.delete('date')
+      }
+
+      // Sync etfCategory (only when in ETF mode)
+      if (radarMode === 'etf' && etfCategory !== 'all') {
+        prev.set('category', etfCategory)
+      } else {
+        prev.delete('category')
+      }
+
+      return prev
+    }, { replace: true })
+  }, [radarMode, selectedDate, etfCategory, setSearchParams])
 
   // Pagination state
   const [page, setPage] = useState(1)
