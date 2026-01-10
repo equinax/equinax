@@ -86,9 +86,6 @@ function PredictionChip({
   const change5d = item.change_5d ? Number(item.change_5d) : null
   const repChange = item.rep_change ? Number(item.rep_change) : null
 
-  // Total of all factor scores for progress bar scaling
-  const totalFactorScore = divergenceScore + rsiScore + rsScore + momentumScore + activationScore
-
   // Color gradient (gray → red)
   // Score 0 = gray, 100 = red
   const getScoreColorStyle = (score: number): { bg: string; text: string } => {
@@ -211,38 +208,46 @@ function PredictionChip({
               <span className="text-xs font-normal text-muted-foreground ml-0.5">/100</span>
             </span>
           </div>
-          {/* Score breakdown bar - shows all 5 factors */}
+          {/* Score breakdown bar - shows total score as % of 100 */}
           <div className="h-2 bg-muted rounded-full overflow-hidden flex">
-            <div className="bg-blue-500 transition-all" style={{ width: `${totalFactorScore > 0 ? (divergenceScore / totalFactorScore * 100) : 0}%` }} />
-            <div className="bg-purple-500 transition-all" style={{ width: `${totalFactorScore > 0 ? (rsiScore / totalFactorScore * 100) : 0}%` }} />
-            <div className="bg-green-500 transition-all" style={{ width: `${totalFactorScore > 0 ? (rsScore / totalFactorScore * 100) : 0}%` }} />
-            <div className="bg-orange-500 transition-all" style={{ width: `${totalFactorScore > 0 ? (momentumScore / totalFactorScore * 100) : 0}%` }} />
-            <div className="bg-yellow-500 transition-all" style={{ width: `${totalFactorScore > 0 ? (activationScore / totalFactorScore * 100) : 0}%` }} />
+            <div className="bg-blue-500 transition-all" style={{ width: `${divergenceScore}%` }} />
+            <div className="bg-purple-500 transition-all" style={{ width: `${rsiScore}%` }} />
+            <div className="bg-green-500 transition-all" style={{ width: `${rsScore}%` }} />
+            <div className="bg-orange-500 transition-all" style={{ width: `${momentumScore}%` }} />
+            <div className="bg-yellow-500 transition-all" style={{ width: `${activationScore}%` }} />
           </div>
-          {/* Factor breakdown - V2 all 5 factors */}
-          <div className="grid grid-cols-3 gap-x-2 gap-y-1 mt-2 text-[11px]">
-            <div className="flex items-center gap-1">
-              <div className="w-2 h-2 rounded-full bg-blue-500 shrink-0" />
+          {/* Weight indicators */}
+          <div className="flex mt-1 text-[9px] text-muted-foreground/60">
+            <span style={{ width: '20%' }}>20%</span>
+            <span style={{ width: '15%' }}>15%</span>
+            <span style={{ width: '30%' }}>30%</span>
+            <span style={{ width: '25%' }}>25%</span>
+            <span style={{ width: '10%' }}>10%</span>
+          </div>
+          {/* Factor breakdown - all 5 factors in one row */}
+          <div className="flex justify-between mt-1.5 text-[10px]">
+            <div className="flex items-center gap-0.5">
+              <div className="w-1.5 h-1.5 rounded-full bg-blue-500" />
               <span className="text-muted-foreground">背离</span>
               <span className="font-semibold tabular-nums">{divergenceScore.toFixed(0)}</span>
             </div>
-            <div className="flex items-center gap-1">
-              <div className="w-2 h-2 rounded-full bg-purple-500 shrink-0" />
+            <div className="flex items-center gap-0.5">
+              <div className="w-1.5 h-1.5 rounded-full bg-purple-500" />
               <span className="text-muted-foreground">成交</span>
               <span className="font-semibold tabular-nums">{rsiScore.toFixed(0)}</span>
             </div>
-            <div className="flex items-center gap-1">
-              <div className="w-2 h-2 rounded-full bg-green-500 shrink-0" />
+            <div className="flex items-center gap-0.5">
+              <div className="w-1.5 h-1.5 rounded-full bg-green-500" />
               <span className="text-muted-foreground">强度</span>
               <span className="font-semibold tabular-nums">{rsScore.toFixed(0)}</span>
             </div>
-            <div className="flex items-center gap-1">
-              <div className="w-2 h-2 rounded-full bg-orange-500 shrink-0" />
+            <div className="flex items-center gap-0.5">
+              <div className="w-1.5 h-1.5 rounded-full bg-orange-500" />
               <span className="text-muted-foreground">趋势</span>
               <span className="font-semibold tabular-nums">{momentumScore.toFixed(0)}</span>
             </div>
-            <div className="flex items-center gap-1">
-              <div className="w-2 h-2 rounded-full bg-yellow-500 shrink-0" />
+            <div className="flex items-center gap-0.5">
+              <div className="w-1.5 h-1.5 rounded-full bg-yellow-500" />
               <span className="text-muted-foreground">小盘</span>
               <span className="font-semibold tabular-nums">{activationScore.toFixed(0)}</span>
             </div>
