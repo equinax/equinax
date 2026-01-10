@@ -105,19 +105,25 @@ function PredictionChip({
   }))
 
   // Color gradient (gray → red)
-  // Score 0 = gray, 100 = red
+  // Score >= 70 uses darkest red, otherwise gradient
   const getScoreColorStyle = (score: number): { bg: string; text: string } => {
-    // Normalize score to 0-1 range (0=worst, 1=best)
-    const t = Math.max(0, Math.min(100, score)) / 100
+    const RED_HIGH = '#c93b3b'
 
-    // Gradient: gray → ivory → light red → red
+    // Score >= 70 uses fixed dark red
+    if (score >= 70) {
+      return { bg: RED_HIGH, text: '#ffffff' }
+    }
+
+    // For scores < 70, use gradient (0-70 mapped to full gradient)
+    const t = Math.max(0, Math.min(70, score)) / 70
+
+    // Gradient: gray → ivory → light red
     const gradient = [
       '#e5e5e5', // 0 - light gray (low score)
-      '#f0ebe5', // ~25 - warm gray
-      '#f5f3ef', // 50 - neutral (ivory)
-      '#e8a8a8', // ~67 - light red
-      '#d47070', // ~83 - medium red
-      '#c93b3b', // 100 - red (high score)
+      '#f0ebe5', // ~17 - warm gray
+      '#f5f3ef', // ~35 - neutral (ivory)
+      '#e8a8a8', // ~52 - light red
+      '#d47070', // 70 - medium red
     ]
 
     // Interpolate color
@@ -146,12 +152,11 @@ function PredictionChip({
     }
 
     // Text color based on background luminance
-    // Use higher threshold (0.65) so medium scores get white text for readability
     const r = parseInt(bg.slice(1, 3), 16)
     const g = parseInt(bg.slice(3, 5), 16)
     const b = parseInt(bg.slice(5, 7), 16)
     const luminance = (0.299 * r + 0.587 * g + 0.114 * b) / 255
-    const text = luminance > 0.65 ? '#1f2937' : '#ffffff'
+    const text = luminance > 0.6 ? '#1f2937' : '#ffffff'
 
     return { bg, text }
   }
