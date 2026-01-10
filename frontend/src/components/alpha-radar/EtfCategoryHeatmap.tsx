@@ -40,20 +40,60 @@ interface EtfCategoryHeatmapProps {
   onItemClick?: (code: string) => void
 }
 
-// Color mapping based on change percentage
-function getChangeColor(changePct: number | null | undefined): string {
-  if (changePct === null || changePct === undefined) return 'bg-gray-100 dark:bg-gray-800'
+// Color mapping based on change percentage - matches sector heatmap
+// Uses same gradient: Green (loss) → Ivory (neutral) → Red (profit)
+function getChangeColorStyle(changePct: number | null | undefined): { bg: string; text: string } {
+  if (changePct === null || changePct === undefined) {
+    return { bg: '#f5f3ef', text: '#666666' }
+  }
 
   const pct = Number(changePct)
-  if (pct >= 5) return 'bg-red-600 text-white'
-  if (pct >= 3) return 'bg-red-500 text-white'
-  if (pct >= 1) return 'bg-red-400 text-white'
-  if (pct > 0) return 'bg-red-200 dark:bg-red-900/50 text-red-700 dark:text-red-300'
-  if (pct === 0) return 'bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-400'
-  if (pct > -1) return 'bg-green-200 dark:bg-green-900/50 text-green-700 dark:text-green-300'
-  if (pct > -3) return 'bg-green-400 text-white'
-  if (pct > -5) return 'bg-green-500 text-white'
-  return 'bg-green-600 text-white'
+  // Normalize to -5% to +5% range, then to 0-1
+  const normalized = Math.max(-5, Math.min(5, pct)) / 5
+  const t = (normalized + 1) / 2 // 0 = -5%, 0.5 = 0%, 1 = +5%
+
+  // Gradient colors from sector-colors.ts (light theme)
+  const gradient = [
+    '#288a5b', // extreme loss (-5%)
+    '#4ca87a', // -3%
+    '#8bc9a5', // -1%
+    '#f5f3ef', // neutral (0%)
+    '#e8a8a8', // +1%
+    '#d47070', // +3%
+    '#c93b3b', // extreme profit (+5%)
+  ]
+
+  // Interpolate color
+  const index = t * (gradient.length - 1)
+  const lower = Math.floor(index)
+  const upper = Math.ceil(index)
+  const fraction = index - lower
+
+  const bg = lower === upper
+    ? gradient[lower]
+    : interpolateHexColor(gradient[lower], gradient[upper], fraction)
+
+  // Text color based on background luminance
+  const r = parseInt(bg.slice(1, 3), 16)
+  const g = parseInt(bg.slice(3, 5), 16)
+  const b = parseInt(bg.slice(5, 7), 16)
+  const luminance = (0.299 * r + 0.587 * g + 0.114 * b) / 255
+  const text = luminance > 0.5 ? '#1f2937' : '#ffffff'
+
+  return { bg, text }
+}
+
+function interpolateHexColor(color1: string, color2: string, t: number): string {
+  const r1 = parseInt(color1.slice(1, 3), 16)
+  const g1 = parseInt(color1.slice(3, 5), 16)
+  const b1 = parseInt(color1.slice(5, 7), 16)
+  const r2 = parseInt(color2.slice(1, 3), 16)
+  const g2 = parseInt(color2.slice(3, 5), 16)
+  const b2 = parseInt(color2.slice(5, 7), 16)
+  const r = Math.round(r1 + (r2 - r1) * t)
+  const g = Math.round(g1 + (g2 - g1) * t)
+  const b = Math.round(b1 + (b2 - b1) * t)
+  return `#${r.toString(16).padStart(2, '0')}${g.toString(16).padStart(2, '0')}${b.toString(16).padStart(2, '0')}`
 }
 
 // Format change percentage
@@ -83,6 +123,7 @@ function EtfCell({
   index: number
 }) {
   const changePct = item.change_pct ? Number(item.change_pct) : null
+  const colorStyle = getChangeColorStyle(changePct)
 
   return (
     <Tooltip>
@@ -95,9 +136,9 @@ function EtfCell({
           className={cn(
             'shrink-0 px-2 py-1 rounded text-xs font-medium',
             'transition-all hover:scale-105 hover:shadow-md',
-            'cursor-pointer whitespace-nowrap',
-            getChangeColor(changePct)
+            'cursor-pointer whitespace-nowrap'
           )}
+          style={{ backgroundColor: colorStyle.bg, color: colorStyle.text }}
         >
           <span className="mr-1">{item.name}</span>
           <span className="font-mono">{formatChangePct(changePct)}</span>
@@ -126,6 +167,7 @@ function TopMoverCell({
 }) {
   const changePct = item.change_pct ? Number(item.change_pct) : null
   const categoryLabel = item.category ? CATEGORY_LABELS[item.category] || item.category : ''
+  const colorStyle = getChangeColorStyle(changePct)
 
   return (
     <Tooltip>
@@ -139,9 +181,9 @@ function TopMoverCell({
             'shrink-0 px-2 py-1 rounded text-xs font-medium',
             'transition-all hover:scale-105 hover:shadow-md',
             'cursor-pointer whitespace-nowrap',
-            'ring-1 ring-orange-300 dark:ring-orange-700',
-            getChangeColor(changePct)
+            'ring-1 ring-orange-300 dark:ring-orange-700'
           )}
+          style={{ backgroundColor: colorStyle.bg, color: colorStyle.text }}
         >
           <span className="mr-1">{item.name}</span>
           <span className="font-mono">{formatChangePct(changePct)}</span>
