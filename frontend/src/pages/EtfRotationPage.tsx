@@ -6,19 +6,24 @@
  * - All sub-categories expanded by default (flat view)
  * - SVG-based matrix with grouped category headers
  * - Infinite scroll for historical data
+ * - Optional prediction overlay (toggle)
  */
 
 import { useState, useCallback, useEffect, useRef } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { keepPreviousData } from '@tanstack/react-query'
-import { ArrowLeft } from 'lucide-react'
+import { ArrowLeft, Target } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+import { Switch } from '@/components/ui/switch'
+import { Label } from '@/components/ui/label'
+import { Slider } from '@/components/ui/slider'
 import { ComputingConsole } from '@/components/ui/computing-console'
 import { useComputingProgress } from '@/hooks/useComputingProgress'
 import {
   useGetEtfRotationFlatApiV1AlphaRadarEtfRotationFlatGet,
   getEtfRotationFlatApiV1AlphaRadarEtfRotationFlatGet,
+  useGetEtfPredictionApiV1AlphaRadarEtfPredictionGet,
 } from '@/api/generated/alpha-radar/alpha-radar'
 import type { EtfRotationFlatResponse } from '@/api/generated/schemas'
 import { EtfRotationMatrix } from '@/components/etf-rotation'
@@ -73,6 +78,11 @@ export default function EtfRotationPage() {
   const [hasMore, setHasMore] = useState(true)
   const loadMoreRef = useRef(false)
 
+  // Prediction overlay state
+  const [showPrediction, setShowPrediction] = useState(false)
+  const [predictionDate, setPredictionDate] = useState<string | null>(null)
+  const [predictionTopN, setPredictionTopN] = useState(30)
+
   // Initial data fetch
   const { data: initialData, isLoading, isFetching } = useGetEtfRotationFlatApiV1AlphaRadarEtfRotationFlatGet(
     {
@@ -90,8 +100,26 @@ export default function EtfRotationPage() {
     if (initialData) {
       setAllData(initialData)
       setHasMore(initialData.trading_days.length === DAYS_PER_PAGE)
+      // Set default prediction date to first trading day
+      if (!predictionDate && initialData.trading_days.length > 0) {
+        setPredictionDate(initialData.trading_days[0])
+      }
     }
-  }, [initialData])
+  }, [initialData, predictionDate])
+
+  // Fetch prediction data when enabled
+  const { data: predictionData } = useGetEtfPredictionApiV1AlphaRadarEtfPredictionGet(
+    {
+      date: predictionDate || undefined,
+      min_score: 0,
+    },
+    {
+      query: {
+        enabled: showPrediction && !!predictionDate,
+        placeholderData: keepPreviousData,
+      },
+    }
+  )
 
   // Load more data
   const loadMore = useCallback(async () => {
@@ -142,15 +170,40 @@ export default function EtfRotationPage() {
               )}
             </div>
 
-            {/* Legend */}
-            <div className="flex items-center gap-4 text-xs text-muted-foreground">
-              <span>最近 {allData?.trading_days.length || DAYS_PER_PAGE} 个交易日</span>
+            {/* Prediction Toggle */}
+            <div className="flex items-center gap-3">
               <div className="flex items-center gap-2">
-                <span className="w-3 h-3 rounded bg-red-500" />
-                <span>上涨</span>
-                <span className="w-3 h-3 rounded bg-green-500" />
-                <span>下跌</span>
+                <Switch
+                  id="prediction-toggle"
+                  checked={showPrediction}
+                  onCheckedChange={setShowPrediction}
+                />
+                <Label htmlFor="prediction-toggle" className="text-xs flex items-center gap-1 cursor-pointer">
+                  <Target className="h-3 w-3" />
+                  明日预测
+                </Label>
               </div>
+              {showPrediction && (
+                <>
+                  <div className="flex items-center gap-2">
+                    <span className="text-xs text-muted-foreground">前</span>
+                    <Slider
+                      value={[predictionTopN]}
+                      onValueChange={(values: number[]) => setPredictionTopN(values[0])}
+                      min={5}
+                      max={80}
+                      step={5}
+                      className="w-20"
+                    />
+                    <span className="text-xs text-muted-foreground w-4">{predictionTopN}</span>
+                  </div>
+                  {predictionDate && (
+                    <span className="text-xs text-muted-foreground">
+                      基于 {predictionDate}
+                    </span>
+                  )}
+                </>
+              )}
             </div>
           </div>
         </CardHeader>
@@ -163,6 +216,11 @@ export default function EtfRotationPage() {
               isLoadingMore={isLoadingMore}
               hasMore={hasMore}
               onLoadMore={loadMore}
+              showPrediction={showPrediction}
+              predictionData={predictionData}
+              predictionDate={predictionDate}
+              onPredictionDateChange={setPredictionDate}
+              predictionTopN={predictionTopN}
             />
           ) : (
             <div className="flex items-center justify-center h-32 text-muted-foreground">

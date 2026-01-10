@@ -9,7 +9,7 @@
 
 import { useState, useRef, useCallback, useEffect, useMemo } from 'react'
 import { ArrowUp, ArrowDown } from 'lucide-react'
-import type { EtfRotationFlatResponse, EtfRotationColumn } from '@/api/generated/schemas'
+import type { EtfRotationFlatResponse, EtfRotationColumn, EtfPredictionResponse } from '@/api/generated/schemas'
 import { EtfMatrixCell } from './EtfMatrixCell'
 import { EtfMatrixTooltip } from './EtfMatrixTooltip'
 import { CATEGORY_COLORS, type EtfTooltipData } from './types'
@@ -21,14 +21,20 @@ const CATEGORY_HEADER_HEIGHT = 16
 const SUB_HEADER_HEIGHT = 38 // For vertical text
 const HEADER_HEIGHT = CATEGORY_HEADER_HEIGHT + SUB_HEADER_HEIGHT
 
-// Sort options
-type SortOption = 'default' | 'change'
+// Sort direction: none → desc → asc → none (3-state cycle)
+type SortDirection = 'none' | 'desc' | 'asc'
 
 interface EtfRotationMatrixProps {
   data: EtfRotationFlatResponse
   isLoadingMore?: boolean
   hasMore?: boolean
   onLoadMore?: () => void
+  // Prediction overlay
+  showPrediction?: boolean
+  predictionData?: EtfPredictionResponse
+  predictionDate?: string | null
+  onPredictionDateChange?: (date: string) => void
+  predictionTopN?: number
 }
 
 export function EtfRotationMatrix({
@@ -36,14 +42,18 @@ export function EtfRotationMatrix({
   isLoadingMore = false,
   hasMore = true,
   onLoadMore,
+  showPrediction = false,
+  predictionData,
+  predictionDate,
+  onPredictionDateChange,
+  predictionTopN = 30,
 }: EtfRotationMatrixProps) {
   const containerRef = useRef<HTMLDivElement>(null)
   const scrollContainerRef = useRef<HTMLDivElement>(null)
   const [tooltip, setTooltip] = useState<EtfTooltipData | null>(null)
   const [containerWidth, setContainerWidth] = useState(0)
-  const [sortBy, setSortBy] = useState<SortOption>('default')
   const [sortByDate, setSortByDate] = useState<string | null>(null)
-  const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('desc')
+  const [sortDirection, setSortDirection] = useState<SortDirection>('none')
 
   // Track container width for responsive sizing
   useEffect(() => {
@@ -75,26 +85,50 @@ export function EtfRotationMatrix({
     }
   }, [onLoadMore])
 
-  // Handle date click for sorting
+  // Handle date click for sorting and prediction
+  // 3-state cycle: none → desc → asc → none
   const handleDateClick = useCallback(
     (dateStr: string) => {
-      if (sortBy === 'default') {
-        setSortBy('change')
+      // Update prediction date when clicking a row
+      if (showPrediction && onPredictionDateChange) {
+        onPredictionDateChange(dateStr)
       }
 
       if (sortByDate === dateStr) {
-        setSortDirection(sortDirection === 'desc' ? 'asc' : 'desc')
+        // Same date clicked - cycle through states
+        if (sortDirection === 'none') {
+          setSortDirection('desc')
+        } else if (sortDirection === 'desc') {
+          setSortDirection('asc')
+        } else {
+          setSortDirection('none')
+        }
       } else {
+        // Different date clicked - select it without sorting
         setSortByDate(dateStr)
-        setSortDirection('desc')
+        setSortDirection('none')
       }
     },
-    [sortBy, sortByDate, sortDirection]
+    [sortByDate, sortDirection, showPrediction, onPredictionDateChange]
   )
+
+  // Create prediction score lookup by sub_category name (filtered to top N)
+  const predictionScoreMap = useMemo(() => {
+    if (!predictionData?.predictions) return new Map<string, number>()
+
+    // Sort by score descending and take top N
+    const sorted = [...predictionData.predictions]
+      .sort((a, b) => (Number(b.ambush_score) || 0) - (Number(a.ambush_score) || 0))
+      .slice(0, predictionTopN)
+
+    return new Map(
+      sorted.map((p) => [p.sub_category, Number(p.ambush_score) || 0])
+    )
+  }, [predictionData, predictionTopN])
 
   // Sorted sub-categories
   const sortedSubCategories = useMemo(() => {
-    if (sortBy === 'default' || !sortByDate) {
+    if (sortDirection === 'none' || !sortByDate) {
       return data.sub_categories
     }
 
@@ -107,7 +141,7 @@ export function EtfRotationMatrix({
 
       return sortDirection === 'desc' ? valB - valA : valA - valB
     })
-  }, [data.sub_categories, sortBy, sortByDate, sortDirection])
+  }, [data.sub_categories, sortByDate, sortDirection])
 
   // Group sub-categories by category for header rendering
   const categoryGroups = useMemo(() => {
@@ -279,32 +313,51 @@ export function EtfRotationMatrix({
           {/* Sub-category headers (second row) - vertical text with cell borders */}
           <g transform={`translate(${DATE_COLUMN_WIDTH}, ${CATEGORY_HEADER_HEIGHT})`}>
             <rect x={0} y={0} width={svgWidth - DATE_COLUMN_WIDTH} height={SUB_HEADER_HEIGHT} className="fill-muted" />
-            {sortedSubCategories.map((col, colIndex) => (
-              <g key={col.name} transform={`translate(${colIndex * cellWidth}, 0)`}>
-                {/* Cell border */}
-                <rect
-                  x={0}
-                  y={0}
-                  width={cellWidth}
-                  height={SUB_HEADER_HEIGHT}
-                  fill="transparent"
-                  stroke="#e5e5e5"
-                  strokeWidth={0.5}
-                />
-                {/* Vertical text */}
-                <text
-                  x={cellWidth / 2}
-                  y={4}
-                  textAnchor="start"
-                  dominantBaseline="middle"
-                  fontSize={8}
-                  transform={`rotate(90, ${cellWidth / 2}, 4)`}
-                  className="fill-muted-foreground"
-                >
-                  {col.name.slice(0, 3)}
-                </text>
-              </g>
-            ))}
+            {sortedSubCategories.map((col, colIndex) => {
+              const predScore = predictionScoreMap.get(col.name) || 0
+              const hasPrediction = showPrediction && predScore > 0
+
+              return (
+                <g key={col.name} transform={`translate(${colIndex * cellWidth}, 0)`}>
+                  {/* Cell border - highlight if has prediction */}
+                  <rect
+                    x={0}
+                    y={0}
+                    width={cellWidth}
+                    height={SUB_HEADER_HEIGHT}
+                    fill={hasPrediction ? `rgba(239, 68, 68, ${Math.min(predScore / 50, 0.3)})` : 'transparent'}
+                    stroke={hasPrediction ? '#ef4444' : '#e5e5e5'}
+                    strokeWidth={hasPrediction ? 1 : 0.5}
+                  />
+                  {/* Prediction score badge */}
+                  {hasPrediction && (
+                    <text
+                      x={cellWidth / 2}
+                      y={SUB_HEADER_HEIGHT - 4}
+                      textAnchor="middle"
+                      dominantBaseline="middle"
+                      fontSize={7}
+                      fontWeight={600}
+                      fill="#dc2626"
+                    >
+                      {predScore.toFixed(0)}
+                    </text>
+                  )}
+                  {/* Vertical text */}
+                  <text
+                    x={cellWidth / 2}
+                    y={4}
+                    textAnchor="start"
+                    dominantBaseline="middle"
+                    fontSize={8}
+                    transform={`rotate(90, ${cellWidth / 2}, 4)`}
+                    className="fill-muted-foreground"
+                  >
+                    {col.name.slice(0, 3)}
+                  </text>
+                </g>
+              )
+            })}
           </g>
         </svg>
       </div>
@@ -326,7 +379,9 @@ export function EtfRotationMatrix({
           <g>
             <rect x={0} y={0} width={DATE_COLUMN_WIDTH} height={matrixHeight} className="fill-muted" />
             {data.trading_days.map((dateStr, rowIndex) => {
-              const isActiveSortDate = sortByDate === dateStr
+              const isSelectedDate = sortByDate === dateStr
+              const isPredictionDate = showPrediction && predictionDate === dateStr
+              const isSorting = isSelectedDate && sortDirection !== 'none'
 
               return (
                 <g
@@ -339,7 +394,7 @@ export function EtfRotationMatrix({
                     y={rowIndex * CELL_HEIGHT}
                     width={DATE_COLUMN_WIDTH}
                     height={CELL_HEIGHT}
-                    fill="transparent"
+                    fill={isPredictionDate ? 'rgba(239, 68, 68, 0.15)' : isSelectedDate ? 'rgba(59, 130, 246, 0.1)' : 'transparent'}
                   />
                   <text
                     x={DATE_COLUMN_WIDTH / 2}
@@ -347,17 +402,18 @@ export function EtfRotationMatrix({
                     textAnchor="middle"
                     dominantBaseline="middle"
                     fontSize={8}
-                    fill="currentColor"
-                    className={`font-mono ${isActiveSortDate ? 'font-bold' : 'text-muted-foreground'}`}
+                    fill={isPredictionDate ? '#dc2626' : isSelectedDate ? '#3b82f6' : 'currentColor'}
+                    fontWeight={isPredictionDate || isSelectedDate ? 600 : 400}
+                    className={`font-mono ${!isPredictionDate && !isSelectedDate ? 'text-muted-foreground' : ''}`}
                   >
                     {formatDate(dateStr)}
                   </text>
-                  {isActiveSortDate && (
+                  {isSorting && (
                     <g transform={`translate(${DATE_COLUMN_WIDTH - 5}, ${rowIndex * CELL_HEIGHT + CELL_HEIGHT / 2})`}>
                       {sortDirection === 'desc' ? (
-                        <ArrowDown x={-3} y={-3} width={5} height={5} className="text-foreground" />
+                        <ArrowDown x={-3} y={-3} width={5} height={5} className="text-blue-500" />
                       ) : (
-                        <ArrowUp x={-3} y={-3} width={5} height={5} className="text-foreground" />
+                        <ArrowUp x={-3} y={-3} width={5} height={5} className="text-blue-500" />
                       )}
                     </g>
                   )}
