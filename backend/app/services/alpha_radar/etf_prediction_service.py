@@ -427,32 +427,32 @@ class ETFPredictionService:
             (pl.col("flow_ratio").rank() / n_subcats).alias("flow_rank"),
         ])
 
-        # Calculate Divergence Score (0-40) - NEW: 量升价滞 formula
+        # Calculate Divergence Score (0-50) - 量升价滞 formula
         # High score when: volume surge (above 120d avg) + price stagnation (small absolute change)
         has_deviation_data = "volume_deviation_3d_avg" in target_df.columns
 
         if has_deviation_data:
             target_df = target_df.with_columns([
-                # Volume surge score: 3-day avg deviation / 100, capped at 1.0
-                # +100% deviation = 1.0 (max), +50% = 0.5, 0% = 0
+                # Volume surge score: 3-day avg deviation / 80, capped at 1.0
+                # +80% deviation = 1.0 (max), +40% = 0.5, 0% = 0
                 pl.when(pl.col("volume_deviation_3d_avg").is_not_null())
-                .then((pl.col("volume_deviation_3d_avg") / 100).clip(0, 1))
+                .then((pl.col("volume_deviation_3d_avg") / 80).clip(0, 1))
                 .otherwise(0.0)
                 .alias("volume_surge_score"),
 
                 # 3-day average price change
                 (pl.col("change_nd") / PRICE_LOOKBACK_DAYS).alias("change_3d_avg"),
 
-                # Price stagnation score: 1 - abs(3d_avg_change) / 3
-                # 0% change = 1.0, 1.5% change = 0.5, 3%+ change = 0
-                (1 - (pl.col("change_nd") / PRICE_LOOKBACK_DAYS).abs() / 3).clip(0, 1)
+                # Price stagnation score: 1 - abs(3d_avg_change) / 2.5
+                # 0% change = 1.0, 1.25% change = 0.5, 2.5%+ change = 0
+                (1 - (pl.col("change_nd") / PRICE_LOOKBACK_DAYS).abs() / 2.5).clip(0, 1)
                 .alias("price_stagnation_score"),
             ])
 
-            # Divergence = volume_surge × price_stagnation × 40
+            # Divergence = volume_surge × price_stagnation × 50
             target_df = target_df.with_columns([
-                (pl.col("volume_surge_score") * pl.col("price_stagnation_score") * 40)
-                .clip(0, 40)
+                (pl.col("volume_surge_score") * pl.col("price_stagnation_score") * 50)
+                .clip(0, 50)
                 .alias("divergence_score"),
             ])
         else:
@@ -463,19 +463,24 @@ class ETFPredictionService:
                 .alias("divergence_score"),
             ])
 
-        # Calculate Compression Score (0-30)
-        # High score when volume is near 60-day low
+        # Calculate Compression Score (0-10) - reduced weight
+        # Only score when volume is in bottom 20% of 60-day range
         target_df = target_df.with_columns([
-            ((1 - pl.col("volume_percentile")) * 30)
-            .clip(0, 30)
+            pl.when(pl.col("volume_percentile") < 0.2)
+            .then(((0.2 - pl.col("volume_percentile")) / 0.2 * 10).clip(0, 10))
+            .otherwise(0.0)
             .alias("compression_score"),
         ])
 
-        # Calculate Activation Score (0-30)
-        activation_scores = self._calculate_activation_scores(etf_df, target_df, target_date)
+        # Calculate Activation Score (0-40) - increased weight
+        activation_data = self._calculate_activation_scores(etf_df, target_df, target_date)
+        # Extract just scores for DataFrame column
+        activation_scores = {k: v["score"] for k, v in activation_data.items()}
         target_df = target_df.with_columns([
             pl.col("sub_category").replace(activation_scores, default=0.0).alias("activation_score"),
         ])
+        # Store full activation data for signal generation
+        self._activation_data = activation_data
 
         # Calculate total Ambush Score
         target_df = target_df.with_columns([
@@ -493,12 +498,14 @@ class ETFPredictionService:
         etf_df: pl.DataFrame,
         subcategory_df: pl.DataFrame,
         target_date: date,
-    ) -> Dict[str, float]:
+    ) -> Dict[str, Dict[str, float]]:
         """
         Calculate activation scores based on small ETF outperformance.
 
         Small ETFs (bottom 30% by amount) moving up while subcategory flat
         signals potential breakout (leaders testing the waters).
+
+        Returns dict with score and details for each subcategory.
         """
         # Get target date ETF data
         target_etfs = etf_df.filter(pl.col("date") == target_date)
@@ -527,14 +534,14 @@ class ETFPredictionService:
             .group_by("sub_category")
             .agg([
                 pl.col("change_pct").mean().alias("small_etf_avg_change"),
+                pl.len().alias("small_etf_count"),
             ])
         )
 
         # Get subcategory average changes
         subcat_changes = subcategory_df.select(["sub_category", "avg_change"])
 
-        # Join with subcat_changes as the left table (FIX: reversed join direction)
-        # This ensures all subcategories are included even if they have no small ETFs
+        # Join with subcat_changes as the left table
         activation_df = subcat_changes.join(
             small_etf_perf,
             on="sub_category",
@@ -543,21 +550,30 @@ class ETFPredictionService:
 
         # Fill NULL small_etf_avg_change with avg_change (no outperformance = 0 activation)
         activation_df = activation_df.with_columns([
-            pl.col("small_etf_avg_change").fill_null(pl.col("avg_change"))
+            pl.col("small_etf_avg_change").fill_null(pl.col("avg_change")),
+            pl.col("small_etf_count").fill_null(0),
+        ])
+
+        # Calculate outperformance
+        activation_df = activation_df.with_columns([
+            (pl.col("small_etf_avg_change") - pl.col("avg_change")).alias("activation_outperformance"),
         ])
 
         # Activation score: Small ETFs outperforming subcategory average
-        # Scale factor: 6 points per 1% outperformance, max 30
+        # Scale factor: 15 points per 1% outperformance, max 40
         activation_df = activation_df.with_columns([
-            (
-                (pl.col("small_etf_avg_change") - pl.col("avg_change")) * 6
-            ).clip(0, 30).alias("activation_score"),
+            (pl.col("activation_outperformance") * 15).clip(0, 40).alias("activation_score"),
         ])
 
         return {
-            row["sub_category"]: row["activation_score"]
+            row["sub_category"]: {
+                "score": row["activation_score"] or 0.0,
+                "small_etf_avg_change": row["small_etf_avg_change"] or 0.0,
+                "subcategory_avg_change": row["avg_change"] or 0.0,
+                "outperformance": row["activation_outperformance"] or 0.0,
+                "small_etf_count": row["small_etf_count"] or 0,
+            }
             for row in activation_df.iter_rows(named=True)
-            if row["activation_score"] is not None
         }
 
     def _build_predictions(
@@ -607,7 +623,7 @@ class ETFPredictionService:
         """Generate human-readable signal explanations."""
         signals = []
 
-        # Divergence signal - NEW: 量升价滞
+        # Divergence signal - 量升价滞
         volume_surge = row.get("volume_surge_score", 0) or 0
         price_stag = row.get("price_stagnation_score", 0) or 0
         volume_dev = row.get("volume_deviation_3d_avg", 0) or 0
@@ -620,7 +636,7 @@ class ETFPredictionService:
                 "description": f"量升价滞：近3日成交量较均值+{volume_dev:.0f}%，日均涨幅仅{change_3d_avg:.1f}%",
             })
 
-        # Compression signal
+        # Compression signal - only show when volume < 20% percentile
         volume_pct = row.get("volume_percentile", 0.5)
         if volume_pct < 0.2:
             signals.append({
@@ -629,14 +645,23 @@ class ETFPredictionService:
                 "description": f"成交量处于60日低位{volume_pct*100:.0f}%，量能极致压缩",
             })
 
-        # Activation signal
-        activation_score = row.get("activation_score", 0)
-        if activation_score > 10:
-            signals.append({
-                "type": "activation",
-                "score": self._to_decimal(activation_score),
-                "description": f"小市值ETF领先板块异动，龙头试盘信号",
-            })
+        # Activation signal - with detailed explanation
+        activation_score = row.get("activation_score", 0) or 0
+        sub_category = row.get("sub_category", "")
+        activation_info = getattr(self, "_activation_data", {}).get(sub_category, {})
+
+        if activation_score > 5:  # Lowered threshold from 10 to 5
+            outperformance = activation_info.get("outperformance", 0)
+            small_etf_change = activation_info.get("small_etf_avg_change", 0)
+            subcat_change = activation_info.get("subcategory_avg_change", 0)
+            small_count = activation_info.get("small_etf_count", 0)
+
+            if outperformance > 0:
+                signals.append({
+                    "type": "activation",
+                    "score": self._to_decimal(activation_score),
+                    "description": f"小市值ETF({small_count}只)涨{small_etf_change:.2f}%，领先板块均值{outperformance:.2f}%",
+                })
 
         return signals
 
