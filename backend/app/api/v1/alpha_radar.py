@@ -403,6 +403,25 @@ class EtfRotationFlatResponse(BaseModel):
 
 
 # ============================================
+# ETF Subcategory List Schemas (for Tooltip)
+# ============================================
+
+class EtfSubcategoryItem(BaseModel):
+    """单个 ETF 项目 (用于 Tooltip 列表)."""
+    code: str = Field(description="ETF 代码")
+    name: str = Field(description="ETF 名称")
+    change_pct: Optional[Decimal] = Field(default=None, description="当日涨跌幅 %")
+
+
+class EtfSubcategoryListResponse(BaseModel):
+    """ETF 子品类列表响应 (用于 Tooltip 动态加载)."""
+    category: str = Field(description="大类 key (如 'broad')")
+    sub_category: str = Field(description="子品类名 (如 '沪深300')")
+    date: datetime.date = Field(description="交易日期")
+    etfs: List[EtfSubcategoryItem] = Field(description="ETF 列表 (按涨跌幅降序)")
+
+
+# ============================================
 # Industry-ETF Mapping Schemas
 # ============================================
 
@@ -1341,4 +1360,45 @@ async def get_industry_etf_mapping(
             for etf in result.get("etfs", [])
         ],
         date=result.get("date"),
+    )
+
+
+@router.get("/etf-subcategory-list", response_model=EtfSubcategoryListResponse)
+async def get_etf_subcategory_list(
+    category: str = Query(..., description="ETF 大类 (broad, sector, theme, cross_border, commodity, bond)"),
+    sub_category: str = Query(..., description="子品类名 (如 '沪深300', '银行')"),
+    date: Optional[datetime.date] = Query(default=None, description="交易日期 (默认最新)"),
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    获取指定子品类下所有 ETF 列表 (用于 Tooltip 动态加载).
+
+    返回该子品类下所有活跃 ETF，按涨跌幅降序排列。
+    过滤掉成交额低于 1000 万的僵尸 ETF。
+
+    使用场景:
+    - ETF 轮动矩阵 Tooltip 动态加载成分 ETF 列表
+    - 展示该子品类下当天涨跌幅排名
+    """
+    from app.services.alpha_radar.etf_rotation_service import ETFRotationService
+
+    service = ETFRotationService(db)
+    result = await service.get_etfs_by_subcategory(
+        category=category,
+        sub_category=sub_category,
+        target_date=date,
+    )
+
+    return EtfSubcategoryListResponse(
+        category=result["category"],
+        sub_category=result["sub_category"],
+        date=result["date"],
+        etfs=[
+            EtfSubcategoryItem(
+                code=etf["code"],
+                name=etf["name"],
+                change_pct=etf.get("change_pct"),
+            )
+            for etf in result.get("etfs", [])
+        ],
     )

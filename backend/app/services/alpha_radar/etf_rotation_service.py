@@ -561,3 +561,85 @@ class ETFRotationService:
             },
             "days": days,
         }
+
+    # ============================================
+    # ETF Subcategory List (for Tooltip)
+    # ============================================
+
+    async def get_etfs_by_subcategory(
+        self,
+        category: str,
+        sub_category: str,
+        target_date: Optional[date] = None,
+    ) -> Dict[str, Any]:
+        """
+        获取指定子品类下所有 ETF 列表 (用于 Tooltip 动态加载).
+
+        Args:
+            category: 大类 (broad, sector, theme, cross_border, commodity, bond)
+            sub_category: 子品类名 (如 '沪深300', '银行')
+            target_date: 目标日期 (默认最新交易日)
+
+        Returns:
+            Dict with category, sub_category, date, etfs (sorted by change_pct desc)
+        """
+        # Resolve target date
+        if target_date is None:
+            target_date = await self._get_latest_trading_date()
+
+        if target_date is None:
+            return {
+                "category": category,
+                "sub_category": sub_category,
+                "date": None,
+                "etfs": [],
+            }
+
+        # Load all ETF data for the target date
+        df = await self._load_etf_data([target_date])
+        if df.is_empty():
+            return {
+                "category": category,
+                "sub_category": sub_category,
+                "date": target_date,
+                "etfs": [],
+            }
+
+        # Classify ETFs
+        df = self._classify_etfs(df)
+
+        # Filter by category and sub_category
+        df = df.filter(
+            (pl.col("category") == category) &
+            (pl.col("sub_category") == sub_category)
+        )
+
+        if df.is_empty():
+            return {
+                "category": category,
+                "sub_category": sub_category,
+                "date": target_date,
+                "etfs": [],
+            }
+
+        # Filter by minimum amount (> 1000万 = 10,000,000)
+        df = df.filter(pl.col("amount") > 10_000_000)
+
+        # Sort by change_pct descending
+        df = df.sort("change_pct", descending=True)
+
+        # Build ETF list
+        etfs = []
+        for row in df.iter_rows(named=True):
+            etfs.append({
+                "code": row["code"],
+                "name": row["name"],
+                "change_pct": self._to_decimal(row["change_pct"]),
+            })
+
+        return {
+            "category": category,
+            "sub_category": sub_category,
+            "date": target_date,
+            "etfs": etfs,
+        }

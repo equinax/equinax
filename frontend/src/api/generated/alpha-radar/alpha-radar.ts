@@ -22,6 +22,7 @@ import type {
   EtfRotationFlatResponse,
   EtfRotationResponse,
   EtfScreenerResponse,
+  EtfSubcategoryListResponse,
   GetCalendarApiV1AlphaRadarCalendarGetParams,
   GetDashboardApiV1AlphaRadarDashboardGetParams,
   GetEtfHeatmapApiV1AlphaRadarEtfHeatmapGetParams,
@@ -29,6 +30,7 @@ import type {
   GetEtfRotationDetailApiV1AlphaRadarEtfRotationCategoryGetParams,
   GetEtfRotationFlatApiV1AlphaRadarEtfRotationFlatGetParams,
   GetEtfScreenerApiV1AlphaRadarEtfScreenerGetParams,
+  GetEtfSubcategoryListApiV1AlphaRadarEtfSubcategoryListGetParams,
   GetIndustryEtfMappingApiV1AlphaRadarIndustryEtfMappingIndustryGetParams,
   GetScreenerApiV1AlphaRadarScreenerGetParams,
   GetSectorHeatmapApiV1AlphaRadarSectorHeatmapGetParams,
@@ -2657,3 +2659,274 @@ export const useGetIndustryEtfMappingApiV1AlphaRadarIndustryEtfMappingIndustryGe
 
     return query;
   };
+
+/**
+ * 获取指定子品类下所有 ETF 列表 (用于 Tooltip 动态加载).
+
+返回该子品类下所有活跃 ETF，按涨跌幅降序排列。
+过滤掉成交额低于 1000 万的僵尸 ETF。
+
+使用场景:
+- ETF 轮动矩阵 Tooltip 动态加载成分 ETF 列表
+- 展示该子品类下当天涨跌幅排名
+ * @summary Get Etf Subcategory List
+ */
+export const getEtfSubcategoryListApiV1AlphaRadarEtfSubcategoryListGet = (
+  params: GetEtfSubcategoryListApiV1AlphaRadarEtfSubcategoryListGetParams,
+  signal?: AbortSignal,
+) => {
+  return customInstance<EtfSubcategoryListResponse>({
+    url: `/api/v1/alpha-radar/etf-subcategory-list`,
+    method: "GET",
+    params,
+    signal,
+  });
+};
+
+export const getGetEtfSubcategoryListApiV1AlphaRadarEtfSubcategoryListGetQueryKey =
+  (params: GetEtfSubcategoryListApiV1AlphaRadarEtfSubcategoryListGetParams) => {
+    return [
+      `/api/v1/alpha-radar/etf-subcategory-list`,
+      ...(params ? [params] : []),
+    ] as const;
+  };
+
+export const getGetEtfSubcategoryListApiV1AlphaRadarEtfSubcategoryListGetInfiniteQueryOptions =
+  <
+    TData = InfiniteData<
+      Awaited<
+        ReturnType<
+          typeof getEtfSubcategoryListApiV1AlphaRadarEtfSubcategoryListGet
+        >
+      >,
+      GetEtfSubcategoryListApiV1AlphaRadarEtfSubcategoryListGetParams["page"]
+    >,
+    TError = HTTPValidationError,
+  >(
+    params: GetEtfSubcategoryListApiV1AlphaRadarEtfSubcategoryListGetParams,
+    options?: {
+      query?: Partial<
+        UseInfiniteQueryOptions<
+          Awaited<
+            ReturnType<
+              typeof getEtfSubcategoryListApiV1AlphaRadarEtfSubcategoryListGet
+            >
+          >,
+          TError,
+          TData,
+          Awaited<
+            ReturnType<
+              typeof getEtfSubcategoryListApiV1AlphaRadarEtfSubcategoryListGet
+            >
+          >,
+          QueryKey,
+          GetEtfSubcategoryListApiV1AlphaRadarEtfSubcategoryListGetParams["page"]
+        >
+      >;
+    },
+  ) => {
+    const { query: queryOptions } = options ?? {};
+
+    const queryKey =
+      queryOptions?.queryKey ??
+      getGetEtfSubcategoryListApiV1AlphaRadarEtfSubcategoryListGetQueryKey(
+        params,
+      );
+
+    const queryFn: QueryFunction<
+      Awaited<
+        ReturnType<
+          typeof getEtfSubcategoryListApiV1AlphaRadarEtfSubcategoryListGet
+        >
+      >,
+      QueryKey,
+      GetEtfSubcategoryListApiV1AlphaRadarEtfSubcategoryListGetParams["page"]
+    > = ({ signal, pageParam }) =>
+      getEtfSubcategoryListApiV1AlphaRadarEtfSubcategoryListGet(
+        { ...params, page: pageParam || params?.["page"] },
+        signal,
+      );
+
+    return { queryKey, queryFn, ...queryOptions } as UseInfiniteQueryOptions<
+      Awaited<
+        ReturnType<
+          typeof getEtfSubcategoryListApiV1AlphaRadarEtfSubcategoryListGet
+        >
+      >,
+      TError,
+      TData,
+      Awaited<
+        ReturnType<
+          typeof getEtfSubcategoryListApiV1AlphaRadarEtfSubcategoryListGet
+        >
+      >,
+      QueryKey,
+      GetEtfSubcategoryListApiV1AlphaRadarEtfSubcategoryListGetParams["page"]
+    > & { queryKey: QueryKey };
+  };
+
+export type GetEtfSubcategoryListApiV1AlphaRadarEtfSubcategoryListGetInfiniteQueryResult =
+  NonNullable<
+    Awaited<
+      ReturnType<
+        typeof getEtfSubcategoryListApiV1AlphaRadarEtfSubcategoryListGet
+      >
+    >
+  >;
+export type GetEtfSubcategoryListApiV1AlphaRadarEtfSubcategoryListGetInfiniteQueryError =
+  HTTPValidationError;
+
+/**
+ * @summary Get Etf Subcategory List
+ */
+export const useGetEtfSubcategoryListApiV1AlphaRadarEtfSubcategoryListGetInfinite =
+  <
+    TData = InfiniteData<
+      Awaited<
+        ReturnType<
+          typeof getEtfSubcategoryListApiV1AlphaRadarEtfSubcategoryListGet
+        >
+      >,
+      GetEtfSubcategoryListApiV1AlphaRadarEtfSubcategoryListGetParams["page"]
+    >,
+    TError = HTTPValidationError,
+  >(
+    params: GetEtfSubcategoryListApiV1AlphaRadarEtfSubcategoryListGetParams,
+    options?: {
+      query?: Partial<
+        UseInfiniteQueryOptions<
+          Awaited<
+            ReturnType<
+              typeof getEtfSubcategoryListApiV1AlphaRadarEtfSubcategoryListGet
+            >
+          >,
+          TError,
+          TData,
+          Awaited<
+            ReturnType<
+              typeof getEtfSubcategoryListApiV1AlphaRadarEtfSubcategoryListGet
+            >
+          >,
+          QueryKey,
+          GetEtfSubcategoryListApiV1AlphaRadarEtfSubcategoryListGetParams["page"]
+        >
+      >;
+    },
+  ): UseInfiniteQueryResult<TData, TError> & { queryKey: QueryKey } => {
+    const queryOptions =
+      getGetEtfSubcategoryListApiV1AlphaRadarEtfSubcategoryListGetInfiniteQueryOptions(
+        params,
+        options,
+      );
+
+    const query = useInfiniteQuery(queryOptions) as UseInfiniteQueryResult<
+      TData,
+      TError
+    > & { queryKey: QueryKey };
+
+    query.queryKey = queryOptions.queryKey;
+
+    return query;
+  };
+
+export const getGetEtfSubcategoryListApiV1AlphaRadarEtfSubcategoryListGetQueryOptions =
+  <
+    TData = Awaited<
+      ReturnType<
+        typeof getEtfSubcategoryListApiV1AlphaRadarEtfSubcategoryListGet
+      >
+    >,
+    TError = HTTPValidationError,
+  >(
+    params: GetEtfSubcategoryListApiV1AlphaRadarEtfSubcategoryListGetParams,
+    options?: {
+      query?: Partial<
+        UseQueryOptions<
+          Awaited<
+            ReturnType<
+              typeof getEtfSubcategoryListApiV1AlphaRadarEtfSubcategoryListGet
+            >
+          >,
+          TError,
+          TData
+        >
+      >;
+    },
+  ) => {
+    const { query: queryOptions } = options ?? {};
+
+    const queryKey =
+      queryOptions?.queryKey ??
+      getGetEtfSubcategoryListApiV1AlphaRadarEtfSubcategoryListGetQueryKey(
+        params,
+      );
+
+    const queryFn: QueryFunction<
+      Awaited<
+        ReturnType<
+          typeof getEtfSubcategoryListApiV1AlphaRadarEtfSubcategoryListGet
+        >
+      >
+    > = ({ signal }) =>
+      getEtfSubcategoryListApiV1AlphaRadarEtfSubcategoryListGet(params, signal);
+
+    return { queryKey, queryFn, ...queryOptions } as UseQueryOptions<
+      Awaited<
+        ReturnType<
+          typeof getEtfSubcategoryListApiV1AlphaRadarEtfSubcategoryListGet
+        >
+      >,
+      TError,
+      TData
+    > & { queryKey: QueryKey };
+  };
+
+export type GetEtfSubcategoryListApiV1AlphaRadarEtfSubcategoryListGetQueryResult =
+  NonNullable<
+    Awaited<
+      ReturnType<
+        typeof getEtfSubcategoryListApiV1AlphaRadarEtfSubcategoryListGet
+      >
+    >
+  >;
+export type GetEtfSubcategoryListApiV1AlphaRadarEtfSubcategoryListGetQueryError =
+  HTTPValidationError;
+
+/**
+ * @summary Get Etf Subcategory List
+ */
+export const useGetEtfSubcategoryListApiV1AlphaRadarEtfSubcategoryListGet = <
+  TData = Awaited<
+    ReturnType<typeof getEtfSubcategoryListApiV1AlphaRadarEtfSubcategoryListGet>
+  >,
+  TError = HTTPValidationError,
+>(
+  params: GetEtfSubcategoryListApiV1AlphaRadarEtfSubcategoryListGetParams,
+  options?: {
+    query?: Partial<
+      UseQueryOptions<
+        Awaited<
+          ReturnType<
+            typeof getEtfSubcategoryListApiV1AlphaRadarEtfSubcategoryListGet
+          >
+        >,
+        TError,
+        TData
+      >
+    >;
+  },
+): UseQueryResult<TData, TError> & { queryKey: QueryKey } => {
+  const queryOptions =
+    getGetEtfSubcategoryListApiV1AlphaRadarEtfSubcategoryListGetQueryOptions(
+      params,
+      options,
+    );
+
+  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
+    queryKey: QueryKey;
+  };
+
+  query.queryKey = queryOptions.queryKey;
+
+  return query;
+};
