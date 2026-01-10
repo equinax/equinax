@@ -18,6 +18,7 @@ import type {
   DashboardResponse,
   EtfCategory,
   EtfHeatmapResponse,
+  EtfPredictionPreviewResponse,
   EtfPredictionResponse,
   EtfRotationDetailResponse,
   EtfRotationFlatResponse,
@@ -39,6 +40,7 @@ import type {
   GetSectorRotationApiV1AlphaRadarSectorRotationGetParams,
   HTTPValidationError,
   IndustryEtfMappingResponse,
+  PredictionConfigInput,
   ScreenerResponse,
   SectorHeatmapResponse,
   SectorRotationResponse,
@@ -3166,4 +3168,122 @@ export const useGetEtfPredictionApiV1AlphaRadarEtfPredictionGet = <
   query.queryKey = queryOptions.queryKey;
 
   return query;
+};
+
+/**
+ * 预览 ETF 预测评分 (可配置因子权重).
+
+允许用户调整各因子的开关和权重，实时预览评分结果。
+用于手动调优因子组合。
+
+因子说明:
+- divergence (背离): 成交量放大但价格横盘，资金流入信号
+- rsi (成交量信号): 成交量在60日区间的位置，高位=活跃
+- relative_strength (相对强度): 5日涨幅表现，动量因子
+- momentum (趋势动量): 短期+长期趋势一致性
+- activation (小盘激活): 小市值ETF领先大盘
+
+返回:
+- 所有子品类的预测评分
+- 各因子的统计信息 (min/max/avg)
+- 评分分布直方图
+ * @summary Preview Etf Prediction
+ */
+export const previewEtfPredictionApiV1AlphaRadarEtfPredictionPreviewPost = (
+  predictionConfigInput: PredictionConfigInput,
+) => {
+  return customInstance<EtfPredictionPreviewResponse>({
+    url: `/api/v1/alpha-radar/etf-prediction/preview`,
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    data: predictionConfigInput,
+  });
+};
+
+export const getPreviewEtfPredictionApiV1AlphaRadarEtfPredictionPreviewPostMutationOptions =
+  <TError = HTTPValidationError, TContext = unknown>(options?: {
+    mutation?: UseMutationOptions<
+      Awaited<
+        ReturnType<
+          typeof previewEtfPredictionApiV1AlphaRadarEtfPredictionPreviewPost
+        >
+      >,
+      TError,
+      { data: PredictionConfigInput },
+      TContext
+    >;
+  }): UseMutationOptions<
+    Awaited<
+      ReturnType<
+        typeof previewEtfPredictionApiV1AlphaRadarEtfPredictionPreviewPost
+      >
+    >,
+    TError,
+    { data: PredictionConfigInput },
+    TContext
+  > => {
+    const { mutation: mutationOptions } = options ?? {};
+
+    const mutationFn: MutationFunction<
+      Awaited<
+        ReturnType<
+          typeof previewEtfPredictionApiV1AlphaRadarEtfPredictionPreviewPost
+        >
+      >,
+      { data: PredictionConfigInput }
+    > = (props) => {
+      const { data } = props ?? {};
+
+      return previewEtfPredictionApiV1AlphaRadarEtfPredictionPreviewPost(data);
+    };
+
+    return { mutationFn, ...mutationOptions };
+  };
+
+export type PreviewEtfPredictionApiV1AlphaRadarEtfPredictionPreviewPostMutationResult =
+  NonNullable<
+    Awaited<
+      ReturnType<
+        typeof previewEtfPredictionApiV1AlphaRadarEtfPredictionPreviewPost
+      >
+    >
+  >;
+export type PreviewEtfPredictionApiV1AlphaRadarEtfPredictionPreviewPostMutationBody =
+  PredictionConfigInput;
+export type PreviewEtfPredictionApiV1AlphaRadarEtfPredictionPreviewPostMutationError =
+  HTTPValidationError;
+
+/**
+ * @summary Preview Etf Prediction
+ */
+export const usePreviewEtfPredictionApiV1AlphaRadarEtfPredictionPreviewPost = <
+  TError = HTTPValidationError,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<
+      ReturnType<
+        typeof previewEtfPredictionApiV1AlphaRadarEtfPredictionPreviewPost
+      >
+    >,
+    TError,
+    { data: PredictionConfigInput },
+    TContext
+  >;
+}): UseMutationResult<
+  Awaited<
+    ReturnType<
+      typeof previewEtfPredictionApiV1AlphaRadarEtfPredictionPreviewPost
+    >
+  >,
+  TError,
+  { data: PredictionConfigInput },
+  TContext
+> => {
+  const mutationOptions =
+    getPreviewEtfPredictionApiV1AlphaRadarEtfPredictionPreviewPostMutationOptions(
+      options,
+    );
+
+  return useMutation(mutationOptions);
 };

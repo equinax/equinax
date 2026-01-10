@@ -5,11 +5,11 @@
  * with rich hover popups showing detailed breakdown.
  */
 
-import { useState } from 'react'
+import { useState, useCallback } from 'react'
 import { keepPreviousData } from '@tanstack/react-query'
 import { format } from 'date-fns'
 import { motion, AnimatePresence } from 'motion/react'
-import { Target, ChevronDown, ChevronLeft, ChevronRight, TrendingUp, Activity, Zap } from 'lucide-react'
+import { Target, ChevronDown, ChevronLeft, ChevronRight, TrendingUp, Activity, Zap, Settings2, RotateCcw } from 'lucide-react'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { ComputingConsole } from '@/components/ui/computing-console'
 import {
@@ -24,10 +24,35 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
 import { Button } from '@/components/ui/button'
+import { Switch } from '@/components/ui/switch'
+import { Slider } from '@/components/ui/slider'
 import { useComputingProgress } from '@/hooks/useComputingProgress'
-import { useGetEtfPredictionApiV1AlphaRadarEtfPredictionGet } from '@/api/generated/alpha-radar/alpha-radar'
-import type { EtfPredictionItem } from '@/api/generated/schemas'
+import {
+  useGetEtfPredictionApiV1AlphaRadarEtfPredictionGet,
+  usePreviewEtfPredictionApiV1AlphaRadarEtfPredictionPreviewPost,
+} from '@/api/generated/alpha-radar/alpha-radar'
+import type { EtfPredictionItem, PredictionConfigInput } from '@/api/generated/schemas'
 import { cn } from '@/lib/utils'
+
+// Default factor configuration
+const DEFAULT_FACTORS: PredictionConfigInput = {
+  divergence: { enabled: true, weight: 0.2 },
+  rsi: { enabled: true, weight: 0.15 },
+  relative_strength: { enabled: true, weight: 0.3 },
+  momentum: { enabled: true, weight: 0.25 },
+  activation: { enabled: true, weight: 0.1 },
+}
+
+// Factor display info
+const FACTOR_INFO = {
+  divergence: { label: '背离', desc: '成交量放大但价格横盘', color: 'bg-blue-500' },
+  rsi: { label: '成交量', desc: '60日成交量位置，高位=活跃', color: 'bg-purple-500' },
+  relative_strength: { label: '相对强度', desc: '5日涨幅表现（动量）', color: 'bg-green-500' },
+  momentum: { label: '趋势', desc: '短期+长期趋势一致性', color: 'bg-orange-500' },
+  activation: { label: '小盘激活', desc: '小市值ETF领先', color: 'bg-yellow-500' },
+} as const
+
+type FactorKey = keyof typeof FACTOR_INFO
 
 // Score filter options
 const SCORE_FILTERS = [
@@ -242,11 +267,100 @@ function PredictionChip({
   )
 }
 
+// Factor config panel component
+function FactorConfigPanel({
+  factors,
+  onChange,
+  onReset,
+  isLoading,
+}: {
+  factors: PredictionConfigInput
+  onChange: (key: FactorKey, enabled: boolean, weight: number) => void
+  onReset: () => void
+  isLoading: boolean
+}) {
+  const factorKeys = Object.keys(FACTOR_INFO) as FactorKey[]
+
+  // Calculate total weight of enabled factors
+  const totalWeight = factorKeys.reduce((sum, key) => {
+    const factor = factors[key]
+    return sum + (factor?.enabled ? (factor.weight ?? 0) : 0)
+  }, 0)
+
+  return (
+    <div className="space-y-3 p-1">
+      <div className="flex items-center justify-between">
+        <span className="text-xs font-medium text-muted-foreground">因子权重配置</span>
+        <Button variant="ghost" size="sm" className="h-6 px-2 text-xs" onClick={onReset}>
+          <RotateCcw className="h-3 w-3 mr-1" />
+          重置
+        </Button>
+      </div>
+
+      <div className="space-y-2.5">
+        {factorKeys.map((key) => {
+          const info = FACTOR_INFO[key]
+          const factor = factors[key] ?? { enabled: true, weight: 0.2 }
+          const normalizedWeight = totalWeight > 0 ? ((factor.weight ?? 0) / totalWeight * 100) : 0
+
+          return (
+            <div key={key} className="space-y-1">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <Switch
+                    checked={factor.enabled}
+                    onCheckedChange={(checked) => onChange(key, checked, factor.weight ?? 0.2)}
+                    className="scale-75"
+                  />
+                  <div className={cn('w-2 h-2 rounded-full', info.color)} />
+                  <span className={cn('text-xs font-medium', !factor.enabled && 'text-muted-foreground')}>
+                    {info.label}
+                  </span>
+                </div>
+                <span className="text-xs tabular-nums text-muted-foreground">
+                  {factor.enabled ? `${normalizedWeight.toFixed(0)}%` : '-'}
+                </span>
+              </div>
+              {factor.enabled && (
+                <div className="flex items-center gap-2 pl-7">
+                  <Slider
+                    value={[(factor.weight ?? 0.2) * 100]}
+                    onValueChange={(values: number[]) => onChange(key, true, values[0] / 100)}
+                    min={5}
+                    max={50}
+                    step={5}
+                    className="flex-1"
+                    disabled={isLoading}
+                  />
+                  <span className="text-[10px] tabular-nums text-muted-foreground w-8">
+                    {((factor.weight ?? 0.2) * 100).toFixed(0)}
+                  </span>
+                </div>
+              )}
+              <p className="text-[10px] text-muted-foreground pl-7">{info.desc}</p>
+            </div>
+          )
+        })}
+      </div>
+
+      {isLoading && (
+        <div className="text-xs text-center text-muted-foreground py-1">
+          正在重新计算...
+        </div>
+      )}
+    </div>
+  )
+}
+
 export function TomorrowPrediction({ selectedDate }: TomorrowPredictionProps) {
   const [minScore, setMinScore] = useState(0)
   const [currentPage, setCurrentPage] = useState(0)
+  const [factors, setFactors] = useState<PredictionConfigInput>(DEFAULT_FACTORS)
+  const [useCustomFactors, setUseCustomFactors] = useState(false)
+  const [configOpen, setConfigOpen] = useState(false)
 
-  const { data, isLoading, isFetching } = useGetEtfPredictionApiV1AlphaRadarEtfPredictionGet(
+  // Default API call
+  const defaultQuery = useGetEtfPredictionApiV1AlphaRadarEtfPredictionGet(
     {
       date: selectedDate ? format(selectedDate, 'yyyy-MM-dd') : undefined,
       min_score: minScore,
@@ -254,9 +368,52 @@ export function TomorrowPrediction({ selectedDate }: TomorrowPredictionProps) {
     {
       query: {
         placeholderData: keepPreviousData,
+        enabled: !useCustomFactors,
       },
     }
   )
+
+  // Preview API for custom factors
+  const previewMutation = usePreviewEtfPredictionApiV1AlphaRadarEtfPredictionPreviewPost()
+
+  // Handle factor change
+  const handleFactorChange = useCallback((key: FactorKey, enabled: boolean, weight: number) => {
+    setFactors((prev) => ({
+      ...prev,
+      [key]: { enabled, weight },
+    }))
+    setUseCustomFactors(true)
+  }, [])
+
+  // Reset to defaults
+  const handleReset = useCallback(() => {
+    setFactors(DEFAULT_FACTORS)
+    setUseCustomFactors(false)
+  }, [])
+
+  // Trigger preview when factors change
+  const handleApplyFactors = useCallback(() => {
+    if (!useCustomFactors) return
+    previewMutation.mutate({
+      data: {
+        ...factors,
+        date: selectedDate ? format(selectedDate, 'yyyy-MM-dd') : undefined,
+      },
+    })
+    setConfigOpen(false)
+  }, [factors, selectedDate, useCustomFactors, previewMutation])
+
+  // Use preview data if custom, otherwise default
+  const data = useCustomFactors && previewMutation.data
+    ? {
+        date: previewMutation.data.date,
+        predictions: previewMutation.data.predictions,
+        total_subcategories: previewMutation.data.total_subcategories,
+      }
+    : defaultQuery.data
+
+  const isLoading = useCustomFactors ? previewMutation.isPending : defaultQuery.isLoading
+  const isFetching = useCustomFactors ? previewMutation.isPending : defaultQuery.isFetching
 
   const showInitialLoading = isLoading && !data
   const { steps, progress } = useComputingProgress(showInitialLoading, 'etf-prediction')
@@ -341,6 +498,45 @@ export function TomorrowPrediction({ selectedDate }: TomorrowPredictionProps) {
               ))}
             </DropdownMenuContent>
           </DropdownMenu>
+
+          {/* Factor config */}
+          <Popover open={configOpen} onOpenChange={setConfigOpen}>
+            <PopoverTrigger asChild>
+              <Button
+                variant={useCustomFactors ? 'default' : 'ghost'}
+                size="sm"
+                className={cn('h-5 w-5 p-0', useCustomFactors && 'bg-primary')}
+              >
+                <Settings2 className="h-3 w-3" />
+              </Button>
+            </PopoverTrigger>
+            <PopoverContent align="end" className="w-64">
+              <FactorConfigPanel
+                factors={factors}
+                onChange={handleFactorChange}
+                onReset={handleReset}
+                isLoading={previewMutation.isPending}
+              />
+              <div className="flex gap-2 mt-3 pt-2 border-t">
+                <Button
+                  size="sm"
+                  variant="outline"
+                  className="flex-1 h-7 text-xs"
+                  onClick={() => setConfigOpen(false)}
+                >
+                  取消
+                </Button>
+                <Button
+                  size="sm"
+                  className="flex-1 h-7 text-xs"
+                  onClick={handleApplyFactors}
+                  disabled={previewMutation.isPending}
+                >
+                  应用
+                </Button>
+              </div>
+            </PopoverContent>
+          </Popover>
         </div>
       </CardHeader>
 

@@ -1,12 +1,18 @@
 """ETF Tomorrow Prediction service for Alpha Radar.
 
 Calculates Ambush Score for ETF subcategories to predict tomorrow's potential winners.
-Based on three factors:
-- Divergence: Price flat/down but flow increasing
-- Compression: Volume at 60-day low (pre-breakout signal)
-- Activation: Small ETFs leading the subcategory
+
+V2 Algorithm (Percentile-normalized, multi-factor):
+- Divergence (0-35): Volume surge + price stagnation
+- RSI Reversal (0-20): Oversold + RSI uptick
+- Relative Strength (0-15): Underperformance vs market (mean reversion)
+- Momentum (0-15): Short-term momentum turning positive
+- Activation (0-15): Small ETFs outperforming
+
+All factors use percentile ranking for even score distribution.
 """
 
+from dataclasses import dataclass, field
 from datetime import date
 from decimal import Decimal
 from typing import List, Optional, Dict, Any
@@ -27,25 +33,79 @@ EXCLUDED_CATEGORIES = {"other", "bond"}
 VOLUME_LOOKBACK_DAYS = 60
 PRICE_LOOKBACK_DAYS = 3  # Reduced from 5 for faster signal response
 VOLUME_BASELINE_DAYS = 120  # For divergence baseline calculation
+RSI_PERIOD = 14
+
+
+@dataclass
+class FactorConfig:
+    """Configuration for a single factor."""
+    enabled: bool = True
+    weight: float = 1.0  # Relative weight (will be normalized)
+
+
+@dataclass
+class PredictionConfig:
+    """Configuration for the prediction algorithm."""
+    # V2 default weights optimized for A-share momentum characteristics
+    divergence: FactorConfig = field(default_factory=lambda: FactorConfig(enabled=True, weight=0.20))
+    rsi: FactorConfig = field(default_factory=lambda: FactorConfig(enabled=True, weight=0.15))  # Volume signal
+    relative_strength: FactorConfig = field(default_factory=lambda: FactorConfig(enabled=True, weight=0.30))  # 5-day momentum
+    momentum: FactorConfig = field(default_factory=lambda: FactorConfig(enabled=True, weight=0.25))  # Trend aligned
+    activation: FactorConfig = field(default_factory=lambda: FactorConfig(enabled=True, weight=0.10))
+
+    def get_normalized_weights(self) -> Dict[str, float]:
+        """Get weights normalized to sum to 1.0 for enabled factors only."""
+        factors = {
+            "divergence": self.divergence,
+            "rsi": self.rsi,
+            "relative_strength": self.relative_strength,
+            "momentum": self.momentum,
+            "activation": self.activation,
+        }
+        enabled_weights = {k: v.weight for k, v in factors.items() if v.enabled}
+        total = sum(enabled_weights.values())
+        if total == 0:
+            return {}
+        return {k: w / total for k, w in enabled_weights.items()}
+
+    @classmethod
+    def from_dict(cls, config_dict: Dict[str, Any]) -> "PredictionConfig":
+        """Create config from a dictionary."""
+        config = cls()
+        for factor_name, factor_cfg in config_dict.items():
+            if hasattr(config, factor_name):
+                factor = getattr(config, factor_name)
+                if isinstance(factor_cfg, dict):
+                    factor.enabled = factor_cfg.get("enabled", True)
+                    factor.weight = factor_cfg.get("weight", factor.weight)
+        return config
+
+
+# Default config for backward compatibility
+DEFAULT_CONFIG = PredictionConfig()
 
 
 class ETFPredictionService:
     """
     Service for calculating tomorrow's alpha prediction signals.
 
-    Ambush Score Components (0-100):
-    - Divergence Score (0-40): Price rank low + flow rank high
-    - Compression Score (0-30): Volume near 60-day low
-    - Activation Score (0-30): Small ETFs showing unusual moves
+    V2 Ambush Score Components (0-100, percentile-normalized):
+    - Divergence Score: Volume surge + price stagnation (default 35%)
+    - RSI Score: Oversold zone + RSI uptick (default 20%)
+    - Relative Strength Score: Underperformance vs market (default 15%)
+    - Momentum Score: Short-term momentum turning positive (default 15%)
+    - Activation Score: Small ETFs outperforming (default 15%)
     """
 
-    def __init__(self, db: AsyncSession):
+    def __init__(self, db: AsyncSession, config: Optional[PredictionConfig] = None):
         self.db = db
+        self.config = config or DEFAULT_CONFIG
 
     async def get_predictions(
         self,
         target_date: Optional[date] = None,
         min_score: float = 0,
+        config: Optional[PredictionConfig] = None,
     ) -> Dict[str, Any]:
         """
         Get tomorrow's alpha predictions for ETF subcategories.
@@ -53,10 +113,14 @@ class ETFPredictionService:
         Args:
             target_date: Target date (default: latest trading day)
             min_score: Minimum ambush score to include (0-100)
+            config: Optional factor configuration override
 
         Returns:
             Dict with predictions list and metadata
         """
+        # Use provided config or instance config
+        active_config = config or self.config
+
         # Resolve target date
         if target_date is None:
             target_date = await self._get_latest_trading_date()
@@ -87,8 +151,8 @@ class ETFPredictionService:
         # Calculate subcategory aggregates
         subcategory_df = self._aggregate_by_subcategory(df)
 
-        # Calculate scores (using industry volume where available)
-        scores_df = self._calculate_scores(subcategory_df, df, target_date, industry_df)
+        # Calculate scores with percentile normalization (V2 algorithm)
+        scores_df = self._calculate_scores_v2(subcategory_df, df, target_date, industry_df, active_config)
 
         # Generate signals
         predictions = self._build_predictions(scores_df, df, target_date, min_score)
@@ -489,6 +553,261 @@ class ETFPredictionService:
                 pl.col("compression_score") +
                 pl.col("activation_score")
             ).clip(0, 100).alias("ambush_score"),
+        ])
+
+        return target_df
+
+    def _calculate_scores_v2(
+        self,
+        subcategory_df: pl.DataFrame,
+        etf_df: pl.DataFrame,
+        target_date: date,
+        industry_df: pl.DataFrame,
+        config: PredictionConfig,
+    ) -> pl.DataFrame:
+        """
+        V2 Scoring with percentile normalization and configurable factors.
+
+        Uses percentile ranks for even score distribution across 0-100.
+        """
+        # Get normalized weights for enabled factors
+        weights = config.get_normalized_weights()
+        if not weights:
+            return subcategory_df.filter(pl.col("date") == target_date)
+
+        # Sort for rolling calculations
+        subcategory_df = subcategory_df.sort(["sub_category", "date"])
+
+        # Join industry volume data if available
+        if not industry_df.is_empty():
+            industry_df = industry_df.sort(["industry", "date"])
+
+            # Calculate volume deviation from baseline
+            industry_df = industry_df.with_columns([
+                pl.when(pl.col("vol_120d_avg") > 0)
+                .then((pl.col("industry_amount") - pl.col("vol_120d_avg")) / pl.col("vol_120d_avg") * 100)
+                .otherwise(0.0)
+                .alias("daily_deviation_pct"),
+            ])
+
+            # Rolling metrics
+            industry_df = industry_df.with_columns([
+                pl.col("daily_deviation_pct")
+                .rolling_mean(window_size=PRICE_LOOKBACK_DAYS, min_periods=1)
+                .over("industry")
+                .alias("volume_deviation_3d_avg"),
+            ])
+
+            subcategory_df = subcategory_df.join(
+                industry_df.select(["industry", "date", "volume_deviation_3d_avg"]),
+                left_on=["mapped_industry", "date"],
+                right_on=["industry", "date"],
+                how="left",
+            )
+
+        # Calculate rolling metrics per subcategory
+        subcategory_df = subcategory_df.with_columns([
+            # N-day cumulative change
+            pl.col("avg_change")
+            .rolling_sum(window_size=PRICE_LOOKBACK_DAYS, min_periods=1)
+            .over("sub_category")
+            .alias("change_nd"),
+
+            # 5-day change for momentum
+            pl.col("avg_change")
+            .rolling_sum(window_size=5, min_periods=1)
+            .over("sub_category")
+            .alias("change_5d"),
+
+            # 20-day change for long-term momentum
+            pl.col("avg_change")
+            .rolling_sum(window_size=20, min_periods=5)
+            .over("sub_category")
+            .alias("change_20d"),
+
+            # Volume percentile
+            pl.col("total_amount")
+            .rolling_min(window_size=60, min_periods=10)
+            .over("sub_category")
+            .alias("volume_60d_min"),
+
+            pl.col("total_amount")
+            .rolling_max(window_size=60, min_periods=10)
+            .over("sub_category")
+            .alias("volume_60d_max"),
+        ])
+
+        # Filter to target date
+        target_df = subcategory_df.filter(pl.col("date") == target_date)
+
+        if target_df.is_empty():
+            return target_df
+
+        n_subcats = target_df.height
+        if n_subcats == 0:
+            return target_df
+
+        # === Calculate Raw Factor Values ===
+
+        # Volume deviation (use industry data or 0)
+        if "volume_deviation_3d_avg" in target_df.columns:
+            target_df = target_df.with_columns([
+                pl.col("volume_deviation_3d_avg").fill_null(0.0).alias("volume_deviation"),
+            ])
+        else:
+            target_df = target_df.with_columns([
+                pl.lit(0.0).alias("volume_deviation"),
+            ])
+
+        # Price stagnation (absolute value of 3d change - lower is better)
+        target_df = target_df.with_columns([
+            (pl.col("change_nd") / PRICE_LOOKBACK_DAYS).abs().alias("price_volatility"),
+        ])
+
+        # Short-term momentum
+        target_df = target_df.with_columns([
+            pl.col("change_5d").fill_null(0.0).alias("momentum_5d"),
+            pl.col("change_20d").fill_null(0.0).alias("momentum_20d"),
+        ])
+
+        # Volume percentile
+        target_df = target_df.with_columns([
+            pl.when(pl.col("volume_60d_max") > pl.col("volume_60d_min"))
+            .then(
+                (pl.col("total_amount") - pl.col("volume_60d_min")) /
+                (pl.col("volume_60d_max") - pl.col("volume_60d_min"))
+            )
+            .otherwise(0.5)
+            .clip(0, 1)
+            .alias("volume_percentile"),
+        ])
+
+        # === Calculate Percentile Ranks (0-1) for Each Factor ===
+
+        # Divergence: high volume deviation + low price volatility
+        # Volume deviation rank (higher is better)
+        target_df = target_df.with_columns([
+            (pl.col("volume_deviation").rank() / n_subcats).alias("vol_dev_rank"),
+            # Price volatility rank (lower is better, so 1 - rank)
+            (1 - pl.col("price_volatility").rank() / n_subcats).alias("price_stag_rank"),
+        ])
+
+        # Volume signal: high volume = institutional attention (momentum signal)
+        target_df = target_df.with_columns([
+            # Higher volume percentile is better (institutions accumulating)
+            pl.col("volume_percentile").alias("rsi_raw"),
+        ])
+        target_df = target_df.with_columns([
+            (pl.col("rsi_raw").rank() / n_subcats).alias("rsi_rank"),
+        ])
+
+        # Relative strength: MOMENTUM approach (strong recent performance continues)
+        target_df = target_df.with_columns([
+            # The BETTER it performed, the higher the rank (momentum, not mean reversion)
+            (pl.col("momentum_5d").rank() / n_subcats).alias("rs_rank"),
+        ])
+
+        # Momentum: consistent uptrend signals (TREND FOLLOWING)
+        target_df = target_df.with_columns([
+            # Short-term positive (core signal)
+            pl.when(pl.col("momentum_5d") > 0).then(0.4).otherwise(0.0).alias("mom_short_pos"),
+            # Long-term positive (sustained trend)
+            pl.when(pl.col("momentum_20d") > 0).then(0.3).otherwise(0.0).alias("mom_long_pos"),
+            # Both aligned (strong trend)
+            pl.when(
+                (pl.col("momentum_5d") > 0) & (pl.col("momentum_20d") > 0)
+            ).then(0.3).otherwise(0.0).alias("mom_aligned"),
+        ])
+        target_df = target_df.with_columns([
+            (pl.col("mom_short_pos") + pl.col("mom_long_pos") + pl.col("mom_aligned")).alias("momentum_raw"),
+        ])
+        target_df = target_df.with_columns([
+            (pl.col("momentum_raw").rank() / n_subcats).alias("momentum_rank"),
+        ])
+
+        # === Calculate Activation Score ===
+        activation_data = self._calculate_activation_scores(etf_df, target_df, target_date)
+        activation_scores = {k: v["score"] for k, v in activation_data.items()}
+        self._activation_data = activation_data
+
+        # Add raw activation scores, then rank
+        target_df = target_df.with_columns([
+            pl.col("sub_category").replace(activation_scores, default=0.0).alias("activation_raw"),
+        ])
+        target_df = target_df.with_columns([
+            (pl.col("activation_raw").rank() / n_subcats).alias("activation_rank"),
+        ])
+
+        # === Combine Factor Scores ===
+        # Each factor contributes its percentile rank * weight * 100
+
+        # Initialize scores
+        target_df = target_df.with_columns([
+            pl.lit(0.0).alias("divergence_score"),
+            pl.lit(0.0).alias("rsi_score"),
+            pl.lit(0.0).alias("relative_strength_score"),
+            pl.lit(0.0).alias("momentum_score"),
+            pl.lit(0.0).alias("activation_score"),
+        ])
+
+        # Divergence: combine volume deviation and price stagnation
+        if "divergence" in weights:
+            w = weights["divergence"]
+            target_df = target_df.with_columns([
+                ((pl.col("vol_dev_rank") * 0.6 + pl.col("price_stag_rank") * 0.4) * w * 100)
+                .alias("divergence_score"),
+            ])
+
+        # RSI
+        if "rsi" in weights:
+            w = weights["rsi"]
+            target_df = target_df.with_columns([
+                (pl.col("rsi_rank") * w * 100).alias("rsi_score"),
+            ])
+
+        # Relative Strength
+        if "relative_strength" in weights:
+            w = weights["relative_strength"]
+            target_df = target_df.with_columns([
+                (pl.col("rs_rank") * w * 100).alias("relative_strength_score"),
+            ])
+
+        # Momentum
+        if "momentum" in weights:
+            w = weights["momentum"]
+            target_df = target_df.with_columns([
+                (pl.col("momentum_rank") * w * 100).alias("momentum_score"),
+            ])
+
+        # Activation
+        if "activation" in weights:
+            w = weights["activation"]
+            target_df = target_df.with_columns([
+                (pl.col("activation_rank") * w * 100).alias("activation_score"),
+            ])
+
+        # Total Ambush Score
+        target_df = target_df.with_columns([
+            (
+                pl.col("divergence_score") +
+                pl.col("rsi_score") +
+                pl.col("relative_strength_score") +
+                pl.col("momentum_score") +
+                pl.col("activation_score")
+            ).clip(0, 100).alias("ambush_score"),
+        ])
+
+        # For backward compatibility, alias compression_score
+        target_df = target_df.with_columns([
+            pl.col("rsi_score").alias("compression_score"),  # Reuse for API compatibility
+        ])
+
+        # Add metadata columns for signal generation
+        target_df = target_df.with_columns([
+            pl.col("volume_deviation").alias("volume_deviation_3d_avg"),
+            (pl.col("change_nd") / PRICE_LOOKBACK_DAYS).alias("change_3d_avg"),
+            pl.col("vol_dev_rank").alias("volume_surge_score"),
+            pl.col("price_stag_rank").alias("price_stagnation_score"),
         ])
 
         return target_df

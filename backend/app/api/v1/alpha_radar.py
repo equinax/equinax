@@ -428,8 +428,52 @@ class EtfSubcategoryListResponse(BaseModel):
 class AmbushSignalType(str, Enum):
     """Types of ambush signals."""
     DIVERGENCE = "divergence"     # 价量背离
-    COMPRESSION = "compression"   # 量能压缩
+    COMPRESSION = "compression"   # 量能压缩 / 成交量信号
     ACTIVATION = "activation"     # 小票激活
+
+
+class FactorConfigInput(BaseModel):
+    """Configuration for a single factor."""
+    enabled: bool = True
+    weight: float = Field(default=1.0, ge=0.0, le=1.0, description="Factor weight (0-1)")
+
+
+class PredictionConfigInput(BaseModel):
+    """Request body for prediction preview with custom factor config."""
+    date: Optional[datetime.date] = Field(default=None, description="分析日期")
+    divergence: FactorConfigInput = Field(default_factory=lambda: FactorConfigInput(enabled=True, weight=0.20))
+    rsi: FactorConfigInput = Field(default_factory=lambda: FactorConfigInput(enabled=True, weight=0.15))
+    relative_strength: FactorConfigInput = Field(default_factory=lambda: FactorConfigInput(enabled=True, weight=0.30))
+    momentum: FactorConfigInput = Field(default_factory=lambda: FactorConfigInput(enabled=True, weight=0.25))
+    activation: FactorConfigInput = Field(default_factory=lambda: FactorConfigInput(enabled=True, weight=0.10))
+
+
+class FactorStats(BaseModel):
+    """Statistics for a single factor."""
+    name: str
+    enabled: bool
+    weight: float
+    min_score: Decimal
+    max_score: Decimal
+    avg_score: Decimal
+
+
+class ScoreDistribution(BaseModel):
+    """Score distribution histogram."""
+    bucket: str = Field(description="Score range (e.g., '0-10')")
+    count: int
+
+
+class EtfPredictionPreviewResponse(BaseModel):
+    """Response for prediction preview with statistics."""
+    date: Optional[datetime.date] = None
+    predictions: List["EtfPredictionItem"]
+    total_subcategories: int
+    factor_stats: List[FactorStats]
+    score_distribution: List[ScoreDistribution]
+    min_score: Decimal
+    max_score: Decimal
+    avg_score: Decimal
 
 
 class PredictionSignal(BaseModel):
@@ -1519,4 +1563,125 @@ async def get_etf_prediction(
             for pred in result.get("predictions", [])
         ],
         total_subcategories=result.get("total_subcategories", 0),
+    )
+
+
+@router.post("/etf-prediction/preview", response_model=EtfPredictionPreviewResponse)
+async def preview_etf_prediction(
+    config: PredictionConfigInput,
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    预览 ETF 预测评分 (可配置因子权重).
+
+    允许用户调整各因子的开关和权重，实时预览评分结果。
+    用于手动调优因子组合。
+
+    因子说明:
+    - divergence (背离): 成交量放大但价格横盘，资金流入信号
+    - rsi (成交量信号): 成交量在60日区间的位置，高位=活跃
+    - relative_strength (相对强度): 5日涨幅表现，动量因子
+    - momentum (趋势动量): 短期+长期趋势一致性
+    - activation (小盘激活): 小市值ETF领先大盘
+
+    返回:
+    - 所有子品类的预测评分
+    - 各因子的统计信息 (min/max/avg)
+    - 评分分布直方图
+    """
+    from app.services.alpha_radar.etf_prediction_service import (
+        ETFPredictionService,
+        PredictionConfig,
+        FactorConfig,
+    )
+
+    # Convert API config to service config
+    service_config = PredictionConfig(
+        divergence=FactorConfig(enabled=config.divergence.enabled, weight=config.divergence.weight),
+        rsi=FactorConfig(enabled=config.rsi.enabled, weight=config.rsi.weight),
+        relative_strength=FactorConfig(enabled=config.relative_strength.enabled, weight=config.relative_strength.weight),
+        momentum=FactorConfig(enabled=config.momentum.enabled, weight=config.momentum.weight),
+        activation=FactorConfig(enabled=config.activation.enabled, weight=config.activation.weight),
+    )
+
+    service = ETFPredictionService(db, config=service_config)
+    result = await service.get_predictions(target_date=config.date)
+
+    predictions = result.get("predictions", [])
+
+    # Calculate factor statistics
+    factor_stats = []
+    factor_names = {
+        "divergence": "背离因子",
+        "rsi": "成交量信号",
+        "relative_strength": "相对强度",
+        "momentum": "趋势动量",
+        "activation": "小盘激活",
+    }
+
+    for factor_key, factor_label in factor_names.items():
+        factor_cfg = getattr(config, factor_key)
+        scores = [float(p.get(f"{factor_key}_score") or p.get("compression_score") or 0) for p in predictions]
+
+        if scores:
+            factor_stats.append(FactorStats(
+                name=factor_label,
+                enabled=factor_cfg.enabled,
+                weight=factor_cfg.weight,
+                min_score=Decimal(str(round(min(scores), 2))),
+                max_score=Decimal(str(round(max(scores), 2))),
+                avg_score=Decimal(str(round(sum(scores) / len(scores), 2))),
+            ))
+
+    # Calculate score distribution (10-point buckets)
+    score_distribution = []
+    buckets = [(i, i + 10) for i in range(0, 100, 10)]
+    scores = [float(p["ambush_score"] or 0) for p in predictions]
+
+    for low, high in buckets:
+        count = sum(1 for s in scores if low <= s < high)
+        score_distribution.append(ScoreDistribution(
+            bucket=f"{low}-{high}",
+            count=count,
+        ))
+
+    # Overall stats
+    min_score = Decimal(str(round(min(scores), 2))) if scores else Decimal("0")
+    max_score = Decimal(str(round(max(scores), 2))) if scores else Decimal("0")
+    avg_score = Decimal(str(round(sum(scores) / len(scores), 2))) if scores else Decimal("0")
+
+    return EtfPredictionPreviewResponse(
+        date=result.get("date"),
+        predictions=[
+            EtfPredictionItem(
+                sub_category=pred["sub_category"],
+                category=pred["category"],
+                category_label=pred["category_label"],
+                ambush_score=pred["ambush_score"] or Decimal("0"),
+                divergence_score=pred["divergence_score"] or Decimal("0"),
+                compression_score=pred["compression_score"] or Decimal("0"),
+                activation_score=pred["activation_score"] or Decimal("0"),
+                change_5d=pred.get("change_5d"),
+                flow_ratio=pred.get("flow_ratio"),
+                volume_percentile=pred.get("volume_percentile"),
+                signals=[
+                    PredictionSignal(
+                        type=AmbushSignalType(sig["type"]),
+                        score=sig["score"] or Decimal("0"),
+                        description=sig["description"],
+                    )
+                    for sig in pred.get("signals", [])
+                ],
+                rep_code=pred.get("rep_code"),
+                rep_name=pred.get("rep_name"),
+                rep_change=pred.get("rep_change"),
+            )
+            for pred in predictions
+        ],
+        total_subcategories=result.get("total_subcategories", 0),
+        factor_stats=factor_stats,
+        score_distribution=score_distribution,
+        min_score=min_score,
+        max_score=max_score,
+        avg_score=avg_score,
     )
