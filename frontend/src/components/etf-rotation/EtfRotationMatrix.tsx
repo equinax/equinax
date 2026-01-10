@@ -276,16 +276,29 @@ export function EtfRotationMatrix({
             })}
           </g>
 
-          {/* Sub-category headers (second row) - vertical text */}
+          {/* Sub-category headers (second row) - vertical text with cell borders */}
           <g transform={`translate(${DATE_COLUMN_WIDTH}, ${CATEGORY_HEADER_HEIGHT})`}>
             <rect x={0} y={0} width={svgWidth - DATE_COLUMN_WIDTH} height={SUB_HEADER_HEIGHT} className="fill-muted" />
             {sortedSubCategories.map((col, colIndex) => (
-              <g key={col.name} transform={`translate(${colIndex * cellWidth + cellWidth / 2}, 4)`}>
+              <g key={col.name} transform={`translate(${colIndex * cellWidth}, 0)`}>
+                {/* Cell border */}
+                <rect
+                  x={0}
+                  y={0}
+                  width={cellWidth}
+                  height={SUB_HEADER_HEIGHT}
+                  fill="transparent"
+                  stroke="#e5e5e5"
+                  strokeWidth={0.5}
+                />
+                {/* Vertical text */}
                 <text
+                  x={cellWidth / 2}
+                  y={4}
                   textAnchor="start"
                   dominantBaseline="middle"
                   fontSize={8}
-                  transform="rotate(90)"
+                  transform={`rotate(90, ${cellWidth / 2}, 4)`}
                   className="fill-muted-foreground"
                 >
                   {col.name.slice(0, 3)}
