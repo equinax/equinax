@@ -923,9 +923,14 @@ class ETFPredictionService:
                 "category": row["category"],
                 "category_label": ETFClassifier.get_category_label(row["category"]),
                 "ambush_score": self._to_decimal(row["ambush_score"]),
-                "divergence_score": self._to_decimal(row["divergence_score"]),
-                "compression_score": self._to_decimal(row["compression_score"]),
-                "activation_score": self._to_decimal(row["activation_score"]),
+                # V2: 5 factor scores
+                "divergence_score": self._to_decimal(row.get("divergence_score", 0)),
+                "rsi_score": self._to_decimal(row.get("rsi_score", 0)),
+                "rs_score": self._to_decimal(row.get("relative_strength_score", 0)),
+                "momentum_score": self._to_decimal(row.get("momentum_score", 0)),
+                "activation_score": self._to_decimal(row.get("activation_score", 0)),
+                # Legacy compatibility
+                "compression_score": self._to_decimal(row.get("compression_score", row.get("rsi_score", 0))),
                 "change_5d": self._to_decimal(row.get("change_nd")),  # Now 3-day change
                 "flow_ratio": self._to_decimal(row.get("flow_ratio")),
                 "volume_percentile": self._to_decimal(row.get("volume_percentile")),

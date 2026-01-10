@@ -490,10 +490,15 @@ class EtfPredictionItem(BaseModel):
     category_label: str = Field(description="父类名 (如 '赛道')")
     ambush_score: Decimal = Field(description="潜伏异动总评分 (0-100)")
 
-    # Component scores
-    divergence_score: Decimal = Field(description="背离因子 (0-40)")
-    compression_score: Decimal = Field(description="压缩因子 (0-30)")
-    activation_score: Decimal = Field(description="激活因子 (0-30)")
+    # Component scores (V2 - 5 factors)
+    divergence_score: Decimal = Field(description="背离因子 - 量升价滞")
+    rsi_score: Decimal = Field(default=Decimal(0), description="成交量因子 - 活跃度")
+    rs_score: Decimal = Field(default=Decimal(0), description="强度因子 - 动量排名")
+    momentum_score: Decimal = Field(default=Decimal(0), description="趋势因子 - 趋势一致性")
+    activation_score: Decimal = Field(description="激活因子 - 小盘领先")
+
+    # Legacy field for backward compatibility
+    compression_score: Decimal = Field(default=Decimal(0), description="[已废弃] 使用 rsi_score")
 
     # Supporting metrics
     change_5d: Optional[Decimal] = Field(default=None, description="5日累计涨幅 %")

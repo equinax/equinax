@@ -13,7 +13,7 @@ import type { EtfPredictionItemVolumePercentile } from "./etfPredictionItemVolum
  */
 export interface EtfPredictionItem {
   /**
-   * 激活因子 (0-30)
+   * 激活因子 - 小盘领先
    * @pattern ^(?!^[-+.]*$)[+-]?0*\d*\.?\d*$
    */
   activation_score: string;
@@ -29,23 +29,38 @@ export interface EtfPredictionItem {
   /** 5日累计涨幅 % */
   change_5d?: EtfPredictionItemChange5d;
   /**
-   * 压缩因子 (0-30)
+   * [已废弃] 使用 rsi_score
    * @pattern ^(?!^[-+.]*$)[+-]?0*\d*\.?\d*$
    */
-  compression_score: string;
+  compression_score?: string;
   /**
-   * 背离因子 (0-40)
+   * 背离因子 - 量升价滞
    * @pattern ^(?!^[-+.]*$)[+-]?0*\d*\.?\d*$
    */
   divergence_score: string;
   /** 资金流量比 */
   flow_ratio?: EtfPredictionItemFlowRatio;
+  /**
+   * 趋势因子 - 趋势一致性
+   * @pattern ^(?!^[-+.]*$)[+-]?0*\d*\.?\d*$
+   */
+  momentum_score?: string;
   /** 代表 ETF 涨跌幅 % */
   rep_change?: EtfPredictionItemRepChange;
   /** 代表 ETF 代码 */
   rep_code?: EtfPredictionItemRepCode;
   /** 代表 ETF 名称 */
   rep_name?: EtfPredictionItemRepName;
+  /**
+   * 强度因子 - 动量排名
+   * @pattern ^(?!^[-+.]*$)[+-]?0*\d*\.?\d*$
+   */
+  rs_score?: string;
+  /**
+   * 成交量因子 - 活跃度
+   * @pattern ^(?!^[-+.]*$)[+-]?0*\d*\.?\d*$
+   */
+  rsi_score?: string;
   /** 触发的信号列表 */
   signals?: PredictionSignal[];
   /** 子品类名 (如 '半导体') */

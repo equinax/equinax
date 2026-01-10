@@ -77,17 +77,17 @@ function PredictionChip({
   rank: number
 }) {
   const ambushScore = Number(item.ambush_score) || 0
+  // V2: 5 factor scores
   const divergenceScore = Number(item.divergence_score) || 0
-  const compressionScore = Number(item.compression_score) || 0  // Actually RSI/volume signal in V2
+  const rsiScore = Number(item.rsi_score) || 0
+  const rsScore = Number(item.rs_score) || 0
+  const momentumScore = Number(item.momentum_score) || 0
   const activationScore = Number(item.activation_score) || 0
   const change5d = item.change_5d ? Number(item.change_5d) : null
   const repChange = item.rep_change ? Number(item.rep_change) : null
 
-  // V2 uses 5 factors, but API only returns 3 score fields
-  // divergence_score = 背离 (volume surge + price stagnation)
-  // compression_score = 成交量信号 (volume percentile) - renamed from compression
-  // activation_score = 小盘激活 (small cap outperformance)
-  // Note: relative_strength and momentum are included in the total but not separately exposed
+  // Total of all factor scores for progress bar scaling
+  const totalFactorScore = divergenceScore + rsiScore + rsScore + momentumScore + activationScore
 
   // Color gradient (gray → red)
   // Score 0 = gray, 100 = red
@@ -131,11 +131,12 @@ function PredictionChip({
     }
 
     // Text color based on background luminance
+    // Use higher threshold (0.65) so medium scores get white text for readability
     const r = parseInt(bg.slice(1, 3), 16)
     const g = parseInt(bg.slice(3, 5), 16)
     const b = parseInt(bg.slice(5, 7), 16)
     const luminance = (0.299 * r + 0.587 * g + 0.114 * b) / 255
-    const text = luminance > 0.5 ? '#1f2937' : '#ffffff'
+    const text = luminance > 0.65 ? '#1f2937' : '#ffffff'
 
     return { bg, text }
   }
@@ -210,34 +211,42 @@ function PredictionChip({
               <span className="text-xs font-normal text-muted-foreground ml-0.5">/100</span>
             </span>
           </div>
-          {/* Score breakdown bar - shows 3 main visible factors */}
+          {/* Score breakdown bar - shows all 5 factors */}
           <div className="h-2 bg-muted rounded-full overflow-hidden flex">
-            <div className="bg-blue-500 transition-all" style={{ width: `${divergenceScore}%` }} />
-            <div className="bg-purple-500 transition-all" style={{ width: `${compressionScore}%` }} />
-            <div className="bg-yellow-500 transition-all" style={{ width: `${activationScore}%` }} />
+            <div className="bg-blue-500 transition-all" style={{ width: `${totalFactorScore > 0 ? (divergenceScore / totalFactorScore * 100) : 0}%` }} />
+            <div className="bg-purple-500 transition-all" style={{ width: `${totalFactorScore > 0 ? (rsiScore / totalFactorScore * 100) : 0}%` }} />
+            <div className="bg-green-500 transition-all" style={{ width: `${totalFactorScore > 0 ? (rsScore / totalFactorScore * 100) : 0}%` }} />
+            <div className="bg-orange-500 transition-all" style={{ width: `${totalFactorScore > 0 ? (momentumScore / totalFactorScore * 100) : 0}%` }} />
+            <div className="bg-yellow-500 transition-all" style={{ width: `${totalFactorScore > 0 ? (activationScore / totalFactorScore * 100) : 0}%` }} />
           </div>
-          {/* Factor breakdown - V2 labels */}
-          <div className="flex justify-between mt-2 text-[11px]">
+          {/* Factor breakdown - V2 all 5 factors */}
+          <div className="grid grid-cols-3 gap-x-2 gap-y-1 mt-2 text-[11px]">
             <div className="flex items-center gap-1">
-              <TrendingUp className="w-3 h-3 text-blue-500" />
+              <div className="w-2 h-2 rounded-full bg-blue-500 shrink-0" />
               <span className="text-muted-foreground">背离</span>
               <span className="font-semibold tabular-nums">{divergenceScore.toFixed(0)}</span>
             </div>
             <div className="flex items-center gap-1">
-              <BarChart3 className="w-3 h-3 text-purple-500" />
+              <div className="w-2 h-2 rounded-full bg-purple-500 shrink-0" />
               <span className="text-muted-foreground">成交</span>
-              <span className="font-semibold tabular-nums">{compressionScore.toFixed(0)}</span>
+              <span className="font-semibold tabular-nums">{rsiScore.toFixed(0)}</span>
             </div>
             <div className="flex items-center gap-1">
-              <Zap className="w-3 h-3 text-yellow-500" />
-              <span className="text-muted-foreground">激活</span>
+              <div className="w-2 h-2 rounded-full bg-green-500 shrink-0" />
+              <span className="text-muted-foreground">强度</span>
+              <span className="font-semibold tabular-nums">{rsScore.toFixed(0)}</span>
+            </div>
+            <div className="flex items-center gap-1">
+              <div className="w-2 h-2 rounded-full bg-orange-500 shrink-0" />
+              <span className="text-muted-foreground">趋势</span>
+              <span className="font-semibold tabular-nums">{momentumScore.toFixed(0)}</span>
+            </div>
+            <div className="flex items-center gap-1">
+              <div className="w-2 h-2 rounded-full bg-yellow-500 shrink-0" />
+              <span className="text-muted-foreground">小盘</span>
               <span className="font-semibold tabular-nums">{activationScore.toFixed(0)}</span>
             </div>
           </div>
-          {/* Tooltip explaining V2 scoring */}
-          <p className="text-[10px] text-muted-foreground mt-1.5">
-            动量+趋势因子已合并至总分
-          </p>
         </div>
 
         {/* Metrics */}
