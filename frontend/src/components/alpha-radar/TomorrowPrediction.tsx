@@ -5,11 +5,11 @@
  * with rich hover popups showing detailed breakdown.
  */
 
-import { useState, useCallback } from 'react'
+import { useState, useCallback, useEffect, useRef } from 'react'
 import { keepPreviousData } from '@tanstack/react-query'
 import { format } from 'date-fns'
 import { motion, AnimatePresence } from 'motion/react'
-import { Target, ChevronDown, ChevronLeft, ChevronRight, TrendingUp, Activity, Zap, Settings2, RotateCcw } from 'lucide-react'
+import { Target, ChevronDown, ChevronLeft, ChevronRight, TrendingUp, Zap, Settings2, RotateCcw, BarChart3 } from 'lucide-react'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { ComputingConsole } from '@/components/ui/computing-console'
 import {
@@ -45,11 +45,11 @@ const DEFAULT_FACTORS: PredictionConfigInput = {
 
 // Factor display info
 const FACTOR_INFO = {
-  divergence: { label: '背离', desc: '成交量放大但价格横盘', color: 'bg-blue-500' },
-  rsi: { label: '成交量', desc: '60日成交量位置，高位=活跃', color: 'bg-purple-500' },
-  relative_strength: { label: '相对强度', desc: '5日涨幅表现（动量）', color: 'bg-green-500' },
-  momentum: { label: '趋势', desc: '短期+长期趋势一致性', color: 'bg-orange-500' },
-  activation: { label: '小盘激活', desc: '小市值ETF领先', color: 'bg-yellow-500' },
+  divergence: { label: '背离', desc: '量升价滞，资金流入但涨幅小', color: 'bg-blue-500' },
+  rsi: { label: '成交量', desc: '成交活跃度，高位=机构关注', color: 'bg-purple-500' },
+  relative_strength: { label: '强度', desc: '5日涨幅动量，强者恒强', color: 'bg-green-500' },
+  momentum: { label: '趋势', desc: '短期+长期趋势同向', color: 'bg-orange-500' },
+  activation: { label: '小盘', desc: '小ETF领先，先知先觉信号', color: 'bg-yellow-500' },
 } as const
 
 type FactorKey = keyof typeof FACTOR_INFO
@@ -78,43 +78,76 @@ function PredictionChip({
 }) {
   const ambushScore = Number(item.ambush_score) || 0
   const divergenceScore = Number(item.divergence_score) || 0
-  const compressionScore = Number(item.compression_score) || 0
+  const compressionScore = Number(item.compression_score) || 0  // Actually RSI/volume signal in V2
   const activationScore = Number(item.activation_score) || 0
   const change5d = item.change_5d ? Number(item.change_5d) : null
   const repChange = item.rep_change ? Number(item.rep_change) : null
 
-  // Score intensity - solid backgrounds like heatmap chips
-  const getScoreStyles = (score: number) => {
-    if (score >= 60) return {
-      bg: 'bg-red-500 dark:bg-red-600',
-      text: 'text-white',
-      rank: 'text-white/90',
+  // V2 uses 5 factors, but API only returns 3 score fields
+  // divergence_score = 背离 (volume surge + price stagnation)
+  // compression_score = 成交量信号 (volume percentile) - renamed from compression
+  // activation_score = 小盘激活 (small cap outperformance)
+  // Note: relative_strength and momentum are included in the total but not separately exposed
+
+  // Color gradient (gray → red)
+  // Score 0 = gray, 100 = red
+  const getScoreColorStyle = (score: number): { bg: string; text: string } => {
+    // Normalize score to 0-1 range (0=worst, 1=best)
+    const t = Math.max(0, Math.min(100, score)) / 100
+
+    // Gradient: gray → ivory → light red → red
+    const gradient = [
+      '#e5e5e5', // 0 - light gray (low score)
+      '#f0ebe5', // ~25 - warm gray
+      '#f5f3ef', // 50 - neutral (ivory)
+      '#e8a8a8', // ~67 - light red
+      '#d47070', // ~83 - medium red
+      '#c93b3b', // 100 - red (high score)
+    ]
+
+    // Interpolate color
+    const index = t * (gradient.length - 1)
+    const lower = Math.floor(index)
+    const upper = Math.ceil(index)
+    const fraction = index - lower
+
+    let bg: string
+    if (lower === upper) {
+      bg = gradient[lower]
+    } else {
+      // Interpolate between colors
+      const c1 = gradient[lower]
+      const c2 = gradient[upper]
+      const r1 = parseInt(c1.slice(1, 3), 16)
+      const g1 = parseInt(c1.slice(3, 5), 16)
+      const b1 = parseInt(c1.slice(5, 7), 16)
+      const r2 = parseInt(c2.slice(1, 3), 16)
+      const g2 = parseInt(c2.slice(3, 5), 16)
+      const b2 = parseInt(c2.slice(5, 7), 16)
+      const r = Math.round(r1 + (r2 - r1) * fraction)
+      const g = Math.round(g1 + (g2 - g1) * fraction)
+      const b = Math.round(b1 + (b2 - b1) * fraction)
+      bg = `#${r.toString(16).padStart(2, '0')}${g.toString(16).padStart(2, '0')}${b.toString(16).padStart(2, '0')}`
     }
-    if (score >= 50) return {
-      bg: 'bg-red-400 dark:bg-red-500',
-      text: 'text-white',
-      rank: 'text-white/80',
-    }
-    if (score >= 45) return {
-      bg: 'bg-red-100 dark:bg-red-900/60',
-      text: 'text-red-700 dark:text-red-300',
-      rank: 'text-red-600/70 dark:text-red-400/70',
-    }
-    return {
-      bg: 'bg-gray-100 dark:bg-gray-800',
-      text: 'text-gray-700 dark:text-gray-300',
-      rank: 'text-gray-500 dark:text-gray-500',
-    }
+
+    // Text color based on background luminance
+    const r = parseInt(bg.slice(1, 3), 16)
+    const g = parseInt(bg.slice(3, 5), 16)
+    const b = parseInt(bg.slice(5, 7), 16)
+    const luminance = (0.299 * r + 0.587 * g + 0.114 * b) / 255
+    const text = luminance > 0.5 ? '#1f2937' : '#ffffff'
+
+    return { bg, text }
   }
 
-  const scoreStyles = getScoreStyles(ambushScore)
+  const colorStyle = getScoreColorStyle(ambushScore)
 
-  // For popup display
-  const getScoreColor = (score: number) => {
-    if (score >= 60) return 'text-red-600 dark:text-red-400'
+  // For popup display - text color only
+  const getScoreTextColor = (score: number) => {
+    if (score >= 65) return 'text-red-600 dark:text-red-400'
     if (score >= 50) return 'text-red-500 dark:text-red-400'
-    if (score >= 45) return 'text-orange-600 dark:text-orange-400'
-    return 'text-gray-600 dark:text-gray-400'
+    if (score >= 35) return 'text-gray-600 dark:text-gray-400'
+    return 'text-green-600 dark:text-green-400'
   }
 
   const getRankBadge = (r: number) => {
@@ -129,30 +162,23 @@ function PredictionChip({
       <PopoverTrigger asChild>
         <button
           className={cn(
-            'relative flex items-center gap-1 px-1.5 pt-0.5 pb-1 rounded-t',
-            'text-left transition-all hover:opacity-90 group whitespace-nowrap',
-            scoreStyles.bg
+            'relative flex items-center gap-1 px-1.5 py-0.5 rounded',
+            'text-left transition-all hover:scale-105 hover:shadow-md whitespace-nowrap'
           )}
+          style={{ backgroundColor: colorStyle.bg, color: colorStyle.text }}
         >
           {/* Rank */}
-          <span className={cn('text-[10px] tabular-nums font-medium', scoreStyles.rank)}>
+          <span className="text-[10px] tabular-nums font-medium opacity-80">
             {rank}
           </span>
 
           {/* Name */}
-          <span className={cn('text-xs font-medium', scoreStyles.text)}>{item.sub_category}</span>
+          <span className="text-xs font-medium">{item.sub_category}</span>
 
           {/* Score */}
-          <span className={cn('text-xs font-bold tabular-nums', scoreStyles.text)}>
+          <span className="text-xs font-bold tabular-nums">
             {ambushScore.toFixed(0)}
           </span>
-
-          {/* Score bar at bottom */}
-          <div className="absolute bottom-0 left-0 right-0 h-[3px] bg-black/20 rounded-b overflow-hidden flex">
-            <div className="bg-blue-400 h-full" style={{ width: `${divergenceScore}%` }} />
-            <div className="bg-purple-400 h-full" style={{ width: `${compressionScore}%` }} />
-            <div className="bg-yellow-400 h-full" style={{ width: `${activationScore}%` }} />
-          </div>
         </button>
       </PopoverTrigger>
 
@@ -178,18 +204,19 @@ function PredictionChip({
         {/* Score Section */}
         <div className="px-3 py-2 border-b">
           <div className="flex items-center justify-between mb-2">
-            <span className="text-xs text-muted-foreground">潜伏评分</span>
-            <span className={cn('text-xl font-bold tabular-nums', getScoreColor(ambushScore))}>
+            <span className="text-xs text-muted-foreground">综合评分</span>
+            <span className={cn('text-xl font-bold tabular-nums', getScoreTextColor(ambushScore))}>
               {ambushScore.toFixed(0)}
+              <span className="text-xs font-normal text-muted-foreground ml-0.5">/100</span>
             </span>
           </div>
-          {/* Score breakdown bar */}
+          {/* Score breakdown bar - shows 3 main visible factors */}
           <div className="h-2 bg-muted rounded-full overflow-hidden flex">
             <div className="bg-blue-500 transition-all" style={{ width: `${divergenceScore}%` }} />
             <div className="bg-purple-500 transition-all" style={{ width: `${compressionScore}%` }} />
             <div className="bg-yellow-500 transition-all" style={{ width: `${activationScore}%` }} />
           </div>
-          {/* Factor breakdown */}
+          {/* Factor breakdown - V2 labels */}
           <div className="flex justify-between mt-2 text-[11px]">
             <div className="flex items-center gap-1">
               <TrendingUp className="w-3 h-3 text-blue-500" />
@@ -197,8 +224,8 @@ function PredictionChip({
               <span className="font-semibold tabular-nums">{divergenceScore.toFixed(0)}</span>
             </div>
             <div className="flex items-center gap-1">
-              <Activity className="w-3 h-3 text-purple-500" />
-              <span className="text-muted-foreground">压缩</span>
+              <BarChart3 className="w-3 h-3 text-purple-500" />
+              <span className="text-muted-foreground">成交</span>
               <span className="font-semibold tabular-nums">{compressionScore.toFixed(0)}</span>
             </div>
             <div className="flex items-center gap-1">
@@ -207,14 +234,18 @@ function PredictionChip({
               <span className="font-semibold tabular-nums">{activationScore.toFixed(0)}</span>
             </div>
           </div>
+          {/* Tooltip explaining V2 scoring */}
+          <p className="text-[10px] text-muted-foreground mt-1.5">
+            动量+趋势因子已合并至总分
+          </p>
         </div>
 
         {/* Metrics */}
         <div className="px-3 py-2 space-y-1.5 text-xs">
-          {/* 5-day change */}
+          {/* 3-day change (change_5d field actually contains 3-day data in V2) */}
           {change5d !== null && (
             <div className="flex justify-between">
-              <span className="text-muted-foreground">5日涨幅</span>
+              <span className="text-muted-foreground">近期涨幅</span>
               <span className={cn('font-mono font-medium', change5d > 0 ? 'text-profit' : change5d < 0 ? 'text-loss' : '')}>
                 {change5d > 0 ? '+' : ''}{change5d.toFixed(2)}%
               </span>
@@ -245,12 +276,13 @@ function PredictionChip({
         {/* Signals */}
         {item.signals && item.signals.length > 0 && (
           <div className="px-3 py-2 border-t bg-muted/20">
+            <div className="text-[10px] text-muted-foreground mb-1">信号解读</div>
             <div className="space-y-1">
               {item.signals.map((signal, idx) => {
                 const iconMap = {
-                  divergence: <TrendingUp className="w-3 h-3 text-blue-500" />,
-                  compression: <Activity className="w-3 h-3 text-purple-500" />,
-                  activation: <Zap className="w-3 h-3 text-yellow-500" />,
+                  divergence: <TrendingUp className="w-3 h-3 text-blue-500 shrink-0" />,
+                  compression: <BarChart3 className="w-3 h-3 text-purple-500 shrink-0" />,
+                  activation: <Zap className="w-3 h-3 text-yellow-500 shrink-0" />,
                 }
                 return (
                   <div key={idx} className="flex items-start gap-1.5 text-[11px]">
@@ -358,6 +390,21 @@ export function TomorrowPrediction({ selectedDate }: TomorrowPredictionProps) {
   const [factors, setFactors] = useState<PredictionConfigInput>(DEFAULT_FACTORS)
   const [useCustomFactors, setUseCustomFactors] = useState(false)
   const [configOpen, setConfigOpen] = useState(false)
+
+  // Track previous date to detect changes
+  const prevDateRef = useRef(selectedDate)
+
+  // Reset to default query when selectedDate changes
+  useEffect(() => {
+    if (prevDateRef.current !== selectedDate) {
+      // Date changed, reset custom factors to use default query with new date
+      if (useCustomFactors) {
+        setUseCustomFactors(false)
+      }
+      setCurrentPage(0)
+      prevDateRef.current = selectedDate
+    }
+  }, [selectedDate, useCustomFactors])
 
   // Default API call
   const defaultQuery = useGetEtfPredictionApiV1AlphaRadarEtfPredictionGet(
