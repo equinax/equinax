@@ -297,6 +297,7 @@ async def daily_data_update(ctx: Dict[str, Any]) -> Dict[str, Any]:
     logger.info("[4/4] Triggering classification update...")
     try:
         from workers.classification_tasks import daily_classification_update
+        from workers.batch_sync import get_latest_trading_day
         # 使用实际交易日而非 date.today()
         trading_day = get_latest_trading_day()
         classification_result = await daily_classification_update(ctx, str(trading_day))

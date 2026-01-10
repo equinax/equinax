@@ -42,7 +42,7 @@ docker compose exec db psql -U quant -d quantdb
 
 | Service  | Container       | Host Port | Description            |
 |----------|-----------------|-----------|------------------------|
-| API      | quant_api       | 8000      | FastAPI backend        |
+| API      | quant_api       | 3080      | FastAPI backend        |
 | Frontend | quant_frontend  | 3000      | React dev server       |
 | Database | quant_db        | 54321     | TimescaleDB/PostgreSQL |
 | Redis    | quant_redis     | 6379      | Task queue & cache     |
@@ -106,7 +106,7 @@ API types are auto-generated from OpenAPI spec:
 pnpm orval
 ```
 
-This reads from `http://localhost:8000/openapi.json` and generates typed hooks.
+This reads from `http://localhost:3080/openapi.json` and generates typed hooks.
 
 ## Industry Classification Systems
 
