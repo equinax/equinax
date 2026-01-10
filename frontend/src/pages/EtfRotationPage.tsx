@@ -81,7 +81,7 @@ export default function EtfRotationPage() {
   // Prediction overlay state
   const [showPrediction, setShowPrediction] = useState(false)
   const [predictionDate, setPredictionDate] = useState<string | null>(null)
-  const [predictionTopN, setPredictionTopN] = useState(30)
+  const [predictionTopN, setPredictionTopN] = useState(5)
 
   // Initial data fetch
   const { data: initialData, isLoading, isFetching } = useGetEtfRotationFlatApiV1AlphaRadarEtfRotationFlatGet(

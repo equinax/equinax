@@ -17,6 +17,8 @@ interface EtfMatrixCellProps {
   showText?: boolean
   onHover: (event: React.MouseEvent) => void
   onLeave: () => void
+  /** Highlight cell with neutral border (for prediction intersection) */
+  highlight?: boolean
 }
 
 /**
@@ -96,6 +98,7 @@ export const EtfMatrixCell = memo(function EtfMatrixCell({
   showText = true,
   onHover,
   onLeave,
+  highlight = false,
 }: EtfMatrixCellProps) {
   const bgColor = getChangeColor(changePct)
   const textColor = getTextColor(bgColor)
@@ -103,6 +106,10 @@ export const EtfMatrixCell = memo(function EtfMatrixCell({
 
   // Calculate font size based on width (smaller for narrow cells)
   const fontSize = width < 20 ? 5 : width < 28 ? 6 : width < 36 ? 7 : 8
+
+  // Highlight border: neutral blue color for prediction intersection
+  const strokeColor = highlight ? '#3b82f6' : '#e5e5e5'
+  const strokeWidth = highlight ? 1.5 : 0.5
 
   return (
     <g
@@ -117,8 +124,8 @@ export const EtfMatrixCell = memo(function EtfMatrixCell({
         width={width}
         height={height}
         fill={bgColor}
-        stroke="#e5e5e5"
-        strokeWidth={0.5}
+        stroke={strokeColor}
+        strokeWidth={strokeWidth}
       />
       {/* Text - only show when showText is true */}
       {showText && (

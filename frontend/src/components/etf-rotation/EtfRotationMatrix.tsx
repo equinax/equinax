@@ -46,7 +46,7 @@ export function EtfRotationMatrix({
   predictionData,
   predictionDate,
   onPredictionDateChange,
-  predictionTopN = 30,
+  predictionTopN = 5,
 }: EtfRotationMatrixProps) {
   const containerRef = useRef<HTMLDivElement>(null)
   const scrollContainerRef = useRef<HTMLDivElement>(null)
@@ -423,29 +423,49 @@ export function EtfRotationMatrix({
           </g>
 
           {/* Matrix cells */}
-          <g transform={`translate(${DATE_COLUMN_WIDTH}, 0)`}>
-            {data.trading_days.map((dateStr, rowIndex) => (
-              <g key={dateStr}>
-                {sortedSubCategories.map((column, colIndex) => {
-                  const cell = column.cells.find((c) => c.date === dateStr)
+          {/* Prediction highlights the NEXT day (one row up since dates are descending) */}
+          {(() => {
+            const predictionDateIndex = showPrediction && predictionDate
+              ? data.trading_days.indexOf(predictionDate)
+              : -1
+            // Only highlight if prediction date exists and is not the first row (most recent)
+            const targetRowIndex = predictionDateIndex > 0 ? predictionDateIndex - 1 : -1
+
+            return (
+              <g transform={`translate(${DATE_COLUMN_WIDTH}, 0)`}>
+                {data.trading_days.map((dateStr, rowIndex) => {
+                  const isPredictionTargetRow = rowIndex === targetRowIndex
 
                   return (
-                    <EtfMatrixCell
-                      key={`${column.name}-${dateStr}`}
-                      x={colIndex * cellWidth}
-                      y={rowIndex * CELL_HEIGHT}
-                      width={cellWidth}
-                      height={CELL_HEIGHT}
-                      changePct={cell?.change_pct ? Number(cell.change_pct) : null}
-                      showText={showCellText}
-                      onHover={(e) => handleCellHover(column, dateStr, e)}
-                      onLeave={handleCellLeave}
-                    />
+                    <g key={dateStr}>
+                      {sortedSubCategories.map((column, colIndex) => {
+                        const cell = column.cells.find((c) => c.date === dateStr)
+                        const predScore = predictionScoreMap.get(column.name) || 0
+                        const hasPrediction = showPrediction && predScore > 0
+                        // Highlight cell at intersection of next-day row and prediction column
+                        const isIntersection = isPredictionTargetRow && hasPrediction
+
+                        return (
+                          <EtfMatrixCell
+                            key={`${column.name}-${dateStr}`}
+                            x={colIndex * cellWidth}
+                            y={rowIndex * CELL_HEIGHT}
+                            width={cellWidth}
+                            height={CELL_HEIGHT}
+                            changePct={cell?.change_pct ? Number(cell.change_pct) : null}
+                            showText={showCellText}
+                            onHover={(e) => handleCellHover(column, dateStr, e)}
+                            onLeave={handleCellLeave}
+                            highlight={isIntersection}
+                          />
+                        )
+                      })}
+                    </g>
                   )
                 })}
               </g>
-            ))}
-          </g>
+            )
+          })()}
         </svg>
 
         {/* Loading More Indicator */}
