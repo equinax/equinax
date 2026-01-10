@@ -408,17 +408,25 @@ export function TomorrowPrediction({ selectedDate }: TomorrowPredictionProps) {
   // Track previous date to detect changes
   const prevDateRef = useRef(selectedDate)
 
-  // Reset to default query when selectedDate changes
+  // Preview API for custom factors
+  const previewMutation = usePreviewEtfPredictionApiV1AlphaRadarEtfPredictionPreviewPost()
+
+  // When date changes, re-trigger preview if using custom factors
   useEffect(() => {
     if (prevDateRef.current !== selectedDate) {
-      // Date changed, reset custom factors to use default query with new date
-      if (useCustomFactors) {
-        setUseCustomFactors(false)
-      }
       setCurrentPage(0)
       prevDateRef.current = selectedDate
+      // If using custom factors, re-fetch with new date
+      if (useCustomFactors) {
+        previewMutation.mutate({
+          data: {
+            ...factors,
+            date: selectedDate ? format(selectedDate, 'yyyy-MM-dd') : undefined,
+          },
+        })
+      }
     }
-  }, [selectedDate, useCustomFactors])
+  }, [selectedDate, useCustomFactors, factors, previewMutation])
 
   // Default API call
   const defaultQuery = useGetEtfPredictionApiV1AlphaRadarEtfPredictionGet(
@@ -433,9 +441,6 @@ export function TomorrowPrediction({ selectedDate }: TomorrowPredictionProps) {
       },
     }
   )
-
-  // Preview API for custom factors
-  const previewMutation = usePreviewEtfPredictionApiV1AlphaRadarEtfPredictionPreviewPost()
 
   // Handle factor change
   const handleFactorChange = useCallback((key: FactorKey, enabled: boolean, weight: number) => {
