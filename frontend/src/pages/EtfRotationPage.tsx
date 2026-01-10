@@ -95,17 +95,20 @@ export default function EtfRotationPage() {
     }
   )
 
-  // Update allData when initial data changes
+  // Update allData when initial data changes (only on initial load)
   useEffect(() => {
-    if (initialData) {
+    if (initialData && !allData) {
       setAllData(initialData)
       setHasMore(initialData.trading_days.length === DAYS_PER_PAGE)
-      // Set default prediction date to first trading day
-      if (!predictionDate && initialData.trading_days.length > 0) {
-        setPredictionDate(initialData.trading_days[0])
-      }
     }
-  }, [initialData, predictionDate])
+  }, [initialData, allData])
+
+  // Set default prediction date when data is first available
+  useEffect(() => {
+    if (allData && !predictionDate && allData.trading_days.length > 0) {
+      setPredictionDate(allData.trading_days[0])
+    }
+  }, [allData, predictionDate])
 
   // Fetch prediction data when enabled
   const { data: predictionData } = useGetEtfPredictionApiV1AlphaRadarEtfPredictionGet(
