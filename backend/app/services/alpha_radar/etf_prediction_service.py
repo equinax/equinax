@@ -26,6 +26,7 @@ EXCLUDED_CATEGORIES = {"other", "bond"}
 # Lookback periods
 VOLUME_LOOKBACK_DAYS = 60
 PRICE_LOOKBACK_DAYS = 3  # Reduced from 5 for faster signal response
+VOLUME_BASELINE_DAYS = 120  # For divergence baseline calculation
 
 
 class ETFPredictionService:
@@ -72,8 +73,8 @@ class ETFPredictionService:
         if df.is_empty():
             return self._empty_response()
 
-        # Load industry volume data for stock-level signals
-        industry_df = await self._load_industry_volume(trading_days)
+        # Load industry volume data for stock-level signals (with 120-day baseline)
+        industry_df = await self._load_industry_volume(trading_days, target_date)
 
         # Classify ETFs
         df = self._classify_etfs(df)
@@ -159,23 +160,60 @@ class ETFPredictionService:
             pl.col("amount").cast(pl.Float64),
         ])
 
-    async def _load_industry_volume(self, trading_days: List[date]) -> pl.DataFrame:
-        """Load stock volume aggregated by Shenwan L1 industry."""
+    async def _load_industry_volume(self, trading_days: List[date], target_date: date) -> pl.DataFrame:
+        """Load stock volume aggregated by Shenwan L1 industry with 120-day baseline."""
+        # First, get the baseline start date (120 trading days before target)
+        baseline_days_result = await self.db.execute(
+            text("""
+                SELECT DISTINCT date FROM market_daily
+                WHERE date <= :end_date
+                ORDER BY date DESC
+                LIMIT :days
+            """),
+            {"end_date": target_date, "days": VOLUME_BASELINE_DAYS}
+        )
+        baseline_dates = [row[0] for row in baseline_days_result.fetchall()]
+
+        if not baseline_dates:
+            return pl.DataFrame()
+
+        # Load daily industry volumes with baseline calculation
         query = text("""
+            WITH daily_totals AS (
+                SELECT
+                    sp.sw_industry_l1 as industry,
+                    md.date,
+                    SUM(md.amount) as industry_amount,
+                    AVG(md.pct_chg) as industry_change
+                FROM market_daily md
+                JOIN stock_profile sp ON md.code = sp.code
+                WHERE md.date = ANY(:all_dates)
+                  AND sp.sw_industry_l1 IS NOT NULL
+                  AND md.amount > 0
+                GROUP BY sp.sw_industry_l1, md.date
+            ),
+            baselines AS (
+                SELECT
+                    industry,
+                    AVG(industry_amount) as vol_120d_avg
+                FROM daily_totals
+                GROUP BY industry
+            )
             SELECT
-                sp.sw_industry_l1 as industry,
-                md.date,
-                SUM(md.amount) as industry_amount,
-                AVG(md.pct_chg) as industry_change
-            FROM market_daily md
-            JOIN stock_profile sp ON md.code = sp.code
-            WHERE md.date = ANY(:dates)
-              AND sp.sw_industry_l1 IS NOT NULL
-              AND md.amount > 0
-            GROUP BY sp.sw_industry_l1, md.date
+                dt.industry,
+                dt.date,
+                dt.industry_amount,
+                dt.industry_change,
+                b.vol_120d_avg
+            FROM daily_totals dt
+            JOIN baselines b ON dt.industry = b.industry
+            WHERE dt.date = ANY(:trading_dates)
         """)
 
-        result = await self.db.execute(query, {"dates": trading_days})
+        result = await self.db.execute(query, {
+            "all_dates": baseline_dates,
+            "trading_dates": trading_days
+        })
         rows = result.fetchall()
         columns = result.keys()
 
@@ -186,6 +224,7 @@ class ETFPredictionService:
         return df.with_columns([
             pl.col("industry_amount").cast(pl.Float64),
             pl.col("industry_change").cast(pl.Float64),
+            pl.col("vol_120d_avg").cast(pl.Float64),
         ])
 
     def _classify_etfs(self, df: pl.DataFrame) -> pl.DataFrame:
@@ -203,7 +242,7 @@ class ETFPredictionService:
                 "mapped_industry": mapped_industry,
             })
 
-        class_df = pl.DataFrame(classifications)
+        class_df = pl.DataFrame(classifications, infer_schema_length=None)
         df = df.join(class_df, on=["code", "date"], how="left")
         return df
 
@@ -255,6 +294,16 @@ class ETFPredictionService:
         if not industry_df.is_empty():
             # Prepare industry volume with rolling calculations
             industry_df = industry_df.sort(["industry", "date"])
+
+            # Calculate daily volume deviation from 120-day baseline
+            industry_df = industry_df.with_columns([
+                pl.when(pl.col("vol_120d_avg") > 0)
+                .then((pl.col("industry_amount") - pl.col("vol_120d_avg")) / pl.col("vol_120d_avg") * 100)
+                .otherwise(0.0)
+                .alias("daily_deviation_pct"),
+            ])
+
+            # Calculate rolling metrics including 3-day average deviation
             industry_df = industry_df.with_columns([
                 pl.col("industry_amount")
                 .rolling_sum(window_size=PRICE_LOOKBACK_DAYS, min_periods=1)
@@ -275,6 +324,12 @@ class ETFPredictionService:
                 .rolling_mean(window_size=PRICE_LOOKBACK_DAYS, min_periods=1)
                 .over("industry")
                 .alias("industry_flow_avg"),
+
+                # 3-day average deviation for divergence calculation
+                pl.col("daily_deviation_pct")
+                .rolling_mean(window_size=PRICE_LOOKBACK_DAYS, min_periods=1)
+                .over("industry")
+                .alias("volume_deviation_3d_avg"),
             ])
 
             # Join to subcategory_df based on mapped_industry and date
@@ -282,7 +337,8 @@ class ETFPredictionService:
                 industry_df.select([
                     "industry", "date", "industry_amount",
                     "industry_flow_nd", "industry_vol_60d_min",
-                    "industry_vol_60d_max", "industry_flow_avg"
+                    "industry_vol_60d_max", "industry_flow_avg",
+                    "volume_deviation_3d_avg"  # For new divergence formula
                 ]),
                 left_on=["mapped_industry", "date"],
                 right_on=["industry", "date"],
@@ -361,7 +417,7 @@ class ETFPredictionService:
                 ).clip(0, 1).alias("volume_percentile"),
             ])
 
-        # Calculate ranks across all subcategories
+        # Calculate ranks across all subcategories (still needed for some analysis)
         n_subcats = target_df.height
         if n_subcats == 0:
             return target_df
@@ -371,13 +427,41 @@ class ETFPredictionService:
             (pl.col("flow_ratio").rank() / n_subcats).alias("flow_rank"),
         ])
 
-        # Calculate Divergence Score (0-40)
-        # High score when: price rank low (beaten down) AND flow rank high (money coming in)
-        target_df = target_df.with_columns([
-            ((1 - pl.col("price_rank")) * pl.col("flow_rank") * 40)
-            .clip(0, 40)
-            .alias("divergence_score"),
-        ])
+        # Calculate Divergence Score (0-40) - NEW: 量升价滞 formula
+        # High score when: volume surge (above 120d avg) + price stagnation (small absolute change)
+        has_deviation_data = "volume_deviation_3d_avg" in target_df.columns
+
+        if has_deviation_data:
+            target_df = target_df.with_columns([
+                # Volume surge score: 3-day avg deviation / 100, capped at 1.0
+                # +100% deviation = 1.0 (max), +50% = 0.5, 0% = 0
+                pl.when(pl.col("volume_deviation_3d_avg").is_not_null())
+                .then((pl.col("volume_deviation_3d_avg") / 100).clip(0, 1))
+                .otherwise(0.0)
+                .alias("volume_surge_score"),
+
+                # 3-day average price change
+                (pl.col("change_nd") / PRICE_LOOKBACK_DAYS).alias("change_3d_avg"),
+
+                # Price stagnation score: 1 - abs(3d_avg_change) / 3
+                # 0% change = 1.0, 1.5% change = 0.5, 3%+ change = 0
+                (1 - (pl.col("change_nd") / PRICE_LOOKBACK_DAYS).abs() / 3).clip(0, 1)
+                .alias("price_stagnation_score"),
+            ])
+
+            # Divergence = volume_surge × price_stagnation × 40
+            target_df = target_df.with_columns([
+                (pl.col("volume_surge_score") * pl.col("price_stagnation_score") * 40)
+                .clip(0, 40)
+                .alias("divergence_score"),
+            ])
+        else:
+            # Fallback to old formula if no deviation data
+            target_df = target_df.with_columns([
+                ((1 - pl.col("price_rank")) * pl.col("flow_rank") * 40)
+                .clip(0, 40)
+                .alias("divergence_score"),
+            ])
 
         # Calculate Compression Score (0-30)
         # High score when volume is near 60-day low
@@ -510,6 +594,7 @@ class ETFPredictionService:
                 "change_5d": self._to_decimal(row.get("change_nd")),  # Now 3-day change
                 "flow_ratio": self._to_decimal(row.get("flow_ratio")),
                 "volume_percentile": self._to_decimal(row.get("volume_percentile")),
+                "volume_deviation_pct": self._to_decimal(row.get("volume_deviation_3d_avg")),  # 3-day avg deviation from 120d baseline
                 "signals": signals,
                 "rep_code": row.get("rep_code"),
                 "rep_name": row.get("rep_name"),
@@ -522,14 +607,17 @@ class ETFPredictionService:
         """Generate human-readable signal explanations."""
         signals = []
 
-        # Divergence signal
-        price_rank = row.get("price_rank", 0.5)
-        flow_rank = row.get("flow_rank", 0.5)
-        if price_rank < 0.3 and flow_rank > 0.7:
+        # Divergence signal - NEW: 量升价滞
+        volume_surge = row.get("volume_surge_score", 0) or 0
+        price_stag = row.get("price_stagnation_score", 0) or 0
+        volume_dev = row.get("volume_deviation_3d_avg", 0) or 0
+        change_3d_avg = row.get("change_3d_avg", 0) or 0
+
+        if volume_surge > 0.15 and price_stag > 0.4:
             signals.append({
                 "type": "divergence",
                 "score": self._to_decimal(row.get("divergence_score", 0)),
-                "description": f"{PRICE_LOOKBACK_DAYS}日涨幅排名后30%，但资金流入排名前30%，价量背离明显",
+                "description": f"量升价滞：近3日成交量较均值+{volume_dev:.0f}%，日均涨幅仅{change_3d_avg:.1f}%",
             })
 
         # Compression signal
