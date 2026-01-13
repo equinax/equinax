@@ -92,3 +92,4 @@ backend/alembic/versions/*.pyc
 *.key
 credentials.json
 .tmp/
+.aider*
