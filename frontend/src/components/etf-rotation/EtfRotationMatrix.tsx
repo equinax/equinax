@@ -54,6 +54,8 @@ export function EtfRotationMatrix({
   const [containerWidth, setContainerWidth] = useState(0)
   const [sortByDate, setSortByDate] = useState<string | null>(null)
   const [sortDirection, setSortDirection] = useState<SortDirection>('none')
+  // Track which categories are hidden
+  const [hiddenCategories, setHiddenCategories] = useState<Set<string>>(new Set())
 
   // Track container width for responsive sizing
   useEffect(() => {
@@ -126,13 +128,31 @@ export function EtfRotationMatrix({
     )
   }, [predictionData, predictionTopN])
 
+  // Toggle category visibility
+  const toggleCategoryVisibility = useCallback((category: string) => {
+    setHiddenCategories(prev => {
+      const next = new Set(prev)
+      if (next.has(category)) {
+        next.delete(category)
+      } else {
+        next.add(category)
+      }
+      return next
+    })
+  }, [])
+
+  // Filter sub-categories based on hidden categories
+  const visibleSubCategories = useMemo(() => {
+    return data.sub_categories.filter(col => !hiddenCategories.has(col.category))
+  }, [data.sub_categories, hiddenCategories])
+
   // Sorted sub-categories
   const sortedSubCategories = useMemo(() => {
     if (sortDirection === 'none' || !sortByDate) {
-      return data.sub_categories
+      return visibleSubCategories
     }
 
-    return [...data.sub_categories].sort((a, b) => {
+    return [...visibleSubCategories].sort((a, b) => {
       const cellA = a.cells.find((c) => c.date === sortByDate)
       const cellB = b.cells.find((c) => c.date === sortByDate)
 
@@ -141,7 +161,7 @@ export function EtfRotationMatrix({
 
       return sortDirection === 'desc' ? valB - valA : valA - valB
     })
-  }, [data.sub_categories, sortByDate, sortDirection])
+  }, [visibleSubCategories, sortByDate, sortDirection])
 
   // Group sub-categories by category for header rendering
   const categoryGroups = useMemo(() => {
@@ -150,13 +170,15 @@ export function EtfRotationMatrix({
       label: string
       startIndex: number
       count: number
+      isHidden: boolean
     }> = []
 
     let currentCategory = ''
     let startIndex = 0
     let count = 0
 
-    sortedSubCategories.forEach((col, index) => {
+    // We need to use visibleSubCategories to calculate indices
+    visibleSubCategories.forEach((col, index) => {
       if (col.category !== currentCategory) {
         if (currentCategory) {
           groups.push({
@@ -164,6 +186,7 @@ export function EtfRotationMatrix({
             label: data.category_labels[currentCategory] || currentCategory,
             startIndex,
             count,
+            isHidden: hiddenCategories.has(currentCategory),
           })
         }
         currentCategory = col.category
@@ -181,11 +204,12 @@ export function EtfRotationMatrix({
         label: data.category_labels[currentCategory] || currentCategory,
         startIndex,
         count,
+        isHidden: hiddenCategories.has(currentCategory),
       })
     }
 
     return groups
-  }, [sortedSubCategories, data.category_labels])
+  }, [visibleSubCategories, data.category_labels, hiddenCategories])
 
   // Calculate dimensions - fit all columns in viewport
   const numColumns = sortedSubCategories.length
@@ -279,31 +303,52 @@ export function EtfRotationMatrix({
                 border: '#ddd',
               }
               const groupWidth = group.count * cellWidth
+              const isHidden = group.isHidden
 
               return (
-                <g key={group.category} transform={`translate(${group.startIndex * cellWidth}, 0)`}>
+                <g 
+                  key={group.category} 
+                  transform={`translate(${group.startIndex * cellWidth}, 0)`}
+                  style={{ cursor: 'pointer' }}
+                  onClick={() => toggleCategoryVisibility(group.category)}
+                >
                   <rect
                     x={0}
                     y={0}
                     width={groupWidth}
                     height={CATEGORY_HEADER_HEIGHT}
-                    fill={colors.bg}
-                    stroke={colors.border}
+                    fill={isHidden ? '#e5e5e5' : colors.bg}
+                    stroke={isHidden ? '#999' : colors.border}
                     strokeWidth={0.5}
                   />
                   {/* Only show label if group is wide enough */}
                   {groupWidth >= 20 && (
-                    <text
-                      x={groupWidth / 2}
-                      y={CATEGORY_HEADER_HEIGHT / 2}
-                      textAnchor="middle"
-                      dominantBaseline="middle"
-                      fontSize={groupWidth >= 40 ? 9 : 7}
-                      fontWeight={500}
-                      fill={colors.text}
-                    >
-                      {groupWidth >= 40 ? group.label : group.label.slice(0, 2)}
-                    </text>
+                    <>
+                      <text
+                        x={groupWidth / 2}
+                        y={CATEGORY_HEADER_HEIGHT / 2}
+                        textAnchor="middle"
+                        dominantBaseline="middle"
+                        fontSize={groupWidth >= 40 ? 9 : 7}
+                        fontWeight={500}
+                        fill={isHidden ? '#999' : colors.text}
+                      >
+                        {groupWidth >= 40 ? group.label : group.label.slice(0, 2)}
+                      </text>
+                      {/* Add a small eye icon to indicate hidden state */}
+                      {isHidden && (
+                        <text
+                          x={groupWidth - 4}
+                          y={CATEGORY_HEADER_HEIGHT - 2}
+                          textAnchor="end"
+                          dominantBaseline="middle"
+                          fontSize={6}
+                          fill="#999"
+                        >
+                          👁
+                        </text>
+                      )}
+                    </>
                   )}
                 </g>
               )
