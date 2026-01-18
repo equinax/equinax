@@ -8,7 +8,7 @@
  */
 
 import { useState, useRef, useCallback, useEffect, useMemo } from 'react'
-import { ArrowUp, ArrowDown } from 'lucide-react'
+import { ArrowUp, ArrowDown, ChevronDown } from 'lucide-react'
 import type { EtfRotationFlatResponse, EtfRotationColumn, EtfPredictionResponse } from '@/api/generated/schemas'
 import { EtfMatrixCell } from './EtfMatrixCell'
 import { EtfMatrixTooltip } from './EtfMatrixTooltip'
@@ -19,7 +19,8 @@ const CELL_HEIGHT = 18
 const DATE_COLUMN_WIDTH = 38
 const CATEGORY_HEADER_HEIGHT = 16
 const SUB_HEADER_HEIGHT = 38 // For vertical text
-const HEADER_HEIGHT = CATEGORY_HEADER_HEIGHT + SUB_HEADER_HEIGHT
+const COLLAPSED_ROW_HEIGHT = 16
+const HEADER_CONTENT_HEIGHT = CATEGORY_HEADER_HEIGHT + SUB_HEADER_HEIGHT
 
 // Sort direction: none → desc → asc → none (3-state cycle)
 type SortDirection = 'none' | 'desc' | 'asc'
@@ -56,6 +57,8 @@ export function EtfRotationMatrix({
   const [sortDirection, setSortDirection] = useState<SortDirection>('none')
   // Track which categories are hidden
   const [hiddenCategories, setHiddenCategories] = useState<Set<string>>(new Set())
+  // Hover state for collapsed icons
+  const [collapsedHover, setCollapsedHover] = useState<string | null>(null)
 
   // Track container width for responsive sizing
   useEffect(() => {
@@ -129,14 +132,17 @@ export function EtfRotationMatrix({
   }, [predictionData, predictionTopN])
 
   // Toggle category visibility
-  const toggleCategoryVisibility = useCallback((category: string) => {
+  const toggleCategoryVisibility = useCallback((categories: string | string[]) => {
+    const cats = Array.isArray(categories) ? categories : [categories]
     setHiddenCategories(prev => {
       const next = new Set(prev)
-      if (next.has(category)) {
-        next.delete(category)
-      } else {
-        next.add(category)
-      }
+      cats.forEach(c => {
+        if (next.has(c)) {
+          next.delete(c)
+        } else {
+          next.add(c)
+        }
+      })
       return next
     })
   }, [])
@@ -218,6 +224,76 @@ export function EtfRotationMatrix({
   const matrixHeight = data.trading_days.length * CELL_HEIGHT
   const svgWidth = containerWidth || DATE_COLUMN_WIDTH + numColumns * cellWidth
 
+  // Get all unique categories and their sub-category counts (for layout)
+  const { uniqueCategories, categoryCounts } = useMemo(() => {
+    // Preserve order from data.sub_categories
+    const cats = new Set<string>()
+    const counts = new Map<string, number>()
+    
+    data.sub_categories.forEach(c => {
+      cats.add(c.category)
+      counts.set(c.category, (counts.get(c.category) || 0) + 1)
+    })
+    
+    return { 
+      uniqueCategories: Array.from(cats), 
+      categoryCounts: counts 
+    }
+  }, [data.sub_categories])
+
+  // Calculate hidden groups and their positions
+  const hiddenGroups = useMemo(() => {
+    const groups: Array<{
+      categories: string[]
+      x: number
+      key: string
+    }> = []
+    
+    let currentX = 0
+    let currentHiddenBatch: string[] = []
+    let batchStartX = 0
+    
+    uniqueCategories.forEach(cat => {
+      if (hiddenCategories.has(cat)) {
+        if (currentHiddenBatch.length === 0) {
+          batchStartX = currentX
+        }
+        currentHiddenBatch.push(cat)
+      } else {
+        // Flush pending hidden batch
+        if (currentHiddenBatch.length > 0) {
+          groups.push({
+            categories: [...currentHiddenBatch],
+            x: batchStartX,
+            key: currentHiddenBatch.join('-')
+          })
+          currentHiddenBatch = []
+        }
+        
+        // Advance X by the width of this visible category
+        // Note: This assumes columns are ordered by category (standard view)
+        // If sorted by performance, this visual placeholder might not align perfectly with specific columns,
+        // but it maintains the relative order of category blocks which is acceptable.
+        currentX += (categoryCounts.get(cat) || 0) * cellWidth
+      }
+    })
+    
+    // Flush remaining
+    if (currentHiddenBatch.length > 0) {
+      groups.push({
+        categories: [...currentHiddenBatch],
+        x: batchStartX,
+        key: currentHiddenBatch.join('-')
+      })
+    }
+    
+    return groups
+  }, [uniqueCategories, hiddenCategories, cellWidth, categoryCounts])
+
+  // Calculate dynamic header height based on whether there are hidden groups
+  const collapsedRowHeight = hiddenGroups.length > 0 ? COLLAPSED_ROW_HEIGHT : 0
+  const totalHeaderHeight = collapsedRowHeight + HEADER_CONTENT_HEIGHT
+
   // Always show text now since it's compact (just "1.2")
   const showCellText = true
 
@@ -276,16 +352,22 @@ export function EtfRotationMatrix({
       <div className="flex-shrink-0">
         <svg
           width={svgWidth}
-          height={HEADER_HEIGHT}
+          height={totalHeaderHeight}
           className="overflow-visible"
           role="img"
           aria-label="ETF轮动矩阵表头"
         >
           {/* Date column header */}
-          <rect x={0} y={0} width={DATE_COLUMN_WIDTH} height={HEADER_HEIGHT} className="fill-muted" />
+          <rect
+            x={0}
+            y={collapsedRowHeight}
+            width={DATE_COLUMN_WIDTH}
+            height={HEADER_CONTENT_HEIGHT}
+            className="fill-muted"
+          />
           <text
             x={DATE_COLUMN_WIDTH / 2}
-            y={HEADER_HEIGHT / 2}
+            y={collapsedRowHeight + HEADER_CONTENT_HEIGHT / 2}
             textAnchor="middle"
             dominantBaseline="middle"
             fontSize={8}
@@ -294,8 +376,45 @@ export function EtfRotationMatrix({
             日期
           </text>
 
+          {/* Collapsed categories row */}
+          {hiddenGroups.length > 0 && (
+            <g transform={`translate(${DATE_COLUMN_WIDTH}, 0)`}>
+              {hiddenGroups.map((group) => {
+                // Determine icon color based on hover
+                const isHovered = collapsedHover === group.key
+                
+                return (
+                  <g
+                    key={group.key}
+                    transform={`translate(${group.x + cellWidth / 2}, ${COLLAPSED_ROW_HEIGHT / 2})`}
+                    style={{ cursor: 'pointer' }}
+                    onClick={() => toggleCategoryVisibility(group.categories)}
+                    onMouseEnter={() => setCollapsedHover(group.key)}
+                    onMouseLeave={() => setCollapsedHover(null)}
+                  >
+                    {/* Hit area */}
+                    <circle r={8} fill="transparent" />
+                    {/* Visual circle */}
+                    <circle 
+                      r={6} 
+                      className={`${isHovered ? 'fill-muted-foreground/30' : 'fill-muted'} transition-colors`}
+                    />
+                    {/* Icon */}
+                    <ChevronDown
+                      x={-4}
+                      y={-4}
+                      width={8}
+                      height={8}
+                      className="text-muted-foreground"
+                    />
+                  </g>
+                )
+              })}
+            </g>
+          )}
+
           {/* Category group headers (first row) */}
-          <g transform={`translate(${DATE_COLUMN_WIDTH}, 0)`}>
+          <g transform={`translate(${DATE_COLUMN_WIDTH}, ${collapsedRowHeight})`}>
             {categoryGroups.map((group) => {
               const colors = CATEGORY_COLORS[group.category] || {
                 bg: '#f5f5f5',
@@ -356,7 +475,7 @@ export function EtfRotationMatrix({
           </g>
 
           {/* Sub-category headers (second row) - vertical text with cell borders */}
-          <g transform={`translate(${DATE_COLUMN_WIDTH}, ${CATEGORY_HEADER_HEIGHT})`}>
+          <g transform={`translate(${DATE_COLUMN_WIDTH}, ${collapsedRowHeight + CATEGORY_HEADER_HEIGHT})`}>
             <rect x={0} y={0} width={svgWidth - DATE_COLUMN_WIDTH} height={SUB_HEADER_HEIGHT} className="fill-muted" />
             {sortedSubCategories.map((col, colIndex) => {
               const predScore = predictionScoreMap.get(col.name) || 0
@@ -404,6 +523,48 @@ export function EtfRotationMatrix({
               )
             })}
           </g>
+
+          {/* Collapsed industry tooltip - rendered last to be on top */}
+          {collapsedHover &&
+            (() => {
+              const hoveredGroup = hiddenGroups.find((g) => g.key === collapsedHover)
+              if (!hoveredGroup) return null
+
+              // Calculate position - below the arrow, on top of header
+              const xPos =
+                DATE_COLUMN_WIDTH + hoveredGroup.x + cellWidth / 2
+              const names = hoveredGroup.categories.map((c) => data.category_labels[c] || c)
+              const tooltipText = names.join(' · ')
+              const tooltipWidth = Math.max(60, tooltipText.length * 9 + 20)
+              const tooltipHeight = 22
+              // Position below the arrow (will overlay header row)
+              const yPos = COLLAPSED_ROW_HEIGHT + 2
+
+              return (
+                <g transform={`translate(${xPos}, ${yPos})`}>
+                  <rect
+                    x={-tooltipWidth / 2}
+                    y={0}
+                    width={tooltipWidth}
+                    height={tooltipHeight}
+                    rx={4}
+                    className="fill-popover"
+                    stroke="#888"
+                    strokeWidth={1}
+                  />
+                  <text
+                    x={0}
+                    y={tooltipHeight / 2}
+                    textAnchor="middle"
+                    dominantBaseline="middle"
+                    fontSize={11}
+                    className="fill-foreground"
+                  >
+                    {tooltipText}
+                  </text>
+                </g>
+              )
+            })()}
         </svg>
       </div>
 
