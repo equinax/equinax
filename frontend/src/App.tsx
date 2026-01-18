@@ -15,6 +15,7 @@ import DataSyncPage from '@/pages/DataSyncPage'
 import AlphaRadarPage from '@/pages/AlphaRadarPage'
 import IndustryRotationPage from '@/pages/IndustryRotationPage'
 import EtfRotationPage from '@/pages/EtfRotationPage'
+import DynamicBacktestPage from '@/pages/dynamic-backtest'
 
 function App() {
   return (
@@ -26,6 +27,7 @@ function App() {
           <Route path="strategies/new" element={<StrategyEditorPage />} />
           <Route path="strategies/:strategyId" element={<StrategyEditorPage />} />
           <Route path="backtest" element={<BacktestPage />} />
+          <Route path="backtest/dynamic" element={<DynamicBacktestPage />} />
           <Route path="results" element={<ResultsPage />} />
           <Route path="results/:jobId" element={<ResultDetailPage />} />
           <Route path="analysis/:jobId/:resultId" element={<TechnicalAnalysisPage />} />

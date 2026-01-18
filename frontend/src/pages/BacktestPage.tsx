@@ -2,13 +2,13 @@ import { useState } from 'react'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
-import { PlayCircle, Loader2, X, ListFilter, Plus, Trash2, Database, Users, PieChart, TrendingUp } from 'lucide-react'
+import { PlayCircle, Loader2, X, ListFilter, Plus, Trash2, Database, Users, PieChart, TrendingUp, MousePointerClick } from 'lucide-react'
 import { useListStrategiesApiV1StrategiesGet } from '@/api/generated/strategies/strategies'
 import { useListStocksApiV1StocksGet, useSearchAssetsApiV1StocksSearchGet } from '@/api/generated/stocks/stocks'
 import { useCreateBacktestApiV1BacktestsPost } from '@/api/generated/backtests/backtests'
 import { useListPredefinedPoolsApiV1PoolsPredefinedGet, usePreviewPoolApiV1PoolsPoolIdPreviewGet } from '@/api/generated/stock-pools/stock-pools'
 import { useQueryClient } from '@tanstack/react-query'
-import { useNavigate } from 'react-router-dom'
+import { useNavigate, Link } from 'react-router-dom'
 
 type SelectionMode = 'manual' | 'pool'
 type PoolCategory = 'stock' | 'etf'
@@ -159,9 +159,17 @@ export default function BacktestPage() {
   return (
     <div className="space-y-6">
       {/* Header */}
-      <div>
-        <h1 className="text-3xl font-bold">回测执行</h1>
-        <p className="text-muted-foreground">配置并执行策略回测</p>
+      <div className="flex items-center justify-between">
+        <div>
+          <h1 className="text-3xl font-bold">回测执行</h1>
+          <p className="text-muted-foreground">配置并执行策略回测</p>
+        </div>
+        <Button variant="outline" asChild>
+          <Link to="/backtest/dynamic">
+            <MousePointerClick className="mr-2 h-4 w-4" />
+            动态回测
+          </Link>
+        </Button>
       </div>
 
       <div className="grid gap-6 lg:grid-cols-2">
