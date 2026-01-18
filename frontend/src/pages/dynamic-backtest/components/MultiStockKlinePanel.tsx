@@ -1,5 +1,5 @@
-import { useEffect, useRef, useState, useCallback } from 'react'
-import { createChart, ColorType, IChartApi, CandlestickData, Time, SeriesMarker, SeriesMarkerPosition, SeriesMarkerShape } from 'lightweight-charts'
+import { useEffect, useRef, useState, useCallback, useMemo } from 'react'
+import { createChart, ColorType, IChartApi, CandlestickData, Time, SeriesMarker, SeriesMarkerPosition, SeriesMarkerShape, WhitespaceData } from 'lightweight-charts'
 import { X } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -11,9 +11,10 @@ import { useDynamicBacktestStore, getKlineOnDate, StockData, roundToLot, chartSy
 interface MiniKlineChartProps {
   stock: StockData
   height?: number
+  sharedDates: string[]
 }
 
-function MiniKlineChart({ stock, height = 180 }: MiniKlineChartProps) {
+function MiniKlineChart({ stock, height = 180, sharedDates }: MiniKlineChartProps) {
   const store = useDynamicBacktestStore()
   const chartContainerRef = useRef<HTMLDivElement>(null)
   const chartRef = useRef<IChartApi | null>(null)
@@ -172,6 +173,21 @@ function MiniKlineChart({ stock, height = 180 }: MiniKlineChartProps) {
     })).sort((a, b) => (a.time as string).localeCompare(b.time as string))
     
     volumeSeries.setData(volumeData)
+
+    // 添加隐藏时间轴系列，确保时间对齐（缺数据也保留时间轴）
+    if (sharedDates.length > 0) {
+      const timeAxisSeries = chart.addLineSeries({
+        color: 'transparent',
+        lineWidth: 1,
+        lastValueVisible: false,
+        priceLineVisible: false,
+        crosshairMarkerVisible: false,
+      })
+      const timeAxisData: WhitespaceData<Time>[] = sharedDates.map(date => ({
+        time: date as Time,
+      }))
+      timeAxisSeries.setData(timeAxisData)
+    }
     
     chart.timeScale().fitContent()
     
@@ -217,7 +233,7 @@ function MiniKlineChart({ stock, height = 180 }: MiniKlineChartProps) {
         chartRef.current = null
       }
     }
-  }, [stock, trades, isDark, height])
+  }, [stock, trades, isDark, height, sharedDates])
   
   return (
     <div className="relative">
@@ -341,6 +357,16 @@ function MiniKlineChart({ stock, height = 180 }: MiniKlineChartProps) {
 export function MultiStockKlinePanel() {
   const { stocks } = useDynamicBacktestStore()
   
+  const sharedDates = useMemo(() => {
+    const dateSet = new Set<string>()
+    stocks.forEach(stock => {
+      stock.kline.forEach(k => {
+        dateSet.add(k.date)
+      })
+    })
+    return Array.from(dateSet).sort()
+  }, [stocks])
+  
   const stockList = Array.from(stocks.values())
   
   if (stockList.length === 0) {
@@ -358,6 +384,7 @@ export function MultiStockKlinePanel() {
           key={stock.code}
           stock={stock}
           height={Math.max(160, 220 - stockList.length * 15)}
+          sharedDates={sharedDates}
         />
       ))}
     </div>
