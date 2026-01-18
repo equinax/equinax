@@ -19,7 +19,7 @@ export function TradeList() {
         <p className="text-sm text-muted-foreground text-center py-4">
           暂无交易记录
         </p>
-        </CardContent>
+      </CardContent>
       </Card>
     )
   }
@@ -41,7 +41,7 @@ export function TradeList() {
             return (
               <div
                 key={trade.id}
-                className="flex items-center justify-between p-1.5 rounded-md bg-muted/30 text-sm"
+                className="flex items-center justify-between px-0 py-0.5 rounded-sm bg-muted/20 text-sm"
               >
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center gap-2">
@@ -55,13 +55,15 @@ export function TradeList() {
                       {trade.type === 'BUY' ? '买入' : '卖出'}
                     </span>
                     <span className="font-mono text-xs">{trade.date}</span>
+                    <span className="text-xs text-muted-foreground">
+                      {stock?.name || trade.stockCode}
+                    </span>
                   </div>
                   <div className="flex items-center gap-2 mt-1 text-xs text-muted-foreground">
-                    <span>{stock?.name || trade.stockCode}</span>
-                    <span>{trade.executedShares}股</span>
-                    <span>@¥{trade.price.toFixed(2)}</span>
-                    <span>
-                      {trade.type === 'BUY' ? '花费' : '收入'} ¥{trade.executedAmount.toFixed(0)}
+                    <span>{trade.executedShares}</span>
+                    <span>¥{trade.price.toFixed(2)}</span>
+                    <span className={trade.type === 'BUY' ? 'text-red-600 dark:text-red-400' : 'text-green-600 dark:text-green-400'}>
+                      ¥{trade.executedAmount.toFixed(0)}
                     </span>
                   </div>
                 </div>

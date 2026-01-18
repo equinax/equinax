@@ -14,20 +14,17 @@ export function PositionPanel() {
   return (
     <Card>
       <CardHeader className="p-3 pb-2">
-        <CardTitle className="text-base">持仓与资金</CardTitle>
-      </CardHeader>
-      <CardContent className="p-3 pt-0 space-y-2">
-        {/* 资金概览 */}
-        <div className="grid grid-cols-2 gap-1.5 text-sm">
-          <div className="p-2 rounded-md bg-muted/30">
-            <p className="text-muted-foreground text-xs">可用现金</p>
-            <p className="font-mono font-medium">¥{currentCash.toLocaleString('zh-CN', { maximumFractionDigits: 0 })}</p>
-          </div>
-          <div className="p-2 rounded-md bg-muted/30">
-            <p className="text-muted-foreground text-xs">持仓市值</p>
-            <p className="font-mono font-medium">¥{totalPositionValue.toLocaleString('zh-CN', { maximumFractionDigits: 0 })}</p>
+        <div className="flex items-center justify-between gap-2">
+          <CardTitle className="text-base">持仓与资金</CardTitle>
+          <div className="flex items-center gap-3 text-xs">
+            <span className="text-muted-foreground">可用</span>
+            <span className="font-mono font-medium">¥{currentCash.toLocaleString('zh-CN', { maximumFractionDigits: 0 })}</span>
+            <span className="text-muted-foreground">持仓</span>
+            <span className="font-mono font-medium">¥{totalPositionValue.toLocaleString('zh-CN', { maximumFractionDigits: 0 })}</span>
           </div>
         </div>
+      </CardHeader>
+      <CardContent className="p-3 pt-0 space-y-2">
         
         {/* 总资产 */}
         <div className="p-2 rounded-md border">

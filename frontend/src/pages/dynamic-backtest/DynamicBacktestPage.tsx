@@ -13,24 +13,24 @@ import { EquityChart } from './components/EquityChart'
 
 export default function DynamicBacktestPage() {
   const store = useDynamicBacktestStore()
-  
+
   const [stockSearch, setStockSearch] = useState('')
   const [showSearchResults, setShowSearchResults] = useState(false)
   const [pendingStockCode, setPendingStockCode] = useState<string | null>(null)
-  
+
   // 页面离开时重置同步管理器
   useEffect(() => {
     return () => {
       chartSyncManager.reset()
     }
   }, [])
-  
+
   // 搜索股票
   const { data: searchResults } = useSearchAssetsApiV1StocksSearchGet(
     { q: stockSearch },
     { query: { enabled: stockSearch.length >= 2 } }
   )
-  
+
   // 获取待添加股票的K线数据
   const { data: klineData, isLoading: isLoadingKline } = useGetKlineApiV1StocksCodeKlineGet(
     pendingStockCode || '',
@@ -41,7 +41,7 @@ export default function DynamicBacktestPage() {
     },
     { query: { enabled: !!pendingStockCode } }
   )
-  
+
   // 获取基准ETF的K线数据
   const { data: benchmarkKline } = useGetKlineApiV1StocksCodeKlineGet(
     store.benchmarkCode,
@@ -52,7 +52,7 @@ export default function DynamicBacktestPage() {
     },
     { query: { enabled: !!store.benchmarkCode } }
   )
-  
+
   // 当基准数据加载完成，更新store
   useEffect(() => {
     if (benchmarkKline && benchmarkKline.data && benchmarkKline.data.length > 0) {
@@ -73,7 +73,7 @@ export default function DynamicBacktestPage() {
       store.setBenchmarkData(benchmarkData)
     }
   }, [benchmarkKline, store.benchmarkCode])
-  
+
   // 当K线数据加载完成，添加到store
   useEffect(() => {
     if (klineData && pendingStockCode) {
@@ -96,7 +96,7 @@ export default function DynamicBacktestPage() {
       setPendingStockCode(null)
     }
   }, [klineData, pendingStockCode])
-  
+
   const handleAddStock = (code: string) => {
     if (!store.stocks.has(code)) {
       setPendingStockCode(code)
@@ -104,7 +104,7 @@ export default function DynamicBacktestPage() {
     setStockSearch('')
     setShowSearchResults(false)
   }
-  
+
   return (
     <div className="space-y-2">
       {/* 顶部导航 */}
@@ -118,7 +118,7 @@ export default function DynamicBacktestPage() {
           </Button>
           <div>
             <h1 className="text-2xl font-bold">动态回测</h1>
-            <p className="text-sm text-muted-foreground">手动模拟买卖，实时计算收益</p>
+            {/* <p className="text-sm text-muted-foreground">手动模拟买卖，实时计算收益</p> */}
           </div>
         </div>
         <Button variant="outline" size="sm" onClick={store.reset}>
@@ -126,7 +126,7 @@ export default function DynamicBacktestPage() {
           重置
         </Button>
       </div>
-      
+
       {/* 主布局 */}
       <div className="grid gap-3 lg:grid-cols-[300px_1fr]">
         {/* 左侧面板 */}
@@ -134,20 +134,22 @@ export default function DynamicBacktestPage() {
           {/* 配置卡片 */}
           <Card>
             <CardHeader className="p-3 pb-2">
-              <CardTitle className="text-base">回测配置</CardTitle>
-            </CardHeader>
-            <CardContent className="p-3 pt-0 space-y-3">
-              {/* 初始资金 */}
-              <div className="space-y-1.5">
-                <label className="text-sm font-medium">初始资金</label>
-                <Input
-                  type="number"
-                  value={store.initialCapital}
-                  onChange={(e) => store.setInitialCapital(Number(e.target.value))}
-                  step={10000}
-                />
+              <div className="flex items-center justify-between">
+                <CardTitle className="text-base shrink-0 whitespace-nowrap">回测配置</CardTitle>
+                <div className="ml-auto flex items-center gap-2">
+                  <span className="text-xs text-muted-foreground">初始资金</span>
+                  <Input
+                    type="number"
+                    value={store.initialCapital}
+                    onChange={(e) => store.setInitialCapital(Number(e.target.value))}
+                    step={10000}
+                    className="w-28 h-8 text-sm text-right"
+                  />
+                </div>
               </div>
-              
+            </CardHeader>
+            <CardContent className="p-3 pt-0 space-y-2">
+
               {/* 时间范围 */}
               <div className="grid grid-cols-2 gap-2">
                 <div className="space-y-1.5">
@@ -167,12 +169,12 @@ export default function DynamicBacktestPage() {
                   />
                 </div>
               </div>
-              
+
               {/* 基准选择 */}
-              <div className="space-y-1.5">
-                <label className="text-sm font-medium">基准指数</label>
+              <div className="flex items-center gap-2">
+                <label className="text-xs text-muted-foreground">基准指数</label>
                 <select
-                  className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+                  className="flex-1 rounded-md border border-input bg-background px-2 py-1 text-sm"
                   value={store.benchmarkCode}
                   onChange={(e) => store.setBenchmark(e.target.value)}
                 >
@@ -185,47 +187,47 @@ export default function DynamicBacktestPage() {
               </div>
             </CardContent>
           </Card>
-          
+
           {/* 添加股票 */}
           <Card>
-            <CardHeader className="p-3 pb-2">
-              <CardTitle className="text-base">股票池</CardTitle>
+            <CardHeader className="p-3 pb-2 gap-2">
+              <div className="flex items-center justify-between">
+                <CardTitle className="text-base shrink-0 whitespace-nowrap">股票池</CardTitle>
+                <div className="flex-1 relative min-w-0">
+                  <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+                  <Input
+                    placeholder="搜索股票代码或名称..."
+                    value={stockSearch}
+                    onChange={(e) => {
+                      setStockSearch(e.target.value)
+                      setShowSearchResults(true)
+                    }}
+                    onFocus={() => setShowSearchResults(true)}
+                    onBlur={() => setTimeout(() => setShowSearchResults(false), 200)}
+                    className="pl-9 h-8 text-sm w-full"
+                  />
+                  {showSearchResults && stockSearch.length >= 2 && searchResults && searchResults.length > 0 && (
+                    <div className="absolute z-10 mt-1 w-full rounded-md border bg-background shadow-lg max-h-60 overflow-auto">
+                      {searchResults.slice(0, 10).map((stock) => (
+                        <button
+                          key={stock.code}
+                          type="button"
+                          className="w-full px-3 py-2 text-left text-sm hover:bg-accent flex justify-between items-center"
+                          onMouseDown={(e) => {
+                            e.preventDefault()
+                            handleAddStock(stock.code)
+                          }}
+                        >
+                          <span>{stock.code} - {stock.name}</span>
+                          <Plus className="h-4 w-4 text-muted-foreground" />
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              </div>
             </CardHeader>
             <CardContent className="p-3 pt-0 space-y-2">
-              {/* 搜索框 */}
-              <div className="relative">
-                <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-                <Input
-                  placeholder="搜索股票代码或名称..."
-                  value={stockSearch}
-                  onChange={(e) => {
-                    setStockSearch(e.target.value)
-                    setShowSearchResults(true)
-                  }}
-                  onFocus={() => setShowSearchResults(true)}
-                  onBlur={() => setTimeout(() => setShowSearchResults(false), 200)}
-                  className="pl-9"
-                />
-                {showSearchResults && stockSearch.length >= 2 && searchResults && searchResults.length > 0 && (
-                  <div className="absolute z-10 mt-1 w-full rounded-md border bg-background shadow-lg max-h-60 overflow-auto">
-                    {searchResults.slice(0, 10).map((stock) => (
-                      <button
-                        key={stock.code}
-                        type="button"
-                        className="w-full px-3 py-2 text-left text-sm hover:bg-accent flex justify-between items-center"
-                        onMouseDown={(e) => {
-                          e.preventDefault()
-                          handleAddStock(stock.code)
-                        }}
-                      >
-                        <span>{stock.code} - {stock.name}</span>
-                        <Plus className="h-4 w-4 text-muted-foreground" />
-                      </button>
-                    ))}
-                  </div>
-                )}
-              </div>
-              
               {/* 加载状态 */}
               {isLoadingKline && pendingStockCode && (
                 <div className="flex items-center gap-2 text-sm text-muted-foreground">
@@ -233,17 +235,16 @@ export default function DynamicBacktestPage() {
                   正在加载 {pendingStockCode}...
                 </div>
               )}
-              
+
               {/* 已添加的股票列表 */}
               <div className="space-y-1">
                 {Array.from(store.stocks.values()).map(stock => (
                   <div
                     key={stock.code}
-                    className={`flex items-center justify-between px-2 py-1.5 rounded text-sm cursor-pointer transition-colors ${
-                      store.selectedStockCode === stock.code
-                        ? 'bg-primary/10 text-primary'
-                        : 'hover:bg-muted'
-                    }`}
+                    className={`flex items-center justify-between px-2 py-1.5 rounded text-sm cursor-pointer transition-colors ${store.selectedStockCode === stock.code
+                      ? 'bg-primary/10 text-primary'
+                      : 'hover:bg-muted'
+                      }`}
                     onClick={() => store.selectStock(stock.code)}
                   >
                     <span className="font-mono">{stock.code}</span>
@@ -269,19 +270,19 @@ export default function DynamicBacktestPage() {
               </div>
             </CardContent>
           </Card>
-          
+
           {/* 持仓面板 */}
           <PositionPanel />
-          
+
           {/* 交易记录 */}
           <TradeList />
         </div>
-        
+
         {/* 右侧主区域 */}
         <div className="space-y-0">
           {/* 权益曲线 */}
           <EquityChart height={160} />
-          
+
           {/* 多股票K线列表 */}
           <MultiStockKlinePanel />
         </div>
