@@ -78,6 +78,8 @@ export default function UniverseDetailPage() {
             <p className="text-sm text-muted-foreground font-mono mt-1">
               {detail.code}
             </p>
+          </div>
+          <div>
             <div className="flex flex-wrap gap-1.5 mt-2">
               <Badge variant="outline">{detail.exchange?.toUpperCase()}</Badge>
               {detail.industry_l1 && (

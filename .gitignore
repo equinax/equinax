@@ -93,3 +93,4 @@ backend/alembic/versions/*.pyc
 credentials.json
 .tmp/
 .aider*
+.sisyphus*
