@@ -4,14 +4,12 @@ import { Trash2 } from 'lucide-react'
 import { useDynamicBacktestStore } from '@/lib/dynamic-backtest'
 
 export function TradeList() {
-  const { trades, selectedStockCode, removeTrade, stocks } = useDynamicBacktestStore()
+  const { trades, removeTrade, stocks } = useDynamicBacktestStore()
   
-  // 显示当前选中股票的交易
-  const stockTrades = selectedStockCode
-    ? trades.filter(t => t.stockCode === selectedStockCode)
-    : trades
+  // 显示所有股票的交易，按时间顺序
+  const allTrades = [...trades].sort((a, b) => a.date.localeCompare(b.date))
   
-  if (stockTrades.length === 0) {
+  if (allTrades.length === 0) {
     return (
       <Card>
         <CardHeader className="pb-3">
@@ -32,13 +30,13 @@ export function TradeList() {
         <div className="flex items-center justify-between">
           <CardTitle className="text-base">交易记录</CardTitle>
           <span className="text-sm text-muted-foreground">
-            共 {stockTrades.length} 笔
+            共 {allTrades.length} 笔
           </span>
         </div>
       </CardHeader>
       <CardContent>
         <div className="space-y-2 max-h-[300px] overflow-auto">
-          {stockTrades.map(trade => {
+          {allTrades.map(trade => {
             const stock = stocks.get(trade.stockCode)
             return (
               <div
@@ -59,9 +57,7 @@ export function TradeList() {
                     <span className="font-mono text-xs">{trade.date}</span>
                   </div>
                   <div className="flex items-center gap-2 mt-1 text-xs text-muted-foreground">
-                    {!selectedStockCode && (
-                      <span>{stock?.name || trade.stockCode}</span>
-                    )}
+                    <span>{stock?.name || trade.stockCode}</span>
                     <span>{trade.executedShares}股</span>
                     <span>@¥{trade.price.toFixed(2)}</span>
                     <span>
