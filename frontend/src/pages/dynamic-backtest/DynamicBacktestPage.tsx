@@ -1,13 +1,13 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import { Link } from 'react-router-dom'
 import { ArrowLeft, RotateCcw, Plus, Search, X, Loader2 } from 'lucide-react'
+import { LogicalRange } from 'lightweight-charts'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { useDynamicBacktestStore, BENCHMARK_OPTIONS, StockData, BenchmarkData } from '@/lib/dynamic-backtest'
 import { useSearchAssetsApiV1StocksSearchGet, useGetKlineApiV1StocksCodeKlineGet } from '@/api/generated/stocks/stocks'
-import { StockKlinePanel } from './components/StockKlinePanel'
-import { TradePanel } from './components/TradePanel'
+import { MultiStockKlinePanel } from './components/MultiStockKlinePanel'
 import { TradeList } from './components/TradeList'
 import { PositionPanel } from './components/PositionPanel'
 import { EquityChart } from './components/EquityChart'
@@ -19,6 +19,12 @@ export default function DynamicBacktestPage() {
   const [stockSearch, setStockSearch] = useState('')
   const [showSearchResults, setShowSearchResults] = useState(false)
   const [pendingStockCode, setPendingStockCode] = useState<string | null>(null)
+  const [syncedRange, setSyncedRange] = useState<LogicalRange | null>(null)
+  
+  // 同步图表缩放
+  const handleRangeChange = useCallback((range: LogicalRange | null) => {
+    setSyncedRange(range)
+  }, [])
   
   // 搜索股票
   const { data: searchResults } = useSearchAssetsApiV1StocksSearchGet(
@@ -267,26 +273,24 @@ export default function DynamicBacktestPage() {
           
           {/* 持仓面板 */}
           <PositionPanel />
+          
+          {/* 交易记录 */}
+          <TradeList />
         </div>
         
         {/* 右侧主区域 */}
-        <div className="space-y-4">
+        <div className="space-y-3">
           {/* 统计指标 */}
           <MetricsSummary />
           
           {/* 权益曲线 */}
-          <EquityChart />
+          <EquityChart 
+            height={160}
+            onVisibleRangeChange={handleRangeChange}
+          />
           
-          {/* K线和交易 */}
-          {store.selectedStockCode && (
-            <div className="grid gap-4 xl:grid-cols-[1fr_320px]">
-              <StockKlinePanel />
-              <div className="space-y-4">
-                <TradePanel />
-                <TradeList />
-              </div>
-            </div>
-          )}
+          {/* 多股票K线列表 */}
+          <MultiStockKlinePanel syncedRange={syncedRange} />
         </div>
       </div>
     </div>

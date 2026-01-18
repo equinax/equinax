@@ -1,4 +1,5 @@
 export { StockKlinePanel } from './StockKlinePanel'
+export { MultiStockKlinePanel } from './MultiStockKlinePanel'
 export { TradePanel } from './TradePanel'
 export { TradeList } from './TradeList'
 export { PositionPanel } from './PositionPanel'
