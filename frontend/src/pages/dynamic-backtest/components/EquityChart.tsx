@@ -160,7 +160,7 @@ export function EquityChart({ height = 180 }: EquityChartProps) {
   
   return (
     <div className="relative">
-      <div className="flex items-center justify-between px-2 py-1 bg-muted/30 rounded-t border-x border-t text-sm">
+      <div className="flex items-center justify-between px-2 py-0.5 bg-muted/30 rounded-t border-x border-t text-sm">
         <div className="flex items-center gap-2">
           <span className="font-medium">权益曲线</span>
         </div>

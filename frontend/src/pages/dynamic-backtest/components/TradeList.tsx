@@ -12,13 +12,13 @@ export function TradeList() {
   if (allTrades.length === 0) {
     return (
       <Card>
-        <CardHeader className="pb-3">
-          <CardTitle className="text-base">交易记录</CardTitle>
-        </CardHeader>
-        <CardContent>
-          <p className="text-sm text-muted-foreground text-center py-4">
-            暂无交易记录
-          </p>
+      <CardHeader className="p-3 pb-2">
+        <CardTitle className="text-base">交易记录</CardTitle>
+      </CardHeader>
+      <CardContent className="p-3 pt-0">
+        <p className="text-sm text-muted-foreground text-center py-4">
+          暂无交易记录
+        </p>
         </CardContent>
       </Card>
     )
@@ -26,7 +26,7 @@ export function TradeList() {
   
   return (
     <Card>
-      <CardHeader className="pb-3">
+      <CardHeader className="p-3 pb-2">
         <div className="flex items-center justify-between">
           <CardTitle className="text-base">交易记录</CardTitle>
           <span className="text-sm text-muted-foreground">
@@ -34,14 +34,14 @@ export function TradeList() {
           </span>
         </div>
       </CardHeader>
-      <CardContent>
-        <div className="space-y-2 max-h-[300px] overflow-auto">
+      <CardContent className="p-3 pt-0">
+        <div className="space-y-1.5">
           {allTrades.map(trade => {
             const stock = stocks.get(trade.stockCode)
             return (
               <div
                 key={trade.id}
-                className="flex items-center justify-between p-2 rounded-md bg-muted/30 text-sm"
+                className="flex items-center justify-between p-1.5 rounded-md bg-muted/30 text-sm"
               >
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center gap-2">

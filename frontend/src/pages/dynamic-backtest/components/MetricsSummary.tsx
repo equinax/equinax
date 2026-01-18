@@ -69,10 +69,10 @@ export function MetricsSummary() {
   }
   
   return (
-    <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3">
+    <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-2">
       {items.map(item => (
         <Card key={item.label} className="bg-muted/30">
-          <CardContent className="p-3">
+          <CardContent className="p-2">
             <div className="flex items-center gap-2 text-muted-foreground mb-1">
               <item.icon className="h-3.5 w-3.5" />
               <span className="text-xs">{item.label}</span>

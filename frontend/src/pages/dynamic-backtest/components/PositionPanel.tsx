@@ -13,12 +13,12 @@ export function PositionPanel() {
   
   return (
     <Card>
-      <CardHeader className="pb-3">
+      <CardHeader className="p-3 pb-2">
         <CardTitle className="text-base">持仓与资金</CardTitle>
       </CardHeader>
-      <CardContent className="space-y-3">
+      <CardContent className="p-3 pt-0 space-y-2">
         {/* 资金概览 */}
-        <div className="grid grid-cols-2 gap-2 text-sm">
+        <div className="grid grid-cols-2 gap-1.5 text-sm">
           <div className="p-2 rounded-md bg-muted/30">
             <p className="text-muted-foreground text-xs">可用现金</p>
             <p className="font-mono font-medium">¥{currentCash.toLocaleString('zh-CN', { maximumFractionDigits: 0 })}</p>
@@ -30,7 +30,7 @@ export function PositionPanel() {
         </div>
         
         {/* 总资产 */}
-        <div className="p-3 rounded-md border">
+        <div className="p-2 rounded-md border">
           <div className="flex items-center justify-between">
             <span className="text-sm text-muted-foreground">总资产</span>
             <span className="font-mono font-semibold">
@@ -51,14 +51,14 @@ export function PositionPanel() {
         
         {/* 持仓列表 */}
         {positionList.length > 0 ? (
-          <div className="space-y-2">
+          <div className="space-y-1.5">
             <p className="text-xs text-muted-foreground font-medium">当前持仓</p>
             {positionList.map(pos => {
               const stock = stocks.get(pos.stockCode)
               return (
                 <div
                   key={pos.stockCode}
-                  className="p-2 rounded-md bg-muted/30 text-sm"
+                  className="p-1.5 rounded-md bg-muted/30 text-sm"
                 >
                   <div className="flex items-center justify-between">
                     <span className="font-mono">{pos.stockCode}</span>

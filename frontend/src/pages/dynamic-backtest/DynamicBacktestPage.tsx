@@ -107,10 +107,10 @@ export default function DynamicBacktestPage() {
   }
   
   return (
-    <div className="space-y-4">
+    <div className="space-y-2">
       {/* 顶部导航 */}
       <div className="flex items-center justify-between">
-        <div className="flex items-center gap-4">
+        <div className="flex items-center gap-3">
           <Button variant="ghost" size="sm" asChild>
             <Link to="/backtest">
               <ArrowLeft className="mr-2 h-4 w-4" />
@@ -129,15 +129,15 @@ export default function DynamicBacktestPage() {
       </div>
       
       {/* 主布局 */}
-      <div className="grid gap-4 lg:grid-cols-[300px_1fr]">
+      <div className="grid gap-3 lg:grid-cols-[300px_1fr]">
         {/* 左侧面板 */}
-        <div className="space-y-4">
+        <div className="space-y-3">
           {/* 配置卡片 */}
           <Card>
-            <CardHeader className="pb-3">
+            <CardHeader className="p-3 pb-2">
               <CardTitle className="text-base">回测配置</CardTitle>
             </CardHeader>
-            <CardContent className="space-y-4">
+            <CardContent className="p-3 pt-0 space-y-3">
               {/* 初始资金 */}
               <div className="space-y-1.5">
                 <label className="text-sm font-medium">初始资金</label>
@@ -189,10 +189,10 @@ export default function DynamicBacktestPage() {
           
           {/* 添加股票 */}
           <Card>
-            <CardHeader className="pb-3">
+            <CardHeader className="p-3 pb-2">
               <CardTitle className="text-base">股票池</CardTitle>
             </CardHeader>
-            <CardContent className="space-y-3">
+            <CardContent className="p-3 pt-0 space-y-2">
               {/* 搜索框 */}
               <div className="relative">
                 <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
@@ -279,7 +279,7 @@ export default function DynamicBacktestPage() {
         </div>
         
         {/* 右侧主区域 */}
-        <div className="space-y-3">
+        <div className="space-y-2">
           {/* 统计指标 */}
           <MetricsSummary />
           

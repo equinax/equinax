@@ -237,7 +237,7 @@ function MiniKlineChart({ stock, height = 180, sharedDates }: MiniKlineChartProp
   
   return (
     <div className="relative">
-      <div className="flex items-center justify-between px-2 py-1 bg-muted/30 rounded-t border-x border-t text-sm">
+      <div className="flex items-center justify-between px-2 py-0.5 bg-muted/30 rounded-t border-x border-t text-sm">
         <div className="flex items-center gap-2">
           <span className="font-mono font-medium">{stock.code}</span>
           <span className="text-muted-foreground">{stock.name}</span>
@@ -254,13 +254,13 @@ function MiniKlineChart({ stock, height = 180, sharedDates }: MiniKlineChartProp
       {/* 交易弹出菜单 */}
       {tradePopup && (
         <div 
-          className="absolute z-50 bg-background border rounded-lg shadow-lg p-3 w-48"
+          className="absolute z-50 bg-background border rounded-lg shadow-lg p-2 w-48"
           style={{ 
             left: Math.min(tradePopup.x, (chartContainerRef.current?.clientWidth || 300) - 200),
             top: Math.min(tradePopup.y, height - 180),
           }}
         >
-          <div className="space-y-3">
+          <div className="space-y-2">
             <div className="flex items-center justify-between">
               <span className="text-sm font-medium">{tradePopup.date}</span>
               <button 
