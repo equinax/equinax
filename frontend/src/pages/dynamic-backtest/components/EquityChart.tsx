@@ -9,7 +9,7 @@ interface EquityChartProps {
 }
 
 export function EquityChart({ height = 180 }: EquityChartProps) {
-  const { equityCurve, benchmark } = useDynamicBacktestStore()
+  const { equityCurve, benchmark, metrics } = useDynamicBacktestStore()
   const chartContainerRef = useRef<HTMLDivElement>(null)
   const chartRef = useRef<IChartApi | null>(null)
   const chartIdRef = useRef('equity-curve')
@@ -140,16 +140,39 @@ export function EquityChart({ height = 180 }: EquityChartProps) {
     }
   }, [equityCurve, benchmark, isDark, height])
   
+  const metricsItems = metrics ? [
+    { label: '总收益', value: metrics.totalReturn, format: 'percent', colorize: true },
+    { label: '年化', value: metrics.annualReturn, format: 'percent', colorize: true },
+    { label: '回撤', value: -metrics.maxDrawdown, format: 'percent', colorize: true },
+    { label: '夏普', value: metrics.sharpeRatio, format: 'number', colorize: false },
+    { label: '胜率', value: metrics.winRate, format: 'percent', colorize: false },
+    { label: '超额', value: metrics.excessReturn, format: 'percent', colorize: true },
+  ] : []
+  
+  const formatMetricValue = (value: number, format: string) => {
+    if (format === 'percent') {
+      return (value * 100).toFixed(2) + '%'
+    }
+    return value.toFixed(2)
+  }
+  
+  const getMetricColor = (value: number, colorize: boolean) => {
+    if (!colorize) return 'text-foreground'
+    if (value > 0) return 'text-green-600 dark:text-green-400'
+    if (value < 0) return 'text-red-600 dark:text-red-400'
+    return 'text-foreground'
+  }
+  
   if (equityCurve.length === 0) {
     return (
       <div className="relative">
-        <div className="flex items-center justify-between px-2 py-1 bg-muted/30 rounded-t border-x border-t text-sm">
+        <div className="flex items-center justify-between px-2 py-0.5 bg-muted/30 border-x border-t text-sm">
           <div className="flex items-center gap-2">
             <span className="font-medium">权益曲线</span>
           </div>
         </div>
         <div 
-          className="flex items-center justify-center bg-muted/30 border-x border-b rounded-b"
+          className="flex items-center justify-center bg-muted/30 border-x border-b"
           style={{ height }}
         >
           <p className="text-muted-foreground text-sm">添加股票并执行交易后显示</p>
@@ -160,24 +183,37 @@ export function EquityChart({ height = 180 }: EquityChartProps) {
   
   return (
     <div className="relative">
-      <div className="flex items-center justify-between px-2 py-0.5 bg-muted/30 rounded-t border-x border-t text-sm">
-        <div className="flex items-center gap-2">
+      <div className="flex items-center justify-between gap-3 px-2 py-0.5 bg-muted/30 border-x border-t text-sm">
+        <div className="flex items-center gap-2 flex-shrink-0">
           <span className="font-medium">权益曲线</span>
         </div>
-        <div className="flex items-center gap-4 text-xs">
+        {metricsItems.length > 0 && (
+          <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
+            {metricsItems.map(item => (
+              <div key={item.label} className="flex items-center gap-1">
+                <span>{item.label}</span>
+                <span className={`font-mono font-medium ${getMetricColor(item.value, item.colorize)}`}>
+                  {item.value > 0 && item.colorize ? '+' : ''}
+                  {formatMetricValue(item.value, item.format)}
+                </span>
+              </div>
+            ))}
+          </div>
+        )}
+        <div className="flex items-center gap-3 text-xs flex-shrink-0">
           <div className="flex items-center gap-1.5">
-            <div className="w-3 h-0.5 bg-blue-500 rounded" />
+            <div className="w-3 h-0.5 bg-blue-500" />
             <span className="text-muted-foreground">策略</span>
           </div>
           {benchmark && (
             <div className="flex items-center gap-1.5">
-              <div className="w-3 h-0.5 bg-gray-500 rounded opacity-60" />
+              <div className="w-3 h-0.5 bg-gray-500 opacity-60" />
               <span className="text-muted-foreground">{benchmark.name}</span>
             </div>
           )}
         </div>
       </div>
-      <div ref={chartContainerRef} className="border-x border-b rounded-b" />
+      <div ref={chartContainerRef} className="border-x border-b" />
     </div>
   )
 }

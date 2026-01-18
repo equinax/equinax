@@ -10,7 +10,6 @@ import { MultiStockKlinePanel } from './components/MultiStockKlinePanel'
 import { TradeList } from './components/TradeList'
 import { PositionPanel } from './components/PositionPanel'
 import { EquityChart } from './components/EquityChart'
-import { MetricsSummary } from './components/MetricsSummary'
 
 export default function DynamicBacktestPage() {
   const store = useDynamicBacktestStore()
@@ -279,10 +278,7 @@ export default function DynamicBacktestPage() {
         </div>
         
         {/* 右侧主区域 */}
-        <div className="space-y-2">
-          {/* 统计指标 */}
-          <MetricsSummary />
-          
+        <div className="space-y-0">
           {/* 权益曲线 */}
           <EquityChart height={160} />
           

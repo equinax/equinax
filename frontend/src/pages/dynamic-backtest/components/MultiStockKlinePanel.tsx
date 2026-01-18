@@ -104,6 +104,7 @@ function MiniKlineChart({ stock, height = 180, sharedDates }: MiniKlineChartProp
         secondsVisible: false,
         rightOffset: 5,
         minBarSpacing: 0.5,
+        visible: false,
       },
       crosshair: {
         mode: 1,
@@ -237,7 +238,7 @@ function MiniKlineChart({ stock, height = 180, sharedDates }: MiniKlineChartProp
   
   return (
     <div className="relative">
-      <div className="flex items-center justify-between px-2 py-0.5 bg-muted/30 rounded-t border-x border-t text-sm">
+      <div className="flex items-center justify-between px-2 py-0.5 bg-muted/30 border-x border-t text-sm">
         <div className="flex items-center gap-2">
           <span className="font-mono font-medium">{stock.code}</span>
           <span className="text-muted-foreground">{stock.name}</span>
@@ -249,7 +250,7 @@ function MiniKlineChart({ stock, height = 180, sharedDates }: MiniKlineChartProp
           <X className="h-3 w-3" />
         </button>
       </div>
-      <div ref={chartContainerRef} className="border-x border-b rounded-b" />
+      <div ref={chartContainerRef} className="border-x border-b" />
       
       {/* 交易弹出菜单 */}
       {tradePopup && (
@@ -378,14 +379,18 @@ export function MultiStockKlinePanel() {
   }
   
   return (
-    <div className="space-y-2">
-      {stockList.map((stock) => (
-        <MiniKlineChart
+    <div className="space-y-0">
+      {stockList.map((stock, index) => (
+        <div
           key={stock.code}
-          stock={stock}
-          height={Math.max(160, 220 - stockList.length * 15)}
-          sharedDates={sharedDates}
-        />
+          className={index === 0 ? '' : '-mt-px'}
+        >
+          <MiniKlineChart
+            stock={stock}
+            height={Math.max(160, 220 - stockList.length * 15)}
+            sharedDates={sharedDates}
+          />
+        </div>
       ))}
     </div>
   )
