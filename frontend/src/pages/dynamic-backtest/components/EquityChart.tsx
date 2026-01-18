@@ -1,19 +1,18 @@
 import { useEffect, useRef } from 'react'
-import { createChart, ColorType, IChartApi, LineData, Time, LogicalRange } from 'lightweight-charts'
+import { createChart, ColorType, IChartApi, LineData, Time } from 'lightweight-charts'
 import { useTheme } from '@/components/theme-provider'
 import { getChartThemeColors } from '@/lib/chart-theme'
-import { useDynamicBacktestStore } from '@/lib/dynamic-backtest'
+import { useDynamicBacktestStore, chartSyncManager } from '@/lib/dynamic-backtest'
 
 interface EquityChartProps {
   height?: number
-  onVisibleRangeChange?: (range: LogicalRange | null) => void
-  syncedRange?: LogicalRange | null
 }
 
-export function EquityChart({ height = 180, onVisibleRangeChange, syncedRange }: EquityChartProps) {
+export function EquityChart({ height = 180 }: EquityChartProps) {
   const { equityCurve, benchmark } = useDynamicBacktestStore()
   const chartContainerRef = useRef<HTMLDivElement>(null)
   const chartRef = useRef<IChartApi | null>(null)
+  const chartIdRef = useRef('equity-curve')
   const { theme } = useTheme()
   const isDark = theme === 'dark' || (theme === 'system' && window.matchMedia('(prefers-color-scheme: dark)').matches)
   
@@ -22,6 +21,7 @@ export function EquityChart({ height = 180, onVisibleRangeChange, syncedRange }:
     
     // 清理现有图表
     if (chartRef.current) {
+      chartSyncManager.unregister(chartIdRef.current)
       chartRef.current.remove()
       chartRef.current = null
     }
@@ -116,23 +116,8 @@ export function EquityChart({ height = 180, onVisibleRangeChange, syncedRange }:
     
     chart.timeScale().fitContent()
     
-    // 监听时间范围变化
-    chart.timeScale().subscribeVisibleLogicalRangeChange((range) => {
-      if (range && onVisibleRangeChange) {
-        const dataLength = equityData.length
-        const clampedFrom = Math.max(0, range.from)
-        const clampedTo = Math.min(dataLength - 1, range.to)
-        
-        if (clampedFrom !== range.from || clampedTo !== range.to) {
-          chart.timeScale().setVisibleLogicalRange({
-            from: clampedFrom,
-            to: clampedTo,
-          })
-        } else {
-          onVisibleRangeChange(range)
-        }
-      }
-    })
+    // 注册到同步管理器
+    chartSyncManager.register(chartIdRef.current, chart)
     
     // 调整大小
     const handleResize = () => {
@@ -147,24 +132,13 @@ export function EquityChart({ height = 180, onVisibleRangeChange, syncedRange }:
     
     return () => {
       window.removeEventListener('resize', handleResize)
+      chartSyncManager.unregister(chartIdRef.current)
       if (chartRef.current) {
         chartRef.current.remove()
         chartRef.current = null
       }
     }
-  }, [equityCurve, benchmark, isDark, height, onVisibleRangeChange])
-  
-  // 同步缩放范围
-  useEffect(() => {
-    if (chartRef.current && syncedRange) {
-      const currentRange = chartRef.current.timeScale().getVisibleLogicalRange()
-      if (currentRange && 
-          (Math.abs(currentRange.from - syncedRange.from) > 0.5 || 
-           Math.abs(currentRange.to - syncedRange.to) > 0.5)) {
-        chartRef.current.timeScale().setVisibleLogicalRange(syncedRange)
-      }
-    }
-  }, [syncedRange])
+  }, [equityCurve, benchmark, isDark, height])
   
   if (equityCurve.length === 0) {
     return (

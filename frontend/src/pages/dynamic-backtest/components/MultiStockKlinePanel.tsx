@@ -1,24 +1,23 @@
 import { useEffect, useRef, useState, useCallback } from 'react'
-import { createChart, ColorType, IChartApi, CandlestickData, Time, SeriesMarker, SeriesMarkerPosition, SeriesMarkerShape, LogicalRange } from 'lightweight-charts'
+import { createChart, ColorType, IChartApi, CandlestickData, Time, SeriesMarker, SeriesMarkerPosition, SeriesMarkerShape } from 'lightweight-charts'
 import { X } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { useTheme } from '@/components/theme-provider'
 import { getMarketColors } from '@/lib/market-colors'
 import { getChartThemeColors } from '@/lib/chart-theme'
-import { useDynamicBacktestStore, getKlineOnDate, StockData } from '@/lib/dynamic-backtest'
+import { useDynamicBacktestStore, getKlineOnDate, StockData, roundToLot, chartSyncManager } from '@/lib/dynamic-backtest'
 
 interface MiniKlineChartProps {
   stock: StockData
   height?: number
-  onVisibleRangeChange?: (range: LogicalRange | null) => void
-  syncedRange?: LogicalRange | null
 }
 
-function MiniKlineChart({ stock, height = 180, onVisibleRangeChange, syncedRange }: MiniKlineChartProps) {
+function MiniKlineChart({ stock, height = 180 }: MiniKlineChartProps) {
   const store = useDynamicBacktestStore()
   const chartContainerRef = useRef<HTMLDivElement>(null)
   const chartRef = useRef<IChartApi | null>(null)
+  const chartIdRef = useRef(`kline-${stock.code}`)
   const { theme } = useTheme()
   const isDark = theme === 'dark' || (theme === 'system' && window.matchMedia('(prefers-color-scheme: dark)').matches)
   
@@ -33,6 +32,22 @@ function MiniKlineChart({ stock, height = 180, onVisibleRangeChange, syncedRange
   const [tradeShares, setTradeShares] = useState('')
   
   const trades = store.trades.filter(t => t.stockCode === stock.code)
+  const currentCash = store.currentCash
+  const currentPosition = store.positions.get(stock.code)
+  
+  // 计算仓位快捷选项
+  const calculatePositionShares = useCallback((ratio: number) => {
+    if (!tradePopup) return 0
+    if (tradeType === 'BUY') {
+      // 买入：用可用资金计算
+      const amount = currentCash * ratio
+      return roundToLot(amount / tradePopup.price)
+    } else {
+      // 卖出：用持仓计算
+      if (!currentPosition) return 0
+      return roundToLot(currentPosition.totalShares * ratio)
+    }
+  }, [tradePopup, tradeType, currentCash, currentPosition])
   
   // 处理交易提交
   const handleSubmitTrade = useCallback(() => {
@@ -160,24 +175,8 @@ function MiniKlineChart({ stock, height = 180, onVisibleRangeChange, syncedRange
     
     chart.timeScale().fitContent()
     
-    // 监听时间范围变化
-    chart.timeScale().subscribeVisibleLogicalRangeChange((range) => {
-      if (range && onVisibleRangeChange) {
-        // 限制不能超出数据范围
-        const dataLength = chartData.length
-        const clampedFrom = Math.max(0, range.from)
-        const clampedTo = Math.min(dataLength - 1, range.to)
-        
-        if (clampedFrom !== range.from || clampedTo !== range.to) {
-          chart.timeScale().setVisibleLogicalRange({
-            from: clampedFrom,
-            to: clampedTo,
-          })
-        } else {
-          onVisibleRangeChange(range)
-        }
-      }
-    })
+    // 注册到同步管理器
+    chartSyncManager.register(chartIdRef.current, chart)
     
     // 点击事件 - 弹出交易菜单
     chart.subscribeClick((param) => {
@@ -209,26 +208,16 @@ function MiniKlineChart({ stock, height = 180, onVisibleRangeChange, syncedRange
     
     window.addEventListener('resize', handleResize)
     
+    const chartId = chartIdRef.current
     return () => {
       window.removeEventListener('resize', handleResize)
+      chartSyncManager.unregister(chartId)
       if (chartRef.current) {
         chartRef.current.remove()
         chartRef.current = null
       }
     }
-  }, [stock, trades, isDark, height, onVisibleRangeChange])
-  
-  // 同步缩放范围
-  useEffect(() => {
-    if (chartRef.current && syncedRange) {
-      const currentRange = chartRef.current.timeScale().getVisibleLogicalRange()
-      if (currentRange && 
-          (Math.abs(currentRange.from - syncedRange.from) > 0.5 || 
-           Math.abs(currentRange.to - syncedRange.to) > 0.5)) {
-        chartRef.current.timeScale().setVisibleLogicalRange(syncedRange)
-      }
-    }
-  }, [syncedRange])
+  }, [stock, trades, isDark, height])
   
   return (
     <div className="relative">
@@ -309,19 +298,28 @@ function MiniKlineChart({ stock, height = 180, onVisibleRangeChange, syncedRange
               />
             </div>
             
-            {/* 快捷按钮 */}
+            {/* 快捷仓位按钮 */}
             <div className="flex gap-1">
-              {[100, 500, 1000].map(n => (
-                <Button
-                  key={n}
-                  variant="outline"
-                  size="sm"
-                  className="flex-1 h-6 text-xs"
-                  onClick={() => setTradeShares(String(n))}
-                >
-                  {n}
-                </Button>
-              ))}
+              {[
+                { label: '1/4仓', ratio: 0.25 },
+                { label: '半仓', ratio: 0.5 },
+                { label: '全仓', ratio: 1 },
+              ].map(({ label, ratio }) => {
+                const shares = calculatePositionShares(ratio)
+                return (
+                  <Button
+                    key={label}
+                    variant="outline"
+                    size="sm"
+                    className="flex-1 h-6 text-xs"
+                    onClick={() => setTradeShares(String(shares))}
+                    disabled={shares === 0}
+                    title={`${shares}股`}
+                  >
+                    {label}
+                  </Button>
+                )
+              })}
             </div>
             
             {/* 确认按钮 */}
@@ -340,22 +338,10 @@ function MiniKlineChart({ stock, height = 180, onVisibleRangeChange, syncedRange
   )
 }
 
-interface MultiStockKlinePanelProps {
-  syncedRange?: LogicalRange | null
-}
-
-export function MultiStockKlinePanel({ syncedRange: externalSyncedRange }: MultiStockKlinePanelProps) {
+export function MultiStockKlinePanel() {
   const { stocks } = useDynamicBacktestStore()
-  const [internalSyncedRange, setInternalSyncedRange] = useState<LogicalRange | null>(null)
-  
-  // 使用外部同步范围（来自权益曲线）或内部同步范围
-  const effectiveSyncedRange = externalSyncedRange || internalSyncedRange
   
   const stockList = Array.from(stocks.values())
-  
-  const handleRangeChange = useCallback((range: LogicalRange | null) => {
-    setInternalSyncedRange(range)
-  }, [])
   
   if (stockList.length === 0) {
     return (
@@ -367,13 +353,11 @@ export function MultiStockKlinePanel({ syncedRange: externalSyncedRange }: Multi
   
   return (
     <div className="space-y-2">
-      {stockList.map((stock, index) => (
+      {stockList.map((stock) => (
         <MiniKlineChart
           key={stock.code}
           stock={stock}
           height={Math.max(160, 220 - stockList.length * 15)}
-          onVisibleRangeChange={index === 0 ? handleRangeChange : undefined}
-          syncedRange={index === 0 ? externalSyncedRange : effectiveSyncedRange}
         />
       ))}
     </div>

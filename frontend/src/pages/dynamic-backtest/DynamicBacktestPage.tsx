@@ -1,11 +1,10 @@
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect } from 'react'
 import { Link } from 'react-router-dom'
 import { ArrowLeft, RotateCcw, Plus, Search, X, Loader2 } from 'lucide-react'
-import { LogicalRange } from 'lightweight-charts'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
-import { useDynamicBacktestStore, BENCHMARK_OPTIONS, StockData, BenchmarkData } from '@/lib/dynamic-backtest'
+import { useDynamicBacktestStore, BENCHMARK_OPTIONS, StockData, BenchmarkData, chartSyncManager } from '@/lib/dynamic-backtest'
 import { useSearchAssetsApiV1StocksSearchGet, useGetKlineApiV1StocksCodeKlineGet } from '@/api/generated/stocks/stocks'
 import { MultiStockKlinePanel } from './components/MultiStockKlinePanel'
 import { TradeList } from './components/TradeList'
@@ -19,11 +18,12 @@ export default function DynamicBacktestPage() {
   const [stockSearch, setStockSearch] = useState('')
   const [showSearchResults, setShowSearchResults] = useState(false)
   const [pendingStockCode, setPendingStockCode] = useState<string | null>(null)
-  const [syncedRange, setSyncedRange] = useState<LogicalRange | null>(null)
   
-  // 同步图表缩放
-  const handleRangeChange = useCallback((range: LogicalRange | null) => {
-    setSyncedRange(range)
+  // 页面离开时重置同步管理器
+  useEffect(() => {
+    return () => {
+      chartSyncManager.reset()
+    }
   }, [])
   
   // 搜索股票
@@ -284,13 +284,10 @@ export default function DynamicBacktestPage() {
           <MetricsSummary />
           
           {/* 权益曲线 */}
-          <EquityChart 
-            height={160}
-            onVisibleRangeChange={handleRangeChange}
-          />
+          <EquityChart height={160} />
           
           {/* 多股票K线列表 */}
-          <MultiStockKlinePanel syncedRange={syncedRange} />
+          <MultiStockKlinePanel />
         </div>
       </div>
     </div>
