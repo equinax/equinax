@@ -44,6 +44,7 @@ export function EquityChart({ height = 180 }: EquityChartProps) {
       rightPriceScale: {
         borderColor: chartColors.border,
         scaleMargins: { top: 0.1, bottom: 0.1 },
+        minimumWidth: 80,
       },
       timeScale: {
         borderColor: chartColors.border,

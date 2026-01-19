@@ -97,6 +97,7 @@ function MiniKlineChart({ stock, height = 180, sharedDates }: MiniKlineChartProp
       rightPriceScale: {
         borderColor: chartColors.border,
         scaleMargins: { top: 0.1, bottom: 0.15 },
+        minimumWidth: 80,
       },
       timeScale: {
         borderColor: chartColors.border,
@@ -165,6 +166,7 @@ function MiniKlineChart({ stock, height = 180, sharedDates }: MiniKlineChartProp
     
     volumeSeries.priceScale().applyOptions({
       scaleMargins: { top: 0.9, bottom: 0 },
+      minimumWidth: 80,
     })
     
     const volumeData = stock.kline.map(d => ({
@@ -368,10 +370,11 @@ export function MultiStockKlinePanel() {
   }, [stocks])
   
   const stockList = Array.from(stocks.values())
+  const chartHeight = Math.round(Math.max(160, 220 - stockList.length * 15) * 0.75)
   
   if (stockList.length === 0) {
     return (
-      <div className="flex h-[200px] items-center justify-center bg-muted/30 rounded-lg border">
+      <div className="flex h-[200px] items-center justify-center bg-muted/30 border">
         <p className="text-muted-foreground">添加股票查看K线</p>
       </div>
     )
@@ -386,7 +389,7 @@ export function MultiStockKlinePanel() {
         >
           <MiniKlineChart
             stock={stock}
-            height={Math.max(160, 220 - stockList.length * 15)}
+            height={chartHeight}
             sharedDates={sharedDates}
           />
         </div>
