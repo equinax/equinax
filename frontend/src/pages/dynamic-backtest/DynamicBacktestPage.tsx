@@ -108,7 +108,7 @@ export default function DynamicBacktestPage() {
   return (
     <div className="space-y-2">
       {/* 顶部导航 */}
-      <div className="flex items-center justify-between">
+      <div className="flex items-center justify-between gap-2">
         <div className="flex items-center gap-3">
           <Button variant="ghost" size="sm" asChild>
             <Link to="/backtest">
@@ -131,9 +131,8 @@ export default function DynamicBacktestPage() {
       <div className="grid gap-3 lg:grid-cols-[300px_1fr]">
         {/* 左侧面板 */}
         <div className="space-y-3">
-          {/* 配置卡片 */}
           <Card>
-            <CardHeader className="p-3 pb-2">
+            <CardContent className="p-3 space-y-3">
               <div className="flex items-center justify-between">
                 <CardTitle className="text-base shrink-0 whitespace-nowrap">回测配置</CardTitle>
                 <div className="ml-auto flex items-center gap-2">
@@ -147,8 +146,6 @@ export default function DynamicBacktestPage() {
                   />
                 </div>
               </div>
-            </CardHeader>
-            <CardContent className="p-3 pt-0 space-y-2">
 
               {/* 时间范围 */}
               <div className="grid grid-cols-2 gap-2">
@@ -185,49 +182,45 @@ export default function DynamicBacktestPage() {
                   ))}
                 </select>
               </div>
-            </CardContent>
-          </Card>
 
-          {/* 添加股票 */}
-          <Card>
-            <CardHeader className="p-3 pb-2 gap-2">
-              <div className="flex items-center justify-between">
-                <CardTitle className="text-base shrink-0 whitespace-nowrap">股票池</CardTitle>
-                <div className="flex-1 relative min-w-0">
-                  <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-                  <Input
-                    placeholder="搜索股票代码或名称..."
-                    value={stockSearch}
-                    onChange={(e) => {
-                      setStockSearch(e.target.value)
-                      setShowSearchResults(true)
-                    }}
-                    onFocus={() => setShowSearchResults(true)}
-                    onBlur={() => setTimeout(() => setShowSearchResults(false), 200)}
-                    className="pl-9 h-8 text-sm w-full"
-                  />
-                  {showSearchResults && stockSearch.length >= 2 && searchResults && searchResults.length > 0 && (
-                    <div className="absolute z-10 mt-1 w-full rounded-md border bg-background shadow-lg max-h-60 overflow-auto">
-                      {searchResults.slice(0, 10).map((stock) => (
-                        <button
-                          key={stock.code}
-                          type="button"
-                          className="w-full px-3 py-2 text-left text-sm hover:bg-accent flex justify-between items-center"
-                          onMouseDown={(e) => {
-                            e.preventDefault()
-                            handleAddStock(stock.code)
-                          }}
-                        >
-                          <span>{stock.code} - {stock.name}</span>
-                          <Plus className="h-4 w-4 text-muted-foreground" />
-                        </button>
-                      ))}
-                    </div>
-                  )}
+              <div className="border-t pt-3 space-y-2">
+                <div className="flex items-center justify-between gap-4">
+                  <CardTitle className="text-base shrink-0 whitespace-nowrap">股票池</CardTitle>
+                  <div className="flex-1 relative min-w-0">
+                    <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+                    <Input
+                      placeholder="搜索股票代码或名称..."
+                      value={stockSearch}
+                      onChange={(e) => {
+                        setStockSearch(e.target.value)
+                        setShowSearchResults(true)
+                      }}
+                      onFocus={() => setShowSearchResults(true)}
+                      onBlur={() => setTimeout(() => setShowSearchResults(false), 200)}
+                      className="pl-9 h-8 text-sm w-full"
+                    />
+                    {showSearchResults && stockSearch.length >= 2 && searchResults && searchResults.length > 0 && (
+                      <div className="absolute z-10 mt-1 w-full rounded-md border bg-background shadow-lg max-h-60 overflow-auto">
+                        {searchResults.slice(0, 10).map((stock) => (
+                          <button
+                            key={stock.code}
+                            type="button"
+                            className="w-full px-3 py-2 text-left text-sm hover:bg-accent flex justify-between items-center"
+                            onMouseDown={(e) => {
+                              e.preventDefault()
+                              handleAddStock(stock.code)
+                            }}
+                          >
+                            <span>{stock.code} - {stock.name}</span>
+                            <Plus className="h-4 w-4 text-muted-foreground" />
+                          </button>
+                        ))}
+                      </div>
+                    )}
+                  </div>
                 </div>
               </div>
-            </CardHeader>
-            <CardContent className="p-3 pt-0 space-y-2">
+
               {/* 加载状态 */}
               {isLoadingKline && pendingStockCode && (
                 <div className="flex items-center gap-2 text-sm text-muted-foreground">
@@ -268,14 +261,16 @@ export default function DynamicBacktestPage() {
                   </p>
                 )}
               </div>
+              
+              <div className="border-t pt-3 space-y-2">
+                <PositionPanel variant="embedded" />
+              </div>
+
+              <div className="border-t pt-3 space-y-2">
+                <TradeList variant="embedded" />
+              </div>
             </CardContent>
           </Card>
-
-          {/* 持仓面板 */}
-          <PositionPanel />
-
-          {/* 交易记录 */}
-          <TradeList />
         </div>
 
         {/* 右侧主区域 */}
