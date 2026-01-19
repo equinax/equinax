@@ -31,24 +31,32 @@ function MiniKlineChart({ stock, height = 180, sharedDates }: MiniKlineChartProp
   } | null>(null)
   const [tradeType, setTradeType] = useState<'BUY' | 'SELL'>('BUY')
   const [tradeShares, setTradeShares] = useState('')
+  const [tradeError, setTradeError] = useState<string | null>(null)
   
   const trades = store.trades.filter(t => t.stockCode === stock.code)
-  const currentCash = store.currentCash
-  const currentPosition = store.positions.get(stock.code)
+  
+  // 计算选中日期的可用现金和持仓状态
+  const stateAtDate = useMemo(() => {
+    if (!tradePopup) return null
+    return store.getStateAtDate(tradePopup.date)
+  }, [tradePopup, store])
+  
+  const availableCashAtDate = stateAtDate?.availableCash ?? 0
+  const positionAtDate = stateAtDate?.positions.get(stock.code)
   
   // 计算仓位快捷选项
   const calculatePositionShares = useCallback((ratio: number) => {
     if (!tradePopup) return 0
     if (tradeType === 'BUY') {
-      // 买入：用可用资金计算
-      const amount = currentCash * ratio
+      // 买入：用选中日期的可用资金计算
+      const amount = availableCashAtDate * ratio
       return roundToLot(amount / tradePopup.price)
     } else {
-      // 卖出：用持仓计算
-      if (!currentPosition) return 0
-      return roundToLot(currentPosition.totalShares * ratio)
+      // 卖出：用选中日期的持仓计算
+      if (!positionAtDate) return 0
+      return roundToLot(positionAtDate.totalShares * ratio)
     }
-  }, [tradePopup, tradeType, currentCash, currentPosition])
+  }, [tradePopup, tradeType, availableCashAtDate, positionAtDate])
   
   // 处理交易提交
   const handleSubmitTrade = useCallback(() => {
@@ -57,7 +65,9 @@ function MiniKlineChart({ stock, height = 180, sharedDates }: MiniKlineChartProp
     const shares = Number(tradeShares)
     if (shares <= 0) return
     
-    const success = store.addTrade({
+    setTradeError(null)
+    
+    const result = store.addTrade({
       stockCode: stock.code,
       type: tradeType,
       date: tradePopup.date,
@@ -66,9 +76,12 @@ function MiniKlineChart({ stock, height = 180, sharedDates }: MiniKlineChartProp
       inputValue: shares,
     })
     
-    if (success) {
+    if (result.success) {
       setTradePopup(null)
       setTradeShares('')
+      setTradeError(null)
+    } else {
+      setTradeError(result.error || '交易失败')
     }
   }, [tradePopup, tradeShares, tradeType, stock.code, store])
   
@@ -256,31 +269,41 @@ function MiniKlineChart({ stock, height = 180, sharedDates }: MiniKlineChartProp
       {/* 交易弹出菜单 */}
       {tradePopup && (
         <div 
-          className="absolute z-50 bg-background border rounded-lg shadow-lg p-2 w-48"
+          className="absolute z-50 bg-background border rounded-lg shadow-lg p-2 w-52"
           style={{ 
-            left: Math.min(tradePopup.x, (chartContainerRef.current?.clientWidth || 300) - 200),
-            top: Math.min(tradePopup.y, height - 180),
+            left: Math.min(tradePopup.x, (chartContainerRef.current?.clientWidth || 300) - 220),
+            top: Math.min(tradePopup.y, height - 200),
           }}
         >
           <div className="space-y-2">
             <div className="flex items-center justify-between">
               <span className="text-sm font-medium">{tradePopup.date}</span>
               <button 
-                onClick={() => setTradePopup(null)}
+                onClick={() => {
+                  setTradePopup(null)
+                  setTradeError(null)
+                }}
                 className="text-muted-foreground hover:text-foreground"
               >
                 <X className="h-3 w-3" />
               </button>
             </div>
-            <p className="text-xs text-muted-foreground">
-              收盘价: ¥{tradePopup.price.toFixed(2)}
-            </p>
+            <div className="text-xs text-muted-foreground space-y-0.5">
+              <p>收盘价: ¥{tradePopup.price.toFixed(2)}</p>
+              <p>可用资金: <span className="font-mono">¥{availableCashAtDate.toLocaleString('zh-CN', { maximumFractionDigits: 0 })}</span></p>
+              {positionAtDate && (
+                <p>持仓: <span className="font-mono">{positionAtDate.totalShares}</span> 股</p>
+              )}
+            </div>
             
             {/* 买卖切换 */}
             <div className="flex rounded-md border p-0.5 bg-muted/30">
               <button
                 type="button"
-                onClick={() => setTradeType('BUY')}
+                onClick={() => {
+                  setTradeType('BUY')
+                  setTradeError(null)
+                }}
                 className={`flex-1 py-1 text-xs rounded font-medium transition-colors ${
                   tradeType === 'BUY'
                     ? 'bg-green-500/20 text-green-600 dark:text-green-400'
@@ -291,7 +314,10 @@ function MiniKlineChart({ stock, height = 180, sharedDates }: MiniKlineChartProp
               </button>
               <button
                 type="button"
-                onClick={() => setTradeType('SELL')}
+                onClick={() => {
+                  setTradeType('SELL')
+                  setTradeError(null)
+                }}
                 className={`flex-1 py-1 text-xs rounded font-medium transition-colors ${
                   tradeType === 'SELL'
                     ? 'bg-red-500/20 text-red-600 dark:text-red-400'
@@ -339,6 +365,11 @@ function MiniKlineChart({ stock, height = 180, sharedDates }: MiniKlineChartProp
                 )
               })}
             </div>
+            
+            {/* 错误提示 */}
+            {tradeError && (
+              <p className="text-xs text-destructive">{tradeError}</p>
+            )}
             
             {/* 确认按钮 */}
             <Button

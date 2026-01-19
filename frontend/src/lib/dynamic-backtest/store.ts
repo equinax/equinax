@@ -12,15 +12,18 @@ import {
   TradeMode,
   BenchmarkData,
   TempConfig,
+  AddTradeResult,
   BENCHMARK_OPTIONS,
 } from './types'
 import {
   executeBuyTrade,
   executeSellTrade,
   calculateEquityCurve,
+  calculateStateAtDate,
   calculateBenchmarkReturns,
   calculateMetrics,
 } from './engine'
+import { Position } from './types'
 
 interface DynamicBacktestActions {
   // 配置
@@ -50,8 +53,11 @@ interface DynamicBacktestActions {
     price: number
     mode: TradeMode
     inputValue: number
-  }) => boolean
+  }) => AddTradeResult
   removeTrade: (tradeId: string) => void
+  
+  // 查询指定日期的状态
+  getStateAtDate: (targetDate: string) => { availableCash: number; positions: Map<string, Position> }
   
   // 计算
   recalculate: () => void
@@ -205,7 +211,7 @@ export const useDynamicBacktestStore = create<DynamicBacktestStore>((set, get) =
     const state = get()
     const stock = state.stocks.get(params.stockCode)
     
-    if (!stock) return false
+    if (!stock) return { success: false, error: '请先选择股票' }
     
     // 构建交易记录
     const baseTrade = {
@@ -242,7 +248,39 @@ export const useDynamicBacktestStore = create<DynamicBacktestStore>((set, get) =
       // 实际可用现金 = 当天开盘现金 - 当天已买入 + 当天已卖出收入
       const availableCash = cashAtDayOpen - todayBuyAmount + todaySellIncome
       
+      if (availableCash <= 0) {
+        return { success: false, error: '可用资金不足' }
+      }
+      
       trade = executeBuyTrade(baseTrade, availableCash)
+      
+      if (trade.executedShares === 0) {
+        return { success: false, error: '资金不足，无法买入一手' }
+      }
+      
+      // 检查是否在中间插入交易，以及是否会导致后续交易无效
+      const laterTrades = state.trades.filter(t => t.date > params.date)
+      if (laterTrades.length > 0) {
+        // 计算插入新交易后，后续日期的资金状态
+        const newTrades = [...state.trades, trade].sort((a, b) => a.date.localeCompare(b.date))
+        
+        // 模拟执行所有交易，检查是否会出现资金不足
+        let simulatedCash = state.initialCapital
+        for (const t of newTrades) {
+          if (t.type === 'BUY') {
+            simulatedCash -= t.totalCost
+          } else {
+            simulatedCash += t.executedAmount - t.totalCost
+          }
+          
+          if (simulatedCash < 0) {
+            return { 
+              success: false, 
+              error: `在此日期插入交易会导致 ${t.date} 的交易资金不足，请先删除后续交易` 
+            }
+          }
+        }
+      }
     } else {
       // 卖出: 需要计算到当天的持仓状态（包含当天所有已执行的交易）
       const allTradesUpToToday = state.trades.filter(t => t.date <= params.date)
@@ -256,14 +294,14 @@ export const useDynamicBacktestStore = create<DynamicBacktestStore>((set, get) =
       
       const position = finalPositions.get(params.stockCode)
       if (!position || position.totalShares <= 0) {
-        return false // 无持仓可卖
+        return { success: false, error: '无持仓可卖' }
       }
       
       trade = executeSellTrade(baseTrade, position)
-    }
-    
-    if (trade.executedShares === 0) {
-      return false // 交易无法执行
+      
+      if (trade.executedShares === 0) {
+        return { success: false, error: '卖出数量无效' }
+      }
     }
     
     // 按日期排序插入
@@ -271,13 +309,24 @@ export const useDynamicBacktestStore = create<DynamicBacktestStore>((set, get) =
     set({ trades })
     
     get().recalculate()
-    return true
+    return { success: true }
   },
   
   removeTrade: (tradeId) => {
     const trades = get().trades.filter(t => t.id !== tradeId)
     set({ trades })
     get().recalculate()
+  },
+  
+  getStateAtDate: (targetDate) => {
+    const state = get()
+    return calculateStateAtDate(
+      state.initialCapital,
+      state.stocks,
+      state.trades,
+      state.startDate,
+      targetDate
+    )
   },
   
   recalculate: () => {

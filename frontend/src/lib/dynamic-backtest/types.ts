@@ -36,6 +36,12 @@ export type TradeType = 'BUY' | 'SELL'
 // 交易方式
 export type TradeMode = 'amount' | 'percent' | 'shares'
 
+// 添加交易结果
+export interface AddTradeResult {
+  success: boolean
+  error?: string
+}
+
 // 交易记录
 export interface Trade {
   id: string

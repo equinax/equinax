@@ -90,15 +90,17 @@ export function executeBuyTrade(
       targetAmount = Math.min(availableCash * (trade.inputValue / 100), availableCash)
       break
     case 'shares':
-      targetAmount = trade.inputValue * trade.price
+      // 股数模式：也需要检查可用资金
+      targetAmount = Math.min(trade.inputValue * trade.price, availableCash)
       break
     default:
       targetAmount = 0
   }
   
-  // 计算可买股数（取整到100股）
-  const rawShares = targetAmount / trade.price
-  const executedShares = roundToLot(rawShares)
+  // 预估佣金，确保总成本不超过可用资金
+  // 先按 targetAmount 计算可买股数
+  let rawShares = targetAmount / trade.price
+  let executedShares = roundToLot(rawShares)
   
   if (executedShares === 0) {
     return {
@@ -111,10 +113,31 @@ export function executeBuyTrade(
     }
   }
   
-  const executedAmount = executedShares * trade.price
-  const commission = calculateCommission(executedAmount)
+  // 计算实际成本（含佣金），如果超过可用资金则减少股数
+  let executedAmount = executedShares * trade.price
+  let commission = calculateCommission(executedAmount)
+  let totalCost = executedAmount + commission
+  
+  // 如果总成本超过可用资金，减少一手再试
+  while (totalCost > availableCash && executedShares >= CN_STOCK_FEES.LOT_SIZE) {
+    executedShares -= CN_STOCK_FEES.LOT_SIZE
+    executedAmount = executedShares * trade.price
+    commission = calculateCommission(executedAmount)
+    totalCost = executedAmount + commission
+  }
+  
+  if (executedShares === 0) {
+    return {
+      ...trade,
+      executedShares: 0,
+      executedAmount: 0,
+      commission: 0,
+      stampDuty: 0,
+      totalCost: 0,
+    }
+  }
+  
   const stampDuty = 0 // 买入无印花税
-  const totalCost = executedAmount + commission
   
   return {
     ...trade,
@@ -425,6 +448,66 @@ export function calculateEquityCurve(
   }
   
   return { equityCurve, finalPositions: positions, finalCash: cash }
+}
+
+/**
+ * 计算指定日期的可用现金和持仓状态
+ * 用于交易弹窗显示当前可用资金
+ */
+export function calculateStateAtDate(
+  initialCapital: number,
+  stocks: Map<string, StockData>,
+  trades: Trade[],
+  startDate: string,
+  targetDate: string
+): { availableCash: number; positions: Map<string, Position> } {
+  // 获取目标日期之前的所有交易
+  const prevDayTrades = trades.filter(t => t.date < targetDate)
+  
+  // 计算到目标日期开盘前的状态
+  const { finalPositions, finalCash: cashAtDayOpen } = calculateEquityCurve(
+    initialCapital,
+    stocks,
+    prevDayTrades,
+    startDate,
+    targetDate
+  )
+  
+  // 计算目标日期当天已执行的买入总额
+  const todayBuys = trades.filter(t => t.date === targetDate && t.type === 'BUY')
+  const todayBuyAmount = todayBuys.reduce((sum, t) => sum + t.totalCost, 0)
+  
+  // 计算目标日期当天已执行的卖出收入
+  const todaySells = trades.filter(t => t.date === targetDate && t.type === 'SELL')
+  const todaySellIncome = todaySells.reduce((sum, t) => sum + (t.executedAmount - t.totalCost), 0)
+  
+  // 可用现金 = 当天开盘现金 - 当天已买入 + 当天已卖出收入
+  const availableCash = cashAtDayOpen - todayBuyAmount + todaySellIncome
+  
+  // 更新持仓状态（包含当天交易）
+  const todayTrades = trades.filter(t => t.date === targetDate)
+  for (const trade of todayTrades) {
+    const stock = stocks.get(trade.stockCode)
+    if (!stock) continue
+    
+    if (trade.type === 'BUY') {
+      const position = finalPositions.get(trade.stockCode)
+      const updated = updatePositionOnBuy(position, trade, stock.name)
+      finalPositions.set(trade.stockCode, updated)
+    } else {
+      const position = finalPositions.get(trade.stockCode)
+      if (position) {
+        const updated = updatePositionOnSell(position, trade)
+        if (updated) {
+          finalPositions.set(trade.stockCode, updated)
+        } else {
+          finalPositions.delete(trade.stockCode)
+        }
+      }
+    }
+  }
+  
+  return { availableCash, positions: finalPositions }
 }
 
 /**

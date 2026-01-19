@@ -43,7 +43,7 @@ export function TradePanel() {
       return
     }
     
-    const success = store.addTrade({
+    const result = store.addTrade({
       stockCode: store.selectedStockCode,
       type: tradeType,
       date: tradeDate,
@@ -52,11 +52,11 @@ export function TradePanel() {
       inputValue: Number(inputValue),
     })
     
-    if (success) {
+    if (result.success) {
       setInputValue('')
       setTradeDate('')
     } else {
-      setError(tradeType === 'BUY' ? '资金不足或数量太小' : '持仓不足')
+      setError(result.error || (tradeType === 'BUY' ? '资金不足或数量太小' : '持仓不足'))
     }
   }
   
