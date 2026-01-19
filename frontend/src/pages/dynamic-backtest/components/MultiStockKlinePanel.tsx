@@ -238,19 +238,18 @@ function MiniKlineChart({ stock, height = 180, sharedDates }: MiniKlineChartProp
   
   return (
     <div className="relative">
-      <div className="flex items-center justify-between px-2 py-0.5 bg-muted/30 border-x border-t text-sm">
-        <div className="flex items-center gap-2">
-          <span className="font-mono font-medium">{stock.code}</span>
-          <span className="text-muted-foreground">{stock.name}</span>
-        </div>
+      <div ref={chartContainerRef} className="border-x border-b" />
+      <div className="absolute left-0 top-0 z-10 flex items-center gap-2 bg-[#d1b2ad]/35 px-2 py-1 text-sm text-foreground">
         <button
           onClick={() => store.removeStock(stock.code)}
-          className="text-muted-foreground hover:text-destructive p-1"
+          className="text-muted-foreground hover:text-destructive"
+          aria-label={`移除${stock.code}`}
         >
           <X className="h-3 w-3" />
         </button>
+        <span className="font-mono font-medium">{stock.code}</span>
+        <span className="text-muted-foreground">{stock.name}</span>
       </div>
-      <div ref={chartContainerRef} className="border-x border-b" />
       
       {/* 交易弹出菜单 */}
       {tradePopup && (
