@@ -32,6 +32,8 @@ function MiniKlineChart({ stock, height = 180, sharedDates }: MiniKlineChartProp
   const [tradeType, setTradeType] = useState<'BUY' | 'SELL'>('BUY')
   const [tradeShares, setTradeShares] = useState('')
   const [tradeError, setTradeError] = useState<string | null>(null)
+  const [sellDate, setSellDate] = useState('')  // 配对交易的卖出日期
+  const [isPairMode, setIsPairMode] = useState(false)  // 是否配对模式
   
   const trades = store.trades.filter(t => t.stockCode === stock.code)
   
@@ -43,6 +45,13 @@ function MiniKlineChart({ stock, height = 180, sharedDates }: MiniKlineChartProp
   
   const availableCashAtDate = stateAtDate?.availableCash ?? 0
   const positionAtDate = stateAtDate?.positions.get(stock.code)
+  
+  // 获取卖出日期的价格
+  const sellDatePrice = useMemo(() => {
+    if (!sellDate || !isPairMode) return null
+    const kline = getKlineOnDate(stock.kline, sellDate)
+    return kline?.close ?? null
+  }, [sellDate, isPairMode, stock.kline])
   
   // 计算仓位快捷选项
   const calculatePositionShares = useCallback((ratio: number) => {
@@ -67,23 +76,55 @@ function MiniKlineChart({ stock, height = 180, sharedDates }: MiniKlineChartProp
     
     setTradeError(null)
     
-    const result = store.addTrade({
-      stockCode: stock.code,
-      type: tradeType,
-      date: tradePopup.date,
-      price: tradePopup.price,
-      mode: 'shares',
-      inputValue: shares,
-    })
-    
-    if (result.success) {
-      setTradePopup(null)
-      setTradeShares('')
-      setTradeError(null)
+    // 配对模式：同时提交买入和卖出
+    if (isPairMode && tradeType === 'BUY') {
+      if (!sellDate) {
+        setTradeError('请选择卖出日期')
+        return
+      }
+      if (sellDatePrice === null) {
+        setTradeError('卖出日期无交易数据')
+        return
+      }
+      
+      const result = store.addTradePair({
+        stockCode: stock.code,
+        buyDate: tradePopup.date,
+        buyPrice: tradePopup.price,
+        sellDate: sellDate,
+        sellPrice: sellDatePrice,
+        shares: shares,
+      })
+      
+      if (result.success) {
+        setTradePopup(null)
+        setTradeShares('')
+        setSellDate('')
+        setIsPairMode(false)
+        setTradeError(null)
+      } else {
+        setTradeError(result.error || '交易失败')
+      }
     } else {
-      setTradeError(result.error || '交易失败')
+      // 单笔交易模式
+      const result = store.addTrade({
+        stockCode: stock.code,
+        type: tradeType,
+        date: tradePopup.date,
+        price: tradePopup.price,
+        mode: 'shares',
+        inputValue: shares,
+      })
+      
+      if (result.success) {
+        setTradePopup(null)
+        setTradeShares('')
+        setTradeError(null)
+      } else {
+        setTradeError(result.error || '交易失败')
+      }
     }
-  }, [tradePopup, tradeShares, tradeType, stock.code, store])
+  }, [tradePopup, tradeShares, tradeType, stock.code, store, isPairMode, sellDate, sellDatePrice])
   
   useEffect(() => {
     if (!chartContainerRef.current || stock.kline.length === 0) return
@@ -366,6 +407,53 @@ function MiniKlineChart({ stock, height = 180, sharedDates }: MiniKlineChartProp
               })}
             </div>
             
+            {/* 配对交易模式（仅买入时显示） */}
+            {tradeType === 'BUY' && (
+              <div className="space-y-1.5 pt-1 border-t">
+                <label className="flex items-center gap-2 text-xs">
+                  <input
+                    type="checkbox"
+                    checked={isPairMode}
+                    onChange={(e) => {
+                      setIsPairMode(e.target.checked)
+                      if (!e.target.checked) {
+                        setSellDate('')
+                      }
+                    }}
+                    className="rounded border-gray-300"
+                  />
+                  <span className="text-muted-foreground">同时指定卖出日期</span>
+                </label>
+                
+                {isPairMode && (
+                  <div className="space-y-1">
+                    <Input
+                      type="date"
+                      value={sellDate}
+                      onChange={(e) => setSellDate(e.target.value)}
+                      min={tradePopup.date}
+                      max={store.endDate}
+                      className="h-7 text-xs"
+                    />
+                    {sellDatePrice !== null && (
+                      <p className="text-xs text-muted-foreground">
+                        卖出价: ¥{sellDatePrice.toFixed(2)}
+                        {tradeShares && Number(tradeShares) > 0 && (
+                          <span className={`ml-2 ${sellDatePrice > tradePopup.price ? 'text-green-600' : 'text-red-600'}`}>
+                            {sellDatePrice > tradePopup.price ? '↑' : '↓'}
+                            {((sellDatePrice - tradePopup.price) / tradePopup.price * 100).toFixed(2)}%
+                          </span>
+                        )}
+                      </p>
+                    )}
+                    {sellDate && sellDatePrice === null && (
+                      <p className="text-xs text-destructive">该日期无交易数据</p>
+                    )}
+                  </div>
+                )}
+              </div>
+            )}
+            
             {/* 错误提示 */}
             {tradeError && (
               <p className="text-xs text-destructive">{tradeError}</p>
@@ -376,9 +464,11 @@ function MiniKlineChart({ stock, height = 180, sharedDates }: MiniKlineChartProp
               className="w-full h-8"
               variant={tradeType === 'BUY' ? 'default' : 'destructive'}
               onClick={handleSubmitTrade}
-              disabled={!tradeShares || Number(tradeShares) <= 0}
+              disabled={!tradeShares || Number(tradeShares) <= 0 || (isPairMode && tradeType === 'BUY' && (!sellDate || sellDatePrice === null))}
             >
-              确认{tradeType === 'BUY' ? '买入' : '卖出'}
+              {isPairMode && tradeType === 'BUY' 
+                ? '确认买卖配对' 
+                : `确认${tradeType === 'BUY' ? '买入' : '卖出'}`}
             </Button>
           </div>
         </div>

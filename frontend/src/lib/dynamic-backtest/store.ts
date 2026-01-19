@@ -56,6 +56,16 @@ interface DynamicBacktestActions {
   }) => AddTradeResult
   removeTrade: (tradeId: string) => void
   
+  // 配对交易（买入+卖出同时提交）
+  addTradePair: (params: {
+    stockCode: string
+    buyDate: string
+    buyPrice: number
+    sellDate: string
+    sellPrice: number
+    shares: number
+  }) => AddTradeResult
+  
   // 查询指定日期的状态
   getStateAtDate: (targetDate: string) => { availableCash: number; positions: Map<string, Position> }
   
@@ -316,6 +326,99 @@ export const useDynamicBacktestStore = create<DynamicBacktestStore>((set, get) =
     const trades = get().trades.filter(t => t.id !== tradeId)
     set({ trades })
     get().recalculate()
+  },
+  
+  addTradePair: (params) => {
+    const state = get()
+    const stock = state.stocks.get(params.stockCode)
+    
+    if (!stock) return { success: false, error: '请先选择股票' }
+    
+    if (params.sellDate <= params.buyDate) {
+      return { success: false, error: '卖出日期必须晚于买入日期' }
+    }
+    
+    // 计算买入日期的可用现金
+    const prevDayTrades = state.trades.filter(t => t.date < params.buyDate)
+    const { finalCash: cashAtBuyDayOpen } = calculateEquityCurve(
+      state.initialCapital,
+      state.stocks,
+      prevDayTrades,
+      state.startDate,
+      params.buyDate
+    )
+    
+    // 计算买入当天已执行的交易
+    const todayBuys = state.trades.filter(t => t.date === params.buyDate && t.type === 'BUY')
+    const todayBuyAmount = todayBuys.reduce((sum, t) => sum + t.totalCost, 0)
+    const todaySells = state.trades.filter(t => t.date === params.buyDate && t.type === 'SELL')
+    const todaySellIncome = todaySells.reduce((sum, t) => sum + (t.executedAmount - t.totalCost), 0)
+    
+    const availableCash = cashAtBuyDayOpen - todayBuyAmount + todaySellIncome
+    
+    if (availableCash <= 0) {
+      return { success: false, error: '买入日期可用资金不足' }
+    }
+    
+    // 创建买入交易
+    const buyTrade = executeBuyTrade({
+      id: nanoid(),
+      stockCode: params.stockCode,
+      type: 'BUY',
+      date: params.buyDate,
+      price: params.buyPrice,
+      mode: 'shares',
+      inputValue: params.shares,
+    }, availableCash)
+    
+    if (buyTrade.executedShares === 0) {
+      return { success: false, error: '资金不足，无法买入' }
+    }
+    
+    // 创建卖出交易（卖出买入的全部股数）
+    const sellTrade = executeSellTrade({
+      id: nanoid(),
+      stockCode: params.stockCode,
+      type: 'SELL',
+      date: params.sellDate,
+      price: params.sellPrice,
+      mode: 'shares',
+      inputValue: buyTrade.executedShares,
+    }, {
+      stockCode: params.stockCode,
+      stockName: stock.name,
+      lots: [],
+      totalShares: buyTrade.executedShares,
+      avgCost: buyTrade.price,
+      currentPrice: params.sellPrice,
+      currentValue: buyTrade.executedShares * params.sellPrice,
+      unrealizedPnL: 0,
+      unrealizedPnLPercent: 0,
+    })
+    
+    // 模拟加入这两笔交易后的所有交易，验证资金不会变负
+    const newTrades = [...state.trades, buyTrade, sellTrade].sort((a, b) => a.date.localeCompare(b.date))
+    
+    let simulatedCash = state.initialCapital
+    for (const t of newTrades) {
+      if (t.type === 'BUY') {
+        simulatedCash -= t.totalCost
+      } else {
+        simulatedCash += t.executedAmount - t.totalCost
+      }
+      
+      if (simulatedCash < 0) {
+        return { 
+          success: false, 
+          error: `插入配对交易会导致 ${t.date} 资金不足，请调整交易` 
+        }
+      }
+    }
+    
+    // 验证通过，添加交易
+    set({ trades: newTrades })
+    get().recalculate()
+    return { success: true }
   },
   
   getStateAtDate: (targetDate) => {
