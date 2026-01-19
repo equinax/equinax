@@ -32,10 +32,13 @@ export function TradeList({ variant = 'card' }: TradeListProps) {
     <div className="space-y-1.5">
       {allTrades.map(trade => {
         const stock = stocks.get(trade.stockCode)
+        const isPaired = !!trade.pairId
         return (
           <div
             key={trade.id}
-            className="flex items-center justify-between px-0 py-0.5 rounded-sm bg-muted/20 text-sm"
+            className={`flex items-center justify-between px-0 py-0.5 rounded-sm text-sm ${
+              isPaired ? 'bg-blue-500/10 border-l-2 border-blue-500/50 pl-1' : 'bg-muted/20'
+            }`}
           >
             <div className="flex-1 min-w-0">
               <div className="flex items-center gap-2">
@@ -52,6 +55,9 @@ export function TradeList({ variant = 'card' }: TradeListProps) {
                 <span className="text-xs text-muted-foreground">
                   {stock?.name || trade.stockCode}
                 </span>
+                {isPaired && (
+                  <span className="text-xs text-blue-500" title="配对交易，删除时将同时删除买入和卖出">🔗</span>
+                )}
               </div>
               <div className="flex items-center gap-2 mt-1 text-xs text-muted-foreground">
                 <span>{trade.executedShares}</span>
@@ -66,6 +72,7 @@ export function TradeList({ variant = 'card' }: TradeListProps) {
               size="sm"
               className="h-7 w-7 p-0 text-muted-foreground hover:text-destructive"
               onClick={() => removeTrade(trade.id)}
+              title={isPaired ? '删除配对交易（买入+卖出）' : '删除交易'}
             >
               <Trash2 className="h-3.5 w-3.5" />
             </Button>

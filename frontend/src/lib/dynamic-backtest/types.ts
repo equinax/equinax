@@ -57,6 +57,8 @@ export interface Trade {
   commission: number         // 佣金
   stampDuty: number          // 印花税（仅卖出）
   totalCost: number          // 总费用
+  // 配对交易
+  pairId?: string            // 配对ID，买卖配对共享同一个pairId
 }
 
 // 分批持仓记录（用于FIFO计算）

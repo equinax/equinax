@@ -323,7 +323,51 @@ export const useDynamicBacktestStore = create<DynamicBacktestStore>((set, get) =
   },
   
   removeTrade: (tradeId) => {
-    const trades = get().trades.filter(t => t.id !== tradeId)
+    const state = get()
+    const tradeToRemove = state.trades.find(t => t.id === tradeId)
+    if (!tradeToRemove) return
+    
+    // 如果交易有配对ID，同时删除配对交易
+    let trades: Trade[]
+    if (tradeToRemove.pairId) {
+      trades = state.trades.filter(t => t.id !== tradeId && t.pairId !== tradeToRemove.pairId)
+    } else {
+      trades = state.trades.filter(t => t.id !== tradeId)
+    }
+    
+    // 如果删除的是买入交易，需要检查并删除无效的卖出交易
+    if (tradeToRemove.type === 'BUY') {
+      // 模拟执行剩余交易，找出无效的卖出（持仓不足）
+      const sortedTrades = [...trades].sort((a, b) => a.date.localeCompare(b.date))
+      const positions = new Map<string, number>()  // stockCode -> shares
+      const invalidTradeIds = new Set<string>()
+      
+      for (const trade of sortedTrades) {
+        const currentShares = positions.get(trade.stockCode) || 0
+        
+        if (trade.type === 'BUY') {
+          positions.set(trade.stockCode, currentShares + trade.executedShares)
+        } else {
+          // 卖出：检查是否有足够持仓
+          if (currentShares < trade.executedShares) {
+            // 持仓不足，标记为无效
+            invalidTradeIds.add(trade.id)
+            // 如果有配对ID，也标记配对交易
+            if (trade.pairId) {
+              trades.filter(t => t.pairId === trade.pairId).forEach(t => invalidTradeIds.add(t.id))
+            }
+          } else {
+            positions.set(trade.stockCode, currentShares - trade.executedShares)
+          }
+        }
+      }
+      
+      // 过滤掉无效交易
+      if (invalidTradeIds.size > 0) {
+        trades = trades.filter(t => !invalidTradeIds.has(t.id))
+      }
+    }
+    
     set({ trades })
     get().recalculate()
   },
@@ -360,6 +404,9 @@ export const useDynamicBacktestStore = create<DynamicBacktestStore>((set, get) =
       return { success: false, error: '买入日期可用资金不足' }
     }
     
+    // 生成配对ID
+    const pairId = nanoid()
+    
     // 创建买入交易
     const buyTrade = executeBuyTrade({
       id: nanoid(),
@@ -369,6 +416,7 @@ export const useDynamicBacktestStore = create<DynamicBacktestStore>((set, get) =
       price: params.buyPrice,
       mode: 'shares',
       inputValue: params.shares,
+      pairId,  // 设置配对ID
     }, availableCash)
     
     if (buyTrade.executedShares === 0) {
@@ -384,6 +432,7 @@ export const useDynamicBacktestStore = create<DynamicBacktestStore>((set, get) =
       price: params.sellPrice,
       mode: 'shares',
       inputValue: buyTrade.executedShares,
+      pairId,  // 设置相同的配对ID
     }, {
       stockCode: params.stockCode,
       stockName: stock.name,
