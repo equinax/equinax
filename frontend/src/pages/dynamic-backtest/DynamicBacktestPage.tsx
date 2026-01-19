@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react'
 import { Link } from 'react-router-dom'
-import { ArrowLeft, RotateCcw, Plus, Search, X, Loader2 } from 'lucide-react'
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+import { ArrowLeft, RotateCcw, Plus, Search, X, Loader2, Pencil, Check, XCircle } from 'lucide-react'
+import { Card, CardContent, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { useDynamicBacktestStore, BENCHMARK_OPTIONS, StockData, BenchmarkData, chartSyncManager } from '@/lib/dynamic-backtest'
@@ -133,41 +133,101 @@ export default function DynamicBacktestPage() {
         <div className="space-y-3">
           <Card>
             <CardContent className="p-3 space-y-3">
+              {/* 配置区域 - 支持锁定/编辑模式 */}
               <div className="flex items-center justify-between">
                 <CardTitle className="text-base shrink-0 whitespace-nowrap">回测配置</CardTitle>
-                <div className="ml-auto flex items-center gap-2">
-                  <span className="text-xs text-muted-foreground">初始资金</span>
+                {store.isConfigLocked ? (
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="h-7 px-2 text-xs"
+                    onClick={store.startEditConfig}
+                  >
+                    <Pencil className="h-3 w-3 mr-1" />
+                    修改
+                  </Button>
+                ) : (
+                  <div className="flex items-center gap-1">
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className="h-7 px-2 text-xs"
+                      onClick={store.cancelEditConfig}
+                    >
+                      <XCircle className="h-3 w-3 mr-1" />
+                      取消
+                    </Button>
+                    <Button
+                      variant="default"
+                      size="sm"
+                      className="h-7 px-2 text-xs"
+                      onClick={store.confirmEditConfig}
+                    >
+                      <Check className="h-3 w-3 mr-1" />
+                      确认
+                    </Button>
+                  </div>
+                )}
+              </div>
+
+              {/* 编辑模式警告 */}
+              {!store.isConfigLocked && (
+                <div className="px-2 py-1.5 rounded-md bg-amber-500/10 border border-amber-500/20 text-xs text-amber-600 dark:text-amber-400">
+                  ⚠️ 确认修改将清空所有交易记录和持仓
+                </div>
+              )}
+
+              {/* 初始资金 */}
+              <div className="flex items-center gap-2">
+                <span className="text-xs text-muted-foreground">初始资金</span>
+                {store.isConfigLocked ? (
+                  <span className="ml-auto font-mono text-sm">
+                    ¥{store.initialCapital.toLocaleString('zh-CN')}
+                  </span>
+                ) : (
                   <Input
                     type="number"
-                    value={store.initialCapital}
-                    onChange={(e) => store.setInitialCapital(Number(e.target.value))}
+                    value={store.tempConfig?.initialCapital ?? store.initialCapital}
+                    onChange={(e) => store.updateTempConfig({ initialCapital: Number(e.target.value) })}
                     step={10000}
-                    className="w-28 h-8 text-sm text-right"
+                    className="ml-auto w-28 h-8 text-sm text-right"
                   />
-                </div>
+                )}
               </div>
 
               {/* 时间范围 */}
               <div className="grid grid-cols-2 gap-2">
                 <div className="space-y-1.5">
                   <label className="text-sm font-medium">开始日期</label>
-                  <Input
-                    type="date"
-                    value={store.startDate}
-                    onChange={(e) => store.setDateRange(e.target.value, store.endDate)}
-                  />
+                  {store.isConfigLocked ? (
+                    <div className="px-2 py-1.5 rounded-md border bg-muted/30 text-sm font-mono">
+                      {store.startDate}
+                    </div>
+                  ) : (
+                    <Input
+                      type="date"
+                      value={store.tempConfig?.startDate ?? store.startDate}
+                      onChange={(e) => store.updateTempConfig({ startDate: e.target.value })}
+                    />
+                  )}
                 </div>
                 <div className="space-y-1.5">
                   <label className="text-sm font-medium">结束日期</label>
-                  <Input
-                    type="date"
-                    value={store.endDate}
-                    onChange={(e) => store.setDateRange(store.startDate, e.target.value)}
-                  />
+                  {store.isConfigLocked ? (
+                    <div className="px-2 py-1.5 rounded-md border bg-muted/30 text-sm font-mono">
+                      {store.endDate}
+                    </div>
+                  ) : (
+                    <Input
+                      type="date"
+                      value={store.tempConfig?.endDate ?? store.endDate}
+                      onChange={(e) => store.updateTempConfig({ endDate: e.target.value })}
+                    />
+                  )}
                 </div>
               </div>
 
-              {/* 基准选择 */}
+              {/* 基准选择 - 不锁定 */}
               <div className="flex items-center gap-2">
                 <label className="text-xs text-muted-foreground">基准指数</label>
                 <select

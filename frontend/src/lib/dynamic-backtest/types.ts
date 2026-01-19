@@ -121,6 +121,13 @@ export interface BacktestMetrics {
   beta: number               // Beta
 }
 
+// 临时配置（编辑模式使用）
+export interface TempConfig {
+  initialCapital: number
+  startDate: string
+  endDate: string
+}
+
 // 动态回测状态
 export interface DynamicBacktestState {
   // 配置
@@ -143,6 +150,10 @@ export interface DynamicBacktestState {
   // UI状态
   selectedStockCode: string | null
   isCalculating: boolean
+  
+  // 配置锁定状态
+  isConfigLocked: boolean
+  tempConfig: TempConfig | null  // 编辑模式下的临时配置
 }
 
 // A股费用常量

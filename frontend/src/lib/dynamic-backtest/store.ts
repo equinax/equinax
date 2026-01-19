@@ -11,6 +11,7 @@ import {
   TradeType,
   TradeMode,
   BenchmarkData,
+  TempConfig,
   BENCHMARK_OPTIONS,
 } from './types'
 import {
@@ -26,6 +27,12 @@ interface DynamicBacktestActions {
   setInitialCapital: (value: number) => void
   setDateRange: (start: string, end: string) => void
   setBenchmark: (code: string) => void
+  
+  // 配置锁定
+  startEditConfig: () => void
+  updateTempConfig: (config: Partial<TempConfig>) => void
+  confirmEditConfig: () => void
+  cancelEditConfig: () => void
   
   // 股票管理
   addStock: (stock: StockData) => void
@@ -83,6 +90,9 @@ const initialState: DynamicBacktestState = {
   
   selectedStockCode: null,
   isCalculating: false,
+  
+  isConfigLocked: true,
+  tempConfig: null,
 }
 
 export const useDynamicBacktestStore = create<DynamicBacktestStore>((set, get) => ({
@@ -101,6 +111,56 @@ export const useDynamicBacktestStore = create<DynamicBacktestStore>((set, get) =
   setBenchmark: (code) => {
     set({ benchmarkCode: code })
     get().recalculate()
+  },
+  
+  // 配置锁定相关
+  startEditConfig: () => {
+    const state = get()
+    set({
+      isConfigLocked: false,
+      tempConfig: {
+        initialCapital: state.initialCapital,
+        startDate: state.startDate,
+        endDate: state.endDate,
+      },
+    })
+  },
+  
+  updateTempConfig: (config) => {
+    const current = get().tempConfig
+    if (current) {
+      set({ tempConfig: { ...current, ...config } })
+    }
+  },
+  
+  confirmEditConfig: () => {
+    const temp = get().tempConfig
+    if (!temp) return
+    
+    // 应用新配置，清空交易记录和持仓
+    set({
+      initialCapital: temp.initialCapital,
+      startDate: temp.startDate,
+      endDate: temp.endDate,
+      currentCash: temp.initialCapital,
+      trades: [],
+      positions: new Map(),
+      equityCurve: [],
+      metrics: null,
+      isConfigLocked: true,
+      tempConfig: null,
+      // 清空股票数据，触发重新加载
+      stocks: new Map(),
+      selectedStockCode: null,
+      benchmark: null,
+    })
+  },
+  
+  cancelEditConfig: () => {
+    set({
+      isConfigLocked: true,
+      tempConfig: null,
+    })
   },
   
   addStock: (stock) => {
@@ -161,24 +221,35 @@ export const useDynamicBacktestStore = create<DynamicBacktestStore>((set, get) =
     let trade: Trade
     
     if (params.type === 'BUY') {
-      // 计算当前可用现金（需要先计算到交易日期之前的状态）
-      const prevTrades = state.trades.filter(t => t.date < params.date)
-      const { finalCash } = calculateEquityCurve(
+      // 计算当天开盘前的现金（不包含当天交易）
+      const prevDayTrades = state.trades.filter(t => t.date < params.date)
+      const { finalCash: cashAtDayOpen } = calculateEquityCurve(
         state.initialCapital,
         state.stocks,
-        prevTrades,
+        prevDayTrades,
         state.startDate,
         params.date
       )
       
-      trade = executeBuyTrade(baseTrade, finalCash)
+      // 计算当天已执行的买入总额
+      const todayBuys = state.trades.filter(t => t.date === params.date && t.type === 'BUY')
+      const todayBuyAmount = todayBuys.reduce((sum, t) => sum + t.totalCost, 0)
+      
+      // 计算当天已执行的卖出收入
+      const todaySells = state.trades.filter(t => t.date === params.date && t.type === 'SELL')
+      const todaySellIncome = todaySells.reduce((sum, t) => sum + (t.executedAmount - t.totalCost), 0)
+      
+      // 实际可用现金 = 当天开盘现金 - 当天已买入 + 当天已卖出收入
+      const availableCash = cashAtDayOpen - todayBuyAmount + todaySellIncome
+      
+      trade = executeBuyTrade(baseTrade, availableCash)
     } else {
-      // 计算当前持仓
-      const prevTrades = state.trades.filter(t => t.date < params.date)
+      // 卖出: 需要计算到当天的持仓状态（包含当天所有已执行的交易）
+      const allTradesUpToToday = state.trades.filter(t => t.date <= params.date)
       const { finalPositions } = calculateEquityCurve(
         state.initialCapital,
         state.stocks,
-        prevTrades,
+        allTradesUpToToday,
         state.startDate,
         params.date
       )
