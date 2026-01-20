@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from 'react'
 import { Link } from 'react-router-dom'
-import { ArrowLeft, RotateCcw, Loader2, Pencil, Check, XCircle } from 'lucide-react'
+import { ArrowLeft, RotateCcw, Loader2, Pencil, Check, XCircle, ChevronDown, ChevronUp, Plus, Sparkles } from 'lucide-react'
 import { Card, CardContent, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -21,10 +21,18 @@ export default function DynamicBacktestPage() {
   const [pendingStockCode, setPendingStockCode] = useState<string | null>(null)
   const [isSelectorOpen, setIsSelectorOpen] = useState(false)
   const [stockChartHeight, setStockChartHeight] = useState(DEFAULT_STOCK_CHART_HEIGHT)
+  const [isConfigCollapsed, setIsConfigCollapsed] = useState(false)
   
   const handleStockChartHeightChange = useCallback((height: number) => {
     setStockChartHeight(height)
   }, [])
+
+  const handleGenerateOptimalTrades = () => {
+    const result = store.generateOptimalTrades()
+    if (!result.success) {
+      alert(result.error || '生成失败')
+    }
+  }
 
   // 页面离开时重置同步管理器
   useEffect(() => {
@@ -146,40 +154,60 @@ export default function DynamicBacktestPage() {
               {/* 配置区域 - 支持锁定/编辑模式 */}
               <div className="flex items-center justify-between">
                 <CardTitle className="text-base shrink-0 whitespace-nowrap">回测配置</CardTitle>
-                {store.isConfigLocked ? (
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    className="h-7 px-2 text-xs"
-                    onClick={store.startEditConfig}
-                  >
-                    <Pencil className="h-3 w-3 mr-1" />
-                    修改
-                  </Button>
-                ) : (
-                  <div className="flex items-center gap-1">
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      className="h-7 px-2 text-xs"
-                      onClick={store.cancelEditConfig}
-                    >
-                      <XCircle className="h-3 w-3 mr-1" />
-                      取消
-                    </Button>
-                    <Button
-                      variant="default"
-                      size="sm"
-                      className="h-7 px-2 text-xs"
-                      onClick={store.confirmEditConfig}
-                    >
-                      <Check className="h-3 w-3 mr-1" />
-                      确认
-                    </Button>
-                  </div>
-                )}
+                <div className="flex items-center gap-1">
+                  {store.isConfigLocked ? (
+                    <>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        className="h-7 px-2 text-xs"
+                        onClick={store.startEditConfig}
+                      >
+                        <Pencil className="h-3 w-3 mr-1" />
+                        修改
+                      </Button>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        className="h-7 w-7 p-0"
+                        onClick={() => setIsConfigCollapsed(!isConfigCollapsed)}
+                        title={isConfigCollapsed ? '展开' : '折叠'}
+                      >
+                        {isConfigCollapsed ? (
+                          <ChevronDown className="h-4 w-4" />
+                        ) : (
+                          <ChevronUp className="h-4 w-4" />
+                        )}
+                      </Button>
+                    </>
+                  ) : (
+                    <>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        className="h-7 px-2 text-xs"
+                        onClick={store.cancelEditConfig}
+                      >
+                        <XCircle className="h-3 w-3 mr-1" />
+                        取消
+                      </Button>
+                      <Button
+                        variant="default"
+                        size="sm"
+                        className="h-7 px-2 text-xs"
+                        onClick={store.confirmEditConfig}
+                      >
+                        <Check className="h-3 w-3 mr-1" />
+                        确认
+                      </Button>
+                    </>
+                  )}
+                </div>
               </div>
 
+              {/* 可折叠的配置内容 */}
+              {!isConfigCollapsed && (
+                <>
               {/* 编辑模式警告 */}
               {!store.isConfigLocked && (
                 <div className="px-2 py-1.5 rounded-md bg-amber-500/10 border border-amber-500/20 text-xs text-amber-600 dark:text-amber-400">
@@ -253,38 +281,49 @@ export default function DynamicBacktestPage() {
                 </select>
               </div>
 
-              <div className="border-t pt-3 space-y-2">
-                <div className="flex items-center justify-between gap-4">
-                  <CardTitle className="text-base shrink-0 whitespace-nowrap">股票池</CardTitle>
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    className="h-7 px-2 text-xs text-primary"
-                    onClick={() => setIsSelectorOpen(true)}
-                  >
-                    添加股票
-                  </Button>
-                </div>
-              </div>
-
-              {/* 加载状态 */}
-              {isLoadingKline && pendingStockCode && (
-                <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                  <Loader2 className="h-4 w-4 animate-spin" />
-                  正在加载 {pendingStockCode}...
-                </div>
-              )}
-
-              {store.stocks.size === 0 && (
-                <p className="text-sm text-muted-foreground text-center py-4">
-                  点击“添加股票”开始回测
-                </p>
-              )}
-              
+              {/* 持仓与资金 */}
               <div className="border-t pt-3 space-y-2">
                 <PositionPanel variant="embedded" />
               </div>
+                </>
+              )}
 
+              {/* 添加股票 + 最优交易按钮行 */}
+              <div className="border-t pt-3">
+                <div className="flex items-center justify-between gap-2">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="h-7 px-3 text-xs"
+                    onClick={() => setIsSelectorOpen(true)}
+                  >
+                    <Plus className="h-3 w-3 mr-1" />
+                    添加股票
+                  </Button>
+                  {store.stocks.size > 0 && (
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="h-7 px-3 text-xs"
+                      onClick={handleGenerateOptimalTrades}
+                      title="基于股票池自动生成最优买卖点"
+                    >
+                      <Sparkles className="h-3 w-3 mr-1" />
+                      最优交易
+                    </Button>
+                  )}
+                </div>
+
+                {/* 加载状态 */}
+                {isLoadingKline && pendingStockCode && (
+                  <div className="flex items-center gap-2 text-sm text-muted-foreground mt-2">
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                    正在加载 {pendingStockCode}...
+                  </div>
+                )}
+              </div>
+
+              {/* 交易记录 */}
               <div className="border-t pt-3 space-y-2">
                 <TradeList variant="embedded" />
               </div>
