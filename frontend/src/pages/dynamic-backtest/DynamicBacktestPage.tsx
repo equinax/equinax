@@ -135,7 +135,7 @@ export default function DynamicBacktestPage() {
             </Link>
           </Button>
           <div>
-            <h1 className="text-2xl font-bold">动态回测</h1>
+            <h1 className="text-2xl font-bold">动态模拟</h1>
             {/* <p className="text-sm text-muted-foreground">手动模拟买卖，实时计算收益</p> */}
           </div>
         </div>
@@ -153,7 +153,7 @@ export default function DynamicBacktestPage() {
             <CardContent className="p-3 space-y-3">
               {/* 配置区域 - 支持锁定/编辑模式 */}
               <div className="flex items-center justify-between">
-                <CardTitle className="text-base shrink-0 whitespace-nowrap">回测配置</CardTitle>
+                <CardTitle className="text-base shrink-0 whitespace-nowrap">模拟配置</CardTitle>
                 <div className="flex items-center gap-1">
                   {store.isConfigLocked ? (
                     <>

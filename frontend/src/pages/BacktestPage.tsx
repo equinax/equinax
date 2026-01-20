@@ -167,7 +167,7 @@ export default function BacktestPage() {
         <Button variant="outline" asChild>
           <Link to="/backtest/dynamic">
             <MousePointerClick className="mr-2 h-4 w-4" />
-            动态回测
+            动态模拟
           </Link>
         </Button>
       </div>
