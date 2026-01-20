@@ -477,7 +477,11 @@ function MiniKlineChart({ stock, height = 180, sharedDates }: MiniKlineChartProp
   )
 }
 
-export function MultiStockKlinePanel() {
+interface MultiStockKlinePanelProps {
+  stockChartHeight?: number
+}
+
+export function MultiStockKlinePanel({ stockChartHeight }: MultiStockKlinePanelProps) {
   const { stocks } = useDynamicBacktestStore()
   
   const sharedDates = useMemo(() => {
@@ -491,7 +495,8 @@ export function MultiStockKlinePanel() {
   }, [stocks])
   
   const stockList = Array.from(stocks.values())
-  const chartHeight = Math.round(Math.max(160, 220 - stockList.length * 15) * 0.75)
+  // 如果外部传入了 stockChartHeight，使用它；否则使用原来的自动计算逻辑
+  const chartHeight = stockChartHeight ?? Math.round(Math.max(160, 220 - stockList.length * 15) * 0.75)
   
   if (stockList.length === 0) {
     return (

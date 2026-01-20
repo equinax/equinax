@@ -1,20 +1,57 @@
-import { useEffect, useRef } from 'react'
+import { useEffect, useRef, useCallback, useState } from 'react'
 import { createChart, ColorType, IChartApi, LineData, Time } from 'lightweight-charts'
+import { GripVertical } from 'lucide-react'
 import { useTheme } from '@/components/theme-provider'
 import { getChartThemeColors } from '@/lib/chart-theme'
 import { useDynamicBacktestStore, chartSyncManager } from '@/lib/dynamic-backtest'
 
 interface EquityChartProps {
   height?: number
+  stockChartHeight: number
+  onStockChartHeightChange: (height: number) => void
 }
 
-export function EquityChart({ height = 180 }: EquityChartProps) {
+export function EquityChart({ height = 180, stockChartHeight, onStockChartHeightChange }: EquityChartProps) {
   const { equityCurve, benchmark, metrics } = useDynamicBacktestStore()
   const chartContainerRef = useRef<HTMLDivElement>(null)
   const chartRef = useRef<IChartApi | null>(null)
   const chartIdRef = useRef('equity-curve')
   const { theme } = useTheme()
   const isDark = theme === 'dark' || (theme === 'system' && window.matchMedia('(prefers-color-scheme: dark)').matches)
+  
+  // 拖拽调整高度
+  const [isDragging, setIsDragging] = useState(false)
+  const dragStartY = useRef(0)
+  const dragStartHeight = useRef(0)
+  
+  const handleDragStart = useCallback((e: React.MouseEvent) => {
+    e.preventDefault()
+    setIsDragging(true)
+    dragStartY.current = e.clientY
+    dragStartHeight.current = stockChartHeight
+  }, [stockChartHeight])
+  
+  useEffect(() => {
+    if (!isDragging) return
+    
+    const handleMouseMove = (e: MouseEvent) => {
+      const deltaY = e.clientY - dragStartY.current
+      const newHeight = Math.max(80, Math.min(400, dragStartHeight.current + deltaY))
+      onStockChartHeightChange(newHeight)
+    }
+    
+    const handleMouseUp = () => {
+      setIsDragging(false)
+    }
+    
+    document.addEventListener('mousemove', handleMouseMove)
+    document.addEventListener('mouseup', handleMouseUp)
+    
+    return () => {
+      document.removeEventListener('mousemove', handleMouseMove)
+      document.removeEventListener('mouseup', handleMouseUp)
+    }
+  }, [isDragging, onStockChartHeightChange])
   
   useEffect(() => {
     if (!chartContainerRef.current) return
@@ -212,6 +249,14 @@ export function EquityChart({ height = 180 }: EquityChartProps) {
               <span className="text-muted-foreground">{benchmark.name}</span>
             </div>
           )}
+          {/* 拖拽手柄调整股票图表高度 */}
+          <div
+            onMouseDown={handleDragStart}
+            className={`flex items-center justify-center w-6 h-5 rounded cursor-ns-resize hover:bg-muted transition-colors ${isDragging ? 'bg-muted' : ''}`}
+            title="拖拽调整个股图表高度"
+          >
+            <GripVertical className="h-3 w-3 text-muted-foreground rotate-90" />
+          </div>
         </div>
       </div>
       <div ref={chartContainerRef} className="border-x border-b" />

@@ -1,8 +1,9 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import { Link } from 'react-router-dom'
 import { ArrowLeft, RotateCcw, Loader2, Pencil, Check, XCircle } from 'lucide-react'
 import { Card, CardContent, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
+import { Input } from '@/components/ui/input'
 import { useDynamicBacktestStore, BENCHMARK_OPTIONS, StockData, BenchmarkData, chartSyncManager } from '@/lib/dynamic-backtest'
 import { useGetKlineApiV1StocksCodeKlineGet } from '@/api/generated/stocks/stocks'
 import { MultiStockKlinePanel } from './components/MultiStockKlinePanel'
@@ -11,11 +12,19 @@ import { PositionPanel } from './components/PositionPanel'
 import { EquityChart } from './components/EquityChart'
 import { StockSelectorSheet } from './components/StockSelectorSheet'
 
+// 默认个股图表高度
+const DEFAULT_STOCK_CHART_HEIGHT = 140
+
 export default function DynamicBacktestPage() {
   const store = useDynamicBacktestStore()
 
   const [pendingStockCode, setPendingStockCode] = useState<string | null>(null)
   const [isSelectorOpen, setIsSelectorOpen] = useState(false)
+  const [stockChartHeight, setStockChartHeight] = useState(DEFAULT_STOCK_CHART_HEIGHT)
+  
+  const handleStockChartHeightChange = useCallback((height: number) => {
+    setStockChartHeight(height)
+  }, [])
 
   // 页面离开时重置同步管理器
   useEffect(() => {
@@ -286,10 +295,14 @@ export default function DynamicBacktestPage() {
         {/* 右侧主区域 */}
         <div className="space-y-0">
           {/* 权益曲线 */}
-          <EquityChart height={160} />
+          <EquityChart 
+            height={160} 
+            stockChartHeight={stockChartHeight}
+            onStockChartHeightChange={handleStockChartHeightChange}
+          />
 
           {/* 多股票K线列表 */}
-          <MultiStockKlinePanel />
+          <MultiStockKlinePanel stockChartHeight={stockChartHeight} />
         </div>
       </div>
 
