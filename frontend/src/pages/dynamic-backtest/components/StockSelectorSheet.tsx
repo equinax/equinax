@@ -2,7 +2,6 @@ import { useState, useMemo } from 'react'
 import { AlertDialog, AlertDialogContent, AlertDialogTitle } from '@/components/ui/alert-dialog'
 import { Button } from '@/components/ui/button'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
-import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible'
 import {
   useGetUniverseSnapshotApiV1UniverseSnapshotGet,
   useGetIndustryTreeApiV1UniverseIndustriesTreeGet,
@@ -13,7 +12,7 @@ import {
 } from '@/api/generated/alpha-radar/alpha-radar'
 import type { EtfCategory, IndustryTreeItem } from '@/api/generated/schemas'
 import type { StockData } from '@/lib/dynamic-backtest'
-import { ChevronRight, X } from 'lucide-react'
+import { X } from 'lucide-react'
 import { cn } from '@/lib/utils'
 
 // 股票过滤选项
@@ -187,7 +186,8 @@ function RotationIndustryColumn({ item, selectedCodes, pendingCode, onToggleStoc
   )
 }
 
-interface EtfSubCategoryNodeProps {
+// ETF 子分类列组件 - 类似行业列
+interface EtfSubCategoryColumnProps {
   category: EtfCategory
   subCategory: string
   selectedCodes: Map<string, StockData>
@@ -195,105 +195,88 @@ interface EtfSubCategoryNodeProps {
   onToggleStock: (code: string) => void
 }
 
-function EtfSubCategoryNode({
+function EtfSubCategoryColumn({
   category,
   subCategory,
   selectedCodes,
   pendingCode,
   onToggleStock,
-}: EtfSubCategoryNodeProps) {
-  const [open, setOpen] = useState(false)
-
+}: EtfSubCategoryColumnProps) {
   const { data, isLoading } = useGetEtfSubcategoryListApiV1AlphaRadarEtfSubcategoryListGet(
     { category, sub_category: subCategory },
-    { query: { enabled: open } }
+    { query: { staleTime: 5 * 60 * 1000 } } // 5 min cache
   )
 
+  const etfs = data?.etfs ?? []
+
   return (
-    <Collapsible open={open} onOpenChange={setOpen}>
-      <CollapsibleTrigger asChild>
-        <button
-          type="button"
-          className="flex w-full items-center justify-between rounded px-2 py-1 text-left text-sm hover:bg-muted"
-        >
-          <span className="flex items-center gap-1">
-            <ChevronRight className={cn('h-3 w-3 transition-transform', open && 'rotate-90')} />
-            {subCategory}
-          </span>
-          <span className="text-xs text-muted-foreground">{data?.etfs?.length ?? '-'}</span>
-        </button>
-      </CollapsibleTrigger>
-      <CollapsibleContent>
-        <div className="ml-4 mt-1 space-y-1">
-          {isLoading ? (
-            <div className="px-2 py-1 text-xs text-muted-foreground">加载中...</div>
-          ) : (
-            data?.etfs?.map((etf) => (
-              <StockItem
-                key={etf.code}
-                code={etf.code}
-                name={etf.name}
-                isSelected={selectedCodes.has(etf.code)}
-                isPending={pendingCode === etf.code}
-                onToggle={onToggleStock}
-              />
-            ))
-          )}
-        </div>
-      </CollapsibleContent>
-    </Collapsible>
+    <div className="min-w-[100px] w-[100px] flex flex-col border-r bg-card shrink-0 last:border-r-0">
+      <div className="flex items-center justify-between border-b px-0.5 py-0.5 bg-muted/30 sticky top-0">
+        <span className="text-[10px] font-semibold truncate">{subCategory}</span>
+        <span className="text-[9px] text-muted-foreground">{etfs.length || '-'}</span>
+      </div>
+      <div className="px-0.5">
+        {isLoading ? (
+          <div className="px-1 py-1 text-[10px] text-muted-foreground">加载中...</div>
+        ) : etfs.length === 0 ? (
+          <div className="px-1 py-1 text-[10px] text-muted-foreground">暂无</div>
+        ) : (
+          etfs.map((etf) => (
+            <StockItem
+              key={etf.code}
+              code={etf.code}
+              name={etf.name}
+              isSelected={selectedCodes.has(etf.code)}
+              isPending={pendingCode === etf.code}
+              onToggle={onToggleStock}
+            />
+          ))
+        )}
+      </div>
+    </div>
   )
 }
 
-interface EtfCategoryNodeProps {
-  category: { key: EtfCategory; label: string }
+// ETF 分类内容 - 展示某个一级分类下的所有二级分类
+interface EtfCategoryContentProps {
+  category: EtfCategory
   selectedCodes: Map<string, StockData>
   pendingCode: string | null
   onToggleStock: (code: string) => void
 }
 
-function EtfCategoryNode({ category, selectedCodes, pendingCode, onToggleStock }: EtfCategoryNodeProps) {
-  const [open, setOpen] = useState(true)
-
+function EtfCategoryContent({ category, selectedCodes, pendingCode, onToggleStock }: EtfCategoryContentProps) {
   const { data, isLoading } = useGetEtfRotationDetailApiV1AlphaRadarEtfRotationCategoryGet(
-    category.key,
-    { days: 1, page_size: 1 },
-    { query: { enabled: open } }
+    category,
+    { days: 5, page_size: 1 },  // API requires days >= 5
+    { query: { staleTime: 5 * 60 * 1000 } }
   )
 
+  const subCategories = data?.sub_categories ?? []
+
+  if (isLoading) {
+    return <div className="flex items-center justify-center h-40 text-muted-foreground">加载中...</div>
+  }
+
+  if (subCategories.length === 0) {
+    return <div className="text-sm text-muted-foreground p-4">暂无子分类</div>
+  }
+
   return (
-    <Collapsible open={open} onOpenChange={setOpen}>
-      <CollapsibleTrigger asChild>
-        <button
-          type="button"
-          className="flex w-full items-center justify-between rounded px-2 py-1 text-left text-sm hover:bg-muted"
-        >
-          <span className="flex items-center gap-1">
-            <ChevronRight className={cn('h-3 w-3 transition-transform', open && 'rotate-90')} />
-            {category.label}
-          </span>
-          <span className="text-xs text-muted-foreground">{data?.sub_categories?.length ?? '-'}</span>
-        </button>
-      </CollapsibleTrigger>
-      <CollapsibleContent>
-        <div className="ml-4 mt-1 space-y-1">
-          {isLoading ? (
-            <div className="px-2 py-1 text-xs text-muted-foreground">加载中...</div>
-          ) : (
-            data?.sub_categories?.map((subCategory) => (
-              <EtfSubCategoryNode
-                key={subCategory}
-                category={category.key}
-                subCategory={subCategory}
-                selectedCodes={selectedCodes}
-                pendingCode={pendingCode}
-                onToggleStock={onToggleStock}
-              />
-            ))
-          )}
-        </div>
-      </CollapsibleContent>
-    </Collapsible>
+    <div className="h-full overflow-auto">
+      <div className="flex border-t">
+        {subCategories.map((subCat) => (
+          <EtfSubCategoryColumn
+            key={`${category}-${subCat}`}
+            category={category}
+            subCategory={subCat}
+            selectedCodes={selectedCodes}
+            pendingCode={pendingCode}
+            onToggleStock={onToggleStock}
+          />
+        ))}
+      </div>
+    </div>
   )
 }
 
@@ -305,6 +288,7 @@ export function StockSelectorSheet({
   onToggleStock,
 }: StockSelectorSheetProps) {
   const [tab, setTab] = useState<'stock' | 'etf'>('stock')
+  const [etfCategory, setEtfCategory] = useState<EtfCategory>('broad')
   const [filters, setFilters] = useState<StockFilters>({
     hideST: true,
     hideGEM: false,
@@ -370,12 +354,12 @@ export function StockSelectorSheet({
             </div>
           </div>
 
-          <div className="flex-1 min-h-0 flex flex-col">
-            <TabsContent value="stock" className="flex-1 min-h-0 overflow-hidden m-0">
+          <div className="flex-1 min-h-0">
+            <TabsContent value="stock" className="h-full overflow-hidden m-0 data-[state=active]:flex data-[state=active]:flex-col">
               {isLoading ? (
                 <div className="flex items-center justify-center h-40 text-muted-foreground">加载中...</div>
               ) : sortedIndustries.length ? (
-                <div className="h-full overflow-auto">
+                <div className="flex-1 min-h-0 overflow-auto">
                   <div className="flex border-t">
                     {sortedIndustries.map((item) => (
                       <RotationIndustryColumn
@@ -394,19 +378,29 @@ export function StockSelectorSheet({
               )}
             </TabsContent>
 
-            <TabsContent value="etf" className="flex-1 min-h-0 overflow-hidden m-0">
-              <div className="h-full overflow-y-auto p-4">
-                <div className="space-y-2">
-                  {ETF_CATEGORIES.map((category) => (
-                    <EtfCategoryNode
-                      key={category.key}
-                      category={category}
-                      selectedCodes={selectedCodes}
-                      pendingCode={pendingCode}
-                      onToggleStock={onToggleStock}
-                    />
-                  ))}
-                </div>
+            <TabsContent value="etf" className="h-full overflow-hidden m-0 data-[state=active]:flex data-[state=active]:flex-col">
+              {/* ETF 一级分类 Tabs */}
+              <div className="flex-shrink-0 flex items-center gap-1 px-2 py-1 border-b bg-muted/20">
+                {ETF_CATEGORIES.map((cat) => (
+                  <Button
+                    key={cat.key}
+                    variant={etfCategory === cat.key ? 'secondary' : 'ghost'}
+                    size="sm"
+                    onClick={() => setEtfCategory(cat.key)}
+                    className="h-6 px-2 text-xs"
+                  >
+                    {cat.label}
+                  </Button>
+                ))}
+              </div>
+              {/* ETF 二级分类内容 */}
+              <div className="flex-1 min-h-0">
+                <EtfCategoryContent
+                  category={etfCategory}
+                  selectedCodes={selectedCodes}
+                  pendingCode={pendingCode}
+                  onToggleStock={onToggleStock}
+                />
               </div>
             </TabsContent>
           </div>
