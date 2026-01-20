@@ -320,28 +320,20 @@ export function StockSelectorSheet({
               {tab === 'stock' && (
                 <div className="flex items-center gap-1">
                   <Toggle
-                    pressed={filters.hideST}
-                    onPressedChange={(pressed) => setFilters(f => ({ ...f, hideST: pressed }))}
+                    pressed={!filters.hideST}
+                    onPressedChange={(pressed) => setFilters(f => ({ ...f, hideST: !pressed }))}
                     size="sm"
                     className="h-6 px-2 text-xs data-[state=on]:bg-[#d4e5d4] data-[state=on]:text-[#4a6b4a]"
                   >
                     ST
                   </Toggle>
                   <Toggle
-                    pressed={filters.hideGEM}
-                    onPressedChange={(pressed) => setFilters(f => ({ ...f, hideGEM: pressed }))}
+                    pressed={!filters.hideGEM}
+                    onPressedChange={(pressed) => setFilters(f => ({ ...f, hideGEM: !pressed }))}
                     size="sm"
                     className="h-6 px-2 text-xs data-[state=on]:bg-[#d4e5d4] data-[state=on]:text-[#4a6b4a]"
                   >
                     创业板
-                  </Toggle>
-                  <Toggle
-                    pressed={filters.hideBSE}
-                    onPressedChange={(pressed) => setFilters(f => ({ ...f, hideBSE: pressed }))}
-                    size="sm"
-                    className="h-6 px-2 text-xs data-[state=on]:bg-[#d4e5d4] data-[state=on]:text-[#4a6b4a]"
-                  >
-                    北交所
                   </Toggle>
                 </div>
               )}
