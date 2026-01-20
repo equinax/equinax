@@ -41,6 +41,7 @@ interface DynamicBacktestActions {
   addStock: (stock: StockData) => void
   removeStock: (code: string) => void
   selectStock: (code: string | null) => void
+  reorderStocks: (fromIndex: number, toIndex: number) => void
   
   // 基准数据
   setBenchmarkData: (data: BenchmarkData) => void
@@ -96,6 +97,7 @@ const initialState: DynamicBacktestState = {
   benchmarkCode: BENCHMARK_OPTIONS[0].code,
   
   stocks: new Map(),
+  stockOrder: [],
   benchmark: null,
   trades: [],
   
@@ -167,6 +169,7 @@ export const useDynamicBacktestStore = create<DynamicBacktestStore>((set, get) =
       tempConfig: null,
       // 清空股票数据，触发重新加载
       stocks: new Map(),
+      stockOrder: [],
       selectedStockCode: null,
       benchmark: null,
     })
@@ -181,8 +184,14 @@ export const useDynamicBacktestStore = create<DynamicBacktestStore>((set, get) =
   
   addStock: (stock) => {
     const stocks = new Map(get().stocks)
+    const stockOrder = [...get().stockOrder]
+    
+    // 只有新股票才添加到顺序列表
+    if (!stocks.has(stock.code)) {
+      stockOrder.push(stock.code)
+    }
     stocks.set(stock.code, stock)
-    set({ stocks })
+    set({ stocks, stockOrder })
     
     // 如果是第一只股票，自动选中
     if (stocks.size === 1) {
@@ -194,6 +203,9 @@ export const useDynamicBacktestStore = create<DynamicBacktestStore>((set, get) =
     const stocks = new Map(get().stocks)
     stocks.delete(code)
     
+    // 从顺序列表中移除
+    const stockOrder = get().stockOrder.filter(c => c !== code)
+    
     // 同时删除该股票的所有交易
     const trades = get().trades.filter(t => t.stockCode !== code)
     
@@ -204,12 +216,19 @@ export const useDynamicBacktestStore = create<DynamicBacktestStore>((set, get) =
       selectedStockCode = stocks.size > 0 && !firstKey.done ? firstKey.value : null
     }
     
-    set({ stocks, trades, selectedStockCode })
+    set({ stocks, stockOrder, trades, selectedStockCode })
     get().recalculate()
   },
   
   selectStock: (code) => {
     set({ selectedStockCode: code })
+  },
+  
+  reorderStocks: (fromIndex, toIndex) => {
+    const stockOrder = [...get().stockOrder]
+    const [removed] = stockOrder.splice(fromIndex, 1)
+    stockOrder.splice(toIndex, 0, removed)
+    set({ stockOrder })
   },
   
   setBenchmarkData: (data) => {

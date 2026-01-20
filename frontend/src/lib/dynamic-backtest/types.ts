@@ -146,6 +146,7 @@ export interface DynamicBacktestState {
   
   // 数据
   stocks: Map<string, StockData>
+  stockOrder: string[]  // 股票代码顺序
   benchmark: BenchmarkData | null
   trades: Trade[]
   

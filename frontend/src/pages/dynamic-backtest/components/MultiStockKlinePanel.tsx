@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState, useCallback, useMemo } from 'react'
 import { createChart, ColorType, IChartApi, CandlestickData, Time, SeriesMarker, SeriesMarkerPosition, SeriesMarkerShape, WhitespaceData } from 'lightweight-charts'
-import { X } from 'lucide-react'
+import { X, GripVertical } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { useTheme } from '@/components/theme-provider'
@@ -12,9 +12,25 @@ interface MiniKlineChartProps {
   stock: StockData
   height?: number
   sharedDates: string[]
+  index: number
+  onDragStart: (index: number) => void
+  onDragOver: (index: number) => void
+  onDragEnd: () => void
+  isDragging: boolean
+  dragOverIndex: number | null
 }
 
-function MiniKlineChart({ stock, height = 180, sharedDates }: MiniKlineChartProps) {
+function MiniKlineChart({ 
+  stock, 
+  height = 180, 
+  sharedDates,
+  index,
+  onDragStart,
+  onDragOver,
+  onDragEnd,
+  isDragging,
+  dragOverIndex,
+}: MiniKlineChartProps) {
   const store = useDynamicBacktestStore()
   const chartContainerRef = useRef<HTMLDivElement>(null)
   const chartRef = useRef<IChartApi | null>(null)
@@ -293,9 +309,28 @@ function MiniKlineChart({ stock, height = 180, sharedDates }: MiniKlineChartProp
   }, [stock, trades, isDark, height, sharedDates])
   
   return (
-    <div className="relative">
+    <div 
+      className="relative"
+      onDragOver={(e) => {
+        e.preventDefault()
+        onDragOver(index)
+      }}
+    >
+      {/* 拖拽放置指示器 - 顶部 */}
+      {isDragging && dragOverIndex === index && (
+        <div className="absolute top-0 left-0 right-0 h-1 bg-blue-500 z-20" />
+      )}
       <div ref={chartContainerRef} className="border-x border-b" />
-      <div className="absolute left-0 top-0 z-10 flex items-center gap-2 bg-[#d1b2ad]/35 px-2 py-1 text-sm text-foreground">
+      <div 
+        className="absolute left-0 top-0 z-10 flex items-center gap-1 bg-[#d1b2ad]/35 px-1 py-1 text-sm text-foreground cursor-grab active:cursor-grabbing"
+        draggable
+        onDragStart={(e) => {
+          e.dataTransfer.effectAllowed = 'move'
+          onDragStart(index)
+        }}
+        onDragEnd={onDragEnd}
+      >
+        <GripVertical className="h-3 w-3 text-muted-foreground" />
         <button
           onClick={() => store.removeStock(stock.code)}
           className="text-muted-foreground hover:text-destructive"
@@ -482,7 +517,9 @@ interface MultiStockKlinePanelProps {
 }
 
 export function MultiStockKlinePanel({ stockChartHeight }: MultiStockKlinePanelProps) {
-  const { stocks } = useDynamicBacktestStore()
+  const { stocks, stockOrder, reorderStocks } = useDynamicBacktestStore()
+  const [dragIndex, setDragIndex] = useState<number | null>(null)
+  const [dragOverIndex, setDragOverIndex] = useState<number | null>(null)
   
   const sharedDates = useMemo(() => {
     const dateSet = new Set<string>()
@@ -494,9 +531,38 @@ export function MultiStockKlinePanel({ stockChartHeight }: MultiStockKlinePanelP
     return Array.from(dateSet).sort()
   }, [stocks])
   
-  const stockList = Array.from(stocks.values())
+  // 按 stockOrder 排序股票列表
+  const stockList = useMemo(() => {
+    const stockMap = stocks
+    // 如果 stockOrder 为空或不完整，使用 stocks 的默认顺序
+    if (stockOrder.length === 0) {
+      return Array.from(stockMap.values())
+    }
+    return stockOrder
+      .filter(code => stockMap.has(code))
+      .map(code => stockMap.get(code)!)
+  }, [stocks, stockOrder])
+  
   // 如果外部传入了 stockChartHeight，使用它；否则使用原来的自动计算逻辑
   const chartHeight = stockChartHeight ?? Math.round(Math.max(160, 220 - stockList.length * 15) * 0.75)
+  
+  const handleDragStart = useCallback((index: number) => {
+    setDragIndex(index)
+  }, [])
+  
+  const handleDragOver = useCallback((index: number) => {
+    if (dragIndex !== null && dragIndex !== index) {
+      setDragOverIndex(index)
+    }
+  }, [dragIndex])
+  
+  const handleDragEnd = useCallback(() => {
+    if (dragIndex !== null && dragOverIndex !== null && dragIndex !== dragOverIndex) {
+      reorderStocks(dragIndex, dragOverIndex)
+    }
+    setDragIndex(null)
+    setDragOverIndex(null)
+  }, [dragIndex, dragOverIndex, reorderStocks])
   
   if (stockList.length === 0) {
     return (
@@ -517,6 +583,12 @@ export function MultiStockKlinePanel({ stockChartHeight }: MultiStockKlinePanelP
             stock={stock}
             height={chartHeight}
             sharedDates={sharedDates}
+            index={index}
+            onDragStart={handleDragStart}
+            onDragOver={handleDragOver}
+            onDragEnd={handleDragEnd}
+            isDragging={dragIndex !== null}
+            dragOverIndex={dragOverIndex}
           />
         </div>
       ))}
