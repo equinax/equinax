@@ -1078,8 +1078,8 @@ async def _get_enhanced_pg_status(database_url: str) -> dict:
         try:
             row = await conn.fetchrow("""
                 SELECT COUNT(*) as count,
-                       MIN(trade_date) as min_date,
-                       MAX(trade_date) as max_date
+                       MIN(date) as min_date,
+                       MAX(date) as max_date
                 FROM market_daily
             """)
             date_range = f"{row['min_date']} ~ {row['max_date']}" if row['min_date'] else '-'
@@ -1210,8 +1210,8 @@ async def _get_pg_status(database_url: str) -> dict:
         try:
             row = await conn.fetchrow("""
                 SELECT COUNT(*) as count,
-                       MIN(trade_date) as min_date,
-                       MAX(trade_date) as max_date
+                       MIN(date) as min_date,
+                       MAX(date) as max_date
                 FROM market_daily
             """)
             date_range = f"{row['min_date']} ~ {row['max_date']}" if row['min_date'] else '-'
@@ -1382,8 +1382,8 @@ async def _get_pg_loaded_dates(pg_url: str, table: str) -> set:
         conn = await asyncpg.connect(pg_url)
         try:
             if table == "market_daily":
-                rows = await conn.fetch("SELECT DISTINCT trade_date FROM market_daily")
-                return {str(row['trade_date']) for row in rows}
+                rows = await conn.fetch("SELECT DISTINCT date FROM market_daily")
+                return {str(row['date']) for row in rows}
             elif table == "indicator_valuation":
                 rows = await conn.fetch("SELECT DISTINCT date FROM indicator_valuation")
                 return {str(row['date']) for row in rows}
@@ -1869,7 +1869,7 @@ async def _run_sync(
             """, sync_id, result['sync_type'])
 
         # Get database's latest date
-        row = await conn.fetchrow("SELECT MAX(trade_date) as max_date FROM market_daily")
+        row = await conn.fetchrow("SELECT MAX(date) as max_date FROM market_daily")
         db_latest = row['max_date'] if row and row['max_date'] else None
 
         if db_latest:
@@ -1891,10 +1891,54 @@ async def _run_sync(
         # Perform sync if needed
         if result['days_to_sync'] > 0 or full:
             console.print(f"  Syncing {result['days_to_sync']} day(s)...")
-
-            # For now, call the load command logic
-            # In production, this would be more sophisticated
             console.print("  [dim]Running data import...[/dim]")
+
+            from workers.batch_sync import (
+                sync_stocks_batch,
+                sync_etfs_batch,
+                sync_indices_batch,
+                sync_adjust_factors,
+                get_pg_max_date,
+                get_pg_index_max_date,
+                get_latest_trading_day,
+            )
+
+            from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession
+            from sqlalchemy.orm import sessionmaker
+
+            # Use async SQLAlchemy session for batch sync
+            async_db_url = database_url.replace("postgresql://", "postgresql+asyncpg://")
+            if "+asyncpg" not in async_db_url:
+                async_db_url = async_db_url.replace("postgresql:", "postgresql+asyncpg:")
+
+            engine = create_async_engine(async_db_url, echo=False)
+            async_session = sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
+
+            async with async_session() as session:
+                latest_trading_day = get_latest_trading_day()
+                pg_stock_date = await get_pg_max_date(session, 'stock')
+                pg_etf_date = await get_pg_max_date(session, 'etf')
+                pg_index_date = await get_pg_index_max_date(session)
+
+                records_imported = 0
+
+                if full or pg_stock_date is None or pg_stock_date < latest_trading_day:
+                    stock_result = await sync_stocks_batch(session, None)
+                    records_imported += stock_result.get("market_daily_count", 0)
+
+                if full or pg_etf_date is None or pg_etf_date < latest_trading_day:
+                    etf_result = await sync_etfs_batch(session, None)
+                    records_imported += etf_result.get("market_daily_count", 0)
+
+                if full or pg_index_date is None or pg_index_date < latest_trading_day:
+                    index_result = await sync_indices_batch(session, None)
+                    records_imported += index_result.get("market_daily_count", 0)
+
+                adjust_result = await sync_adjust_factors(session, None)
+                result['records_imported'] = records_imported
+                result['records_downloaded'] = records_imported
+
+            await engine.dispose()
 
             # Run classification for latest date
             if db_latest:
@@ -1905,10 +1949,6 @@ async def _run_sync(
                         calculate_style_factors,
                         generate_classification_snapshot,
                     )
-
-                    async_db_url = database_url.replace("postgresql://", "postgresql+asyncpg://")
-                    if "+asyncpg" not in async_db_url:
-                        async_db_url = async_db_url.replace("postgresql:", "postgresql+asyncpg:")
 
                     ctx = {}
                     latest_str = str(db_latest)
@@ -2038,7 +2078,7 @@ async def _run_fix(
         console.print("  Checking classification snapshots...")
         row = await conn.fetchrow("""
             SELECT
-                (SELECT MAX(trade_date) FROM market_daily) as market_latest,
+                (SELECT MAX(date) FROM market_daily) as market_latest,
                 (SELECT MAX(date) FROM classification_snapshot) as class_latest
         """)
 

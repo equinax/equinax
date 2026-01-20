@@ -401,6 +401,23 @@ export default function DataSyncPage() {
                           </span>
                         )}
                       </div>
+                      {/* Running logs */}
+                      {step.logs && step.logs.length > 0 && (
+                        <div className="ml-7 p-2 bg-blue-500/5 rounded border border-blue-500/20 text-xs">
+                          <div className="flex items-center gap-1 text-blue-500 font-medium mb-1">
+                            <Activity className="h-3 w-3" />
+                            实时日志
+                          </div>
+                          <div className="space-y-0.5 max-h-24 overflow-y-auto">
+                            {step.logs.map((log, idx) => (
+                              <div key={`${step.id}-log-${idx}`} className="text-muted-foreground">
+                                {log}
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+
                       {/* Failed assets list */}
                       {step.failed_assets && step.failed_assets.length > 0 && (
                         <div className="ml-7 p-2 bg-amber-500/10 rounded border border-amber-500/30 text-xs">

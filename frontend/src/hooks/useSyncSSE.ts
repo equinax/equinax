@@ -31,6 +31,7 @@ export interface SyncStep {
   duration_seconds?: number
   detail?: string
   runningMessage?: string  // Real-time progress message for running steps
+  logs?: string[]  // Recent progress logs
   failed_assets?: FailedAsset[]  // Assets that failed to sync
   success_count?: number
   fail_count?: number
@@ -159,7 +160,12 @@ export function useSyncSSE({
         setSteps((prev) =>
           prev.map((s) =>
             s.id === data.step
-              ? { ...s, status: 'running', runningMessage: data.message }
+              ? {
+                  ...s,
+                  status: 'running',
+                  runningMessage: data.message,
+                  logs: [...(s.logs ?? []), data.message].slice(-5),
+                }
               : s
           )
         )

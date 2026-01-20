@@ -794,12 +794,12 @@ async def api_triggered_sync(ctx: Dict[str, Any], sync_record_id: str) -> Dict[s
                 # 只在进度变化超过 10% 时才发送更新
                 if progress - last_progress_pct >= 10 or progress >= 100:
                     last_progress_pct = progress
-                    await _publish_and_persist("progress", sync_record_id, {
+                    await _publish_only("progress", sync_record_id, {
                         "step": "adjust_factors",
                         "progress": 85 + int(progress * 0.10),  # 85-95%
                         "message": message,
                         "detail": detail,
-                    }, session, sync_record)
+                    })
 
             try:
                 adjust_result = await sync_adjust_factors(session, adjust_progress_callback)
