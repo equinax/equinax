@@ -35,6 +35,7 @@ function MiniKlineChart({
   const chartContainerRef = useRef<HTMLDivElement>(null)
   const chartRef = useRef<IChartApi | null>(null)
   const chartIdRef = useRef(`kline-${stock.code}`)
+  const candlestickSeriesRef = useRef<ReturnType<IChartApi['addCandlestickSeries']> | null>(null)
   const { theme } = useTheme()
   const isDark = theme === 'dark' || (theme === 'system' && window.matchMedia('(prefers-color-scheme: dark)').matches)
   
@@ -206,6 +207,8 @@ function MiniKlineChart({
       wickDownColor: marketColors.loss,
     })
     
+    candlestickSeriesRef.current = candlestickSeries
+    
     const chartData: CandlestickData<Time>[] = stock.kline.map(d => ({
       time: d.date as Time,
       open: d.open,
@@ -215,17 +218,6 @@ function MiniKlineChart({
     })).sort((a, b) => (a.time as string).localeCompare(b.time as string))
     
     candlestickSeries.setData(chartData)
-    
-    // 添加交易标记
-    const markers: SeriesMarker<Time>[] = trades.map(trade => ({
-      time: trade.date as Time,
-      position: (trade.type === 'BUY' ? 'belowBar' : 'aboveBar') as SeriesMarkerPosition,
-      color: trade.type === 'BUY' ? marketColors.profit : marketColors.loss,
-      shape: (trade.type === 'BUY' ? 'arrowUp' : 'arrowDown') as SeriesMarkerShape,
-      text: `${trade.type === 'BUY' ? 'B' : 'S'}${trade.executedShares}`,
-    })).sort((a, b) => (a.time as string).localeCompare(b.time as string))
-    
-    candlestickSeries.setMarkers(markers)
     
     // 成交量
     const volumeSeries = chart.addHistogramSeries({
@@ -305,8 +297,25 @@ function MiniKlineChart({
         chartRef.current.remove()
         chartRef.current = null
       }
+      candlestickSeriesRef.current = null
     }
-  }, [stock, trades, isDark, height, sharedDates])
+  }, [stock, isDark, height, sharedDates])
+  
+  // 单独处理交易标记更新，不触发图表重建
+  useEffect(() => {
+    if (!candlestickSeriesRef.current) return
+    
+    const marketColors = getMarketColors()
+    const markers: SeriesMarker<Time>[] = trades.map(trade => ({
+      time: trade.date as Time,
+      position: (trade.type === 'BUY' ? 'belowBar' : 'aboveBar') as SeriesMarkerPosition,
+      color: trade.type === 'BUY' ? marketColors.profit : marketColors.loss,
+      shape: (trade.type === 'BUY' ? 'arrowUp' : 'arrowDown') as SeriesMarkerShape,
+      text: `${trade.type === 'BUY' ? 'B' : 'S'}${trade.executedShares}`,
+    })).sort((a, b) => (a.time as string).localeCompare(b.time as string))
+    
+    candlestickSeriesRef.current.setMarkers(markers)
+  }, [trades])
   
   return (
     <div 
