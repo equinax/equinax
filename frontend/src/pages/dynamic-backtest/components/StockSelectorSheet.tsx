@@ -2,6 +2,7 @@ import { useState, useMemo } from 'react'
 import { AlertDialog, AlertDialogContent, AlertDialogTitle } from '@/components/ui/alert-dialog'
 import { Button } from '@/components/ui/button'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
+import { Toggle } from '@/components/ui/toggle'
 import {
   useGetUniverseSnapshotApiV1UniverseSnapshotGet,
   useGetIndustryTreeApiV1UniverseIndustriesTreeGet,
@@ -291,7 +292,7 @@ export function StockSelectorSheet({
   const [etfCategory, setEtfCategory] = useState<EtfCategory>('broad')
   const [filters, setFilters] = useState<StockFilters>({
     hideST: true,
-    hideGEM: false,
+    hideGEM: true,
     hideBSE: true,
   })
 
@@ -318,35 +319,35 @@ export function StockSelectorSheet({
             <div className="flex items-center gap-4">
               {tab === 'stock' && (
                 <div className="flex items-center gap-1">
-                  <Button
-                    variant={filters.hideST ? 'secondary' : 'ghost'}
+                  <Toggle
+                    pressed={filters.hideST}
+                    onPressedChange={(pressed) => setFilters(f => ({ ...f, hideST: pressed }))}
                     size="sm"
-                    onClick={() => setFilters(f => ({ ...f, hideST: !f.hideST }))}
                     className="h-6 px-2 text-xs"
                   >
-                    隐藏ST
-                  </Button>
-                  <Button
-                    variant={filters.hideGEM ? 'secondary' : 'ghost'}
+                    ST
+                  </Toggle>
+                  <Toggle
+                    pressed={filters.hideGEM}
+                    onPressedChange={(pressed) => setFilters(f => ({ ...f, hideGEM: pressed }))}
                     size="sm"
-                    onClick={() => setFilters(f => ({ ...f, hideGEM: !f.hideGEM }))}
                     className="h-6 px-2 text-xs"
                   >
-                    隐藏创业板
-                  </Button>
-                  <Button
-                    variant={filters.hideBSE ? 'secondary' : 'ghost'}
+                    创业板
+                  </Toggle>
+                  <Toggle
+                    pressed={filters.hideBSE}
+                    onPressedChange={(pressed) => setFilters(f => ({ ...f, hideBSE: pressed }))}
                     size="sm"
-                    onClick={() => setFilters(f => ({ ...f, hideBSE: !f.hideBSE }))}
                     className="h-6 px-2 text-xs"
                   >
-                    隐藏北交所
-                  </Button>
+                    北交所
+                  </Toggle>
                 </div>
               )}
               <TabsList>
-                <TabsTrigger value="stock">股票 (行业轮动)</TabsTrigger>
-                <TabsTrigger value="etf">ETF (ETF轮动)</TabsTrigger>
+                <TabsTrigger value="stock">股票</TabsTrigger>
+                <TabsTrigger value="etf">ETF</TabsTrigger>
               </TabsList>
               <Button variant="ghost" size="icon" onClick={() => onOpenChange(false)}>
                 <X className="h-4 w-4" />
