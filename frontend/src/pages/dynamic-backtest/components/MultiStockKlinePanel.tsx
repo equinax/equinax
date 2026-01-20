@@ -53,6 +53,7 @@ function MiniKlineChart({
   const [isPairMode, setIsPairMode] = useState(false)  // 是否配对模式
   
   const trades = store.trades.filter(t => t.stockCode === stock.code)
+  const highlightedTradeId = store.highlightedTradeId
   
   // 计算选中日期的可用现金和持仓状态
   const stateAtDate = useMemo(() => {
@@ -306,20 +307,27 @@ function MiniKlineChart({
     if (!candlestickSeriesRef.current) return
     
     const marketColors = getMarketColors()
-    const markers: SeriesMarker<Time>[] = trades.map(trade => ({
-      time: trade.date as Time,
-      position: (trade.type === 'BUY' ? 'belowBar' : 'aboveBar') as SeriesMarkerPosition,
-      color: trade.type === 'BUY' ? marketColors.profit : marketColors.loss,
-      shape: (trade.type === 'BUY' ? 'arrowUp' : 'arrowDown') as SeriesMarkerShape,
-      text: `${trade.type === 'BUY' ? 'B' : 'S'}${trade.executedShares}`,
-    })).sort((a, b) => (a.time as string).localeCompare(b.time as string))
+    const markers: SeriesMarker<Time>[] = trades.map(trade => {
+      const isHighlighted = trade.id === highlightedTradeId
+      return {
+        time: trade.date as Time,
+        position: (trade.type === 'BUY' ? 'belowBar' : 'aboveBar') as SeriesMarkerPosition,
+        color: isHighlighted 
+          ? '#facc15'  // 高亮时使用黄色
+          : (trade.type === 'BUY' ? marketColors.profit : marketColors.loss),
+        shape: (trade.type === 'BUY' ? 'arrowUp' : 'arrowDown') as SeriesMarkerShape,
+        text: `${trade.type === 'BUY' ? 'B' : 'S'}${trade.executedShares}`,
+        size: isHighlighted ? 2 : 1,  // 高亮时放大
+      }
+    }).sort((a, b) => (a.time as string).localeCompare(b.time as string))
     
     candlestickSeriesRef.current.setMarkers(markers)
-  }, [trades])
+  }, [trades, highlightedTradeId])
   
   return (
     <div 
       className="relative"
+      data-stock-code={stock.code}
       onDragOver={(e) => {
         e.preventDefault()
         onDragOver(index)

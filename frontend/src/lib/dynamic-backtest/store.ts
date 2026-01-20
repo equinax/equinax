@@ -74,6 +74,9 @@ interface DynamicBacktestActions {
   // 生成最优交易
   generateOptimalTrades: () => AddTradeResult
   
+  // 交易高亮
+  setHighlightedTrade: (tradeId: string | null) => void
+  
   // 计算
   recalculate: () => void
   
@@ -112,6 +115,7 @@ const initialState: DynamicBacktestState = {
   
   selectedStockCode: null,
   isCalculating: false,
+  highlightedTradeId: null,
   
   isConfigLocked: true,
   tempConfig: null,
@@ -573,6 +577,10 @@ export const useDynamicBacktestStore = create<DynamicBacktestStore>((set, get) =
     }
     
     return { success: true }
+  },
+  
+  setHighlightedTrade: (tradeId) => {
+    set({ highlightedTradeId: tradeId })
   },
   
   recalculate: () => {

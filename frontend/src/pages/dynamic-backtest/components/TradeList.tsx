@@ -8,10 +8,26 @@ interface TradeListProps {
 }
 
 export function TradeList({ variant = 'card' }: TradeListProps) {
-  const { trades, removeTrade, stocks } = useDynamicBacktestStore()
+  const { trades, removeTrade, stocks, setHighlightedTrade } = useDynamicBacktestStore()
   
   // 显示所有股票的交易，按时间顺序
   const allTrades = [...trades].sort((a, b) => a.date.localeCompare(b.date))
+
+  const handleTradeClick = (tradeId: string, stockCode: string) => {
+    // 设置高亮
+    setHighlightedTrade(tradeId)
+    
+    // 滚动到对应的股票图表
+    const chartElement = document.querySelector(`[data-stock-code="${stockCode}"]`)
+    if (chartElement) {
+      chartElement.scrollIntoView({ behavior: 'smooth', block: 'center' })
+    }
+    
+    // 3秒后取消高亮
+    setTimeout(() => {
+      setHighlightedTrade(null)
+    }, 3000)
+  }
 
   const header = (
     <div className="flex items-center justify-between">
@@ -36,9 +52,12 @@ export function TradeList({ variant = 'card' }: TradeListProps) {
         return (
           <div
             key={trade.id}
-            className={`flex items-center justify-between px-0 py-0.5 rounded-sm text-sm ${
+            className={`flex items-center justify-between px-0 py-0.5 rounded-sm text-sm cursor-pointer transition-colors ${
               isPaired ? 'bg-blue-500/10 border-l-2 border-blue-500/50 pl-1' : 'bg-muted/20'
-            }`}
+            } hover:bg-muted/40`}
+            onMouseEnter={() => setHighlightedTrade(trade.id)}
+            onMouseLeave={() => setHighlightedTrade(null)}
+            onClick={() => handleTradeClick(trade.id, trade.stockCode)}
           >
             <div className="flex-1 min-w-0">
               <div className="flex items-center gap-2">
@@ -71,7 +90,10 @@ export function TradeList({ variant = 'card' }: TradeListProps) {
               variant="ghost"
               size="sm"
               className="h-7 w-7 p-0 text-muted-foreground hover:text-destructive"
-              onClick={() => removeTrade(trade.id)}
+              onClick={(e) => {
+                e.stopPropagation()
+                removeTrade(trade.id)
+              }}
               title={isPaired ? '删除配对交易（买入+卖出）' : '删除交易'}
             >
               <Trash2 className="h-3.5 w-3.5" />

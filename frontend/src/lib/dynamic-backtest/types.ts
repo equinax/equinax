@@ -159,6 +159,7 @@ export interface DynamicBacktestState {
   // UI状态
   selectedStockCode: string | null
   isCalculating: boolean
+  highlightedTradeId: string | null  // 当前高亮的交易ID
   
   // 配置锁定状态
   isConfigLocked: boolean
