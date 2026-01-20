@@ -323,7 +323,7 @@ export function StockSelectorSheet({
                     pressed={filters.hideST}
                     onPressedChange={(pressed) => setFilters(f => ({ ...f, hideST: pressed }))}
                     size="sm"
-                    className="h-6 px-2 text-xs"
+                    className="h-6 px-2 text-xs data-[state=on]:bg-[#d4e5d4] data-[state=on]:text-[#4a6b4a]"
                   >
                     ST
                   </Toggle>
@@ -331,7 +331,7 @@ export function StockSelectorSheet({
                     pressed={filters.hideGEM}
                     onPressedChange={(pressed) => setFilters(f => ({ ...f, hideGEM: pressed }))}
                     size="sm"
-                    className="h-6 px-2 text-xs"
+                    className="h-6 px-2 text-xs data-[state=on]:bg-[#d4e5d4] data-[state=on]:text-[#4a6b4a]"
                   >
                     创业板
                   </Toggle>
@@ -339,7 +339,7 @@ export function StockSelectorSheet({
                     pressed={filters.hideBSE}
                     onPressedChange={(pressed) => setFilters(f => ({ ...f, hideBSE: pressed }))}
                     size="sm"
-                    className="h-6 px-2 text-xs"
+                    className="h-6 px-2 text-xs data-[state=on]:bg-[#d4e5d4] data-[state=on]:text-[#4a6b4a]"
                   >
                     北交所
                   </Toggle>
