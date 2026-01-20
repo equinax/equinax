@@ -36,7 +36,7 @@ export function EquityChart({ height = 180, stockChartHeight, onStockChartHeight
     
     const handleMouseMove = (e: MouseEvent) => {
       const deltaY = e.clientY - dragStartY.current
-      const newHeight = Math.max(80, Math.min(400, dragStartHeight.current + deltaY))
+      const newHeight = Math.max(40, Math.min(400, dragStartHeight.current + deltaY))
       onStockChartHeightChange(newHeight)
     }
     
