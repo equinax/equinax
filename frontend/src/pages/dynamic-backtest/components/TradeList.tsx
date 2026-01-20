@@ -45,7 +45,7 @@ export function TradeList({ variant = 'card' }: TradeListProps) {
       暂无交易记录
     </p>
   ) : (
-    <div className="space-y-1.5">
+    <div className="space-y-1.5 max-h-[calc(100vh-50px)] overflow-y-auto pr-1">
       {allTrades.map(trade => {
         const stock = stocks.get(trade.stockCode)
         const isPaired = !!trade.pairId
@@ -53,10 +53,20 @@ export function TradeList({ variant = 'card' }: TradeListProps) {
           <div
             key={trade.id}
             className={`flex items-center justify-between px-0 py-0.5 rounded-sm text-sm cursor-pointer transition-colors ${
-              isPaired ? 'bg-blue-500/10 border-l-2 border-blue-500/50 pl-1' : 'bg-muted/20'
-            } hover:bg-muted/40`}
-            onMouseEnter={() => setHighlightedTrade(trade.id)}
-            onMouseLeave={() => setHighlightedTrade(null)}
+              isPaired ? 'border-l-2 pl-1' : ''
+            }`}
+            style={{
+              backgroundColor: isPaired ? '#f5f0e8' : '#f8f6f2',
+              borderLeftColor: isPaired ? '#d4c8b8' : undefined,
+            }}
+            onMouseEnter={(e) => {
+              e.currentTarget.style.backgroundColor = '#efe8dc'
+              setHighlightedTrade(trade.id)
+            }}
+            onMouseLeave={(e) => {
+              e.currentTarget.style.backgroundColor = isPaired ? '#f5f0e8' : '#f8f6f2'
+              setHighlightedTrade(null)
+            }}
             onClick={() => handleTradeClick(trade.id, trade.stockCode)}
           >
             <div className="flex-1 min-w-0">
