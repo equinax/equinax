@@ -335,20 +335,34 @@ export const useDynamicBacktestStore = create<DynamicBacktestStore>((set, get) =
       trades = state.trades.filter(t => t.id !== tradeId)
     }
     
-    // 如果删除的是买入交易，需要检查并删除无效的卖出交易
-    if (tradeToRemove.type === 'BUY') {
-      // 模拟执行剩余交易，找出无效的卖出（持仓不足）
+    // 完整验证剩余交易的有效性（资金 + 持仓）
+    // 需要循环验证，因为删除一笔交易可能导致后续多笔交易无效
+    let hasInvalidTrades = true
+    while (hasInvalidTrades) {
+      hasInvalidTrades = false
       const sortedTrades = [...trades].sort((a, b) => a.date.localeCompare(b.date))
       const positions = new Map<string, number>()  // stockCode -> shares
       const invalidTradeIds = new Set<string>()
+      let cash = state.initialCapital
       
       for (const trade of sortedTrades) {
         const currentShares = positions.get(trade.stockCode) || 0
         
         if (trade.type === 'BUY') {
-          positions.set(trade.stockCode, currentShares + trade.executedShares)
+          // 买入：检查资金是否足够
+          if (cash < trade.totalCost) {
+            // 资金不足，标记为无效
+            invalidTradeIds.add(trade.id)
+            // 如果有配对ID，也标记配对交易
+            if (trade.pairId) {
+              trades.filter(t => t.pairId === trade.pairId).forEach(t => invalidTradeIds.add(t.id))
+            }
+          } else {
+            cash -= trade.totalCost
+            positions.set(trade.stockCode, currentShares + trade.executedShares)
+          }
         } else {
-          // 卖出：检查是否有足够持仓
+          // 卖出：检查持仓是否足够
           if (currentShares < trade.executedShares) {
             // 持仓不足，标记为无效
             invalidTradeIds.add(trade.id)
@@ -357,6 +371,7 @@ export const useDynamicBacktestStore = create<DynamicBacktestStore>((set, get) =
               trades.filter(t => t.pairId === trade.pairId).forEach(t => invalidTradeIds.add(t.id))
             }
           } else {
+            cash += trade.executedAmount - trade.totalCost
             positions.set(trade.stockCode, currentShares - trade.executedShares)
           }
         }
@@ -365,6 +380,7 @@ export const useDynamicBacktestStore = create<DynamicBacktestStore>((set, get) =
       // 过滤掉无效交易
       if (invalidTradeIds.size > 0) {
         trades = trades.filter(t => !invalidTradeIds.has(t.id))
+        hasInvalidTrades = true  // 需要再次验证
       }
     }
     
