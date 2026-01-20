@@ -230,7 +230,7 @@ def parse_list_param(value: Optional[str]) -> List[str]:
 async def get_universe_snapshot(
     # Pagination
     page: int = Query(default=1, ge=1),
-    page_size: int = Query(default=50, ge=1, le=200),
+    page_size: int = Query(default=50, ge=1, le=1000),
 
     # Filters
     asset_type: AssetTypeFilter = Query(default=AssetTypeFilter.STOCK),
