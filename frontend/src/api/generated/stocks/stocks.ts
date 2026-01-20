@@ -733,7 +733,7 @@ export const useGetStockApiV1StocksCodeGet = <
 };
 
 /**
- * Get K-line (OHLCV) data for an asset.
+ * Get K-line (OHLCV) data for an asset with optional price adjustment.
  * @summary Get Kline
  */
 export const getKlineApiV1StocksCodeKlineGet = (

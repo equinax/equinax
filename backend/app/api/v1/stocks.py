@@ -32,6 +32,13 @@ class AssetTypeFilter(str, Enum):
     ETF = "etf"
 
 
+class AdjustType(str, Enum):
+    """Price adjustment type for K-line data."""
+    NONE = "none"  # 不复权
+    HFQ = "hfq"    # 后复权 (backward adjust)
+    QFQ = "qfq"    # 前复权 (forward adjust)
+
+
 # ============================================
 # Pydantic Schemas
 # ============================================
@@ -399,9 +406,10 @@ async def get_kline(
     start_date: Optional[date] = Query(default=None),
     end_date: Optional[date] = Query(default=None),
     limit: int = Query(default=250, ge=1, le=1000),
+    adjust: AdjustType = Query(default=AdjustType.NONE, description="复权类型: none=不复权, hfq=后复权, qfq=前复权"),
     db: AsyncSession = Depends(get_db),
 ):
-    """Get K-line (OHLCV) data for an asset."""
+    """Get K-line (OHLCV) data for an asset with optional price adjustment."""
     # Get asset info
     asset_result = await db.execute(
         select(AssetMeta).where(AssetMeta.code == code)
@@ -429,6 +437,77 @@ async def get_kline(
 
     # Reverse to get chronological order
     kline_data = list(reversed(kline_data))
+
+    # If adjustment is requested, fetch adjust factors and apply
+    if adjust != AdjustType.NONE and kline_data:
+        # Get date range for factor query
+        min_date = kline_data[0].date
+        max_date = kline_data[-1].date
+
+        # Fetch all adjust factors for this code
+        factor_query = (
+            select(AdjustFactor)
+            .where(AdjustFactor.code == code)
+            .order_by(AdjustFactor.divid_operate_date)
+        )
+        factor_result = await db.execute(factor_query)
+        factors = factor_result.scalars().all()
+
+        # Build factor lookup: date -> factor
+        # For each kline date, find the applicable factor (most recent factor <= kline date)
+        factor_map: dict[date, Decimal] = {}
+        for f in factors:
+            if adjust == AdjustType.HFQ and f.back_adjust_factor:
+                factor_map[f.divid_operate_date] = f.back_adjust_factor
+            elif adjust == AdjustType.QFQ and f.fore_adjust_factor:
+                factor_map[f.divid_operate_date] = f.fore_adjust_factor
+
+        # Get sorted factor dates
+        factor_dates = sorted(factor_map.keys())
+
+        def get_factor_for_date(d: date) -> Decimal:
+            """Get the applicable adjustment factor for a given date."""
+            if not factor_dates:
+                return Decimal("1")
+            # Find the most recent factor date <= d
+            applicable_factor = Decimal("1")
+            for fd in factor_dates:
+                if fd <= d:
+                    applicable_factor = factor_map[fd]
+                else:
+                    break
+            return applicable_factor
+
+        # For 后复权 (hfq): we need to normalize to the latest factor
+        # adjusted_price = raw_price * (current_factor / latest_factor)
+        # But baostock's back_adjust_factor is cumulative, so:
+        # adjusted_price = raw_price * back_adjust_factor
+        #
+        # For 前复权 (qfq): similar logic with fore_adjust_factor
+
+        # Apply factors to kline data
+        adjusted_data = []
+        for k in kline_data:
+            factor = get_factor_for_date(k.date)
+            adjusted_kline = KLineData(
+                date=k.date,
+                open=k.open * factor if k.open else None,
+                high=k.high * factor if k.high else None,
+                low=k.low * factor if k.low else None,
+                close=k.close * factor if k.close else None,
+                volume=k.volume,
+                amount=k.amount,
+                pct_chg=k.pct_chg,
+                turn=k.turn,
+            )
+            adjusted_data.append(adjusted_kline)
+
+        return KLineResponse(
+            code=code,
+            code_name=asset.name,
+            data=adjusted_data,
+            total=len(adjusted_data),
+        )
 
     return KLineResponse(
         code=code,

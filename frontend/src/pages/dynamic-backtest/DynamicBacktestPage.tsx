@@ -24,24 +24,26 @@ export default function DynamicBacktestPage() {
     }
   }, [])
 
-  // 获取待添加股票的K线数据
+  // 获取待添加股票的K线数据（使用后复权价格）
   const { data: klineData, isLoading: isLoadingKline } = useGetKlineApiV1StocksCodeKlineGet(
     pendingStockCode || '',
     {
       start_date: store.startDate,
       end_date: store.endDate,
       limit: 1000,
+      adjust: 'hfq',  // 后复权
     },
     { query: { enabled: !!pendingStockCode } }
   )
 
-  // 获取基准ETF的K线数据
+  // 获取基准ETF的K线数据（使用后复权价格）
   const { data: benchmarkKline } = useGetKlineApiV1StocksCodeKlineGet(
     store.benchmarkCode,
     {
       start_date: store.startDate,
       end_date: store.endDate,
       limit: 1000,
+      adjust: 'hfq',  // 后复权
     },
     { query: { enabled: !!store.benchmarkCode } }
   )
