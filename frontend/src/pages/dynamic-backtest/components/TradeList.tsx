@@ -1,6 +1,6 @@
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
-import { Trash2 } from 'lucide-react'
+import { Trash2, Sparkles } from 'lucide-react'
 import { useDynamicBacktestStore } from '@/lib/dynamic-backtest'
 
 interface TradeListProps {
@@ -8,14 +8,35 @@ interface TradeListProps {
 }
 
 export function TradeList({ variant = 'card' }: TradeListProps) {
-  const { trades, removeTrade, stocks } = useDynamicBacktestStore()
+  const { trades, removeTrade, stocks, generateOptimalTrades } = useDynamicBacktestStore()
   
   // 显示所有股票的交易，按时间顺序
   const allTrades = [...trades].sort((a, b) => a.date.localeCompare(b.date))
 
+  const handleGenerateOptimalTrades = () => {
+    const result = generateOptimalTrades()
+    if (!result.success) {
+      alert(result.error || '生成失败')
+    }
+  }
+
   const header = (
     <div className="flex items-center justify-between">
-      <CardTitle className="text-base">交易记录</CardTitle>
+      <div className="flex items-center gap-2">
+        <CardTitle className="text-base">交易记录</CardTitle>
+        {stocks.size > 0 && (
+          <Button
+            variant="ghost"
+            size="sm"
+            className="h-6 px-2 text-xs text-primary hover:text-primary"
+            onClick={handleGenerateOptimalTrades}
+            title="基于股票池自动生成最优买卖点"
+          >
+            <Sparkles className="h-3 w-3 mr-1" />
+            最优交易
+          </Button>
+        )}
+      </div>
       {allTrades.length > 0 && (
         <span className="text-sm text-muted-foreground">
           共 {allTrades.length} 笔

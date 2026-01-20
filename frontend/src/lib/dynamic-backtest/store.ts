@@ -22,6 +22,7 @@ import {
   calculateStateAtDate,
   calculateBenchmarkReturns,
   calculateMetrics,
+  generateOptimalTrades as generateOptimalTradesEngine,
 } from './engine'
 import { Position } from './types'
 
@@ -69,6 +70,9 @@ interface DynamicBacktestActions {
   
   // 查询指定日期的状态
   getStateAtDate: (targetDate: string) => { availableCash: number; positions: Map<string, Position> }
+  
+  // 生成最优交易
+  generateOptimalTrades: () => AddTradeResult
   
   // 计算
   recalculate: () => void
@@ -514,6 +518,61 @@ export const useDynamicBacktestStore = create<DynamicBacktestStore>((set, get) =
       state.startDate,
       targetDate
     )
+  },
+  
+  generateOptimalTrades: () => {
+    const state = get()
+    
+    if (state.stocks.size === 0) {
+      return { success: false, error: '请先添加股票到股票池' }
+    }
+    
+    // 生成最优交易序列
+    const optimalTrades = generateOptimalTradesEngine(
+      state.stocks,
+      state.startDate,
+      state.endDate,
+      state.initialCapital
+    )
+    
+    if (optimalTrades.length === 0) {
+      return { success: false, error: '未找到正收益的交易机会' }
+    }
+    
+    // 清空现有交易
+    set({ trades: [] })
+    
+    // 依次添加配对交易，使用当前可用资金计算股数
+    let successCount = 0
+    let currentCash = state.initialCapital
+    
+    for (const trade of optimalTrades) {
+      // 计算可买股数（全仓）
+      const maxShares = Math.floor(currentCash / trade.buyPrice / 100) * 100
+      
+      if (maxShares <= 0) continue
+      
+      const result = get().addTradePair({
+        stockCode: trade.stockCode,
+        buyDate: trade.buyDate,
+        buyPrice: trade.buyPrice,
+        sellDate: trade.sellDate,
+        sellPrice: trade.sellPrice,
+        shares: maxShares,
+      })
+      
+      if (result.success) {
+        successCount++
+        // 更新可用现金：卖出金额（简化计算，不考虑手续费）
+        currentCash = maxShares * trade.sellPrice
+      }
+    }
+    
+    if (successCount === 0) {
+      return { success: false, error: '添加交易失败' }
+    }
+    
+    return { success: true }
   },
   
   recalculate: () => {
