@@ -19,6 +19,7 @@ export default function DynamicBacktestPage() {
   const store = useDynamicBacktestStore()
 
   const [pendingStockCode, setPendingStockCode] = useState<string | null>(null)
+  const [pendingQueue, setPendingQueue] = useState<string[]>([])
   const [isSelectorOpen, setIsSelectorOpen] = useState(false)
   const [stockChartHeight, setStockChartHeight] = useState(DEFAULT_STOCK_CHART_HEIGHT)
   const [isConfigCollapsed, setIsConfigCollapsed] = useState(false)
@@ -106,8 +107,15 @@ export default function DynamicBacktestPage() {
       }
       store.addStock(stockData)
       setPendingStockCode(null)
+      
+      // 处理队列中的下一个
+      if (pendingQueue.length > 0) {
+        const [next, ...rest] = pendingQueue
+        setPendingQueue(rest)
+        setPendingStockCode(next)
+      }
     }
-  }, [klineData, pendingStockCode])
+  }, [klineData, pendingStockCode, pendingQueue])
 
   const handleAddStock = (code: string) => {
     if (!store.stocks.has(code)) {
@@ -122,6 +130,26 @@ export default function DynamicBacktestPage() {
     }
     handleAddStock(code)
   }
+
+  // 批量添加股票
+  const handleBatchAddStocks = useCallback((codes: string[]) => {
+    const newCodes = codes.filter(code => !store.stocks.has(code))
+    if (newCodes.length === 0) return
+    
+    // 第一个立即开始加载，其余放入队列
+    const [first, ...rest] = newCodes
+    setPendingStockCode(first)
+    setPendingQueue(prev => [...prev, ...rest])
+  }, [store.stocks])
+
+  // 批量删除股票
+  const handleBatchRemoveStocks = useCallback((codes: string[]) => {
+    codes.forEach(code => {
+      if (store.stocks.has(code)) {
+        store.removeStock(code)
+      }
+    })
+  }, [store])
 
   return (
     <div className="space-y-2">
@@ -351,6 +379,8 @@ export default function DynamicBacktestPage() {
         selectedCodes={store.stocks}
         pendingCode={pendingStockCode}
         onToggleStock={handleToggleStock}
+        onBatchAddStocks={handleBatchAddStocks}
+        onBatchRemoveStocks={handleBatchRemoveStocks}
       />
     </div>
   )

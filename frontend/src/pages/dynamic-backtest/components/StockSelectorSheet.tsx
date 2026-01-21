@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react'
+import { useState, useMemo, useCallback } from 'react'
 import { AlertDialog, AlertDialogContent, AlertDialogTitle } from '@/components/ui/alert-dialog'
 import { Button } from '@/components/ui/button'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
@@ -13,24 +13,45 @@ import {
 } from '@/api/generated/alpha-radar/alpha-radar'
 import type { EtfCategory, IndustryTreeItem } from '@/api/generated/schemas'
 import type { StockData } from '@/lib/dynamic-backtest'
-import { X } from 'lucide-react'
+import { X, Zap } from 'lucide-react'
 import { cn } from '@/lib/utils'
+
+// 十大赛道 ETF 配置 (每个赛道的代表 ETF)
+const TOP_TRACKS_ETFS: { track: string; code: string; name: string }[] = [
+  { track: '机器人', code: 'sh.562500', name: '机器人ETF' },
+  { track: '航天', code: 'sh.563380', name: '航天军工ETF' },
+  { track: '芯片', code: 'sh.512480', name: '半导体ETF' },
+  { track: '卫星', code: 'sh.562880', name: '卫星ETF' },
+  { track: '新能源汽车', code: 'sh.515030', name: '新能源车ETF' },
+  { track: '电力', code: 'sh.562350', name: '电力ETF' },
+  { track: '有色', code: 'sh.512400', name: '有色金属ETF' },
+  { track: '业绩', code: 'sh.510500', name: '中证500ETF' },
+]
+
+// 去重后的 ETF 代码列表
+const TOP_TRACKS_CODES = [...new Set(TOP_TRACKS_ETFS.map(e => e.code))]
 
 // 股票过滤选项
 interface StockFilters {
   hideST: boolean
   hideGEM: boolean      // 创业板 Growth Enterprise Market
   hideBSE: boolean      // 北交所 Beijing Stock Exchange
+  onlyLeader: boolean   // 只看龙头
 }
 
 // 过滤函数
-function shouldShowStock(code: string, name: string, filters: StockFilters): boolean {
+function shouldShowStock(code: string, name: string, filters: StockFilters, marketCap?: number | null, turnover?: number | null): boolean {
   // ST股票: 名称包含 ST
   if (filters.hideST && name.includes('ST')) return false
   // 创业板: sz.300xxx 或 sz.301xxx
   if (filters.hideGEM && code.match(/^sz\.30[01]/)) return false
   // 北交所: bj.开头
   if (filters.hideBSE && code.startsWith('bj.')) return false
+  // 龙头筛选: 市值30-1000亿, 换手率3%-25%
+  if (filters.onlyLeader) {
+    if (!marketCap || marketCap < 30 || marketCap > 1000) return false
+    if (!turnover || turnover < 3 || turnover > 25) return false
+  }
   return true
 }
 
@@ -65,6 +86,8 @@ interface StockSelectorSheetProps {
   selectedCodes: Map<string, StockData>
   pendingCode: string | null
   onToggleStock: (code: string) => void
+  onBatchAddStocks?: (codes: string[]) => void
+  onBatchRemoveStocks?: (codes: string[]) => void
 }
 
 interface StockItemProps {
@@ -127,7 +150,13 @@ function IndustryStockList({
 
   const items = useMemo(() => {
     const all = data?.items ?? []
-    return all.filter(item => shouldShowStock(item.code, item.name, filters))
+    return all.filter(item => shouldShowStock(
+      item.code, 
+      item.name, 
+      filters, 
+      item.market_cap ? Number(item.market_cap) : null, 
+      item.turnover ? Number(item.turnover) : null
+    ))
   }, [data?.items, filters])
 
   if (isLoading) {
@@ -287,6 +316,8 @@ export function StockSelectorSheet({
   selectedCodes,
   pendingCode,
   onToggleStock,
+  onBatchAddStocks,
+  onBatchRemoveStocks,
 }: StockSelectorSheetProps) {
   const [tab, setTab] = useState<'stock' | 'etf'>('stock')
   const [etfCategory, setEtfCategory] = useState<EtfCategory>('broad')
@@ -294,6 +325,7 @@ export function StockSelectorSheet({
     hideST: true,
     hideGEM: true,
     hideBSE: true,
+    onlyLeader: false,
   })
 
   // Use Industry Tree API to get complete SW L1 industry list with stock counts
@@ -310,6 +342,32 @@ export function StockSelectorSheet({
     )
   }, [industryData?.items])
 
+  // 检查十大赛道 ETF 是否已全部添加
+  const allTracksSelected = useMemo(() => {
+    return TOP_TRACKS_CODES.every(code => selectedCodes.has(code))
+  }, [selectedCodes])
+
+  // 切换十大赛道 ETF
+  const handleToggleTopTracks = useCallback(() => {
+    if (allTracksSelected) {
+      // 删除所有十大赛道 ETF
+      const codesToRemove = TOP_TRACKS_CODES.filter(code => selectedCodes.has(code))
+      if (onBatchRemoveStocks) {
+        onBatchRemoveStocks(codesToRemove)
+      } else {
+        codesToRemove.forEach(code => onToggleStock(code))
+      }
+    } else {
+      // 添加所有未选中的十大赛道 ETF
+      const codesToAdd = TOP_TRACKS_CODES.filter(code => !selectedCodes.has(code))
+      if (onBatchAddStocks) {
+        onBatchAddStocks(codesToAdd)
+      } else {
+        codesToAdd.forEach(code => onToggleStock(code))
+      }
+    }
+  }, [allTracksSelected, selectedCodes, onToggleStock, onBatchAddStocks, onBatchRemoveStocks])
+
   return (
     <AlertDialog open={open} onOpenChange={onOpenChange}>
       <AlertDialogContent className="max-w-[calc(100vw-100px)] w-full h-[calc(100vh-60px)] overflow-hidden p-0 flex flex-col">
@@ -319,6 +377,14 @@ export function StockSelectorSheet({
             <div className="flex items-center gap-4">
               {tab === 'stock' && (
                 <div className="flex items-center gap-1">
+                  <Toggle
+                    pressed={filters.onlyLeader}
+                    onPressedChange={(pressed) => setFilters(f => ({ ...f, onlyLeader: pressed }))}
+                    size="sm"
+                    className="h-6 px-2 text-xs data-[state=on]:bg-[#d4e5d4] data-[state=on]:text-[#4a6b4a]"
+                  >
+                    龙头
+                  </Toggle>
                   <Toggle
                     pressed={!filters.hideST}
                     onPressedChange={(pressed) => setFilters(f => ({ ...f, hideST: !pressed }))}
@@ -336,6 +402,20 @@ export function StockSelectorSheet({
                     创业板
                   </Toggle>
                 </div>
+              )}
+              {tab === 'etf' && (
+                <Button
+                  variant={allTracksSelected ? 'default' : 'outline'}
+                  size="sm"
+                  onClick={handleToggleTopTracks}
+                  className={cn(
+                    'h-7 px-3 text-xs gap-1',
+                    allTracksSelected && 'bg-red-500 hover:bg-red-600 text-white'
+                  )}
+                >
+                  <Zap className="h-3 w-3" />
+                  {allTracksSelected ? '删除十大赛道' : '添加十大赛道'}
+                </Button>
               )}
               <TabsList>
                 <TabsTrigger value="stock">股票</TabsTrigger>
