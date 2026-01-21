@@ -29,8 +29,11 @@ MAX_BACKFILL_DAYS = 60
 # 进度报告间隔 (每 N 只股票报告一次)
 PROGRESS_REPORT_INTERVAL = 1
 
-# 并行下载的线程数
-PARALLEL_WORKERS = 10
+# 并行下载的线程数（降低以避免被数据源封禁）
+PARALLEL_WORKERS = 3
+
+# 批次间延迟（秒），避免触发限流
+BATCH_DELAY_SECONDS = 0.5
 
 # 增量同步最大重试次数
 MAX_SYNC_RETRIES = 3
@@ -1150,14 +1153,13 @@ async def backfill_etf_history(
     else:
         etf_codes = get_etf_list()
     total_etfs = len(etf_codes)
-    logger.info(f"Found {total_etfs} ETFs to backfill")
+    logger.info(f"Found {total_etfs} ETFs to backfill ({PARALLEL_WORKERS} workers, {BATCH_DELAY_SECONDS}s delay)")
 
     total_records = 0
     all_records = []
     completed_count = 0
     success_count = 0
     fail_count = 0
-    lock = asyncio.Lock()
 
     loop = asyncio.get_event_loop()
 
@@ -1166,16 +1168,19 @@ async def backfill_etf_history(
         records, error = _fetch_etf_history_sync(code, start_str, end_str, missing_days_set)
         return code, records, error
 
-    # 使用线程池并行下载
-    with ThreadPoolExecutor(max_workers=PARALLEL_WORKERS) as executor:
-        futures = [
-            loop.run_in_executor(executor, fetch_with_code, code)
-            for code in etf_codes
-        ]
+    # 分批处理，每批 PARALLEL_WORKERS 个
+    batch_size = PARALLEL_WORKERS
+    for batch_start in range(0, total_etfs, batch_size):
+        batch_codes = etf_codes[batch_start:batch_start + batch_size]
+        
+        with ThreadPoolExecutor(max_workers=PARALLEL_WORKERS) as executor:
+            futures = [
+                loop.run_in_executor(executor, fetch_with_code, code)
+                for code in batch_codes
+            ]
 
-        for future in asyncio.as_completed(futures):
-            code, records, error = await future
-            async with lock:
+            for future in asyncio.as_completed(futures):
+                code, records, error = await future
                 if error:
                     fail_count += 1
                     if retry_tracker:
@@ -1208,6 +1213,10 @@ async def backfill_etf_history(
                             "days_count": len(missing_days),
                             "date_range": f"{start_date} ~ {end_date}",
                         })
+        
+        # 批次间延迟，避免触发限流
+        if batch_start + batch_size < total_etfs:
+            await asyncio.sleep(BATCH_DELAY_SECONDS)
 
     # 批量写入
     if all_records:
@@ -1639,14 +1648,13 @@ async def backfill_stock_history_with_progress(
         stock_list_df = ak.stock_zh_a_spot_em()
         codes = stock_list_df['代码'].tolist()
     total_stocks = len(codes)
-    logger.info(f"Found {total_stocks} stocks to backfill ({len(missing_days)} days, {PARALLEL_WORKERS} workers)")
+    logger.info(f"Found {total_stocks} stocks to backfill ({len(missing_days)} days, {PARALLEL_WORKERS} workers, {BATCH_DELAY_SECONDS}s delay)")
 
     total_records = 0
     total_valuation_records = 0
     all_market_records = []
     all_valuation_records = []
     completed_count = 0
-    lock = asyncio.Lock()
 
     # 使用线程池并行下载
     loop = asyncio.get_event_loop()
@@ -1665,16 +1673,20 @@ async def backfill_stock_history_with_progress(
         """处理一批股票的下载"""
         nonlocal completed_count, all_market_records, all_valuation_records, success_count, fail_count
 
-        with ThreadPoolExecutor(max_workers=PARALLEL_WORKERS) as executor:
-            # 并行下载这批股票
-            futures = [
-                loop.run_in_executor(executor, fetch_with_code, code)
-                for code in batch_codes
-            ]
+        # 再细分为小批次，每批 PARALLEL_WORKERS 个
+        mini_batch_size = PARALLEL_WORKERS
+        for mini_start in range(0, len(batch_codes), mini_batch_size):
+            mini_batch = batch_codes[mini_start:mini_start + mini_batch_size]
+            
+            with ThreadPoolExecutor(max_workers=PARALLEL_WORKERS) as executor:
+                # 并行下载这批股票
+                futures = [
+                    loop.run_in_executor(executor, fetch_with_code, code)
+                    for code in mini_batch
+                ]
 
-            for future in asyncio.as_completed(futures):
-                code, market_records, valuation_records, error = await future
-                async with lock:
+                for future in asyncio.as_completed(futures):
+                    code, market_records, valuation_records, error = await future
                     if error:
                         fail_count += 1
                         # 使用重试追踪器记录失败
@@ -1709,6 +1721,10 @@ async def backfill_stock_history_with_progress(
                                 "days_count": len(missing_days),
                                 "date_range": f"{start_date} ~ {end_date}",
                             })
+            
+            # 小批次间延迟，避免触发限流
+            if mini_start + mini_batch_size < len(batch_codes):
+                await asyncio.sleep(BATCH_DELAY_SECONDS)
 
     # 分批处理（每批 500 只股票）
     batch_size = 500
@@ -2113,14 +2129,13 @@ async def backfill_index_history(
     else:
         index_codes = get_index_list()
     total_indices = len(index_codes)
-    logger.info(f"Found {total_indices} indices to backfill")
+    logger.info(f"Found {total_indices} indices to backfill ({PARALLEL_WORKERS} workers, {BATCH_DELAY_SECONDS}s delay)")
 
     total_records = 0
     all_records = []
     completed_count = 0
     success_count = 0
     fail_count = 0
-    lock = asyncio.Lock()
 
     loop = asyncio.get_event_loop()
 
@@ -2129,16 +2144,19 @@ async def backfill_index_history(
         records, error = _fetch_index_history_sync(code, start_str, end_str, missing_days_set)
         return code, records, error
 
-    # 使用线程池并行下载
-    with ThreadPoolExecutor(max_workers=PARALLEL_WORKERS) as executor:
-        futures = [
-            loop.run_in_executor(executor, fetch_with_code, code)
-            for code in index_codes
-        ]
+    # 分批处理，每批 PARALLEL_WORKERS 个
+    batch_size = PARALLEL_WORKERS
+    for batch_start in range(0, total_indices, batch_size):
+        batch_codes = index_codes[batch_start:batch_start + batch_size]
+        
+        with ThreadPoolExecutor(max_workers=PARALLEL_WORKERS) as executor:
+            futures = [
+                loop.run_in_executor(executor, fetch_with_code, code)
+                for code in batch_codes
+            ]
 
-        for future in asyncio.as_completed(futures):
-            code, records, error = await future
-            async with lock:
+            for future in asyncio.as_completed(futures):
+                code, records, error = await future
                 if error:
                     fail_count += 1
                     if retry_tracker:
@@ -2180,6 +2198,10 @@ async def backfill_index_history(
                             "date_range": f"{start_date} ~ {end_date}",
                             "records_added": len(records) if records else 0,
                         })
+        
+        # 批次间延迟，避免触发限流
+        if batch_start + batch_size < total_indices:
+            await asyncio.sleep(BATCH_DELAY_SECONDS)
 
     # 批量写入
     if all_records:
