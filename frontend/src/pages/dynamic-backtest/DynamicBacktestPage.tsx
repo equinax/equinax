@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback, useMemo } from 'react'
 import { Link } from 'react-router-dom'
-import { ArrowLeft, RotateCcw, Loader2, Pencil, Check, XCircle, ChevronDown, ChevronUp, Plus, Sparkles } from 'lucide-react'
+import { ArrowLeft, RotateCcw, Loader2, Pencil, Check, XCircle, ChevronDown, ChevronUp, Plus, Sparkles, TrendingDown } from 'lucide-react'
 import { Card, CardContent, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -31,6 +31,13 @@ export default function DynamicBacktestPage() {
 
   const handleGenerateOptimalTrades = () => {
     const result = store.generateOptimalTrades()
+    if (!result.success) {
+      alert(result.error || '生成失败')
+    }
+  }
+
+  const handleGenerateWorstTrades = () => {
+    const result = store.generateWorstTrades()
     if (!result.success) {
       alert(result.error || '生成失败')
     }
@@ -409,16 +416,28 @@ export default function DynamicBacktestPage() {
                     添加股票
                   </Button>
                   {store.stocks.size > 0 && (
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      className="h-7 px-3 text-xs"
-                      onClick={handleGenerateOptimalTrades}
-                      title="基于股票池自动生成最优买卖点"
-                    >
-                      <Sparkles className="h-3 w-3 mr-1" />
-                      最优交易
-                    </Button>
+                    <>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className="h-7 px-3 text-xs"
+                        onClick={handleGenerateWorstTrades}
+                        title="基于股票池自动生成最大亏损买卖点"
+                      >
+                        <TrendingDown className="h-3 w-3 mr-1" />
+                        最大做空
+                      </Button>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className="h-7 px-3 text-xs"
+                        onClick={handleGenerateOptimalTrades}
+                        title="基于股票池自动生成最优买卖点"
+                      >
+                        <Sparkles className="h-3 w-3 mr-1" />
+                        最优交易
+                      </Button>
+                    </>
                   )}
                 </div>
 

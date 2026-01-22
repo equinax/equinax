@@ -769,6 +769,232 @@ export function generateOptimalTrades(
 }
 
 /**
+ * 生成最差交易序列（动态规划算法）
+ * 
+ * 核心思想：与最优交易相反，找到亏损最大的买卖点
+ * 用于观察下跌的节奏和时间点
+ * 
+ * 约束：
+ * 1. T+1: 买入当天不能卖出，次日才能卖
+ * 2. 资金衔接: 卖出当天资金不可用于买入，需空仓1天
+ */
+export function generateWorstTrades(
+  stocks: Map<string, StockData>,
+  startDate: string,
+  endDate: string,
+  _initialCapital: number
+): OptimalTradePoint[] {
+  if (stocks.size === 0) return []
+  
+  // 获取所有交易日
+  const tradingDays = getTradingDays(stocks, startDate, endDate)
+  if (tradingDays.length < 2) return []
+  
+  // 将股票代码转为数组，建立索引
+  const stockCodes = Array.from(stocks.keys())
+  const numStocks = stockCodes.length
+  
+  // 建立日期索引到K线价格的映射
+  const prices: number[][] = [] // prices[dayIdx][stockIdx]
+  
+  const stockKlineMap = new Map<string, Map<string, number>>()
+  stocks.forEach((stock, code) => {
+    const dateMap = new Map<string, number>()
+    stock.kline.forEach(k => dateMap.set(k.date, k.close))
+    stockKlineMap.set(code, dateMap)
+  })
+  
+  for (let d = 0; d < tradingDays.length; d++) {
+    const dayPrices: number[] = []
+    for (let s = 0; s < numStocks; s++) {
+      const price = stockKlineMap.get(stockCodes[s])?.get(tradingDays[d]) ?? 0
+      dayPrices.push(price)
+    }
+    prices.push(dayPrices)
+  }
+  
+  // 状态常量
+  const STATE_CASH = 0
+  const STATE_JUST_SOLD = 1
+  const getHoldState = (s: number) => 2 + s * 2
+  const getJustBoughtState = (s: number) => 2 + s * 2 + 1
+  const numStates = 2 + numStocks * 2
+  
+  // DP数组 - 找最小值（最大亏损）
+  // dp[d][state] = 第d天收盘后处于state状态的最小资产
+  // parent[d][state] = { prevDay, prevState } 用于回溯
+  const dp: number[][] = []
+  const parent: { prevDay: number; prevState: number }[][] = []
+  
+  for (let d = 0; d < tradingDays.length; d++) {
+    dp.push(new Array(numStates).fill(Infinity))  // 改为 Infinity 找最小值
+    parent.push(new Array(numStates).fill(null).map(() => ({ prevDay: -1, prevState: -1 })))
+  }
+  
+  // 初始状态：第0天可以买入
+  dp[0][STATE_CASH] = 1.0
+  // 第0天也可以买入任意股票
+  for (let s = 0; s < numStocks; s++) {
+    dp[0][getJustBoughtState(s)] = 1.0 // 买入当天不计涨幅
+  }
+  
+  // DP转移 - 寻找最小收益路径
+  for (let d = 0; d < tradingDays.length - 1; d++) {
+    const nextD = d + 1
+    
+    // 从 CASH 转移
+    if (dp[d][STATE_CASH] < Infinity) {
+      // 继续空仓
+      if (dp[d][STATE_CASH] < dp[nextD][STATE_CASH]) {
+        dp[nextD][STATE_CASH] = dp[d][STATE_CASH]
+        parent[nextD][STATE_CASH] = { prevDay: d, prevState: STATE_CASH }
+      }
+      // 买入任意股票
+      for (let s = 0; s < numStocks; s++) {
+        const state = getJustBoughtState(s)
+        if (dp[d][STATE_CASH] < dp[nextD][state]) {
+          dp[nextD][state] = dp[d][STATE_CASH]
+          parent[nextD][state] = { prevDay: d, prevState: STATE_CASH }
+        }
+      }
+    }
+    
+    // 从 JUST_SOLD 转移（只能变成CASH）
+    if (dp[d][STATE_JUST_SOLD] < Infinity) {
+      if (dp[d][STATE_JUST_SOLD] < dp[nextD][STATE_CASH]) {
+        dp[nextD][STATE_CASH] = dp[d][STATE_JUST_SOLD]
+        parent[nextD][STATE_CASH] = { prevDay: d, prevState: STATE_JUST_SOLD }
+      }
+    }
+    
+    // 从持股状态转移
+    for (let s = 0; s < numStocks; s++) {
+      const holdState = getHoldState(s)
+      const justBoughtState = getJustBoughtState(s)
+      
+      // 计算涨幅
+      const prevPrice = prices[d][s]
+      const currPrice = prices[nextD][s]
+      const returnRate = prevPrice > 0 ? currPrice / prevPrice : 1
+      
+      // 从 JUST_BOUGHT 转移（只能变成HOLD，享受涨幅）
+      if (dp[d][justBoughtState] < Infinity) {
+        const newValue = dp[d][justBoughtState] * returnRate
+        if (newValue < dp[nextD][holdState]) {
+          dp[nextD][holdState] = newValue
+          parent[nextD][holdState] = { prevDay: d, prevState: justBoughtState }
+        }
+      }
+      
+      // 从 HOLD 转移
+      if (dp[d][holdState] < Infinity) {
+        const newValue = dp[d][holdState] * returnRate
+        
+        // 继续持有
+        if (newValue < dp[nextD][holdState]) {
+          dp[nextD][holdState] = newValue
+          parent[nextD][holdState] = { prevDay: d, prevState: holdState }
+        }
+        
+        // 卖出
+        if (newValue < dp[nextD][STATE_JUST_SOLD]) {
+          dp[nextD][STATE_JUST_SOLD] = newValue
+          parent[nextD][STATE_JUST_SOLD] = { prevDay: d, prevState: holdState }
+        }
+      }
+    }
+  }
+  
+  // 找最差终态（最小值）
+  const lastDay = tradingDays.length - 1
+  let worstState = STATE_CASH
+  let worstValue = dp[lastDay][STATE_CASH]
+  
+  if (dp[lastDay][STATE_JUST_SOLD] < worstValue) {
+    worstValue = dp[lastDay][STATE_JUST_SOLD]
+    worstState = STATE_JUST_SOLD
+  }
+  
+  for (let s = 0; s < numStocks; s++) {
+    if (dp[lastDay][getHoldState(s)] < worstValue) {
+      worstValue = dp[lastDay][getHoldState(s)]
+      worstState = getHoldState(s)
+    }
+    if (dp[lastDay][getJustBoughtState(s)] < worstValue) {
+      worstValue = dp[lastDay][getJustBoughtState(s)]
+      worstState = getJustBoughtState(s)
+    }
+  }
+  
+  // 回溯路径
+  const path: { day: number; state: number }[] = []
+  let currDay = lastDay
+  let currState = worstState
+  
+  while (currDay >= 0) {
+    path.unshift({ day: currDay, state: currState })
+    const p = parent[currDay][currState]
+    if (p.prevDay < 0) break
+    currDay = p.prevDay
+    currState = p.prevState
+  }
+  
+  // 从路径提取交易
+  const result: OptimalTradePoint[] = []
+  let buyInfo: { stockIdx: number; dayIdx: number } | null = null
+  
+  for (let i = 0; i < path.length; i++) {
+    const { day, state } = path[i]
+    const prevPath = i > 0 ? path[i - 1] : null
+    
+    // 检测买入：前一状态是CASH，当前是JUST_BOUGHT
+    if (prevPath && prevPath.state === STATE_CASH && state >= 2 && state % 2 === 1) {
+      const stockIdx = Math.floor((state - 2) / 2)
+      buyInfo = { stockIdx, dayIdx: day }
+    }
+    
+    // 检测卖出：前一状态是HOLD，当前是JUST_SOLD
+    if (prevPath && prevPath.state >= 2 && prevPath.state % 2 === 0 && state === STATE_JUST_SOLD) {
+      const stockIdx = Math.floor((prevPath.state - 2) / 2)
+      if (buyInfo && buyInfo.stockIdx === stockIdx) {
+        const buyPrice = prices[buyInfo.dayIdx][stockIdx]
+        const sellPrice = prices[day][stockIdx]
+        if (buyPrice > 0 && sellPrice > 0) {
+          result.push({
+            stockCode: stockCodes[stockIdx],
+            buyDate: tradingDays[buyInfo.dayIdx],
+            buyPrice,
+            sellDate: tradingDays[day],
+            sellPrice,
+            returnPct: (sellPrice - buyPrice) / buyPrice,
+          })
+        }
+        buyInfo = null
+      }
+    }
+  }
+  
+  // 如果最后还持仓，在最后一天卖出
+  if (buyInfo) {
+    const { stockIdx, dayIdx } = buyInfo
+    const buyPrice = prices[dayIdx][stockIdx]
+    const sellPrice = prices[lastDay][stockIdx]
+    if (buyPrice > 0 && sellPrice > 0) {
+      result.push({
+        stockCode: stockCodes[stockIdx],
+        buyDate: tradingDays[dayIdx],
+        buyPrice,
+        sellDate: tradingDays[lastDay],
+        sellPrice,
+        returnPct: (sellPrice - buyPrice) / buyPrice,
+      })
+    }
+  }
+  
+  return result
+}
+
+/**
  * 计算回测统计指标
  */
 export function calculateMetrics(
