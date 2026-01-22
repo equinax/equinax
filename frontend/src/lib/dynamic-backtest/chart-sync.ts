@@ -108,6 +108,64 @@ class ChartSyncManager {
   }
   
   /**
+   * 滚动所有图表到指定日期（将该日期居中显示）
+   */
+  scrollToDate(date: string) {
+    if (this.charts.size === 0) return
+    
+    // 获取第一个图表来计算时间坐标
+    const firstChart = this.charts.values().next().value
+    if (!firstChart) return
+    
+    try {
+      const timeScale = firstChart.timeScale()
+      const coordinate = timeScale.timeToCoordinate(date as import('lightweight-charts').Time)
+      
+      // 获取当前可见范围的宽度
+      const currentRange = timeScale.getVisibleLogicalRange()
+      if (!currentRange) return
+      
+      const rangeWidth = Number(currentRange.to) - Number(currentRange.from)
+      
+      if (coordinate === null) {
+        // 日期不在可见范围，尝试直接滚动
+        const visibleData = timeScale.getVisibleRange()
+        if (visibleData) {
+          // 计算目标范围，将日期居中
+          const targetDate = new Date(date).getTime()
+          const fromDate = new Date(visibleData.from as string).getTime()
+          const dayMs = 24 * 60 * 60 * 1000
+          
+          // 估算索引位置
+          const daysFromStart = Math.floor((targetDate - fromDate) / dayMs)
+          const centerOffset = rangeWidth / 2
+          
+          const newRange = {
+            from: daysFromStart - centerOffset,
+            to: daysFromStart + centerOffset,
+          } as LogicalRange
+          
+          this.setRange(newRange)
+        }
+      } else {
+        // 日期在可见范围内，滚动使其居中
+        const logicalIndex = timeScale.coordinateToLogical(coordinate)
+        
+        if (logicalIndex !== null) {
+          const centerOffset = rangeWidth / 2
+          const newRange = {
+            from: Number(logicalIndex) - centerOffset,
+            to: Number(logicalIndex) + centerOffset,
+          } as LogicalRange
+          this.setRange(newRange)
+        }
+      }
+    } catch {
+      // ignore errors
+    }
+  }
+  
+  /**
    * 获取注册的图表数量
    */
   getChartCount(): number {

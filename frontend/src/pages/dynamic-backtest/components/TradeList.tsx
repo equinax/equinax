@@ -1,32 +1,30 @@
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Trash2 } from 'lucide-react'
-import { useDynamicBacktestStore } from '@/lib/dynamic-backtest'
+import { useDynamicBacktestStore, chartSyncManager } from '@/lib/dynamic-backtest'
 
 interface TradeListProps {
   variant?: 'card' | 'embedded'
 }
 
 export function TradeList({ variant = 'card' }: TradeListProps) {
-  const { trades, removeTrade, stocks, setHighlightedTrade } = useDynamicBacktestStore()
+  const { trades, removeTrade, stocks, setHighlightedTrade, highlightedTradeId } = useDynamicBacktestStore()
   
   // 显示所有股票的交易，按时间顺序
   const allTrades = [...trades].sort((a, b) => a.date.localeCompare(b.date))
 
-  const handleTradeClick = (tradeId: string, stockCode: string) => {
+  const handleTradeClick = (tradeId: string, stockCode: string, date: string) => {
     // 设置高亮
     setHighlightedTrade(tradeId)
+    
+    // 滚动图表到交易日期
+    chartSyncManager.scrollToDate(date)
     
     // 滚动到对应的股票图表
     const chartElement = document.querySelector(`[data-stock-code="${stockCode}"]`)
     if (chartElement) {
       chartElement.scrollIntoView({ behavior: 'smooth', block: 'center' })
     }
-    
-    // 3秒后取消高亮
-    setTimeout(() => {
-      setHighlightedTrade(null)
-    }, 3000)
   }
 
   const header = (
@@ -49,25 +47,30 @@ export function TradeList({ variant = 'card' }: TradeListProps) {
       {allTrades.map(trade => {
         const stock = stocks.get(trade.stockCode)
         const isPaired = !!trade.pairId
+        const isHighlighted = trade.id === highlightedTradeId
         return (
           <div
             key={trade.id}
             className={`flex items-center justify-between px-0 py-0.5 rounded-sm text-sm cursor-pointer transition-colors ${
               isPaired ? 'border-l-2 pl-1' : ''
-            }`}
+            } ${isHighlighted ? 'ring-2 ring-yellow-400 ring-offset-1' : ''}`}
             style={{
-              backgroundColor: isPaired ? '#f5f0e8' : '#f8f6f2',
+              backgroundColor: isHighlighted ? '#fef3c7' : (isPaired ? '#f5f0e8' : '#f8f6f2'),
               borderLeftColor: isPaired ? '#d4c8b8' : undefined,
             }}
             onMouseEnter={(e) => {
-              e.currentTarget.style.backgroundColor = '#efe8dc'
+              if (!isHighlighted) {
+                e.currentTarget.style.backgroundColor = '#efe8dc'
+              }
               setHighlightedTrade(trade.id)
             }}
             onMouseLeave={(e) => {
-              e.currentTarget.style.backgroundColor = isPaired ? '#f5f0e8' : '#f8f6f2'
-              setHighlightedTrade(null)
+              if (!isHighlighted) {
+                e.currentTarget.style.backgroundColor = isPaired ? '#f5f0e8' : '#f8f6f2'
+              }
+              // 不在 mouse leave 时清除高亮，让 walker 控制
             }}
-            onClick={() => handleTradeClick(trade.id, trade.stockCode)}
+            onClick={() => handleTradeClick(trade.id, trade.stockCode, trade.date)}
           >
             <div className="flex-1 min-w-0">
               <div className="flex items-center gap-2">

@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useMemo } from 'react'
 import { Link } from 'react-router-dom'
 import { ArrowLeft, RotateCcw, Loader2, Pencil, Check, XCircle, ChevronDown, ChevronUp, Plus, Sparkles } from 'lucide-react'
 import { Card, CardContent, CardTitle } from '@/components/ui/card'
@@ -11,6 +11,7 @@ import { TradeList } from './components/TradeList'
 import { PositionPanel } from './components/PositionPanel'
 import { EquityChart } from './components/EquityChart'
 import { StockSelectorSheet } from './components/StockSelectorSheet'
+import { TradeWalker } from './components/TradeWalker'
 
 // 默认个股图表高度
 const DEFAULT_STOCK_CHART_HEIGHT = 140
@@ -41,6 +42,85 @@ export default function DynamicBacktestPage() {
       chartSyncManager.reset()
     }
   }, [])
+
+  // 按时间排序的交易列表（用于导航）
+  const sortedTrades = useMemo(() => {
+    return [...store.trades].sort((a, b) => {
+      // 先按日期排序
+      const dateCompare = a.date.localeCompare(b.date)
+      if (dateCompare !== 0) return dateCompare
+      // 同一天内，买入在前
+      if (a.type !== b.type) return a.type === 'BUY' ? -1 : 1
+      return 0
+    })
+  }, [store.trades])
+
+  // 当前高亮交易的索引
+  const currentTradeIndex = useMemo(() => {
+    if (!store.highlightedTradeId) return -1
+    return sortedTrades.findIndex(t => t.id === store.highlightedTradeId)
+  }, [sortedTrades, store.highlightedTradeId])
+
+  // 导航到上一个/下一个交易
+  const navigateTrade = useCallback((direction: 'prev' | 'next') => {
+    if (sortedTrades.length === 0) return
+    
+    let newIndex: number
+    if (currentTradeIndex === -1) {
+      // 没有选中时，从第一个或最后一个开始
+      newIndex = direction === 'next' ? 0 : sortedTrades.length - 1
+    } else {
+      newIndex = direction === 'next' 
+        ? Math.min(currentTradeIndex + 1, sortedTrades.length - 1)
+        : Math.max(currentTradeIndex - 1, 0)
+    }
+    
+    const trade = sortedTrades[newIndex]
+    if (trade) {
+      store.setHighlightedTrade(trade.id)
+      // 通知图表滚动到该交易日期
+      chartSyncManager.scrollToDate(trade.date)
+      
+      // 滚动页面到对应股票的图表
+      setTimeout(() => {
+        const chartElement = document.querySelector(`[data-stock-code="${trade.stockCode}"]`)
+        if (chartElement) {
+          chartElement.scrollIntoView({ behavior: 'smooth', block: 'center' })
+        }
+      }, 50)
+    }
+  }, [sortedTrades, currentTradeIndex, store])
+
+  // 键盘导航
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      // 如果焦点在输入框内，不处理
+      if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) {
+        return
+      }
+      
+      switch (e.key) {
+        case 'ArrowLeft':
+        case 'k':
+        case 'K':
+          e.preventDefault()
+          navigateTrade('prev')
+          break
+        case 'ArrowRight':
+        case 'j':
+        case 'J':
+          e.preventDefault()
+          navigateTrade('next')
+          break
+        case 'Escape':
+          store.setHighlightedTrade(null)
+          break
+      }
+    }
+    
+    window.addEventListener('keydown', handleKeyDown)
+    return () => window.removeEventListener('keydown', handleKeyDown)
+  }, [navigateTrade, store])
 
   // 获取待添加股票的K线数据（使用后复权价格）
   const { data: klineData, isLoading: isLoadingKline } = useGetKlineApiV1StocksCodeKlineGet(
@@ -372,6 +452,15 @@ export default function DynamicBacktestPage() {
           <MultiStockKlinePanel stockChartHeight={stockChartHeight} />
         </div>
       </div>
+
+      {/* 浮动交易导航器 */}
+      {store.trades.length > 0 && (
+        <TradeWalker
+          sortedTrades={sortedTrades}
+          currentIndex={currentTradeIndex}
+          onNavigate={navigateTrade}
+        />
+      )}
 
       <StockSelectorSheet
         open={isSelectorOpen}
