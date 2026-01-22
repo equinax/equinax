@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback, useMemo } from 'react'
 import { Link } from 'react-router-dom'
-import { ArrowLeft, RotateCcw, Loader2, Pencil, Check, XCircle, ChevronDown, ChevronUp, Plus, Sparkles, TrendingDown } from 'lucide-react'
+import { ArrowLeft, RotateCcw, Pencil, Check, XCircle, ChevronDown, ChevronUp, Plus, Sparkles, TrendingDown } from 'lucide-react'
 import { Card, CardContent, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -130,7 +130,7 @@ export default function DynamicBacktestPage() {
   }, [navigateTrade, store])
 
   // 获取待添加股票的K线数据（使用后复权价格）
-  const { data: klineData, isLoading: isLoadingKline } = useGetKlineApiV1StocksCodeKlineGet(
+  const { data: klineData } = useGetKlineApiV1StocksCodeKlineGet(
     pendingStockCode || '',
     {
       start_date: store.startDate,
@@ -254,10 +254,55 @@ export default function DynamicBacktestPage() {
             {/* <p className="text-sm text-muted-foreground">手动模拟买卖，实时计算收益</p> */}
           </div>
         </div>
-        <Button variant="outline" size="sm" onClick={store.reset}>
-          <RotateCcw className="mr-2 h-4 w-4" />
-          重置
-        </Button>
+        <div className="flex items-center gap-2">
+          {/* 操作按钮 Toolbar */}
+          <div className="flex items-center gap-1 border rounded-md p-1 bg-muted/30">
+            <Button
+              variant="ghost"
+              size="sm"
+              className="h-8 px-2"
+              onClick={() => setIsSelectorOpen(true)}
+              title="添加股票"
+            >
+              <Plus className="h-4 w-4 mr-1" />
+              添加股票
+            </Button>
+            <div className="w-px h-4 bg-border" />
+            <Button
+              variant="ghost"
+              size="sm"
+              className="h-8 px-2"
+              onClick={handleGenerateWorstTrades}
+              title="最大做空"
+              disabled={store.stocks.size === 0}
+            >
+              <TrendingDown className="h-4 w-4 mr-1" />
+              最大做空
+            </Button>
+            <Button
+              variant="ghost"
+              size="sm"
+              className="h-8 px-2"
+              onClick={handleGenerateOptimalTrades}
+              title="最优交易"
+              disabled={store.stocks.size === 0}
+            >
+              <Sparkles className="h-4 w-4 mr-1" />
+              最优交易
+            </Button>
+            <div className="w-px h-4 bg-border" />
+            <Button
+              variant="ghost"
+              size="sm"
+              className="h-8 px-2 text-red-600 hover:text-red-700 hover:bg-red-50"
+              onClick={store.reset}
+              title="重置"
+            >
+              <RotateCcw className="h-4 w-4 mr-1" />
+              重置
+            </Button>
+          </div>
+        </div>
       </div>
 
       {/* 主布局 */}
@@ -403,52 +448,6 @@ export default function DynamicBacktestPage() {
                 </>
               )}
 
-              {/* 添加股票 + 最优交易按钮行 */}
-              <div className="border-t pt-3">
-                <div className="flex items-center justify-between gap-2">
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    className="h-7 px-3 text-xs"
-                    onClick={() => setIsSelectorOpen(true)}
-                  >
-                    <Plus className="h-3 w-3 mr-1" />
-                    添加股票
-                  </Button>
-                  {store.stocks.size > 0 && (
-                    <>
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        className="h-7 px-3 text-xs"
-                        onClick={handleGenerateWorstTrades}
-                        title="基于股票池自动生成最大亏损买卖点"
-                      >
-                        <TrendingDown className="h-3 w-3 mr-1" />
-                        最大做空
-                      </Button>
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        className="h-7 px-3 text-xs"
-                        onClick={handleGenerateOptimalTrades}
-                        title="基于股票池自动生成最优买卖点"
-                      >
-                        <Sparkles className="h-3 w-3 mr-1" />
-                        最优交易
-                      </Button>
-                    </>
-                  )}
-                </div>
-
-                {/* 加载状态 */}
-                {isLoadingKline && pendingStockCode && (
-                  <div className="flex items-center gap-2 text-sm text-muted-foreground mt-2">
-                    <Loader2 className="h-4 w-4 animate-spin" />
-                    正在加载 {pendingStockCode}...
-                  </div>
-                )}
-              </div>
 
               {/* 交易记录 */}
               <div className="border-t pt-3 space-y-2">
@@ -474,11 +473,13 @@ export default function DynamicBacktestPage() {
 
       {/* 浮动交易导航器 */}
       {store.trades.length > 0 && (
-        <TradeWalker
-          sortedTrades={sortedTrades}
-          currentIndex={currentTradeIndex}
-          onNavigate={navigateTrade}
-        />
+        <div className="mt-2.5">
+          <TradeWalker
+            sortedTrades={sortedTrades}
+            currentIndex={currentTradeIndex}
+            onNavigate={navigateTrade}
+          />
+        </div>
       )}
 
       <StockSelectorSheet
