@@ -1057,10 +1057,15 @@ async def api_triggered_sync_v2(ctx: Dict[str, Any], sync_record_id: str) -> Dic
     """
     API-triggered sync using new data source abstraction (TuShare by default).
     
-    This is a simplified version that uses the new source_sync module,
-    which fetches all market data in one API call per asset type.
+    This version uses the new source_sync module which fetches all market data
+    in one API call per asset type. Much faster than the old batch_sync approach.
     
-    Much faster and more reliable than the old batch_sync approach.
+    Flow:
+    1. check_update → Check if PG data is up to date
+    2. sync_stocks → Batch fetch stocks from TuShare
+    3. sync_etfs → Batch fetch ETFs from TuShare
+    4. sync_indices → Batch fetch indices from TuShare
+    5. sync_valuation → Sync valuation data
     
     Args:
         ctx: ARQ context
@@ -1072,7 +1077,7 @@ async def api_triggered_sync_v2(ctx: Dict[str, Any], sync_record_id: str) -> Dic
     from app.db.models.sync import SyncHistory
     from sqlalchemy.orm.attributes import flag_modified
     from workers.source_sync import sync_daily_data_with_source
-    from workers.batch_sync import get_latest_trading_day
+    from workers.batch_sync import get_pg_max_date, get_pg_index_max_date, get_latest_trading_day
     from workers.data_sources import get_data_source
     
     logger.info(f"Starting API-triggered sync v2 (source mode): {sync_record_id}")
@@ -1103,6 +1108,7 @@ async def api_triggered_sync_v2(ctx: Dict[str, Any], sync_record_id: str) -> Dic
             # Publish plan
             await _publish_and_persist("plan", sync_record_id, {
                 "steps": [
+                    {"id": "check_update", "name": "检查数据状态"},
                     {"id": "sync_stocks", "name": "同步股票数据"},
                     {"id": "sync_etfs", "name": "同步ETF数据"},
                     {"id": "sync_indices", "name": "同步指数数据"},
@@ -1111,10 +1117,105 @@ async def api_triggered_sync_v2(ctx: Dict[str, Any], sync_record_id: str) -> Dic
                 "message": f"准备开始数据同步 (数据源: {source.name}, 目标日期: {latest_trading_day})...",
             }, session, sync_record)
             
-            # Run sync using source_sync
+            records_imported = 0
+            step_errors = []
+            
+            # Step 1: Check if update is needed
+            step_start = datetime.now()
+            await _publish_and_persist("progress", sync_record_id, {
+                "step": "check_update",
+                "progress": 5,
+                "message": "正在检查数据状态...",
+            }, session, sync_record)
+            
+            pg_stock_date = await get_pg_max_date(session, 'stock')
+            pg_etf_date = await get_pg_max_date(session, 'etf')
+            pg_index_date = await get_pg_index_max_date(session)
+            
+            check_result = {
+                "pg_stock_date": str(pg_stock_date) if pg_stock_date else None,
+                "pg_etf_date": str(pg_etf_date) if pg_etf_date else None,
+                "pg_index_date": str(pg_index_date) if pg_index_date else None,
+                "latest_trading_day": str(latest_trading_day),
+                "stock_needs_update": pg_stock_date is None or pg_stock_date < latest_trading_day,
+                "etf_needs_update": pg_etf_date is None or pg_etf_date < latest_trading_day,
+                "index_needs_update": pg_index_date is None or pg_index_date < latest_trading_day,
+            }
+            sync_record.details["steps"]["check_update"] = check_result
+            step_duration = (datetime.now() - step_start).total_seconds()
+            
+            needs_update = check_result["stock_needs_update"] or check_result["etf_needs_update"] or check_result["index_needs_update"]
+            check_message = f"PG股票: {pg_stock_date}, ETF: {pg_etf_date}, 指数: {pg_index_date}, 最近交易日: {latest_trading_day}"
+            
+            await _publish_and_persist("step_complete", sync_record_id, {
+                "step": "check_update",
+                "status": "success",
+                "records_count": 0,
+                "duration_seconds": round(step_duration, 1),
+                "detail": check_message,
+                "message": f"数据状态检查完成 ({step_duration:.1f}s)",
+            }, session, sync_record)
+            
+            # If no update needed, skip to completion
+            if not needs_update:
+                duration = (datetime.now() - start_time).total_seconds()
+                
+                # Skip all sync steps
+                for step_id in ["sync_stocks", "sync_etfs", "sync_indices", "sync_valuation"]:
+                    sync_record.details["steps"][step_id] = {"status": "skip", "message": "数据已是最新"}
+                    await _publish_and_persist("step_complete", sync_record_id, {
+                        "step": step_id,
+                        "status": "skip",
+                        "records_count": 0,
+                        "duration_seconds": 0,
+                        "detail": "数据已是最新",
+                        "message": f"跳过 (已是最新)",
+                    }, session, sync_record)
+                
+                await _publish_and_persist("job_complete", sync_record_id, {
+                    "status": "success",
+                    "records_count": 0,
+                    "valuation_count": 0,
+                    "duration_seconds": round(duration, 1),
+                    "message": f"数据已是最新，无需同步 ({duration:.1f}s)",
+                    "data_source": source.name,
+                    "trade_date": str(latest_trading_day),
+                }, session, sync_record)
+                
+                sync_record.status = "success"
+                sync_record.completed_at = datetime.now()
+                sync_record.duration_seconds = duration
+                sync_record.records_count = 0
+                flag_modified(sync_record, "details")
+                await session.commit()
+                
+                logger.info(f"Sync v2: Data is up to date, skipped in {duration:.1f}s")
+                return {
+                    "status": "success",
+                    "sync_record_id": sync_record_id,
+                    "records_count": 0,
+                    "message": "Data is up to date",
+                }
+            
+            # Step 2-5: Run sync using source_sync
+            stock_count = 0
+            etf_count = 0
+            index_count = 0
+            valuation_count = 0
+            
+            # Create progress callback
             async def progress_callback(message: str, progress: int, detail: dict):
                 action = detail.get("action", "sync")
-                step = "sync_stocks" if "stock" in action else "sync_etfs" if "etf" in action else "sync_indices" if "index" in action else "sync_valuation"
+                if "stock" in action.lower():
+                    step = "sync_stocks"
+                elif "etf" in action.lower():
+                    step = "sync_etfs"
+                elif "index" in action.lower():
+                    step = "sync_indices"
+                elif "valuation" in action.lower():
+                    step = "sync_valuation"
+                else:
+                    step = "sync_stocks"
                 await _publish_only("progress", sync_record_id, {
                     "step": step,
                     "progress": progress,
@@ -1122,61 +1223,236 @@ async def api_triggered_sync_v2(ctx: Dict[str, Any], sync_record_id: str) -> Dic
                     "detail": detail,
                 })
             
-            sync_result = await sync_daily_data_with_source(
-                session,
-                latest_trading_day,
-                asset_types=['stock', 'etf', 'index'],
-                progress_callback=progress_callback,
-            )
+            # Step 2: Sync stocks
+            if check_result["stock_needs_update"]:
+                step_start = datetime.now()
+                await _publish_and_persist("progress", sync_record_id, {
+                    "step": "sync_stocks",
+                    "progress": 10,
+                    "message": f"[{source.name}] 正在获取股票数据...",
+                }, session, sync_record)
+                
+                try:
+                    sync_result = await sync_daily_data_with_source(
+                        session,
+                        latest_trading_day,
+                        asset_types=['stock'],
+                        progress_callback=progress_callback,
+                    )
+                    stock_count = sync_result.get("stock_count", 0)
+                    records_imported += stock_count
+                    step_duration = (datetime.now() - step_start).total_seconds()
+                    
+                    sync_record.details["steps"]["sync_stocks"] = {
+                        "status": "success",
+                        "count": stock_count,
+                    }
+                    await _publish_and_persist("step_complete", sync_record_id, {
+                        "step": "sync_stocks",
+                        "status": "success",
+                        "records_count": stock_count,
+                        "duration_seconds": round(step_duration, 1),
+                        "detail": f"[{source.name}] 获取完成",
+                        "message": f"同步股票数据: {stock_count} 条 ({step_duration:.1f}s)",
+                    }, session, sync_record)
+                except Exception as e:
+                    step_duration = (datetime.now() - step_start).total_seconds()
+                    error_msg = f"股票同步失败: {str(e)}"
+                    step_errors.append(error_msg)
+                    logger.warning(f"Stock sync failed: {e}")
+                    await session.rollback()
+                    sync_record = await session.get(SyncHistory, sync_record_id)
+                    sync_record.details["steps"]["sync_stocks"] = {"status": "error", "message": error_msg}
+                    await _publish_and_persist("step_complete", sync_record_id, {
+                        "step": "sync_stocks",
+                        "status": "error",
+                        "records_count": 0,
+                        "duration_seconds": round(step_duration, 1),
+                        "detail": error_msg,
+                        "message": f"同步股票数据: 失败 ({step_duration:.1f}s)",
+                    }, session, sync_record)
+            else:
+                sync_record.details["steps"]["sync_stocks"] = {"status": "skip", "message": "数据已是最新"}
+                await _publish_and_persist("step_complete", sync_record_id, {
+                    "step": "sync_stocks",
+                    "status": "skip",
+                    "records_count": 0,
+                    "duration_seconds": 0,
+                    "detail": "数据已是最新",
+                    "message": "同步股票数据: 跳过 (已是最新)",
+                }, session, sync_record)
             
-            # Calculate totals
-            total_records = (
-                sync_result.get("stock_count", 0) +
-                sync_result.get("etf_count", 0) +
-                sync_result.get("index_count", 0)
-            )
-            valuation_count = sync_result.get("valuation_count", 0)
+            # Step 3: Sync ETFs
+            if check_result["etf_needs_update"]:
+                step_start = datetime.now()
+                await _publish_and_persist("progress", sync_record_id, {
+                    "step": "sync_etfs",
+                    "progress": 40,
+                    "message": f"[{source.name}] 正在获取ETF数据...",
+                }, session, sync_record)
+                
+                try:
+                    sync_result = await sync_daily_data_with_source(
+                        session,
+                        latest_trading_day,
+                        asset_types=['etf'],
+                        progress_callback=progress_callback,
+                    )
+                    etf_count = sync_result.get("etf_count", 0)
+                    valuation_count = sync_result.get("valuation_count", 0)
+                    records_imported += etf_count
+                    step_duration = (datetime.now() - step_start).total_seconds()
+                    
+                    sync_record.details["steps"]["sync_etfs"] = {
+                        "status": "success",
+                        "count": etf_count,
+                        "valuation_count": valuation_count,
+                    }
+                    await _publish_and_persist("step_complete", sync_record_id, {
+                        "step": "sync_etfs",
+                        "status": "success",
+                        "records_count": etf_count,
+                        "valuation_count": valuation_count,
+                        "duration_seconds": round(step_duration, 1),
+                        "detail": f"[{source.name}] 获取完成",
+                        "message": f"同步ETF数据: {etf_count} 条, 估值: {valuation_count} 条 ({step_duration:.1f}s)",
+                    }, session, sync_record)
+                except Exception as e:
+                    step_duration = (datetime.now() - step_start).total_seconds()
+                    error_msg = f"ETF同步失败: {str(e)}"
+                    step_errors.append(error_msg)
+                    logger.warning(f"ETF sync failed: {e}")
+                    await session.rollback()
+                    sync_record = await session.get(SyncHistory, sync_record_id)
+                    sync_record.details["steps"]["sync_etfs"] = {"status": "error", "message": error_msg}
+                    await _publish_and_persist("step_complete", sync_record_id, {
+                        "step": "sync_etfs",
+                        "status": "error",
+                        "records_count": 0,
+                        "duration_seconds": round(step_duration, 1),
+                        "detail": error_msg,
+                        "message": f"同步ETF数据: 失败 ({step_duration:.1f}s)",
+                    }, session, sync_record)
+            else:
+                sync_record.details["steps"]["sync_etfs"] = {"status": "skip", "message": "数据已是最新"}
+                await _publish_and_persist("step_complete", sync_record_id, {
+                    "step": "sync_etfs",
+                    "status": "skip",
+                    "records_count": 0,
+                    "duration_seconds": 0,
+                    "detail": "数据已是最新",
+                    "message": "同步ETF数据: 跳过 (已是最新)",
+                }, session, sync_record)
             
-            # Store results
-            sync_record.details["steps"]["sync"] = sync_result
-            sync_record.details["summary"] = {
-                "stock_count": sync_result.get("stock_count", 0),
-                "etf_count": sync_result.get("etf_count", 0),
-                "index_count": sync_result.get("index_count", 0),
-                "valuation_count": valuation_count,
+            # Step 4: Sync Indices
+            if check_result["index_needs_update"]:
+                step_start = datetime.now()
+                await _publish_and_persist("progress", sync_record_id, {
+                    "step": "sync_indices",
+                    "progress": 70,
+                    "message": f"[{source.name}] 正在获取指数数据...",
+                }, session, sync_record)
+                
+                try:
+                    sync_result = await sync_daily_data_with_source(
+                        session,
+                        latest_trading_day,
+                        asset_types=['index'],
+                        progress_callback=progress_callback,
+                    )
+                    index_count = sync_result.get("index_count", 0)
+                    records_imported += index_count
+                    step_duration = (datetime.now() - step_start).total_seconds()
+                    
+                    sync_record.details["steps"]["sync_indices"] = {
+                        "status": "success",
+                        "count": index_count,
+                    }
+                    await _publish_and_persist("step_complete", sync_record_id, {
+                        "step": "sync_indices",
+                        "status": "success",
+                        "records_count": index_count,
+                        "duration_seconds": round(step_duration, 1),
+                        "detail": f"[{source.name}] 获取完成",
+                        "message": f"同步指数数据: {index_count} 条 ({step_duration:.1f}s)",
+                    }, session, sync_record)
+                except Exception as e:
+                    step_duration = (datetime.now() - step_start).total_seconds()
+                    error_msg = f"指数同步失败: {str(e)}"
+                    step_errors.append(error_msg)
+                    logger.warning(f"Index sync failed: {e}")
+                    await session.rollback()
+                    sync_record = await session.get(SyncHistory, sync_record_id)
+                    sync_record.details["steps"]["sync_indices"] = {"status": "error", "message": error_msg}
+                    await _publish_and_persist("step_complete", sync_record_id, {
+                        "step": "sync_indices",
+                        "status": "error",
+                        "records_count": 0,
+                        "duration_seconds": round(step_duration, 1),
+                        "detail": error_msg,
+                        "message": f"同步指数数据: 失败 ({step_duration:.1f}s)",
+                    }, session, sync_record)
+            else:
+                sync_record.details["steps"]["sync_indices"] = {"status": "skip", "message": "数据已是最新"}
+                await _publish_and_persist("step_complete", sync_record_id, {
+                    "step": "sync_indices",
+                    "status": "skip",
+                    "records_count": 0,
+                    "duration_seconds": 0,
+                    "detail": "数据已是最新",
+                    "message": "同步指数数据: 跳过 (已是最新)",
+                }, session, sync_record)
+            
+            # Step 5: Valuation (already included in ETF sync)
+            sync_record.details["steps"]["sync_valuation"] = {
+                "status": "success" if valuation_count > 0 else "skip",
+                "count": valuation_count,
             }
+            await _publish_and_persist("step_complete", sync_record_id, {
+                "step": "sync_valuation",
+                "status": "success" if valuation_count > 0 else "skip",
+                "records_count": valuation_count,
+                "duration_seconds": 0,
+                "detail": "估值数据在ETF同步时已处理",
+                "message": f"同步估值数据: {valuation_count} 条",
+            }, session, sync_record)
             
+            # Complete
             duration = (datetime.now() - start_time).total_seconds()
-            
-            # Determine final status
-            has_errors = len(sync_result.get("errors", [])) > 0
+            has_errors = len(step_errors) > 0
             final_status = "partial" if has_errors else "success"
             
-            # Publish completion
-            await _publish_and_persist("complete", sync_record_id, {
+            sync_record.details["summary"] = {
+                "stock_count": stock_count,
+                "etf_count": etf_count,
+                "index_count": index_count,
+                "valuation_count": valuation_count,
+                "errors": step_errors,
+            }
+            
+            await _publish_and_persist("job_complete", sync_record_id, {
                 "status": final_status,
-                "records_count": total_records,
+                "records_count": records_imported,
                 "valuation_count": valuation_count,
                 "duration_seconds": round(duration, 1),
-                "message": f"同步完成: {total_records} 条行情, {valuation_count} 条估值 ({duration:.1f}s)",
+                "message": f"同步完成: {records_imported} 条行情, {valuation_count} 条估值 ({duration:.1f}s)",
                 "data_source": source.name,
                 "trade_date": str(latest_trading_day),
             }, session, sync_record)
             
-            # Update sync record
             sync_record.status = final_status
             sync_record.completed_at = datetime.now()
             sync_record.duration_seconds = duration
-            sync_record.records_count = total_records
+            sync_record.records_count = records_imported
             flag_modified(sync_record, "details")
             await session.commit()
             
-            logger.info(f"Sync v2 completed: {total_records} records in {duration:.1f}s")
+            logger.info(f"Sync v2 completed: {records_imported} records in {duration:.1f}s")
             
             return {
                 "status": final_status,
                 "sync_record_id": sync_record_id,
-                "records_count": total_records,
+                "records_count": records_imported,
                 "valuation_count": valuation_count,
                 "duration_seconds": round(duration, 1),
                 "data_source": source.name,
@@ -1194,6 +1470,13 @@ async def api_triggered_sync_v2(ctx: Dict[str, Any], sync_record_id: str) -> Dic
                     sync_record.duration_seconds = (datetime.now() - start_time).total_seconds()
                     sync_record.error_message = str(e)
                     await session.commit()
+                    
+                    await _publish_and_persist("error", sync_record_id, {
+                        "status": "failed",
+                        "records_count": 0,
+                        "duration_seconds": round((datetime.now() - start_time).total_seconds(), 1),
+                        "message": f"同步失败: {str(e)}",
+                    }, session, sync_record)
             except Exception:
                 pass
             

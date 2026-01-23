@@ -161,13 +161,17 @@ class TuShareDataSource(BaseDataSource):
         """
         获取指定日期的指数日线数据
         
-        使用 pro.index_daily(trade_date='YYYYMMDD')
+        TuShare 的 index_daily 需要 ts_code 参数，无法批量获取。
+        这里改用 index_dailybasic 获取主要指数的每日指标数据。
+        
+        支持的指数：上证综指、深证成指、上证50、中证500、中小板指、创业板指
         """
         date_str = self._date_to_str(trade_date)
-        logger.info(f"[TuShare] Fetching index daily for {date_str}...")
+        logger.info(f"[TuShare] Fetching index dailybasic for {date_str}...")
         
         try:
-            df = self._pro.index_daily(trade_date=date_str)
+            # 使用 index_dailybasic 批量获取主要指数数据
+            df = self._pro.index_dailybasic(trade_date=date_str)
             
             if df is None or df.empty:
                 logger.warning(f"[TuShare] No index data for {date_str}")
@@ -176,27 +180,36 @@ class TuShareDataSource(BaseDataSource):
             logger.info(f"[TuShare] Fetched {len(df)} indices for {date_str}")
             
             # 转换为标准格式
+            # index_dailybasic 返回字段: ts_code, trade_date, total_mv, float_mv, 
+            # total_share, float_share, free_share, turnover_rate, pe, pe_ttm, pb
             records = []
             for _, row in df.iterrows():
                 code = convert_tushare_code_to_standard(row['ts_code'])
                 records.append({
                     'code': code,
                     'trade_date': trade_date,
-                    'open': self._safe_decimal(row.get('open')),
-                    'high': self._safe_decimal(row.get('high')),
-                    'low': self._safe_decimal(row.get('low')),
-                    'close': self._safe_decimal(row.get('close')),
-                    'pre_close': self._safe_decimal(row.get('pre_close')),
-                    'volume': self._safe_int(row.get('vol', 0)) * 100 if self._safe_int(row.get('vol')) else None,
-                    'amount': self._safe_decimal(row.get('amount', 0)) * 1000 if self._safe_decimal(row.get('amount')) else None,
-                    'pct_chg': self._safe_decimal(row.get('pct_chg')),
-                    'turn': None,
+                    # index_dailybasic 不包含 OHLC 数据，这些字段留空
+                    'open': None,
+                    'high': None,
+                    'low': None,
+                    'close': None,
+                    'pre_close': None,
+                    'volume': None,
+                    'amount': None,
+                    'pct_chg': None,
+                    'turn': self._safe_decimal(row.get('turnover_rate')),
+                    # 额外的估值数据
+                    'pe': self._safe_decimal(row.get('pe')),
+                    'pe_ttm': self._safe_decimal(row.get('pe_ttm')),
+                    'pb': self._safe_decimal(row.get('pb')),
+                    'total_mv': self._safe_decimal(row.get('total_mv')),
+                    'float_mv': self._safe_decimal(row.get('float_mv')),
                 })
             
             return pd.DataFrame(records)
             
         except Exception as e:
-            logger.error(f"[TuShare] Error fetching index daily: {e}")
+            logger.error(f"[TuShare] Error fetching index dailybasic: {e}")
             raise
     
     def fetch_stock_adj_factor_by_date(self, trade_date: date) -> pd.DataFrame:
