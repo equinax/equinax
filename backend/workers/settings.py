@@ -22,6 +22,7 @@ from workers.data_tasks import (
     check_data_status,
     get_download_status,
     api_triggered_sync,
+    api_triggered_sync_v2,
 )
 from workers.index_tasks import (
     calculate_index_industry_composition,
@@ -68,6 +69,8 @@ class WorkerSettings:
         get_download_status,
         # api_triggered_sync has 60min timeout for historical backfill
         func(api_triggered_sync, timeout=3600),
+        # api_triggered_sync_v2 uses source_sync (TuShare), much faster
+        func(api_triggered_sync_v2, timeout=600),
         # Index tasks
         calculate_index_industry_composition,
         daily_index_update,

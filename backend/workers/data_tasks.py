@@ -975,6 +975,235 @@ async def api_triggered_sync(ctx: Dict[str, Any], sync_record_id: str) -> Dict[s
             }
 
 
+# =============================================================================
+# 数据源抽象层同步任务
+# =============================================================================
+
+async def sync_with_data_source(
+    ctx: Dict[str, Any],
+    trade_date: str = None,
+    asset_types: list = None,
+) -> Dict[str, Any]:
+    """
+    使用数据源抽象层同步指定日期的市场数据
+    
+    这个任务使用新的数据源抽象层（默认 TuShare），一次请求获取全市场数据。
+    
+    Args:
+        ctx: ARQ context
+        trade_date: 交易日期 (YYYY-MM-DD)，默认使用最新交易日
+        asset_types: 资产类型列表 ['stock', 'etf', 'index']，默认全部
+    
+    Returns:
+        同步结果
+    """
+    from workers.source_sync import sync_daily_data_with_source
+    from workers.batch_sync import get_latest_trading_day
+    
+    # 确定交易日期
+    if trade_date:
+        sync_date = date.fromisoformat(trade_date)
+    else:
+        sync_date = get_latest_trading_day()
+    
+    logger.info(f"Starting data source sync for {sync_date}")
+    
+    async with worker_session_maker() as session:
+        result = await sync_daily_data_with_source(
+            session,
+            sync_date,
+            asset_types=asset_types,
+        )
+        return result
+
+
+async def backfill_with_data_source(
+    ctx: Dict[str, Any],
+    start_date: str,
+    end_date: str = None,
+    asset_types: list = None,
+) -> Dict[str, Any]:
+    """
+    使用数据源抽象层补全日期范围内的数据
+    
+    Args:
+        ctx: ARQ context
+        start_date: 开始日期 (YYYY-MM-DD)
+        end_date: 结束日期 (YYYY-MM-DD)，默认使用最新交易日
+        asset_types: 资产类型列表
+    
+    Returns:
+        补全结果
+    """
+    from workers.source_sync import backfill_missing_dates
+    from workers.batch_sync import get_latest_trading_day
+    
+    start = date.fromisoformat(start_date)
+    end = date.fromisoformat(end_date) if end_date else get_latest_trading_day()
+    
+    logger.info(f"Starting backfill from {start} to {end}")
+    
+    async with worker_session_maker() as session:
+        result = await backfill_missing_dates(
+            session,
+            start,
+            end,
+            asset_types=asset_types,
+        )
+        return result
+
+
+async def api_triggered_sync_v2(ctx: Dict[str, Any], sync_record_id: str) -> Dict[str, Any]:
+    """
+    API-triggered sync using new data source abstraction (TuShare by default).
+    
+    This is a simplified version that uses the new source_sync module,
+    which fetches all market data in one API call per asset type.
+    
+    Much faster and more reliable than the old batch_sync approach.
+    
+    Args:
+        ctx: ARQ context
+        sync_record_id: UUID of the SyncHistory record to update
+    
+    Returns:
+        Result dict with status and summary
+    """
+    from app.db.models.sync import SyncHistory
+    from sqlalchemy.orm.attributes import flag_modified
+    from workers.source_sync import sync_daily_data_with_source
+    from workers.batch_sync import get_latest_trading_day
+    from workers.data_sources import get_data_source
+    
+    logger.info(f"Starting API-triggered sync v2 (source mode): {sync_record_id}")
+    start_time = datetime.now()
+    
+    async with worker_session_maker() as session:
+        # Get the sync record
+        result = await session.execute(
+            select(SyncHistory).where(SyncHistory.id == sync_record_id)
+        )
+        sync_record = result.scalar_one_or_none()
+        
+        if not sync_record:
+            logger.error(f"SyncHistory record not found: {sync_record_id}")
+            return {"status": "error", "message": "Record not found"}
+        
+        # Get data source info
+        source = get_data_source()
+        latest_trading_day = get_latest_trading_day()
+        
+        # Update status to running
+        sync_record.status = "running"
+        sync_record.started_at = start_time
+        sync_record.details = {"steps": {}, "event_log": [], "data_source": source.name}
+        await session.commit()
+        
+        try:
+            # Publish plan
+            await _publish_and_persist("plan", sync_record_id, {
+                "steps": [
+                    {"id": "sync_stocks", "name": "同步股票数据"},
+                    {"id": "sync_etfs", "name": "同步ETF数据"},
+                    {"id": "sync_indices", "name": "同步指数数据"},
+                    {"id": "sync_valuation", "name": "同步估值数据"},
+                ],
+                "message": f"准备开始数据同步 (数据源: {source.name}, 目标日期: {latest_trading_day})...",
+            }, session, sync_record)
+            
+            # Run sync using source_sync
+            async def progress_callback(message: str, progress: int, detail: dict):
+                action = detail.get("action", "sync")
+                step = "sync_stocks" if "stock" in action else "sync_etfs" if "etf" in action else "sync_indices" if "index" in action else "sync_valuation"
+                await _publish_only("progress", sync_record_id, {
+                    "step": step,
+                    "progress": progress,
+                    "message": message,
+                    "detail": detail,
+                })
+            
+            sync_result = await sync_daily_data_with_source(
+                session,
+                latest_trading_day,
+                asset_types=['stock', 'etf', 'index'],
+                progress_callback=progress_callback,
+            )
+            
+            # Calculate totals
+            total_records = (
+                sync_result.get("stock_count", 0) +
+                sync_result.get("etf_count", 0) +
+                sync_result.get("index_count", 0)
+            )
+            valuation_count = sync_result.get("valuation_count", 0)
+            
+            # Store results
+            sync_record.details["steps"]["sync"] = sync_result
+            sync_record.details["summary"] = {
+                "stock_count": sync_result.get("stock_count", 0),
+                "etf_count": sync_result.get("etf_count", 0),
+                "index_count": sync_result.get("index_count", 0),
+                "valuation_count": valuation_count,
+            }
+            
+            duration = (datetime.now() - start_time).total_seconds()
+            
+            # Determine final status
+            has_errors = len(sync_result.get("errors", [])) > 0
+            final_status = "partial" if has_errors else "success"
+            
+            # Publish completion
+            await _publish_and_persist("complete", sync_record_id, {
+                "status": final_status,
+                "records_count": total_records,
+                "valuation_count": valuation_count,
+                "duration_seconds": round(duration, 1),
+                "message": f"同步完成: {total_records} 条行情, {valuation_count} 条估值 ({duration:.1f}s)",
+                "data_source": source.name,
+                "trade_date": str(latest_trading_day),
+            }, session, sync_record)
+            
+            # Update sync record
+            sync_record.status = final_status
+            sync_record.completed_at = datetime.now()
+            sync_record.duration_seconds = duration
+            sync_record.records_count = total_records
+            flag_modified(sync_record, "details")
+            await session.commit()
+            
+            logger.info(f"Sync v2 completed: {total_records} records in {duration:.1f}s")
+            
+            return {
+                "status": final_status,
+                "sync_record_id": sync_record_id,
+                "records_count": total_records,
+                "valuation_count": valuation_count,
+                "duration_seconds": round(duration, 1),
+                "data_source": source.name,
+            }
+            
+        except Exception as e:
+            logger.exception(f"API-triggered sync v2 failed: {sync_record_id}")
+            
+            try:
+                await session.rollback()
+                sync_record = await session.get(SyncHistory, sync_record_id)
+                if sync_record:
+                    sync_record.status = "failed"
+                    sync_record.completed_at = datetime.now()
+                    sync_record.duration_seconds = (datetime.now() - start_time).total_seconds()
+                    sync_record.error_message = str(e)
+                    await session.commit()
+            except Exception:
+                pass
+            
+            return {
+                "status": "error",
+                "sync_record_id": sync_record_id,
+                "message": str(e),
+            }
+
+
 # Export all tasks for registration
 __all__ = [
     "download_stock_data",
@@ -985,4 +1214,7 @@ __all__ = [
     "check_data_status",
     "get_download_status",
     "api_triggered_sync",
+    "api_triggered_sync_v2",
+    "sync_with_data_source",
+    "backfill_with_data_source",
 ]

@@ -217,6 +217,14 @@ data-load *args='':
 data-update:
     docker compose exec api python -m scripts.data_cli update
 
+# Backfill missing data using TuShare (default) or AkShare
+# Examples:
+#   just data-backfill 7              # Backfill last 7 days
+#   just data-backfill 7 akshare      # Use AkShare as data source
+[group('data')]
+data-backfill days source='tushare':
+    docker compose exec api python -m scripts.backfill_data --days {{days}} --source {{source}}
+
 # Copy SQLite files between directories
 # Example: just data-copy-cache --source /path/to/source
 [group('data')]

@@ -292,10 +292,10 @@ async def trigger_sync(
     db.add(sync_record)
     await db.commit()
 
-    # Enqueue to ARQ worker
+    # Enqueue to ARQ worker (using v2 with source_sync)
     try:
         arq_pool = await get_arq_pool()
-        await arq_pool.enqueue_job("api_triggered_sync", job_id)
+        await arq_pool.enqueue_job("api_triggered_sync_v2", job_id)
     except Exception as e:
         # If ARQ is not available, update record to failed
         sync_record.status = "failed"
