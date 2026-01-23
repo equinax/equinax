@@ -13,7 +13,7 @@ import {
 } from '@/api/generated/alpha-radar/alpha-radar'
 import type { EtfCategory, IndustryTreeItem } from '@/api/generated/schemas'
 import type { StockData } from '@/lib/dynamic-backtest'
-import { X, Zap } from 'lucide-react'
+import { X, Zap, Dices } from 'lucide-react'
 import { cn } from '@/lib/utils'
 
 // 十大赛道 ETF 配置 (每个赛道的代表 ETF)
@@ -342,6 +342,51 @@ export function StockSelectorSheet({
     )
   }, [industryData?.items])
 
+  // 获取全市场股票数据用于随机添加龙头股
+  const { data: allStocksData } = useGetUniverseSnapshotApiV1UniverseSnapshotGet(
+    {
+      page: 1,
+      page_size: 500,
+      asset_type: 'stock',
+      sort_by: 'name',
+      sort_order: 'asc',
+    },
+    { query: { staleTime: 5 * 60 * 1000 } }
+  )
+
+  // 随机添加10个龙头股
+  const handleRandomAddLeaderStocks = useCallback(() => {
+    if (!allStocksData?.items) return
+
+    // 筛选龙头股: 市值30-1000亿, 换手率3%-25%
+    const leaderItems = allStocksData.items.filter(item => {
+      const marketCap = item.market_cap ? Number(item.market_cap) : null
+      const turnover = item.turnover ? Number(item.turnover) : null
+      if (!marketCap || !turnover) return false
+      return marketCap >= 30 && marketCap <= 1000 && turnover >= 3 && turnover <= 25
+    })
+
+    if (leaderItems.length === 0) {
+      alert('未找到符合条件的龙头股')
+      return
+    }
+
+    // 随机选择10个（如果不足10个则选择全部）
+    const shuffled = [...leaderItems].sort(() => Math.random() - 0.5)
+    const selected = shuffled.slice(0, 10)
+
+    // 添加到股票池
+    const codesToAdd = selected.map(item => item.code).filter(code => !selectedCodes.has(code))
+    if (codesToAdd.length === 0) {
+      alert('所有龙头股已添加到股票池')
+      return
+    }
+
+    if (onBatchAddStocks) {
+      onBatchAddStocks(codesToAdd)
+    }
+  }, [allStocksData, selectedCodes, onBatchAddStocks])
+
   // 检查十大赛道 ETF 是否已全部添加
   const allTracksSelected = useMemo(() => {
     return TOP_TRACKS_CODES.every(code => selectedCodes.has(code))
@@ -377,6 +422,16 @@ export function StockSelectorSheet({
             <div className="flex items-center gap-4">
               {tab === 'stock' && (
                 <div className="flex items-center gap-1">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={handleRandomAddLeaderStocks}
+                    className="h-6 px-2 text-xs gap-1"
+                  >
+                    <Dices className="h-3 w-3" />
+                    随机龙头
+                  </Button>
+                  <div className="w-px h-4 bg-border" />
                   <Toggle
                     pressed={filters.onlyLeader}
                     onPressedChange={(pressed) => setFilters(f => ({ ...f, onlyLeader: pressed }))}
