@@ -83,8 +83,27 @@ export default function EtfRotationPage() {
   const [predictionDate, setPredictionDate] = useState<string | null>(null)
   const [predictionTopN, setPredictionTopN] = useState(5)
   const [onlyTopThree, setOnlyTopThree] = useState(false)
-  const [showGainers, setShowGainers] = useState(true)
-  const [showLosers, setShowLosers] = useState(true)
+  // Track which ranks are enabled: 1=第一, 2=第二, 3=第三
+  const [enabledGainerRanks, setEnabledGainerRanks] = useState<Set<number>>(new Set([1, 2, 3]))
+  const [enabledLoserRanks, setEnabledLoserRanks] = useState<Set<number>>(new Set([1, 2, 3]))
+
+  const toggleGainerRank = (rank: number) => {
+    setEnabledGainerRanks(prev => {
+      const next = new Set(prev)
+      if (next.has(rank)) next.delete(rank)
+      else next.add(rank)
+      return next
+    })
+  }
+
+  const toggleLoserRank = (rank: number) => {
+    setEnabledLoserRanks(prev => {
+      const next = new Set(prev)
+      if (next.has(rank)) next.delete(rank)
+      else next.add(rank)
+      return next
+    })
+  }
 
   // Initial data fetch
   const { data: initialData, isLoading, isFetching } = useGetEtfRotationFlatApiV1AlphaRadarEtfRotationFlatGet(
@@ -189,28 +208,40 @@ export default function EtfRotationPage() {
                 </Label>
               </div>
               {onlyTopThree && (
-                <>
-                  <div className="flex items-center gap-1.5">
-                    <Switch
-                      id="show-gainers-toggle"
-                      checked={showGainers}
-                      onCheckedChange={setShowGainers}
-                    />
-                    <Label htmlFor="show-gainers-toggle" className="text-xs cursor-pointer text-red-600">
-                      涨
-                    </Label>
+                <div className="flex flex-col gap-0.5 text-xs">
+                  <div className="flex items-center gap-1">
+                    <span className="text-red-600 w-4">涨</span>
+                    {[1, 2, 3].map(rank => (
+                      <button
+                        key={`gainer-${rank}`}
+                        onClick={() => toggleGainerRank(rank)}
+                        className={`px-1.5 py-0.5 rounded text-xs font-medium transition-colors ${
+                          enabledGainerRanks.has(rank)
+                            ? 'bg-red-500 text-white'
+                            : 'bg-gray-200 text-gray-400'
+                        }`}
+                      >
+                        {['一', '二', '三'][rank - 1]}
+                      </button>
+                    ))}
                   </div>
-                  <div className="flex items-center gap-1.5">
-                    <Switch
-                      id="show-losers-toggle"
-                      checked={showLosers}
-                      onCheckedChange={setShowLosers}
-                    />
-                    <Label htmlFor="show-losers-toggle" className="text-xs cursor-pointer text-green-600">
-                      跌
-                    </Label>
+                  <div className="flex items-center gap-1">
+                    <span className="text-green-600 w-4">跌</span>
+                    {[1, 2, 3].map(rank => (
+                      <button
+                        key={`loser-${rank}`}
+                        onClick={() => toggleLoserRank(rank)}
+                        className={`px-1.5 py-0.5 rounded text-xs font-medium transition-colors ${
+                          enabledLoserRanks.has(rank)
+                            ? 'bg-green-500 text-white'
+                            : 'bg-gray-200 text-gray-400'
+                        }`}
+                      >
+                        {['一', '二', '三'][rank - 1]}
+                      </button>
+                    ))}
                   </div>
-                </>
+                </div>
               )}
               <div className="flex items-center gap-2">
                 <Switch
@@ -262,8 +293,8 @@ export default function EtfRotationPage() {
                 onPredictionDateChange={setPredictionDate}
                 predictionTopN={predictionTopN}
                 onlyTopThree={onlyTopThree}
-                showGainers={showGainers}
-                showLosers={showLosers}
+                enabledGainerRanks={enabledGainerRanks}
+                enabledLoserRanks={enabledLoserRanks}
               />
           ) : (
             <div className="flex items-center justify-center h-32 text-muted-foreground">

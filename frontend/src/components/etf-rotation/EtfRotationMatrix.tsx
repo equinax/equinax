@@ -37,8 +37,8 @@ interface EtfRotationMatrixProps {
   onPredictionDateChange?: (date: string) => void
   predictionTopN?: number
   onlyTopThree?: boolean
-  showGainers?: boolean
-  showLosers?: boolean
+  enabledGainerRanks?: Set<number>
+  enabledLoserRanks?: Set<number>
 }
 
 export function EtfRotationMatrix({
@@ -52,8 +52,8 @@ export function EtfRotationMatrix({
   onPredictionDateChange,
   predictionTopN = 5,
   onlyTopThree = false,
-  showGainers = true,
-  showLosers = true,
+  enabledGainerRanks = new Set([1, 2, 3]),
+  enabledLoserRanks = new Set([1, 2, 3]),
 }: EtfRotationMatrixProps) {
   const containerRef = useRef<HTMLDivElement>(null)
   const scrollContainerRef = useRef<HTMLDivElement>(null)
@@ -179,8 +179,17 @@ export function EtfRotationMatrix({
       const sortedDesc = [...withChange].sort((a, b) => b.changePct - a.changePct)
       const sortedAsc = [...withChange].sort((a, b) => a.changePct - b.changePct)
 
-      const topGainers = showGainers ? sortedDesc.slice(0, 3).map(item => item.col) : []
-      const topLosers = showLosers ? sortedAsc.slice(0, 3).map(item => item.col) : []
+      // Select gainers based on enabled ranks (1=top 1, 2=top 2, 3=top 3)
+      const topGainers = sortedDesc
+        .slice(0, 3)
+        .filter((_, idx) => enabledGainerRanks.has(idx + 1))
+        .map(item => item.col)
+      
+      // Select losers based on enabled ranks (1=bottom 1, 2=bottom 2, 3=bottom 3)
+      const topLosers = sortedAsc
+        .slice(0, 3)
+        .filter((_, idx) => enabledLoserRanks.has(idx + 1))
+        .map(item => item.col)
 
       const unique = new Map<string, EtfRotationColumn>()
       topGainers.forEach(col => unique.set(col.name, col))
@@ -188,7 +197,7 @@ export function EtfRotationMatrix({
 
       return Array.from(unique.values())
     },
-    [visibleSubCategories, showGainers, showLosers]
+    [visibleSubCategories, enabledGainerRanks, enabledLoserRanks]
   )
 
   const topMoverMapByDate = useMemo(() => {
@@ -209,7 +218,7 @@ export function EtfRotationMatrix({
     })
 
     return dateMap
-  }, [onlyTopThree, data.trading_days, visibleSubCategories, filterTopMoversByDate, showGainers, showLosers])
+  }, [onlyTopThree, data.trading_days, visibleSubCategories, filterTopMoversByDate, enabledGainerRanks, enabledLoserRanks])
 
 
   // Sorted sub-categories
