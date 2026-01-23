@@ -82,6 +82,9 @@ export default function EtfRotationPage() {
   const [showPrediction, setShowPrediction] = useState(false)
   const [predictionDate, setPredictionDate] = useState<string | null>(null)
   const [predictionTopN, setPredictionTopN] = useState(5)
+  const [onlyTopThree, setOnlyTopThree] = useState(false)
+  const [showGainers, setShowGainers] = useState(true)
+  const [showLosers, setShowLosers] = useState(true)
 
   // Initial data fetch
   const { data: initialData, isLoading, isFetching } = useGetEtfRotationFlatApiV1AlphaRadarEtfRotationFlatGet(
@@ -177,6 +180,40 @@ export default function EtfRotationPage() {
             <div className="flex items-center gap-3">
               <div className="flex items-center gap-2">
                 <Switch
+                  id="top-three-toggle"
+                  checked={onlyTopThree}
+                  onCheckedChange={setOnlyTopThree}
+                />
+                <Label htmlFor="top-three-toggle" className="text-xs flex items-center gap-1 cursor-pointer">
+                  只看前三
+                </Label>
+              </div>
+              {onlyTopThree && (
+                <>
+                  <div className="flex items-center gap-1.5">
+                    <Switch
+                      id="show-gainers-toggle"
+                      checked={showGainers}
+                      onCheckedChange={setShowGainers}
+                    />
+                    <Label htmlFor="show-gainers-toggle" className="text-xs cursor-pointer text-red-600">
+                      涨
+                    </Label>
+                  </div>
+                  <div className="flex items-center gap-1.5">
+                    <Switch
+                      id="show-losers-toggle"
+                      checked={showLosers}
+                      onCheckedChange={setShowLosers}
+                    />
+                    <Label htmlFor="show-losers-toggle" className="text-xs cursor-pointer text-green-600">
+                      跌
+                    </Label>
+                  </div>
+                </>
+              )}
+              <div className="flex items-center gap-2">
+                <Switch
                   id="prediction-toggle"
                   checked={showPrediction}
                   onCheckedChange={setShowPrediction}
@@ -214,17 +251,20 @@ export default function EtfRotationPage() {
           {showInitialLoading ? (
             <ComputingConsole title="正在计算ETF轮动数据..." steps={steps} progress={progress} />
           ) : allData ? (
-            <EtfRotationMatrix
-              data={allData}
-              isLoadingMore={isLoadingMore}
-              hasMore={hasMore}
-              onLoadMore={loadMore}
-              showPrediction={showPrediction}
-              predictionData={predictionData}
-              predictionDate={predictionDate}
-              onPredictionDateChange={setPredictionDate}
-              predictionTopN={predictionTopN}
-            />
+              <EtfRotationMatrix
+                data={allData}
+                isLoadingMore={isLoadingMore}
+                hasMore={hasMore}
+                onLoadMore={loadMore}
+                showPrediction={showPrediction}
+                predictionData={predictionData}
+                predictionDate={predictionDate}
+                onPredictionDateChange={setPredictionDate}
+                predictionTopN={predictionTopN}
+                onlyTopThree={onlyTopThree}
+                showGainers={showGainers}
+                showLosers={showLosers}
+              />
           ) : (
             <div className="flex items-center justify-center h-32 text-muted-foreground">
               暂无数据

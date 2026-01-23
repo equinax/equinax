@@ -17,8 +17,8 @@ interface EtfMatrixCellProps {
   showText?: boolean
   onHover: (event: React.MouseEvent) => void
   onLeave: () => void
-  /** Highlight cell with neutral border (for prediction intersection) */
   highlight?: boolean
+  muted?: boolean
 }
 
 /**
@@ -56,8 +56,9 @@ function getDivergingColor(value: number, maxMagnitude: number): string {
  * Get color for change percentage
  * Red for positive, green for negative, white at 0
  */
-function getChangeColor(value: number | null): string {
-  if (value === null) return '#f5f5f5'
+function getChangeColor(value: number | null, muted: boolean): string {
+  if (value === null) return muted ? '#e9e9e9' : '#f5f5f5'
+  if (muted) return '#e2e2e2'
   return getDivergingColor(value, 8) // ±8% as max intensity
 }
 
@@ -99,8 +100,9 @@ export const EtfMatrixCell = memo(function EtfMatrixCell({
   onHover,
   onLeave,
   highlight = false,
+  muted = false,
 }: EtfMatrixCellProps) {
-  const bgColor = getChangeColor(changePct)
+  const bgColor = getChangeColor(changePct, muted)
   const textColor = getTextColor(bgColor)
   const displayText = formatPercent(changePct)
 

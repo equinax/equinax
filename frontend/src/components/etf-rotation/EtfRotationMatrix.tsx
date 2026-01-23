@@ -36,6 +36,9 @@ interface EtfRotationMatrixProps {
   predictionDate?: string | null
   onPredictionDateChange?: (date: string) => void
   predictionTopN?: number
+  onlyTopThree?: boolean
+  showGainers?: boolean
+  showLosers?: boolean
 }
 
 export function EtfRotationMatrix({
@@ -48,6 +51,9 @@ export function EtfRotationMatrix({
   predictionDate,
   onPredictionDateChange,
   predictionTopN = 5,
+  onlyTopThree = false,
+  showGainers = true,
+  showLosers = true,
 }: EtfRotationMatrixProps) {
   const containerRef = useRef<HTMLDivElement>(null)
   const scrollContainerRef = useRef<HTMLDivElement>(null)
@@ -147,10 +153,64 @@ export function EtfRotationMatrix({
     })
   }, [])
 
-  // Filter sub-categories based on hidden categories
+  // Categories to hide when onlyTopThree is enabled
+  const HIDDEN_CATEGORIES_IN_TOP_THREE = new Set(['broad', 'cross_border', 'commodity', 'bond'])
+
   const visibleSubCategories = useMemo(() => {
-    return data.sub_categories.filter(col => !hiddenCategories.has(col.category))
-  }, [data.sub_categories, hiddenCategories])
+    let cols = data.sub_categories.filter(col => !hiddenCategories.has(col.category))
+    // When onlyTopThree is enabled, hide certain categories
+    if (onlyTopThree) {
+      cols = cols.filter(col => !HIDDEN_CATEGORIES_IN_TOP_THREE.has(col.category))
+    }
+    return cols
+  }, [data.sub_categories, hiddenCategories, onlyTopThree])
+
+  const filterTopMoversByDate = useCallback(
+    (dateStr: string, categories: Set<string>) => {
+      const candidates = visibleSubCategories.filter(col => categories.has(col.category))
+      if (candidates.length <= 6) return candidates
+
+      const withChange = candidates.map(col => {
+        const cell = col.cells.find(c => c.date === dateStr)
+        const changePct = cell?.change_pct ? Number(cell.change_pct) : 0
+        return { col, changePct }
+      })
+
+      const sortedDesc = [...withChange].sort((a, b) => b.changePct - a.changePct)
+      const sortedAsc = [...withChange].sort((a, b) => a.changePct - b.changePct)
+
+      const topGainers = showGainers ? sortedDesc.slice(0, 3).map(item => item.col) : []
+      const topLosers = showLosers ? sortedAsc.slice(0, 3).map(item => item.col) : []
+
+      const unique = new Map<string, EtfRotationColumn>()
+      topGainers.forEach(col => unique.set(col.name, col))
+      topLosers.forEach(col => unique.set(col.name, col))
+
+      return Array.from(unique.values())
+    },
+    [visibleSubCategories, showGainers, showLosers]
+  )
+
+  const topMoverMapByDate = useMemo(() => {
+    if (!onlyTopThree) return new Map<string, Map<string, Set<string>>>()
+
+    const categories = new Set<string>()
+    visibleSubCategories.forEach(col => categories.add(col.category))
+
+    const dateMap = new Map<string, Map<string, Set<string>>>()
+
+    data.trading_days.forEach(dateStr => {
+      const perCategory = new Map<string, Set<string>>()
+      categories.forEach(category => {
+        const topCols = filterTopMoversByDate(dateStr, new Set([category]))
+        perCategory.set(category, new Set(topCols.map(col => col.name)))
+      })
+      dateMap.set(dateStr, perCategory)
+    })
+
+    return dateMap
+  }, [onlyTopThree, data.trading_days, visibleSubCategories, filterTopMoversByDate, showGainers, showLosers])
+
 
   // Sorted sub-categories
   const sortedSubCategories = useMemo(() => {
@@ -183,7 +243,6 @@ export function EtfRotationMatrix({
     let startIndex = 0
     let count = 0
 
-    // We need to use visibleSubCategories to calculate indices
     visibleSubCategories.forEach((col, index) => {
       if (col.category !== currentCategory) {
         if (currentCategory) {
@@ -203,7 +262,6 @@ export function EtfRotationMatrix({
       }
     })
 
-    // Push last group
     if (currentCategory) {
       groups.push({
         category: currentCategory,
@@ -226,20 +284,19 @@ export function EtfRotationMatrix({
 
   // Get all unique categories and their sub-category counts (for layout)
   const { uniqueCategories, categoryCounts } = useMemo(() => {
-    // Preserve order from data.sub_categories
     const cats = new Set<string>()
     const counts = new Map<string, number>()
-    
-    data.sub_categories.forEach(c => {
+
+    visibleSubCategories.forEach(c => {
       cats.add(c.category)
       counts.set(c.category, (counts.get(c.category) || 0) + 1)
     })
-    
-    return { 
-      uniqueCategories: Array.from(cats), 
-      categoryCounts: counts 
+
+    return {
+      uniqueCategories: Array.from(cats),
+      categoryCounts: counts,
     }
-  }, [data.sub_categories])
+  }, [visibleSubCategories])
 
   // Calculate hidden groups and their positions
   const hiddenGroups = useMemo(() => {
@@ -248,11 +305,11 @@ export function EtfRotationMatrix({
       x: number
       key: string
     }> = []
-    
+
     let currentX = 0
     let currentHiddenBatch: string[] = []
     let batchStartX = 0
-    
+
     uniqueCategories.forEach(cat => {
       if (hiddenCategories.has(cat)) {
         if (currentHiddenBatch.length === 0) {
@@ -260,33 +317,27 @@ export function EtfRotationMatrix({
         }
         currentHiddenBatch.push(cat)
       } else {
-        // Flush pending hidden batch
         if (currentHiddenBatch.length > 0) {
           groups.push({
             categories: [...currentHiddenBatch],
             x: batchStartX,
-            key: currentHiddenBatch.join('-')
+            key: currentHiddenBatch.join('-'),
           })
           currentHiddenBatch = []
         }
-        
-        // Advance X by the width of this visible category
-        // Note: This assumes columns are ordered by category (standard view)
-        // If sorted by performance, this visual placeholder might not align perfectly with specific columns,
-        // but it maintains the relative order of category blocks which is acceptable.
+
         currentX += (categoryCounts.get(cat) || 0) * cellWidth
       }
     })
-    
-    // Flush remaining
+
     if (currentHiddenBatch.length > 0) {
       groups.push({
         categories: [...currentHiddenBatch],
         x: batchStartX,
-        key: currentHiddenBatch.join('-')
+        key: currentHiddenBatch.join('-'),
       })
     }
-    
+
     return groups
   }, [uniqueCategories, hiddenCategories, cellWidth, categoryCounts])
 
@@ -648,22 +699,29 @@ export function EtfRotationMatrix({
                         const cell = column.cells.find((c) => c.date === dateStr)
                         const predScore = predictionScoreMap.get(column.name) || 0
                         const hasPrediction = showPrediction && predScore > 0
-                        // Highlight cell at intersection of next-day row and prediction column
                         const isIntersection = isPredictionTargetRow && hasPrediction
+                        const isMuted =
+                          onlyTopThree &&
+                          (column.category === 'sector' || column.category === 'theme') &&
+                          !topMoverMapByDate
+                            .get(dateStr)
+                            ?.get(column.category)
+                            ?.has(column.name)
 
                         return (
-                          <EtfMatrixCell
-                            key={`${column.name}-${dateStr}`}
-                            x={colIndex * cellWidth}
-                            y={rowIndex * CELL_HEIGHT}
-                            width={cellWidth}
-                            height={CELL_HEIGHT}
-                            changePct={cell?.change_pct ? Number(cell.change_pct) : null}
-                            showText={showCellText}
-                            onHover={(e) => handleCellHover(column, dateStr, e)}
-                            onLeave={handleCellLeave}
-                            highlight={isIntersection}
-                          />
+                            <EtfMatrixCell
+                              key={`${column.name}-${dateStr}`}
+                              x={colIndex * cellWidth}
+                              y={rowIndex * CELL_HEIGHT}
+                              width={cellWidth}
+                              height={CELL_HEIGHT}
+                              changePct={cell?.change_pct ? Number(cell.change_pct) : null}
+                              showText={showCellText && !isMuted}
+                              onHover={(e) => handleCellHover(column, dateStr, e)}
+                              onLeave={handleCellLeave}
+                              highlight={isIntersection}
+                              muted={isMuted}
+                            />
                         )
                       })}
                     </g>
