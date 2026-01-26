@@ -1,5 +1,6 @@
-import { useState } from 'react'
+import { useState, useMemo, useCallback } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
+import { keepPreviousData } from '@tanstack/react-query'
 import {
   flexRender,
   getCoreRowModel,
@@ -90,18 +91,21 @@ export default function InverseCorrelationPage() {
   // State for leader filter
   const [onlyLeader, setOnlyLeader] = useState(false)
 
+  // Memoize query params to prevent unnecessary refetches
+  const queryParams = useMemo(() => ({
+    window: windowDays,
+    threshold: -0.4,
+    limit: 100,
+    include_stocks: true,
+    include_etfs: true,
+    only_leader: onlyLeader,
+  }), [windowDays, onlyLeader])
+
   // Fetch correlation data
   const { data, isLoading, refetch, isFetching } = useGetCorrelationAnalysisApiV1UniverseCodeCorrelationGet(
     code || '',
-    {
-      window: windowDays,
-      threshold: -0.4,
-      limit: 100,
-      include_stocks: true,
-      include_etfs: true,
-      only_leader: onlyLeader,
-    },
-    { query: { enabled: !!code } }
+    queryParams,
+    { query: { enabled: !!code, placeholderData: keepPreviousData } }
   )
 
   const handleBack = () => {
@@ -112,7 +116,7 @@ export default function InverseCorrelationPage() {
     navigate(`/universe/${itemCode}`)
   }
 
-  const handleSelectRow = (itemCode: string, checked: boolean) => {
+  const handleSelectRow = useCallback((itemCode: string, checked: boolean) => {
     setSelectedRows(prev => {
       const next = new Set(prev)
       if (checked) {
@@ -122,7 +126,7 @@ export default function InverseCorrelationPage() {
       }
       return next
     })
-  }
+  }, [])
 
   const handleDynamicSimulation = () => {
     if (selectedRows.size === 0) return
@@ -135,8 +139,8 @@ export default function InverseCorrelationPage() {
     navigate(`/backtest/dynamic?${params.toString()}`)
   }
 
-  // Table columns definition
-  const columns: ColumnDef<CorrelationItem>[] = [
+  // Table columns definition - memoized to prevent re-renders
+  const columns: ColumnDef<CorrelationItem>[] = useMemo(() => [
     {
       id: 'select',
       header: () => null,
@@ -238,10 +242,12 @@ export default function InverseCorrelationPage() {
         </span>
       ),
     },
-  ]
+  ], [selectedRows, handleSelectRow])
 
+  const tableData = useMemo(() => data?.items || [], [data?.items])
+  
   const table = useReactTable({
-    data: data?.items || [],
+    data: tableData,
     columns,
     getCoreRowModel: getCoreRowModel(),
     getPaginationRowModel: getPaginationRowModel(),
@@ -250,15 +256,7 @@ export default function InverseCorrelationPage() {
     },
   })
 
-  if (isLoading) {
-    return (
-      <div className="space-y-4">
-        <Skeleton className="h-8 w-64" />
-        <Skeleton className="h-12 w-full" />
-        <Skeleton className="h-[600px] w-full" />
-      </div>
-    )
-  }
+  const showLoadingRows = isLoading || (isFetching && !data?.items?.length)
 
   return (
     <div className="space-y-6">
@@ -277,13 +275,19 @@ export default function InverseCorrelationPage() {
               <Shuffle className="h-5 w-5 text-muted-foreground" />
               <h1 className="text-2xl font-bold">反向节奏分析</h1>
             </div>
-            <p className="text-sm text-muted-foreground mt-1">
-              基准: <span className="font-mono font-medium">{data?.reference_name}</span>
-              <span className="mx-2">·</span>
-              <span className="font-mono">{data?.reference_code}</span>
-              <span className="mx-2">·</span>
-              计算日期: {data?.calculation_date}
-            </p>
+            <div className="text-sm text-muted-foreground mt-1">
+              基准: {data ? (
+                <>
+                  <span className="font-mono font-medium">{data.reference_name}</span>
+                  <span className="mx-2">·</span>
+                  <span className="font-mono">{data.reference_code}</span>
+                  <span className="mx-2">·</span>
+                  计算日期: {data.calculation_date}
+                </>
+              ) : (
+                <Skeleton className="inline-block h-4 w-48" />
+              )}
+            </div>
           </div>
         </div>
         
@@ -336,7 +340,14 @@ export default function InverseCorrelationPage() {
           <div>
             <CardTitle className="text-sm">负相关标的列表</CardTitle>
             <CardDescription>
-              共找到 {data?.total || 0} 个与基准负相关的股票/ETF{onlyLeader && '（仅龙头）'}，按相关系数升序排列
+              {isLoading ? (
+                <span className="flex items-center gap-2">
+                  <RefreshCw className="h-3 w-3 animate-spin" />
+                  正在计算相关系数...
+                </span>
+              ) : (
+                <>共找到 {data?.total || 0} 个与基准负相关的股票/ETF{onlyLeader && '（仅龙头）'}，按相关系数升序排列</>
+              )}
             </CardDescription>
           </div>
           <Button
@@ -369,7 +380,22 @@ export default function InverseCorrelationPage() {
                 ))}
               </TableHeader>
               <TableBody>
-                {table.getRowModel().rows?.length ? (
+                {showLoadingRows ? (
+                  Array.from({ length: 10 }).map((_, i) => (
+                    <TableRow key={`skeleton-${i}`}>
+                      <TableCell className="py-1"><Skeleton className="h-4 w-4" /></TableCell>
+                      <TableCell className="py-1"><Skeleton className="h-4 w-20" /></TableCell>
+                      <TableCell className="py-1"><Skeleton className="h-4 w-24" /></TableCell>
+                      <TableCell className="py-1"><Skeleton className="h-5 w-12" /></TableCell>
+                      <TableCell className="py-1"><Skeleton className="h-4 w-16" /></TableCell>
+                      <TableCell className="py-1"><Skeleton className="h-5 w-16" /></TableCell>
+                      <TableCell className="py-1"><Skeleton className="h-4 w-16" /></TableCell>
+                      <TableCell className="py-1"><Skeleton className="h-4 w-14" /></TableCell>
+                      <TableCell className="py-1"><Skeleton className="h-4 w-14" /></TableCell>
+                      <TableCell className="py-1"><Skeleton className="h-4 w-16" /></TableCell>
+                    </TableRow>
+                  ))
+                ) : table.getRowModel().rows?.length ? (
                   table.getRowModel().rows.map((row) => (
                     <TableRow
                       key={row.id}
@@ -392,14 +418,7 @@ export default function InverseCorrelationPage() {
                       colSpan={columns.length}
                       className="h-24 text-center"
                     >
-                      {isFetching ? (
-                        <div className="flex items-center justify-center gap-2">
-                          <RefreshCw className="h-4 w-4 animate-spin" />
-                          <span>计算中...</span>
-                        </div>
-                      ) : (
-                        '未找到符合条件的负相关标的'
-                      )}
+                      未找到符合条件的负相关标的
                     </TableCell>
                   </TableRow>
                 )}
