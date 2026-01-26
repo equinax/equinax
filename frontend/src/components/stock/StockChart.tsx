@@ -29,6 +29,7 @@ import { getMarketColorsForTheme } from '@/lib/market-colors'
 import { getChartThemeColors, INDICATOR_COLORS } from '@/lib/chart-theme'
 import { Button } from '@/components/ui/button'
 import { Skeleton } from '@/components/ui/skeleton'
+import { cn } from '@/lib/utils'
 import { useGetKlineApiV1StocksCodeKlineGet } from '@/api/generated/stocks/stocks'
 import { calcMA, calcMACD, calcRSI } from '@/lib/indicators'
 
@@ -44,8 +45,7 @@ export interface HoverData {
 
 interface StockChartProps {
   code: string
-  height?: number
-  /** Optional end date (yyyy-MM-dd format). If provided, chart shows data ending at this date. */
+  height?: number | string
   endDate?: string
   onHoverData?: (data: HoverData | null) => void
 }
@@ -196,6 +196,7 @@ export function StockChart({ code, height = 500, endDate, onHoverData }: StockCh
   const containerRef = useRef<HTMLDivElement>(null)
   const chartRef = useRef<HTMLDivElement>(null)
   const chartApiRef = useRef<IChartApi | null>(null)
+  const [chartHeight, setChartHeight] = useState<number>(typeof height === 'number' ? height : 500)
 
   const { theme } = useTheme()
   const isDark = theme === 'dark' || (theme === 'system' && window.matchMedia('(prefers-color-scheme: dark)').matches)
@@ -316,7 +317,7 @@ export function StockChart({ code, height = 500, endDate, onHoverData }: StockCh
         borderColor: chartColors.border,
         scaleMargins: { top: 0.05, bottom: subChartCount > 0 ? 0.35 : 0.05 },
       },
-      height,
+      height: chartHeight,
       width: chartRef.current.clientWidth,
     })
     chartApiRef.current = chart
@@ -620,10 +621,28 @@ export function StockChart({ code, height = 500, endDate, onHoverData }: StockCh
         }
       };
     }
-  }, [isDark, height, klineData, calculatedIndicators, indicators, colors, chartColors, subChartCount, timeRange, endDate])
+  }, [isDark, chartHeight, klineData, calculatedIndicators, indicators, colors, chartColors, subChartCount, timeRange, endDate])
+
+  const isFlexHeight = typeof height === 'string'
+
+  useEffect(() => {
+    if (!isFlexHeight || !chartRef.current) return
+    
+    const observer = new ResizeObserver((entries) => {
+      for (const entry of entries) {
+        const newHeight = entry.contentRect.height
+        if (newHeight > 0 && newHeight !== chartHeight) {
+          setChartHeight(newHeight)
+        }
+      }
+    })
+    
+    observer.observe(chartRef.current)
+    return () => observer.disconnect()
+  }, [isFlexHeight, chartHeight])
 
   return (
-    <div className="space-y-2" ref={containerRef}>
+    <div className={cn("flex flex-col", isFlexHeight ? "h-full" : "")} ref={containerRef}>
       {/* Toolbar */}
       <div className="flex flex-wrap items-center gap-4 px-4 pt-2">
         {/* Time range selector */}
@@ -720,16 +739,17 @@ export function StockChart({ code, height = 500, endDate, onHoverData }: StockCh
       </div>
 
       {/* Chart container */}
-      <div className="border-t">
+      <div className={cn("border-t", isFlexHeight ? "flex-1 min-h-0" : "")}>
         {isLoading ? (
-          <Skeleton className="w-full" style={{ height }} />
+          <Skeleton className="w-full h-full" style={isFlexHeight ? undefined : { height }} />
         ) : (
-          <div ref={chartRef} style={{ height }}>
+          <div ref={chartRef} className={isFlexHeight ? "h-full" : ""} style={isFlexHeight ? undefined : { height }}>
           </div>
         )}
+      </div>
 
-        {/* Legend */}
-        <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs text-muted-foreground px-4 py-2 border-t">
+      {/* Legend */}
+      <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs text-muted-foreground px-4 py-2 border-t shrink-0">
           <span className="flex items-center gap-1">
             <span className="w-3 h-3 rounded-sm" style={{ backgroundColor: colors.profit }} />
             <span className="w-3 h-3 rounded-sm" style={{ backgroundColor: colors.loss }} />
@@ -783,7 +803,6 @@ export function StockChart({ code, height = 500, endDate, onHoverData }: StockCh
                 RSI(14)
             </span>
           )}
-        </div>
       </div>
     </div>
   )

@@ -95,25 +95,23 @@ export default function UniverseDetailPage() {
   }
 
   return (
-    <div className="space-y-4">
-      {/* Single-row Header: [Title Group] [Metrics Card] [Button] */}
-      <div className={cn(
-        "flex items-center gap-4 p-3 rounded-lg transition-colors",
-        displayData.isHover ? "bg-muted/50" : "bg-card border"
-      )}>
+    <Card className={cn(
+      "flex flex-col h-[calc(100vh-6rem)] transition-colors",
+      displayData.isHover && "bg-muted/30"
+    )}>
+      {/* Header: [Title Group] [Metrics] [Button] */}
+      <div className="flex items-center gap-4 p-3 border-b shrink-0">
         {/* Left: Back + Title Info */}
         <div className="flex items-center gap-3 shrink-0">
           <Button variant="ghost" size="icon" onClick={handleBack} className="-ml-1">
             <ArrowLeft className="h-5 w-5" />
           </Button>
           
-          {/* Name/Code stacked */}
           <div className="flex flex-col">
             <h1 className="text-lg font-bold leading-tight">{detail.name}</h1>
             <span className="text-xs text-muted-foreground font-mono">{detail.code}</span>
           </div>
 
-          {/* Industry/Exchange stacked */}
           <div className="flex flex-col text-xs">
             {detail.industry_l1 && (
               <span className="text-muted-foreground">{detail.industry_l1}</span>
@@ -121,7 +119,6 @@ export default function UniverseDetailPage() {
             <span className="text-muted-foreground">{detail.exchange?.toUpperCase()}</span>
           </div>
 
-          {/* Special badges */}
           {(detail.is_st || detail.is_new) && (
             <div className="flex gap-1">
               {detail.is_st && <Badge variant="destructive" className="text-xs px-1 py-0 h-5">ST</Badge>}
@@ -130,9 +127,8 @@ export default function UniverseDetailPage() {
           )}
         </div>
 
-        {/* Center: Price + Metrics (flex-1 to take remaining space) */}
+        {/* Center: Price + Metrics */}
         <div className="flex items-center gap-6 flex-1 min-w-0">
-          {/* Price block */}
           <div className="shrink-0">
             <div className={cn(
               "text-2xl font-bold font-mono tracking-tight leading-none",
@@ -158,7 +154,6 @@ export default function UniverseDetailPage() {
             </div>
           </div>
 
-          {/* Metrics inline */}
           <div className="flex items-center gap-4 text-xs overflow-x-auto">
             <div>
               <div className="text-muted-foreground">高</div>
@@ -207,17 +202,15 @@ export default function UniverseDetailPage() {
         </Button>
       </div>
 
-      {/* Stock Chart */}
-      <Card className="border-0 shadow-none md:border md:shadow-sm">
-        <CardContent className="p-0">
-          <StockChart 
-            code={code || ''} 
-            height={500} 
-            endDate={activeDate || undefined} 
-            onHoverData={setHoverData}
-          />
-        </CardContent>
-      </Card>
-    </div>
+      {/* Chart fills remaining space */}
+      <CardContent className="p-0 flex-1 min-h-0">
+        <StockChart 
+          code={code || ''} 
+          height="100%"
+          endDate={activeDate || undefined} 
+          onHoverData={setHoverData}
+        />
+      </CardContent>
+    </Card>
   )
 }
