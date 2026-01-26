@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react'
+import { useState } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import {
   flexRender,
@@ -33,16 +33,6 @@ import { cn } from '@/lib/utils'
 import { useGetCorrelationAnalysisApiV1UniverseCodeCorrelationGet } from '@/api/generated/universe-cockpit/universe-cockpit'
 import type { CorrelationItem, WindowDays } from '@/api/generated/schemas'
 import { formatMarketCap, getPriceChangeColor, formatPriceChange } from '@/lib/universe-colors'
-
-function isLeaderStock(item: CorrelationItem): boolean {
-  const marketCap = item.market_cap ? Number(item.market_cap) : null
-  const turnover = item.turnover ? Number(item.turnover) : null
-  
-  if (marketCap === null || turnover === null) return false
-  
-  const marketCapInYi = marketCap / 1e8
-  return marketCapInYi >= 30 && marketCapInYi <= 1000 && turnover >= 3 && turnover <= 25
-}
 
 // Time window options
 const WINDOW_OPTIONS = [
@@ -108,15 +98,10 @@ export default function InverseCorrelationPage() {
       limit: 100,
       include_stocks: true,
       include_etfs: true,
+      only_leader: onlyLeader,
     },
     { query: { enabled: !!code } }
   )
-
-  const filteredItems = useMemo(() => {
-    if (!data?.items) return []
-    if (!onlyLeader) return data.items
-    return data.items.filter(isLeaderStock)
-  }, [data?.items, onlyLeader])
 
   const handleBack = () => {
     navigate(`/universe/${code}`)
@@ -255,7 +240,7 @@ export default function InverseCorrelationPage() {
   ]
 
   const table = useReactTable({
-    data: filteredItems,
+    data: data?.items || [],
     columns,
     getCoreRowModel: getCoreRowModel(),
   })
@@ -372,7 +357,7 @@ export default function InverseCorrelationPage() {
           <div>
             <CardTitle className="text-sm">负相关标的列表</CardTitle>
             <CardDescription>
-              共找到 {filteredItems.length} 个与基准负相关的股票/ETF{onlyLeader && '（仅龙头）'}，按相关系数升序排列
+              共找到 {data?.total || 0} 个与基准负相关的股票/ETF{onlyLeader && '（仅龙头）'}，按相关系数升序排列
             </CardDescription>
           </div>
           <Button

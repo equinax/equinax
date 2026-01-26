@@ -1002,6 +1002,9 @@ async def get_correlation_analysis(
     limit: int = Query(default=100, ge=1, le=500, description="返回最大条数"),
     include_stocks: bool = Query(default=True, description="包含股票"),
     include_etfs: bool = Query(default=True, description="包含ETF"),
+    only_leader: bool = Query(
+        default=False, description="只看龙头股（市值30-1000亿，换手率3-25%）"
+    ),
     db: AsyncSession = Depends(get_db),
 ):
     """
@@ -1077,6 +1080,38 @@ async def get_correlation_analysis(
         .where(AssetMeta.status == 1)  # 只取上市中的
     )
     all_assets = {a.code: a for a in all_assets_result.scalars().all()}
+
+    # 4.1 龙头筛选：市值30-1000亿，换手率3-25%
+    if only_leader and all_assets:
+        leader_codes: set[str] = set()
+
+        latest_val_result = await db.execute(
+            select(
+                IndicatorValuation.code,
+                IndicatorValuation.total_mv,
+            )
+            .where(IndicatorValuation.code.in_(all_assets.keys()))
+            .where(IndicatorValuation.total_mv >= 30)
+            .where(IndicatorValuation.total_mv <= 1000)
+            .order_by(IndicatorValuation.code, desc(IndicatorValuation.date))
+            .distinct(IndicatorValuation.code)
+        )
+        valid_mcap_codes = {row.code for row in latest_val_result.all()}
+
+        latest_market_result = await db.execute(
+            select(
+                MarketDaily.code,
+                MarketDaily.turn,
+            )
+            .where(MarketDaily.code.in_(valid_mcap_codes))
+            .where(MarketDaily.turn >= 3)
+            .where(MarketDaily.turn <= 25)
+            .order_by(MarketDaily.code, desc(MarketDaily.date))
+            .distinct(MarketDaily.code)
+        )
+        leader_codes = {row.code for row in latest_market_result.all()}
+
+        all_assets = {k: v for k, v in all_assets.items() if k in leader_codes}
 
     if not all_assets:
         return CorrelationResponse(

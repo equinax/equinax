@@ -23,4 +23,8 @@ export type GetCorrelationAnalysisApiV1UniverseCodeCorrelationGetParams = {
    * 包含ETF
    */
   include_etfs?: boolean;
+  /**
+   * 只看龙头股（市值30-1000亿，换手率3-25%）
+   */
+  only_leader?: boolean;
 };
