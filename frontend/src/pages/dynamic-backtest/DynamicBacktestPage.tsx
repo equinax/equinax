@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useMemo } from 'react'
-import { Link } from 'react-router-dom'
+import { Link, useSearchParams } from 'react-router-dom'
 import { ArrowLeft, RotateCcw, Pencil, Check, XCircle, ChevronDown, ChevronUp, Plus, Sparkles, TrendingDown } from 'lucide-react'
 import { Card, CardContent, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
@@ -18,12 +18,14 @@ const DEFAULT_STOCK_CHART_HEIGHT = 140
 
 export default function DynamicBacktestPage() {
   const store = useDynamicBacktestStore()
+  const [searchParams] = useSearchParams()
 
   const [pendingStockCode, setPendingStockCode] = useState<string | null>(null)
   const [pendingQueue, setPendingQueue] = useState<string[]>([])
   const [isSelectorOpen, setIsSelectorOpen] = useState(false)
   const [stockChartHeight, setStockChartHeight] = useState(DEFAULT_STOCK_CHART_HEIGHT)
   const [isConfigCollapsed, setIsConfigCollapsed] = useState(false)
+  const [urlStocksProcessed, setUrlStocksProcessed] = useState(false)
   
   const handleStockChartHeightChange = useCallback((height: number) => {
     setStockChartHeight(height)
@@ -49,6 +51,35 @@ export default function DynamicBacktestPage() {
       chartSyncManager.reset()
     }
   }, [])
+
+  useEffect(() => {
+    if (urlStocksProcessed) return
+    
+    const baseCode = searchParams.get('base')
+    const stocksParam = searchParams.get('stocks')
+    
+    if (!baseCode && !stocksParam) {
+      setUrlStocksProcessed(true)
+      return
+    }
+    
+    const stockCodes: string[] = []
+    if (baseCode && !store.stocks.has(baseCode)) {
+      stockCodes.push(baseCode)
+    }
+    if (stocksParam) {
+      const codes = stocksParam.split(',').filter(c => c && !store.stocks.has(c))
+      stockCodes.push(...codes)
+    }
+    
+    if (stockCodes.length > 0) {
+      const [first, ...rest] = stockCodes
+      setPendingStockCode(first)
+      setPendingQueue(prev => [...prev, ...rest])
+    }
+    
+    setUrlStocksProcessed(true)
+  }, [searchParams, urlStocksProcessed, store.stocks])
 
   // 按时间排序的交易列表（用于导航）
   const sortedTrades = useMemo(() => {

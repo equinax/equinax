@@ -4,6 +4,7 @@ import type { CorrelationItemChangePct } from "./correlationItemChangePct";
 import type { CorrelationItemIndustryL1 } from "./correlationItemIndustryL1";
 import type { CorrelationItemMarketCap } from "./correlationItemMarketCap";
 import type { CorrelationItemPrice } from "./correlationItemPrice";
+import type { CorrelationItemTurnover } from "./correlationItemTurnover";
 
 /**
  * Schema for a single correlation result.
@@ -19,4 +20,5 @@ export interface CorrelationItem {
   market_cap?: CorrelationItemMarketCap;
   name: string;
   price?: CorrelationItemPrice;
+  turnover?: CorrelationItemTurnover;
 }

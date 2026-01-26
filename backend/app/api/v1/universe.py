@@ -247,6 +247,7 @@ class CorrelationItem(BaseModel):
     price: Optional[Decimal] = None
     change_pct: Optional[Decimal] = None
     market_cap: Optional[Decimal] = None
+    turnover: Optional[Decimal] = None  # 换手率 (%)
 
 
 class CorrelationResponse(BaseModel):
@@ -1238,6 +1239,7 @@ async def get_correlation_analysis(
                 price=market.close if market else None,
                 change_pct=market.pct_chg if market else None,
                 market_cap=valuation.total_mv if valuation else None,
+                turnover=market.turn if market else None,
             )
         )
 

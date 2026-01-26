@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useMemo } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import {
   flexRender,
@@ -25,11 +25,24 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select'
-import { ArrowLeft, Shuffle, RefreshCw } from 'lucide-react'
+import { Switch } from '@/components/ui/switch'
+import { Label } from '@/components/ui/label'
+import { ArrowLeft, Shuffle, RefreshCw, Play, Crown } from 'lucide-react'
+import { Checkbox } from '@/components/ui/checkbox'
 import { cn } from '@/lib/utils'
 import { useGetCorrelationAnalysisApiV1UniverseCodeCorrelationGet } from '@/api/generated/universe-cockpit/universe-cockpit'
 import type { CorrelationItem, WindowDays } from '@/api/generated/schemas'
 import { formatMarketCap, getPriceChangeColor, formatPriceChange } from '@/lib/universe-colors'
+
+function isLeaderStock(item: CorrelationItem): boolean {
+  const marketCap = item.market_cap ? Number(item.market_cap) : null
+  const turnover = item.turnover ? Number(item.turnover) : null
+  
+  if (marketCap === null || turnover === null) return false
+  
+  const marketCapInYi = marketCap / 1e8
+  return marketCapInYi >= 30 && marketCapInYi <= 1000 && turnover >= 3 && turnover <= 25
+}
 
 // Time window options
 const WINDOW_OPTIONS = [
@@ -79,6 +92,12 @@ export default function InverseCorrelationPage() {
   
   // State for time window selection
   const [windowDays, setWindowDays] = useState<WindowDays>(60 as WindowDays)
+  
+  // State for row selection
+  const [selectedRows, setSelectedRows] = useState<Set<string>>(new Set())
+  
+  // State for leader filter
+  const [onlyLeader, setOnlyLeader] = useState(false)
 
   // Fetch correlation data
   const { data, isLoading, refetch, isFetching } = useGetCorrelationAnalysisApiV1UniverseCodeCorrelationGet(
@@ -93,6 +112,12 @@ export default function InverseCorrelationPage() {
     { query: { enabled: !!code } }
   )
 
+  const filteredItems = useMemo(() => {
+    if (!data?.items) return []
+    if (!onlyLeader) return data.items
+    return data.items.filter(isLeaderStock)
+  }, [data?.items, onlyLeader])
+
   const handleBack = () => {
     navigate(`/universe/${code}`)
   }
@@ -101,8 +126,44 @@ export default function InverseCorrelationPage() {
     navigate(`/universe/${itemCode}`)
   }
 
+  const handleSelectRow = (itemCode: string, checked: boolean) => {
+    setSelectedRows(prev => {
+      const next = new Set(prev)
+      if (checked) {
+        next.add(itemCode)
+      } else {
+        next.delete(itemCode)
+      }
+      return next
+    })
+  }
+
+  const handleDynamicSimulation = () => {
+    if (selectedRows.size === 0) return
+    const stockCodes = Array.from(selectedRows)
+    const params = new URLSearchParams()
+    if (code) {
+      params.set('base', code)
+    }
+    params.set('stocks', stockCodes.join(','))
+    navigate(`/backtest/dynamic?${params.toString()}`)
+  }
+
   // Table columns definition
   const columns: ColumnDef<CorrelationItem>[] = [
+    {
+      id: 'select',
+      header: () => null,
+      cell: ({ row }) => (
+        <Checkbox
+          checked={selectedRows.has(row.original.code)}
+          onCheckedChange={(checked) => handleSelectRow(row.original.code, !!checked)}
+          onClick={(e) => e.stopPropagation()}
+          aria-label="选择行"
+        />
+      ),
+      size: 40,
+    },
     {
       accessorKey: 'code',
       header: '代码',
@@ -194,7 +255,7 @@ export default function InverseCorrelationPage() {
   ]
 
   const table = useReactTable({
-    data: data?.items || [],
+    data: filteredItems,
     columns,
     getCoreRowModel: getCoreRowModel(),
   })
@@ -237,6 +298,19 @@ export default function InverseCorrelationPage() {
         </div>
         
         <div className="flex items-center gap-3">
+          {/* Leader filter toggle */}
+          <div className="flex items-center gap-2">
+            <Switch
+              id="leader-filter"
+              checked={onlyLeader}
+              onCheckedChange={setOnlyLeader}
+            />
+            <Label htmlFor="leader-filter" className="flex items-center gap-1 text-sm cursor-pointer">
+              <Crown className="h-4 w-4 text-amber-500" />
+              只看龙头
+            </Label>
+          </div>
+          
           {/* Time window selector */}
           <Select
             value={String(windowDays)}
@@ -298,9 +372,18 @@ export default function InverseCorrelationPage() {
           <div>
             <CardTitle className="text-sm">负相关标的列表</CardTitle>
             <CardDescription>
-              共找到 {data?.total || 0} 个与基准负相关的股票/ETF，按相关系数升序排列
+              共找到 {filteredItems.length} 个与基准负相关的股票/ETF{onlyLeader && '（仅龙头）'}，按相关系数升序排列
             </CardDescription>
           </div>
+          <Button
+            variant="default"
+            size="sm"
+            onClick={handleDynamicSimulation}
+            disabled={selectedRows.size === 0}
+          >
+            <Play className="h-4 w-4 mr-1.5" />
+            动态模拟 {selectedRows.size > 0 && `(${selectedRows.size})`}
+          </Button>
         </CardHeader>
         <CardContent className="p-0">
           <div className="rounded-md border">
