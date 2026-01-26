@@ -6,6 +6,7 @@ import type { KLineDataHigh } from "./kLineDataHigh";
 import type { KLineDataLow } from "./kLineDataLow";
 import type { KLineDataOpen } from "./kLineDataOpen";
 import type { KLineDataPctChg } from "./kLineDataPctChg";
+import type { KLineDataPreclose } from "./kLineDataPreclose";
 import type { KLineDataTurn } from "./kLineDataTurn";
 import type { KLineDataVolume } from "./kLineDataVolume";
 
@@ -20,6 +21,7 @@ export interface KLineData {
   low: KLineDataLow;
   open: KLineDataOpen;
   pct_chg: KLineDataPctChg;
+  preclose: KLineDataPreclose;
   turn: KLineDataTurn;
   volume: KLineDataVolume;
 }

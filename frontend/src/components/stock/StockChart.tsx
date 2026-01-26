@@ -39,7 +39,10 @@ export interface HoverData {
   high: number
   low: number
   close: number
+  preclose: number
   volume: number
+  amount: number
+  turn: number | null
   change_pct: number
 }
 
@@ -544,7 +547,9 @@ export function StockChart({ code, height = 500, endDate, onHoverData }: StockCh
         if (dataPoint) {
           const open = Number(dataPoint.open) || 0
           const close = Number(dataPoint.close) || 0
-          const change_pct = open !== 0 ? ((close - open) / open) * 100 : 0
+          const preclose = Number(dataPoint.preclose) || 0
+          // Calculate change_pct based on preclose (昨收) for consistency
+          const change_pct = preclose !== 0 ? ((close - preclose) / preclose) * 100 : 0
 
           onHoverData?.({
             date: dataPoint.date,
@@ -552,7 +557,10 @@ export function StockChart({ code, height = 500, endDate, onHoverData }: StockCh
             high: Number(dataPoint.high) || 0,
             low: Number(dataPoint.low) || 0,
             close,
+            preclose,
             volume: Number(dataPoint.volume) || 0,
+            amount: Number(dataPoint.amount) || 0,
+            turn: dataPoint.turn != null ? Number(dataPoint.turn) : null,
             change_pct: parseFloat(change_pct.toFixed(2)),
           })
         } else {

@@ -62,147 +62,149 @@ export default function UniverseDetailPage() {
     )
   }
 
-  // Determine what data to show (hover vs current)
-  // Note: 'open' is only available from K-line hover data, not from UniverseAssetDetail
   const displayData = hoverData ? {
     price: hoverData.close,
     change_pct: hoverData.change_pct,
+    preclose: hoverData.preclose,
     open: hoverData.open,
     high: hoverData.high,
     low: hoverData.low,
     volume: hoverData.volume,
+    amount: hoverData.amount,
+    turn: hoverData.turn,
     date: hoverData.date,
     isHover: true
   } : {
     price: detail.price,
     change_pct: detail.change_pct,
-    open: null as number | null, // 'open' not available in detail API
+    preclose: null as number | null,
+    open: null as number | null,
     high: detail.high,
     low: detail.low,
     volume: detail.volume,
+    amount: detail.amount,
+    turn: detail.turnover,
     date: activeDate || detail.price_date,
     isHover: false
   }
 
-  const formatVolume = (volume: number | undefined | null) => {
-    if (!volume) return '-'
-    if (volume >= 1e8) {
-      return `${(volume / 1e8).toFixed(2)}亿`
-    } else if (volume >= 1e4) {
-      return `${(volume / 1e4).toFixed(2)}万`
-    }
-    return volume.toLocaleString()
+  const getColorForPrice = (price: number | string | null | undefined, preclose: number | string | null | undefined) => {
+    if (price == null || preclose == null) return ''
+    const priceNum = typeof price === 'string' ? parseFloat(price) : price
+    const precloseNum = typeof preclose === 'string' ? parseFloat(preclose) : preclose
+    if (isNaN(priceNum) || isNaN(precloseNum) || precloseNum === 0) return ''
+    if (priceNum > precloseNum) return 'text-red-500'
+    if (priceNum < precloseNum) return 'text-green-500'
+    return ''
   }
+
+  const formatVolume = (volume: number | undefined | null) => {
+    if (volume == null) return '-'
+    const lots = volume / 100
+    if (lots >= 1e4) {
+      return `${(lots / 1e4).toFixed(2)}万手`
+    }
+    return `${lots.toFixed(0)}手`
+  }
+
+  const formatAmount = (amount: number | string | undefined | null) => {
+    if (amount == null) return '-'
+    const num = typeof amount === 'string' ? parseFloat(amount) : amount
+    if (isNaN(num)) return '-'
+    if (num >= 1e8) {
+      return `${(num / 1e8).toFixed(2)}亿`
+    } else if (num >= 1e4) {
+      return `${(num / 1e4).toFixed(2)}万`
+    }
+    return num.toLocaleString()
+  }
+
+  const priceColor = getPriceChangeColor(displayData.change_pct)
 
   return (
     <Card className={cn(
       "flex flex-col h-[calc(100vh-6rem)] transition-colors",
       displayData.isHover && "bg-muted/30"
     )}>
-      {/* Header: [Title Group] [Metrics] [Button] */}
-      <div className="flex items-center gap-4 p-3 border-b shrink-0">
-        {/* Left: Back + Title Info */}
-        <div className="flex items-center gap-3 shrink-0">
-          <Button variant="ghost" size="icon" onClick={handleBack} className="-ml-1">
-            <ArrowLeft className="h-5 w-5" />
+      {/* Header */}
+      <div className="flex items-center gap-4 px-2 py-1 border-b shrink-0">
+        {/* Back + Title */}
+        <div className="flex items-center gap-2 shrink-0">
+          <Button variant="ghost" size="icon" onClick={handleBack} className="-ml-1 h-8 w-8">
+            <ArrowLeft className="h-4 w-4" />
           </Button>
           
-          <div className="flex flex-col">
-            <h1 className="text-lg font-bold leading-tight">{detail.name}</h1>
-            <span className="text-xs text-muted-foreground font-mono">{detail.code}</span>
+          <div className="flex flex-col leading-tight">
+            <h1 className="text-base font-bold">{detail.name}</h1>
+            <span className="text-[10px] text-muted-foreground font-mono">{detail.code}</span>
           </div>
 
-          <div className="flex flex-col text-xs">
-            {detail.industry_l1 && (
-              <span className="text-muted-foreground">{detail.industry_l1}</span>
-            )}
-            <span className="text-muted-foreground">{detail.exchange?.toUpperCase()}</span>
+          <div className="flex flex-col text-[10px] text-muted-foreground leading-tight">
+            {detail.industry_l1 && <span>{detail.industry_l1}</span>}
+            <span>{detail.exchange?.toUpperCase()}</span>
           </div>
 
           {(detail.is_st || detail.is_new) && (
             <div className="flex gap-1">
-              {detail.is_st && <Badge variant="destructive" className="text-xs px-1 py-0 h-5">ST</Badge>}
-              {detail.is_new && <Badge className="bg-green-500 text-white text-xs px-1 py-0 h-5">新股</Badge>}
+              {detail.is_st && <Badge variant="destructive" className="text-[10px] px-1 py-0 h-4">ST</Badge>}
+              {detail.is_new && <Badge className="bg-green-500 text-white text-[10px] px-1 py-0 h-4">新股</Badge>}
             </div>
           )}
         </div>
 
-        {/* Center: Price + Metrics */}
-        <div className="flex items-center gap-6 flex-1 min-w-0">
-          <div className="shrink-0">
-            <div className={cn(
-              "text-2xl font-bold font-mono tracking-tight leading-none",
-              getPriceChangeColor(displayData.change_pct)
-            )}>
+        {/* Metrics Groups */}
+        <div className="flex items-center gap-6 flex-1 min-w-0 text-xs">
+          {/* Group 1: Price / Change / Date */}
+          <div className="flex flex-col leading-tight shrink-0">
+            <span className={cn("text-lg font-bold font-mono", priceColor)}>
               {formatPrice(displayData.price)}
-            </div>
-            <div className="flex items-center gap-1.5 mt-0.5">
-              <div className={cn(
-                "flex items-center text-sm font-medium",
-                getPriceChangeColor(displayData.change_pct)
-              )}>
-                {displayData.change_pct != null && Number(displayData.change_pct) > 0 ? (
-                  <TrendingUp className="h-3.5 w-3.5 mr-0.5" />
-                ) : displayData.change_pct != null && Number(displayData.change_pct) < 0 ? (
-                  <TrendingDown className="h-3.5 w-3.5 mr-0.5" />
-                ) : null}
-                <span className="font-mono">{formatPriceChange(displayData.change_pct)}</span>
-              </div>
-              <span className="text-[10px] text-muted-foreground font-mono">
-                {displayData.date}
-              </span>
-            </div>
+            </span>
+            <span className={cn("font-mono flex items-center", priceColor)}>
+              {displayData.change_pct != null && Number(displayData.change_pct) > 0 ? (
+                <TrendingUp className="h-3 w-3 mr-0.5" />
+              ) : displayData.change_pct != null && Number(displayData.change_pct) < 0 ? (
+                <TrendingDown className="h-3 w-3 mr-0.5" />
+              ) : null}
+              {formatPriceChange(displayData.change_pct)}
+            </span>
+            <span className="text-[10px] text-muted-foreground font-mono">{displayData.date}</span>
           </div>
 
-          <div className="flex items-center gap-4 text-xs overflow-x-auto">
-            <div>
-              <div className="text-muted-foreground">高</div>
-              <div className="font-mono">{formatPrice(displayData.high)}</div>
-            </div>
-            <div>
-              <div className="text-muted-foreground">低</div>
-              <div className="font-mono">{formatPrice(displayData.low)}</div>
-            </div>
-            <div>
-              <div className="text-muted-foreground">开</div>
-              <div className="font-mono">{formatPrice(displayData.open)}</div>
-            </div>
-            <div>
-              <div className="text-muted-foreground">量</div>
-              <div className="font-mono">{formatVolume(displayData.volume)}</div>
-            </div>
-            <div>
-              <div className="text-muted-foreground">市值</div>
-              <div className="font-mono">{formatMarketCap(detail.market_cap)}</div>
-            </div>
-            <div>
-              <div className="text-muted-foreground">流值</div>
-              <div className="font-mono">{formatMarketCap(detail.circ_mv)}</div>
-            </div>
-            <div>
-              <div className="text-muted-foreground">PE</div>
-              <div className="font-mono">{formatRatio(detail.pe_ttm)}</div>
-            </div>
-            <div>
-              <div className="text-muted-foreground">换手</div>
-              <div className="font-mono">{formatTurnover(detail.turnover)}</div>
-            </div>
+          {/* Group 2: High / Low / Open */}
+          <div className="flex flex-col leading-tight text-muted-foreground">
+            <span>高 <span className={cn("font-mono", displayData.isHover ? getColorForPrice(displayData.high, displayData.preclose) : priceColor)}>{formatPrice(displayData.high)}</span></span>
+            <span>低 <span className={cn("font-mono", displayData.isHover ? getColorForPrice(displayData.low, displayData.preclose) : priceColor)}>{formatPrice(displayData.low)}</span></span>
+            <span>开 <span className={cn("font-mono", displayData.isHover ? getColorForPrice(displayData.open, displayData.preclose) : priceColor)}>{formatPrice(displayData.open)}</span></span>
+          </div>
+
+          {/* Group 3: MarketCap / CircMV / PE */}
+          <div className="flex flex-col leading-tight text-muted-foreground">
+            <span>市值 <span className="font-mono text-foreground">{formatMarketCap(detail.market_cap)}</span></span>
+            <span>流值 <span className="font-mono text-foreground">{formatMarketCap(detail.circ_mv)}</span></span>
+            <span>市盈 <span className="font-mono text-foreground">{formatRatio(detail.pe_ttm)}</span></span>
+          </div>
+
+          {/* Group 4: Volume / Amount / Turnover */}
+          <div className="flex flex-col leading-tight text-muted-foreground">
+            <span>总手 <span className="font-mono text-foreground">{formatVolume(displayData.volume)}</span></span>
+            <span>金额 <span className="font-mono text-foreground">{formatAmount(displayData.amount)}</span></span>
+            <span>换手 <span className="font-mono text-foreground">{formatTurnover(displayData.turn)}</span></span>
           </div>
         </div>
 
-        {/* Right: Button */}
+        {/* Button */}
         <Button
           variant="outline"
           size="sm"
           onClick={() => navigate(`/universe/${code}/inverse`)}
-          className="shrink-0"
+          className="shrink-0 h-7 text-xs"
         >
-          <Shuffle className="h-3.5 w-3.5 mr-1" />
+          <Shuffle className="h-3 w-3 mr-1" />
           查找反向
         </Button>
       </div>
 
-      {/* Chart fills remaining space */}
+      {/* Chart */}
       <CardContent className="p-0 flex-1 min-h-0">
         <StockChart 
           code={code || ''} 

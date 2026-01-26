@@ -14,7 +14,14 @@ from sqlalchemy import select, func, and_, or_
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.session import get_db
-from app.db.models.asset import AssetMeta, AssetType, MarketDaily, IndicatorValuation, IndicatorETF, AdjustFactor
+from app.db.models.asset import (
+    AssetMeta,
+    AssetType,
+    MarketDaily,
+    IndicatorValuation,
+    IndicatorETF,
+    AdjustFactor,
+)
 from app.db.models.profile import StockProfile, ETFProfile
 from app.db.models.indicator import TechnicalIndicator
 
@@ -25,8 +32,10 @@ router = APIRouter()
 # Enums for API
 # ============================================
 
+
 class AssetTypeFilter(str, Enum):
     """Asset type filter for API."""
+
     ALL = "all"
     STOCK = "stock"
     ETF = "etf"
@@ -34,17 +43,20 @@ class AssetTypeFilter(str, Enum):
 
 class AdjustType(str, Enum):
     """Price adjustment type for K-line data."""
+
     NONE = "none"  # 不复权
-    HFQ = "hfq"    # 后复权 (backward adjust)
-    QFQ = "qfq"    # 前复权 (forward adjust)
+    HFQ = "hfq"  # 后复权 (backward adjust)
+    QFQ = "qfq"  # 前复权 (forward adjust)
 
 
 # ============================================
 # Pydantic Schemas
 # ============================================
 
+
 class AssetBasicResponse(BaseModel):
     """Schema for asset basic info response."""
+
     code: str
     name: str
     asset_type: str
@@ -60,6 +72,7 @@ class AssetBasicResponse(BaseModel):
 
 class StockBasicResponse(BaseModel):
     """Schema for stock basic info response (backward compatible)."""
+
     code: str
     code_name: Optional[str]
     ipo_date: Optional[date]
@@ -76,6 +89,7 @@ class StockBasicResponse(BaseModel):
 
 class AssetListResponse(BaseModel):
     """Schema for paginated asset list."""
+
     items: List[AssetBasicResponse]
     total: int
     page: int
@@ -85,6 +99,7 @@ class AssetListResponse(BaseModel):
 
 class StockListResponse(BaseModel):
     """Schema for paginated stock list (backward compatible)."""
+
     items: List[StockBasicResponse]
     total: int
     page: int
@@ -94,11 +109,13 @@ class StockListResponse(BaseModel):
 
 class KLineData(BaseModel):
     """Schema for K-line data point."""
+
     date: date
     open: Optional[Decimal]
     high: Optional[Decimal]
     low: Optional[Decimal]
     close: Optional[Decimal]
+    preclose: Optional[Decimal]
     volume: Optional[int]
     amount: Optional[Decimal]
     pct_chg: Optional[Decimal]
@@ -110,6 +127,7 @@ class KLineData(BaseModel):
 
 class KLineResponse(BaseModel):
     """Schema for K-line data response."""
+
     code: str
     code_name: Optional[str]
     data: List[KLineData]
@@ -118,6 +136,7 @@ class KLineResponse(BaseModel):
 
 class TechnicalIndicatorResponse(BaseModel):
     """Schema for technical indicator response."""
+
     date: date
     ma_5: Optional[Decimal]
     ma_10: Optional[Decimal]
@@ -144,6 +163,7 @@ class TechnicalIndicatorResponse(BaseModel):
 
 class AssetSearchResult(BaseModel):
     """Schema for asset search result."""
+
     code: str
     name: str
     asset_type: str
@@ -152,6 +172,7 @@ class AssetSearchResult(BaseModel):
 
 class StockSearchResult(BaseModel):
     """Schema for stock search result (backward compatible)."""
+
     code: str
     code_name: Optional[str]
     exchange: Optional[str]
@@ -159,6 +180,7 @@ class StockSearchResult(BaseModel):
 
 class AdjustFactorResponse(BaseModel):
     """Schema for adjust factor response."""
+
     divid_operate_date: date
     fore_adjust_factor: Optional[Decimal]
     back_adjust_factor: Optional[Decimal]
@@ -170,6 +192,7 @@ class AdjustFactorResponse(BaseModel):
 
 class ValuationResponse(BaseModel):
     """Schema for valuation data response."""
+
     code: str
     date: date
     pe_ttm: Optional[Decimal]
@@ -183,6 +206,7 @@ class ValuationResponse(BaseModel):
 
 class ETFIndicatorResponse(BaseModel):
     """Schema for ETF indicator response."""
+
     code: str
     date: date
     iopv: Optional[Decimal]
@@ -195,7 +219,10 @@ class ETFIndicatorResponse(BaseModel):
 # Helper Functions
 # ============================================
 
-def convert_to_stock_response(asset: AssetMeta, profile: Optional[StockProfile] = None) -> StockBasicResponse:
+
+def convert_to_stock_response(
+    asset: AssetMeta, profile: Optional[StockProfile] = None
+) -> StockBasicResponse:
     """Convert AssetMeta to backward-compatible StockBasicResponse."""
     return StockBasicResponse(
         code=asset.code,
@@ -214,6 +241,7 @@ def convert_to_stock_response(asset: AssetMeta, profile: Optional[StockProfile] 
 # API Endpoints
 # ============================================
 
+
 @router.get("", response_model=StockListResponse)
 async def list_stocks(
     page: int = Query(default=1, ge=1),
@@ -221,8 +249,12 @@ async def list_stocks(
     exchange: Optional[str] = Query(default=None, description="Filter by exchange: sh or sz"),
     sector: Optional[str] = Query(default=None),
     search: Optional[str] = Query(default=None, description="Search by code or name"),
-    asset_type: AssetTypeFilter = Query(default=AssetTypeFilter.STOCK, description="Asset type filter"),
-    include_etf: bool = Query(default=False, description="Include ETF (deprecated, use asset_type)"),
+    asset_type: AssetTypeFilter = Query(
+        default=AssetTypeFilter.STOCK, description="Asset type filter"
+    ),
+    include_etf: bool = Query(
+        default=False, description="Include ETF (deprecated, use asset_type)"
+    ),
     db: AsyncSession = Depends(get_db),
 ):
     """List assets with pagination and filtering."""
@@ -246,10 +278,7 @@ async def list_stocks(
         query = query.where(AssetMeta.category == sector)
     if search:
         query = query.where(
-            or_(
-                AssetMeta.code.ilike(f"%{search}%"),
-                AssetMeta.name.ilike(f"%{search}%")
-            )
+            or_(AssetMeta.code.ilike(f"%{search}%"), AssetMeta.name.ilike(f"%{search}%"))
         )
 
     # Get total count
@@ -266,9 +295,7 @@ async def list_stocks(
 
     # Get stock profiles for industry info
     codes = [a.code for a in assets]
-    profile_result = await db.execute(
-        select(StockProfile).where(StockProfile.code.in_(codes))
-    )
+    profile_result = await db.execute(select(StockProfile).where(StockProfile.code.in_(codes)))
     profiles = {p.code: p for p in profile_result.scalars().all()}
 
     return StockListResponse(
@@ -302,10 +329,7 @@ async def list_assets(
         query = query.where(AssetMeta.exchange == exchange)
     if search:
         query = query.where(
-            or_(
-                AssetMeta.code.ilike(f"%{search}%"),
-                AssetMeta.name.ilike(f"%{search}%")
-            )
+            or_(AssetMeta.code.ilike(f"%{search}%"), AssetMeta.name.ilike(f"%{search}%"))
         )
 
     # Get total count
@@ -321,16 +345,21 @@ async def list_assets(
     assets = result.scalars().all()
 
     return AssetListResponse(
-        items=[AssetBasicResponse(
-            code=a.code,
-            name=a.name,
-            asset_type=a.asset_type.value if isinstance(a.asset_type, AssetType) else a.asset_type,
-            exchange=a.exchange,
-            list_date=a.list_date,
-            delist_date=a.delist_date,
-            status=a.status,
-            category=a.category,
-        ) for a in assets],
+        items=[
+            AssetBasicResponse(
+                code=a.code,
+                name=a.name,
+                asset_type=a.asset_type.value
+                if isinstance(a.asset_type, AssetType)
+                else a.asset_type,
+                exchange=a.exchange,
+                list_date=a.list_date,
+                delist_date=a.delist_date,
+                status=a.status,
+                category=a.category,
+            )
+            for a in assets
+        ],
         total=total,
         page=page,
         page_size=page_size,
@@ -347,10 +376,7 @@ async def search_assets(
 ):
     """Search assets by code or name."""
     query = select(AssetMeta).where(
-        or_(
-            AssetMeta.code.ilike(f"%{q}%"),
-            AssetMeta.name.ilike(f"%{q}%")
-        )
+        or_(AssetMeta.code.ilike(f"%{q}%"), AssetMeta.name.ilike(f"%{q}%"))
     )
 
     if asset_type == AssetTypeFilter.STOCK:
@@ -380,9 +406,7 @@ async def get_stock(
     db: AsyncSession = Depends(get_db),
 ):
     """Get asset basic information by code."""
-    result = await db.execute(
-        select(AssetMeta).where(AssetMeta.code == code)
-    )
+    result = await db.execute(select(AssetMeta).where(AssetMeta.code == code))
     asset = result.scalar_one_or_none()
 
     if not asset:
@@ -392,9 +416,7 @@ async def get_stock(
         )
 
     # Get profile for industry info
-    profile_result = await db.execute(
-        select(StockProfile).where(StockProfile.code == code)
-    )
+    profile_result = await db.execute(select(StockProfile).where(StockProfile.code == code))
     profile = profile_result.scalar_one_or_none()
 
     return convert_to_stock_response(asset, profile)
@@ -406,14 +428,14 @@ async def get_kline(
     start_date: Optional[date] = Query(default=None),
     end_date: Optional[date] = Query(default=None),
     limit: int = Query(default=250, ge=1, le=1000),
-    adjust: AdjustType = Query(default=AdjustType.NONE, description="复权类型: none=不复权, hfq=后复权, qfq=前复权"),
+    adjust: AdjustType = Query(
+        default=AdjustType.NONE, description="复权类型: none=不复权, hfq=后复权, qfq=前复权"
+    ),
     db: AsyncSession = Depends(get_db),
 ):
     """Get K-line (OHLCV) data for an asset with optional price adjustment."""
     # Get asset info
-    asset_result = await db.execute(
-        select(AssetMeta).where(AssetMeta.code == code)
-    )
+    asset_result = await db.execute(select(AssetMeta).where(AssetMeta.code == code))
     asset = asset_result.scalar_one_or_none()
 
     if not asset:
@@ -495,6 +517,7 @@ async def get_kline(
                 high=k.high * factor if k.high else None,
                 low=k.low * factor if k.low else None,
                 close=k.close * factor if k.close else None,
+                preclose=k.preclose * factor if k.preclose else None,
                 volume=k.volume,
                 amount=k.amount,
                 pct_chg=k.pct_chg,
@@ -527,9 +550,7 @@ async def get_indicators(
 ):
     """Get technical indicators for an asset."""
     # Check asset exists
-    asset_result = await db.execute(
-        select(AssetMeta).where(AssetMeta.code == code)
-    )
+    asset_result = await db.execute(select(AssetMeta).where(AssetMeta.code == code))
     if not asset_result.scalar_one_or_none():
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -562,9 +583,7 @@ async def get_fundamentals(
 ):
     """Get fundamental/valuation data for an asset."""
     # Check asset exists and get type
-    asset_result = await db.execute(
-        select(AssetMeta).where(AssetMeta.code == code)
-    )
+    asset_result = await db.execute(select(AssetMeta).where(AssetMeta.code == code))
     asset = asset_result.scalar_one_or_none()
 
     if not asset:
@@ -652,9 +671,7 @@ async def get_adjust_factors(
 ):
     """Get adjustment factors for an asset."""
     # Check asset exists
-    asset_result = await db.execute(
-        select(AssetMeta).where(AssetMeta.code == code)
-    )
+    asset_result = await db.execute(select(AssetMeta).where(AssetMeta.code == code))
     if not asset_result.scalar_one_or_none():
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -687,9 +704,7 @@ async def get_asset_profile(
 ):
     """Get detailed profile for an asset (stock or ETF)."""
     # Get asset
-    asset_result = await db.execute(
-        select(AssetMeta).where(AssetMeta.code == code)
-    )
+    asset_result = await db.execute(select(AssetMeta).where(AssetMeta.code == code))
     asset = asset_result.scalar_one_or_none()
 
     if not asset:
@@ -701,7 +716,9 @@ async def get_asset_profile(
     base_info = {
         "code": asset.code,
         "name": asset.name,
-        "asset_type": asset.asset_type.value if isinstance(asset.asset_type, AssetType) else asset.asset_type,
+        "asset_type": asset.asset_type.value
+        if isinstance(asset.asset_type, AssetType)
+        else asset.asset_type,
         "exchange": asset.exchange,
         "list_date": asset.list_date,
         "delist_date": asset.delist_date,
@@ -711,37 +728,37 @@ async def get_asset_profile(
 
     # Get type-specific profile
     if asset.asset_type == AssetType.STOCK or asset.asset_type == "STOCK":
-        profile_result = await db.execute(
-            select(StockProfile).where(StockProfile.code == code)
-        )
+        profile_result = await db.execute(select(StockProfile).where(StockProfile.code == code))
         profile = profile_result.scalar_one_or_none()
 
         if profile:
-            base_info.update({
-                "sw_industry_l1": profile.sw_industry_l1,
-                "sw_industry_l2": profile.sw_industry_l2,
-                "sw_industry_l3": profile.sw_industry_l3,
-                "concepts": profile.concepts,
-                "province": profile.province,
-                "total_shares": profile.total_shares,
-                "float_shares": profile.float_shares,
-            })
+            base_info.update(
+                {
+                    "sw_industry_l1": profile.sw_industry_l1,
+                    "sw_industry_l2": profile.sw_industry_l2,
+                    "sw_industry_l3": profile.sw_industry_l3,
+                    "concepts": profile.concepts,
+                    "province": profile.province,
+                    "total_shares": profile.total_shares,
+                    "float_shares": profile.float_shares,
+                }
+            )
 
     elif asset.asset_type == AssetType.ETF or asset.asset_type == "ETF":
-        profile_result = await db.execute(
-            select(ETFProfile).where(ETFProfile.code == code)
-        )
+        profile_result = await db.execute(select(ETFProfile).where(ETFProfile.code == code))
         profile = profile_result.scalar_one_or_none()
 
         if profile:
-            base_info.update({
-                "etf_type": profile.etf_type.value if profile.etf_type else None,
-                "underlying_index_code": profile.underlying_index_code,
-                "underlying_index_name": profile.underlying_index_name,
-                "fund_company": profile.fund_company,
-                "management_fee": profile.management_fee,
-                "custody_fee": profile.custody_fee,
-                "fund_size": profile.fund_size,
-            })
+            base_info.update(
+                {
+                    "etf_type": profile.etf_type.value if profile.etf_type else None,
+                    "underlying_index_code": profile.underlying_index_code,
+                    "underlying_index_name": profile.underlying_index_name,
+                    "fund_company": profile.fund_company,
+                    "management_fee": profile.management_fee,
+                    "custody_fee": profile.custody_fee,
+                    "fund_size": profile.fund_size,
+                }
+            )
 
     return base_info

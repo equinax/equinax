@@ -195,15 +195,11 @@ export function formatMarketCap(cap: number | string | null | undefined): string
   if (cap === null || cap === undefined) return '-'
   const num = typeof cap === 'string' ? parseFloat(cap) : cap
   if (isNaN(num)) return '-'
-  // cap is already in 亿元 units from API
   if (num >= 10000) {
     return `${(num / 10000).toFixed(2)}万亿`
   }
-  if (num >= 1000) {
-    return `${(num / 1000).toFixed(1)}千亿`
-  }
   if (num >= 1) {
-    return `${num.toFixed(0)}亿`
+    return `${num.toFixed(2)}亿`
   }
   return `${(num * 10000).toFixed(0)}万`
 }
