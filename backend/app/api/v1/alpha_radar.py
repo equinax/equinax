@@ -23,22 +23,26 @@ router = APIRouter()
 # Enums
 # ============================================
 
+
 class TimeMode(str, Enum):
     """Time mode for data analysis."""
+
     SNAPSHOT = "snapshot"  # Single date (default: latest trading day)
-    PERIOD = "period"      # Date range for period analysis
+    PERIOD = "period"  # Date range for period analysis
 
 
 class ScreenerTab(str, Enum):
     """Screener tab types with different scoring strategies."""
-    PANORAMA = "panorama"           # 全景综合
-    SMART_ACCUMULATION = "smart"    # 聪明钱吸筹
-    DEEP_VALUE = "value"            # 深度价值
-    SUPER_TREND = "trend"           # 趋势共振
+
+    PANORAMA = "panorama"  # 全景综合
+    SMART_ACCUMULATION = "smart"  # 聪明钱吸筹
+    DEEP_VALUE = "value"  # 深度价值
+    SUPER_TREND = "trend"  # 趋势共振
 
 
 class MarketRegimeType(str, Enum):
     """Market regime classification."""
+
     BULL = "BULL"
     BEAR = "BEAR"
     RANGE = "RANGE"
@@ -46,41 +50,46 @@ class MarketRegimeType(str, Enum):
 
 class SectorMetric(str, Enum):
     """Metric type for sector heatmap coloring."""
-    CHANGE = "change"           # 涨跌幅
-    AMOUNT = "amount"           # 成交额
+
+    CHANGE = "change"  # 涨跌幅
+    AMOUNT = "amount"  # 成交额
     MAIN_STRENGTH = "main_strength"  # 主力强度
-    SCORE = "score"             # 综合评分
+    SCORE = "score"  # 综合评分
 
 
 class RotationSortBy(str, Enum):
     """Sort options for sector rotation matrix."""
-    TODAY_CHANGE = "today_change"     # 今日涨幅
-    PERIOD_CHANGE = "period_change"   # N日累计涨幅
-    MONEY_FLOW = "money_flow"         # 资金流入
-    MOMENTUM = "momentum"             # 动量因子
-    UPSTREAM = "upstream"             # 上游优先（产业链序）
+
+    TODAY_CHANGE = "today_change"  # 今日涨幅
+    PERIOD_CHANGE = "period_change"  # N日累计涨幅
+    MONEY_FLOW = "money_flow"  # 资金流入
+    MOMENTUM = "momentum"  # 动量因子
+    UPSTREAM = "upstream"  # 上游优先（产业链序）
 
 
 class CellSignalType(str, Enum):
     """Algorithm signal types for matrix cells."""
-    MOMENTUM = "momentum"       # 主线行情 🔥
-    REVERSAL = "reversal"       # 反转信号 ⚡️
-    DIVERGENCE = "divergence"   # 资金背离 (金色边框)
-    OVERCROWDED = "overcrowded" # 极致拥挤 ⚠️
+
+    MOMENTUM = "momentum"  # 主线行情 🔥
+    REVERSAL = "reversal"  # 反转信号 ⚡️
+    DIVERGENCE = "divergence"  # 资金背离 (金色边框)
+    OVERCROWDED = "overcrowded"  # 极致拥挤 ⚠️
 
 
 class EtfCategory(str, Enum):
     """ETF category for filtering."""
-    BROAD = "broad"                 # 宽基/大盘
-    SECTOR = "sector"               # 行业
-    THEME = "theme"                 # 赛道
-    CROSS_BORDER = "cross_border"   # 跨境/QDII
-    COMMODITY = "commodity"         # 商品
-    BOND = "bond"                   # 债券
+
+    BROAD = "broad"  # 宽基/大盘
+    SECTOR = "sector"  # 行业
+    THEME = "theme"  # 赛道
+    CROSS_BORDER = "cross_border"  # 跨境/QDII
+    COMMODITY = "commodity"  # 商品
+    BOND = "bond"  # 债券
 
 
 class EtfSortField(str, Enum):
     """Sort field options for ETF screener."""
+
     AMOUNT = "amount"
     DISCOUNT_RATE = "discount_rate"
     SCORE = "score"
@@ -90,18 +99,21 @@ class EtfSortField(str, Enum):
 
 class ValuationLevel(str, Enum):
     """Valuation level based on historical percentile."""
-    LOW = "LOW"           # 0-25%
-    MEDIUM = "MEDIUM"     # 25-75%
-    HIGH = "HIGH"         # 75-90%
-    EXTREME = "EXTREME"   # 90-100%
+
+    LOW = "LOW"  # 0-25%
+    MEDIUM = "MEDIUM"  # 25-75%
+    HIGH = "HIGH"  # 75-90%
+    EXTREME = "EXTREME"  # 90-100%
 
 
 # ============================================
 # Time Controller Schemas
 # ============================================
 
+
 class CalendarDayInfo(BaseModel):
     """Calendar day information for heatmap display."""
+
     date: datetime.date
     is_trading_day: bool
     market_change: Optional[float] = Field(default=None, description="上证指数涨跌幅 (%)")
@@ -109,18 +121,22 @@ class CalendarDayInfo(BaseModel):
 
 class TimeControllerRequest(BaseModel):
     """Request schema for time controller."""
+
     mode: TimeMode = TimeMode.SNAPSHOT
     date: Optional[datetime.date] = Field(default=None, description="Target date for snapshot mode")
-    start_date: Optional[datetime.date] = Field(default=None, description="Start date for period mode")
+    start_date: Optional[datetime.date] = Field(
+        default=None, description="Start date for period mode"
+    )
     end_date: Optional[datetime.date] = Field(default=None, description="End date for period mode")
 
 
 class TimeControllerResponse(BaseModel):
     """Response schema for time controller with resolved dates."""
+
     mode: TimeMode
-    resolved_date: Optional[datetime.date] = None        # For snapshot mode
+    resolved_date: Optional[datetime.date] = None  # For snapshot mode
     resolved_start_date: Optional[datetime.date] = None  # For period mode
-    resolved_end_date: Optional[datetime.date] = None    # For period mode
+    resolved_end_date: Optional[datetime.date] = None  # For period mode
     trading_days_count: int = 0
     earliest_available_date: datetime.date
     latest_available_date: datetime.date
@@ -130,15 +146,20 @@ class TimeControllerResponse(BaseModel):
 # Dashboard Schemas
 # ============================================
 
+
 class MarketStateInfo(BaseModel):
     """Market state (regime) information."""
+
     regime: MarketRegimeType
-    regime_score: Decimal = Field(description="Score from -100 (extreme bear) to +100 (extreme bull)")
+    regime_score: Decimal = Field(
+        description="Score from -100 (extreme bear) to +100 (extreme bull)"
+    )
     regime_description: str = Field(description="Human-readable description like '强势上涨'")
 
 
 class MarketBreadthInfo(BaseModel):
     """Market breadth metrics."""
+
     up_count: int = Field(description="Number of stocks up today")
     down_count: int = Field(description="Number of stocks down today")
     flat_count: int = Field(description="Number of stocks unchanged")
@@ -150,14 +171,18 @@ class MarketBreadthInfo(BaseModel):
 
 class StyleRotationInfo(BaseModel):
     """Style rotation metrics (large value vs small growth)."""
+
     large_value_strength: Decimal = Field(description="Large value relative strength (0-100)")
     small_growth_strength: Decimal = Field(description="Small growth relative strength (0-100)")
     dominant_style: str = Field(description="'large_value', 'small_growth', or 'balanced'")
-    rotation_signal: str = Field(description="'switching_to_value', 'switching_to_growth', or 'stable'")
+    rotation_signal: str = Field(
+        description="'switching_to_value', 'switching_to_growth', or 'stable'"
+    )
 
 
 class SmartMoneyInfo(BaseModel):
     """Smart money proxy metrics (based on turnover and volume patterns)."""
+
     market_avg_volume_ratio: Decimal = Field(description="Market average 5-day volume ratio")
     high_turnover_count: int = Field(description="Number of stocks with high turnover")
     accumulation_signal_count: int = Field(description="Stocks showing accumulation signals")
@@ -167,6 +192,7 @@ class SmartMoneyInfo(BaseModel):
 
 class DashboardResponse(BaseModel):
     """Dashboard response with all 4 regime cards."""
+
     time_mode: TimeMode
     date: Optional[datetime.date] = None
     start_date: Optional[datetime.date] = None
@@ -182,25 +208,30 @@ class DashboardResponse(BaseModel):
 # Screener Schemas
 # ============================================
 
+
 class QuantLabel(str, Enum):
     """Quantitative labels for stocks."""
+
     MAIN_ACCUMULATION = "main_accumulation"  # 主力吸筹
-    UNDERVALUED = "undervalued"              # 低估
-    OVERSOLD = "oversold"                    # 超跌
-    HIGH_VOLATILITY = "high_volatility"      # 高波
-    BREAKOUT = "breakout"                    # 突破
-    VOLUME_SURGE = "volume_surge"            # 放量
+    UNDERVALUED = "undervalued"  # 低估
+    OVERSOLD = "oversold"  # 超跌
+    HIGH_VOLATILITY = "high_volatility"  # 高波
+    BREAKOUT = "breakout"  # 突破
+    VOLUME_SURGE = "volume_surge"  # 放量
 
 
 class ScreenerItem(BaseModel):
     """Single item in screener results."""
+
     code: str
     name: str
     asset_type: str = Field(description="'stock', 'etf', or 'index'")
 
     # Price data
     price: Optional[Decimal] = None
-    change_pct: Optional[Decimal] = Field(default=None, description="Daily change % (snapshot mode)")
+    change_pct: Optional[Decimal] = Field(
+        default=None, description="Daily change % (snapshot mode)"
+    )
 
     # Scores (0-100)
     composite_score: Decimal = Field(description="Tab-specific composite score (0-100)")
@@ -209,20 +240,30 @@ class ScreenerItem(BaseModel):
     quant_labels: List[str] = Field(default_factory=list, description="Active quant labels")
 
     # Main strength proxy (替代主力强度)
-    main_strength_proxy: Optional[Decimal] = Field(default=None, description="Main force strength proxy (0-100)")
+    main_strength_proxy: Optional[Decimal] = Field(
+        default=None, description="Main force strength proxy (0-100)"
+    )
 
     # Valuation
     valuation_level: Optional[str] = Field(default=None, description="LOW/MEDIUM/HIGH/EXTREME")
-    valuation_percentile: Optional[Decimal] = Field(default=None, description="Current PE percentile (0-100)")
+    valuation_percentile: Optional[Decimal] = Field(
+        default=None, description="Current PE percentile (0-100)"
+    )
 
     # Classification
     size_category: Optional[str] = None
     industry_l1: Optional[str] = None
 
     # Period mode metrics (only populated in period mode)
-    period_return: Optional[Decimal] = Field(default=None, description="Period return % (period mode)")
-    max_drawdown: Optional[Decimal] = Field(default=None, description="Max drawdown % (period mode)")
-    avg_turnover: Optional[Decimal] = Field(default=None, description="Average turnover (period mode)")
+    period_return: Optional[Decimal] = Field(
+        default=None, description="Period return % (period mode)"
+    )
+    max_drawdown: Optional[Decimal] = Field(
+        default=None, description="Max drawdown % (period mode)"
+    )
+    avg_turnover: Optional[Decimal] = Field(
+        default=None, description="Average turnover (period mode)"
+    )
 
     class Config:
         from_attributes = True
@@ -230,6 +271,7 @@ class ScreenerItem(BaseModel):
 
 class ScreenerResponse(BaseModel):
     """Paginated screener response."""
+
     items: List[ScreenerItem]
     total: int
     page: int
@@ -246,8 +288,10 @@ class ScreenerResponse(BaseModel):
 # ETF Screener Schemas
 # ============================================
 
+
 class EtfScreenerItem(BaseModel):
     """Single ETF item in screener results."""
+
     code: str
     name: str
     etf_type: Optional[str] = Field(default=None, description="BROAD_BASED, SECTOR, THEME, etc.")
@@ -262,8 +306,12 @@ class EtfScreenerItem(BaseModel):
     fund_company: Optional[str] = None
     management_fee: Optional[Decimal] = None
     score: Optional[Decimal] = Field(default=None, description="Composite score (0-100)")
-    is_representative: bool = Field(default=False, description="Is representative ETF for this index")
-    labels: List[str] = Field(default_factory=list, description="ETF labels: liquidity_king, high_premium, etc.")
+    is_representative: bool = Field(
+        default=False, description="Is representative ETF for this index"
+    )
+    labels: List[str] = Field(
+        default_factory=list, description="ETF labels: liquidity_king, high_premium, etc."
+    )
 
     class Config:
         from_attributes = True
@@ -271,6 +319,7 @@ class EtfScreenerItem(BaseModel):
 
 class EtfScreenerResponse(BaseModel):
     """Paginated ETF screener response."""
+
     items: List[EtfScreenerItem]
     total: int
     page: int
@@ -283,20 +332,27 @@ class EtfScreenerResponse(BaseModel):
 # ETF Heatmap Schemas
 # ============================================
 
+
 class EtfHeatmapItem(BaseModel):
     """Single ETF item in heatmap."""
+
     code: str
     name: str = Field(description="Simplified name (e.g., '沪深300')")
     full_name: str = Field(description="Full ETF name")
     change_pct: Optional[Decimal] = Field(default=None, description="Daily change %")
     amount: Optional[Decimal] = Field(default=None, description="Trading amount")
-    is_representative: bool = Field(default=True, description="Is representative for this sub-category")
+    is_representative: bool = Field(
+        default=True, description="Is representative for this sub-category"
+    )
     category: Optional[str] = Field(default=None, description="ETF category (for top_movers)")
 
 
 class EtfHeatmapCategory(BaseModel):
     """Single category row in ETF heatmap."""
-    category: str = Field(description="Category key: broad, sector, theme, cross_border, commodity, bond")
+
+    category: str = Field(
+        description="Category key: broad, sector, theme, cross_border, commodity, bond"
+    )
     label: str = Field(description="Display label: 宽基, 行业, 赛道, 跨境, 商品, 债券")
     items: List[EtfHeatmapItem] = Field(description="ETFs in this category")
     avg_change_pct: Optional[Decimal] = Field(default=None, description="Category average change %")
@@ -304,23 +360,31 @@ class EtfHeatmapCategory(BaseModel):
 
 class EtfHeatmapResponse(BaseModel):
     """ETF heatmap response with top movers and 6 category rows."""
+
     date: Optional[datetime.date] = None
-    top_movers: List[EtfHeatmapItem] = Field(default_factory=list, description="Top 10 ETFs by daily change (bubble-up)")
-    categories: List[EtfHeatmapCategory] = Field(description="6 rows: broad, sector, theme, cross_border, commodity, bond")
+    top_movers: List[EtfHeatmapItem] = Field(
+        default_factory=list, description="Top 10 ETFs by daily change (bubble-up)"
+    )
+    categories: List[EtfHeatmapCategory] = Field(
+        description="6 rows: broad, sector, theme, cross_border, commodity, bond"
+    )
 
 
 # ============================================
 # ETF Rotation Schemas
 # ============================================
 
+
 class EtfRotationCategoryInfo(BaseModel):
     """Category info for rotation matrix header."""
+
     key: str = Field(description="Category key: broad, sector, theme, etc.")
     label: str = Field(description="Display label: 宽基, 行业, 赛道, etc.")
 
 
 class EtfRotationCategoryData(BaseModel):
     """Category data for a single cell in the rotation matrix."""
+
     avg_change_pct: Optional[Decimal] = Field(default=None, description="Category average change %")
     total_amount: Optional[Decimal] = Field(default=None, description="Total trading amount")
     etf_count: int = Field(default=0, description="Number of ETFs in category")
@@ -329,12 +393,16 @@ class EtfRotationCategoryData(BaseModel):
 
 class EtfRotationRow(BaseModel):
     """Single row (date) in ETF rotation matrix."""
+
     date: datetime.date
-    categories: dict[str, EtfRotationCategoryData] = Field(description="Category data keyed by category")
+    categories: dict[str, EtfRotationCategoryData] = Field(
+        description="Category data keyed by category"
+    )
 
 
 class EtfRotationResponse(BaseModel):
     """ETF rotation matrix response (category summary view)."""
+
     rows: List[EtfRotationRow] = Field(description="Matrix rows (one per date)")
     total: int = Field(description="Total trading days available")
     page: int
@@ -345,6 +413,7 @@ class EtfRotationResponse(BaseModel):
 
 class EtfRotationSubCategoryData(BaseModel):
     """Sub-category data for expanded view."""
+
     change_pct: Optional[Decimal] = Field(default=None, description="Representative ETF change %")
     amount: Optional[Decimal] = Field(default=None, description="Trading amount")
     rep_code: Optional[str] = Field(default=None, description="Representative ETF code")
@@ -353,12 +422,14 @@ class EtfRotationSubCategoryData(BaseModel):
 
 class EtfRotationDetailRow(BaseModel):
     """Single row in expanded category detail view."""
+
     date: datetime.date
     sub_categories: dict[str, EtfRotationSubCategoryData] = Field(description="Sub-category data")
 
 
 class EtfRotationDetailResponse(BaseModel):
     """ETF rotation detail response (expanded sub-category view)."""
+
     category: str = Field(description="Expanded category key")
     category_label: str = Field(description="Expanded category label")
     rows: List[EtfRotationDetailRow] = Field(description="Detail rows")
@@ -373,8 +444,10 @@ class EtfRotationDetailResponse(BaseModel):
 # ETF Rotation Flat Schemas (SVG Matrix)
 # ============================================
 
+
 class EtfFlatDayCell(BaseModel):
     """单元格数据 (日期 × 子品类)."""
+
     date: datetime.date
     change_pct: Optional[Decimal] = Field(default=None, description="涨跌幅 %")
     amount: Optional[Decimal] = Field(default=None, description="成交额")
@@ -384,6 +457,7 @@ class EtfFlatDayCell(BaseModel):
 
 class EtfRotationColumn(BaseModel):
     """子品类列 (用于 SVG 矩阵)."""
+
     name: str = Field(description="子品类名 (如 '沪深300')")
     category: str = Field(description="父类 key (如 'broad')")
     category_label: str = Field(description="父类名 (如 '宽基')")
@@ -395,9 +469,13 @@ class EtfRotationColumn(BaseModel):
 
 class EtfRotationFlatResponse(BaseModel):
     """扁平化 ETF 轮动矩阵响应 (所有子品类作为列)."""
+
     trading_days: List[datetime.date] = Field(description="交易日列表 (Y轴)")
     sub_categories: List[EtfRotationColumn] = Field(description="子品类列 (X轴)")
-    category_order: List[str] = Field(description="大类顺序", default=["broad", "sector", "theme", "cross_border", "commodity", "bond"])
+    category_order: List[str] = Field(
+        description="大类顺序",
+        default=["broad", "sector", "theme", "cross_border", "commodity", "bond"],
+    )
     category_labels: dict[str, str] = Field(description="大类标签映射")
     days: int = Field(description="请求的交易日数量")
 
@@ -406,8 +484,10 @@ class EtfRotationFlatResponse(BaseModel):
 # ETF Subcategory List Schemas (for Tooltip)
 # ============================================
 
+
 class EtfSubcategoryItem(BaseModel):
     """单个 ETF 项目 (用于 Tooltip 列表)."""
+
     code: str = Field(description="ETF 代码")
     name: str = Field(description="ETF 名称")
     change_pct: Optional[Decimal] = Field(default=None, description="当日涨跌幅 %")
@@ -415,6 +495,7 @@ class EtfSubcategoryItem(BaseModel):
 
 class EtfSubcategoryListResponse(BaseModel):
     """ETF 子品类列表响应 (用于 Tooltip 动态加载)."""
+
     category: str = Field(description="大类 key (如 'broad')")
     sub_category: str = Field(description="子品类名 (如 '沪深300')")
     date: datetime.date = Field(description="交易日期")
@@ -425,31 +506,46 @@ class EtfSubcategoryListResponse(BaseModel):
 # ETF Prediction Schemas (Tomorrow's Alpha)
 # ============================================
 
+
 class AmbushSignalType(str, Enum):
     """Types of ambush signals."""
-    DIVERGENCE = "divergence"     # 价量背离
-    COMPRESSION = "compression"   # 量能压缩 / 成交量信号
-    ACTIVATION = "activation"     # 小票激活
+
+    DIVERGENCE = "divergence"  # 价量背离
+    COMPRESSION = "compression"  # 量能压缩 / 成交量信号
+    ACTIVATION = "activation"  # 小票激活
 
 
 class FactorConfigInput(BaseModel):
     """Configuration for a single factor."""
+
     enabled: bool = True
     weight: float = Field(default=1.0, ge=0.0, le=1.0, description="Factor weight (0-1)")
 
 
 class PredictionConfigInput(BaseModel):
     """Request body for prediction preview with custom factor config."""
+
     date: Optional[datetime.date] = Field(default=None, description="分析日期")
-    divergence: FactorConfigInput = Field(default_factory=lambda: FactorConfigInput(enabled=True, weight=0.20))
-    rsi: FactorConfigInput = Field(default_factory=lambda: FactorConfigInput(enabled=True, weight=0.15))
-    relative_strength: FactorConfigInput = Field(default_factory=lambda: FactorConfigInput(enabled=True, weight=0.30))
-    momentum: FactorConfigInput = Field(default_factory=lambda: FactorConfigInput(enabled=True, weight=0.25))
-    activation: FactorConfigInput = Field(default_factory=lambda: FactorConfigInput(enabled=True, weight=0.10))
+    divergence: FactorConfigInput = Field(
+        default_factory=lambda: FactorConfigInput(enabled=True, weight=0.20)
+    )
+    rsi: FactorConfigInput = Field(
+        default_factory=lambda: FactorConfigInput(enabled=True, weight=0.15)
+    )
+    relative_strength: FactorConfigInput = Field(
+        default_factory=lambda: FactorConfigInput(enabled=True, weight=0.30)
+    )
+    momentum: FactorConfigInput = Field(
+        default_factory=lambda: FactorConfigInput(enabled=True, weight=0.25)
+    )
+    activation: FactorConfigInput = Field(
+        default_factory=lambda: FactorConfigInput(enabled=True, weight=0.10)
+    )
 
 
 class FactorStats(BaseModel):
     """Statistics for a single factor."""
+
     name: str
     enabled: bool
     weight: float
@@ -460,12 +556,14 @@ class FactorStats(BaseModel):
 
 class ScoreDistribution(BaseModel):
     """Score distribution histogram."""
+
     bucket: str = Field(description="Score range (e.g., '0-10')")
     count: int
 
 
 class EtfPredictionPreviewResponse(BaseModel):
     """Response for prediction preview with statistics."""
+
     date: Optional[datetime.date] = None
     predictions: List["EtfPredictionItem"]
     total_subcategories: int
@@ -478,6 +576,7 @@ class EtfPredictionPreviewResponse(BaseModel):
 
 class PredictionSignal(BaseModel):
     """Individual signal in prediction."""
+
     type: AmbushSignalType = Field(description="Signal type")
     score: Decimal = Field(description="Signal score contribution")
     description: str = Field(description="Human readable explanation")
@@ -485,6 +584,7 @@ class PredictionSignal(BaseModel):
 
 class EtfPredictionItem(BaseModel):
     """Single ETF subcategory prediction."""
+
     sub_category: str = Field(description="子品类名 (如 '半导体')")
     category: str = Field(description="父类 key (如 'theme')")
     category_label: str = Field(description="父类名 (如 '赛道')")
@@ -516,6 +616,7 @@ class EtfPredictionItem(BaseModel):
 
 class EtfPredictionResponse(BaseModel):
     """ETF tomorrow prediction response."""
+
     date: Optional[datetime.date] = Field(description="分析日期")
     predictions: List[EtfPredictionItem] = Field(description="所有子品类预测 (按评分降序)")
     total_subcategories: int = Field(description="子品类总数")
@@ -525,8 +626,10 @@ class EtfPredictionResponse(BaseModel):
 # Industry-ETF Mapping Schemas
 # ============================================
 
+
 class IndustryRelatedEtf(BaseModel):
     """Single ETF related to an industry."""
+
     code: str
     name: str
     change_pct: Optional[float] = Field(default=None, description="Daily change %")
@@ -535,6 +638,7 @@ class IndustryRelatedEtf(BaseModel):
 
 class IndustryEtfMappingResponse(BaseModel):
     """Response for industry-ETF mapping lookup."""
+
     industry: str = Field(description="SW L1 industry name")
     sub_categories: List[str] = Field(description="Matched ETF sub-categories")
     etfs: List[IndustryRelatedEtf] = Field(description="Related ETFs")
@@ -545,15 +649,21 @@ class IndustryEtfMappingResponse(BaseModel):
 # Sector Heatmap Schemas
 # ============================================
 
+
 class SectorL2Item(BaseModel):
     """L2 (二级行业) item in sector heatmap."""
+
     name: str = Field(description="L2 industry name")
     stock_count: int = Field(description="Number of stocks in this sector")
     value: Optional[Decimal] = Field(default=None, description="Value for color mapping")
-    size_value: Optional[Decimal] = Field(default=None, description="Value for area sizing (typically amount)")
+    size_value: Optional[Decimal] = Field(
+        default=None, description="Value for area sizing (typically amount)"
+    )
     avg_change_pct: Optional[Decimal] = Field(default=None, description="Average change percentage")
     total_amount: Optional[Decimal] = Field(default=None, description="Total trading amount")
-    avg_main_strength: Optional[Decimal] = Field(default=None, description="Average main strength proxy")
+    avg_main_strength: Optional[Decimal] = Field(
+        default=None, description="Average main strength proxy"
+    )
     avg_score: Optional[Decimal] = Field(default=None, description="Average panorama score")
     up_count: int = Field(default=0, description="Number of stocks up")
     down_count: int = Field(default=0, description="Number of stocks down")
@@ -562,13 +672,16 @@ class SectorL2Item(BaseModel):
 
 class SectorL1Item(BaseModel):
     """L1 (一级行业) item in sector heatmap with nested L2 children."""
+
     name: str = Field(description="L1 industry name")
     stock_count: int = Field(description="Total stocks in this sector")
     value: Optional[Decimal] = Field(default=None, description="Value for color mapping")
     size_value: Optional[Decimal] = Field(default=None, description="Value for area sizing")
     avg_change_pct: Optional[Decimal] = Field(default=None, description="Average change percentage")
     total_amount: Optional[Decimal] = Field(default=None, description="Total trading amount")
-    avg_main_strength: Optional[Decimal] = Field(default=None, description="Average main strength proxy")
+    avg_main_strength: Optional[Decimal] = Field(
+        default=None, description="Average main strength proxy"
+    )
     avg_score: Optional[Decimal] = Field(default=None, description="Average panorama score")
     up_count: int = Field(default=0, description="Number of stocks up")
     down_count: int = Field(default=0, description="Number of stocks down")
@@ -578,6 +691,7 @@ class SectorL1Item(BaseModel):
 
 class SectorHeatmapResponse(BaseModel):
     """Response for sector heatmap visualization."""
+
     time_mode: TimeMode
     date: Optional[datetime.date] = None
     start_date: Optional[datetime.date] = None
@@ -593,8 +707,10 @@ class SectorHeatmapResponse(BaseModel):
 # Sector Rotation Schemas
 # ============================================
 
+
 class RotationTopStock(BaseModel):
     """Top stock info for rotation matrix cell."""
+
     code: str = Field(description="Stock code")
     name: str = Field(description="Stock name")
     change_pct: Decimal = Field(description="Change percentage")
@@ -602,26 +718,33 @@ class RotationTopStock(BaseModel):
 
 class RotationCellSignal(BaseModel):
     """Algorithm signal for matrix cell."""
+
     type: CellSignalType
     label: str = Field(description="Display label like '主线🔥', '反转⚡️'")
 
 
 class SectorDayCell(BaseModel):
     """Single cell in rotation matrix (one date × one industry)."""
+
     date: datetime.date
     change_pct: Decimal = Field(description="Industry average change %")
     money_flow: Optional[Decimal] = Field(default=None, description="Net money flow")
     main_strength: Optional[Decimal] = Field(default=None, description="Main force strength")
     top_stock: Optional[RotationTopStock] = Field(default=None, description="Best performing stock")
-    dragon_stock: Optional[RotationTopStock] = Field(default=None, description="Dragon stock (龙头战法筛选)")
+    dragon_stock: Optional[RotationTopStock] = Field(
+        default=None, description="Dragon stock (龙头战法筛选)"
+    )
     signals: List[RotationCellSignal] = Field(default_factory=list, description="Algorithm signals")
     # 涨停榜数据
     limit_up_count: int = Field(default=0, description="Number of limit-up stocks")
-    limit_up_stocks: List[RotationTopStock] = Field(default_factory=list, description="List of limit-up stocks")
+    limit_up_stocks: List[RotationTopStock] = Field(
+        default_factory=list, description="List of limit-up stocks"
+    )
 
 
 class SectorRotationColumn(BaseModel):
     """One industry column in rotation matrix."""
+
     name: str = Field(description="Industry name (L1)")
     code: str = Field(description="Industry code")
     cells: List[SectorDayCell] = Field(description="Daily data cells")
@@ -631,37 +754,47 @@ class SectorRotationColumn(BaseModel):
     total_flow: Decimal = Field(default=Decimal("0"), description="Period total money flow")
     momentum_score: Decimal = Field(default=Decimal("0"), description="Momentum factor score")
     # Weighted data baseline
-    volume_baseline: Optional[Decimal] = Field(default=None, description="120-day average volume for this industry (亿)")
+    volume_baseline: Optional[Decimal] = Field(
+        default=None, description="120-day average volume for this industry (亿)"
+    )
 
 
 class SectorRotationStats(BaseModel):
     """Statistics for rotation matrix."""
+
     total_industries: int
     trading_days: int
     avg_change: Decimal
     max_change: Decimal
     min_change: Decimal
-    hot_industries: List[str] = Field(default_factory=list, description="Top 5 industries by momentum")
+    hot_industries: List[str] = Field(
+        default_factory=list, description="Top 5 industries by momentum"
+    )
     cold_industries: List[str] = Field(default_factory=list, description="Bottom 5 industries")
 
 
 class SectorRotationResponse(BaseModel):
     """Response for sector rotation matrix."""
+
     trading_days: List[datetime.date] = Field(description="Y-axis dates (T-day first)")
     industries: List[SectorRotationColumn] = Field(description="X-axis industries (sorted)")
     stats: SectorRotationStats
     sort_by: RotationSortBy
     days: int = Field(description="Number of trading days requested")
     # Weighted data: per-day market change (上证指数涨跌幅)
-    market_changes: Optional[dict[str, Decimal]] = Field(default=None, description="Map of date -> market change % for weighted calculations")
+    market_changes: Optional[dict[str, Decimal]] = Field(
+        default=None, description="Map of date -> market change % for weighted calculations"
+    )
 
 
 # ============================================
 # Sort Options
 # ============================================
 
+
 class ScreenerSortField(str, Enum):
     """Sort field options for screener."""
+
     SCORE = "score"
     CHANGE = "change"
     VOLUME = "volume"
@@ -672,6 +805,7 @@ class ScreenerSortField(str, Enum):
 
 class SortOrder(str, Enum):
     """Sort order options."""
+
     ASC = "asc"
     DESC = "desc"
 
@@ -679,6 +813,7 @@ class SortOrder(str, Enum):
 # ============================================
 # API Endpoints
 # ============================================
+
 
 @router.post("/time-controller", response_model=TimeControllerResponse)
 async def resolve_time_controller(
@@ -693,9 +828,7 @@ async def resolve_time_controller(
     from sqlalchemy import text
 
     # Get earliest and latest available dates
-    result = await db.execute(
-        text("SELECT MIN(date), MAX(date) FROM market_daily")
-    )
+    result = await db.execute(text("SELECT MIN(date), MAX(date) FROM market_daily"))
     row = result.fetchone()
     earliest_date = row[0] if row and row[0] else datetime.date.today()
     latest_date = row[1] if row and row[1] else datetime.date.today()
@@ -723,7 +856,7 @@ async def resolve_time_controller(
                 SELECT COUNT(DISTINCT date) FROM market_daily
                 WHERE date >= :start_date AND date <= :end_date
             """),
-            {"start_date": resolved_start, "end_date": resolved_end}
+            {"start_date": resolved_start, "end_date": resolved_end},
         )
         trading_days = count_result.scalar() or 0
 
@@ -753,17 +886,34 @@ async def get_calendar(
     from sqlalchemy import text
     from datetime import timedelta
 
-    # Query 上证指数 (sh.000001) data for the date range
+    # Query trading days by checking for stock data with actual price changes
+    # We use a count of stocks with pct_chg data to determine trading days,
+    # and also try to get sh.000001's pct_chg for market_change if available
     result = await db.execute(
         text("""
-            SELECT date, pct_chg
-            FROM market_daily
-            WHERE code = 'sh.000001'
-              AND date >= :start_date
-              AND date <= :end_date
-            ORDER BY date
+            WITH trading_day_check AS (
+                SELECT date, 
+                       COUNT(*) FILTER (WHERE pct_chg IS NOT NULL) as stocks_with_data
+                FROM market_daily
+                WHERE date >= :start_date 
+                  AND date <= :end_date
+                  AND (code LIKE 'sh.6%%' OR code LIKE 'sz.0%%' OR code LIKE 'sz.3%%')
+                GROUP BY date
+                HAVING COUNT(*) FILTER (WHERE pct_chg IS NOT NULL) > 100
+            ),
+            index_data AS (
+                SELECT date, pct_chg
+                FROM market_daily
+                WHERE code = 'sh.000001'
+                  AND date >= :start_date
+                  AND date <= :end_date
+            )
+            SELECT t.date, i.pct_chg
+            FROM trading_day_check t
+            LEFT JOIN index_data i ON t.date = i.date
+            ORDER BY t.date
         """),
-        {"start_date": start_date, "end_date": end_date}
+        {"start_date": start_date, "end_date": end_date},
     )
     trading_data = {row[0]: row[1] for row in result.fetchall()}
 
@@ -772,17 +922,23 @@ async def get_calendar(
     current_date = start_date
     while current_date <= end_date:
         if current_date in trading_data:
-            calendar_days.append(CalendarDayInfo(
-                date=current_date,
-                is_trading_day=True,
-                market_change=float(trading_data[current_date]) if trading_data[current_date] is not None else None,
-            ))
+            calendar_days.append(
+                CalendarDayInfo(
+                    date=current_date,
+                    is_trading_day=True,
+                    market_change=float(trading_data[current_date])
+                    if trading_data[current_date] is not None
+                    else None,
+                )
+            )
         else:
-            calendar_days.append(CalendarDayInfo(
-                date=current_date,
-                is_trading_day=False,
-                market_change=None,
-            ))
+            calendar_days.append(
+                CalendarDayInfo(
+                    date=current_date,
+                    is_trading_day=False,
+                    market_change=None,
+                )
+            )
         current_date += timedelta(days=1)
 
     return calendar_days
@@ -852,27 +1008,26 @@ async def get_dashboard(
 async def get_screener(
     # Tab selection
     tab: ScreenerTab = Query(default=ScreenerTab.PANORAMA),
-
     # Time parameters
     mode: TimeMode = Query(default=TimeMode.SNAPSHOT),
     date: Optional[datetime.date] = Query(default=None, description="Target date for snapshot"),
     start_date: Optional[datetime.date] = Query(default=None, description="Start date for period"),
     end_date: Optional[datetime.date] = Query(default=None, description="End date for period"),
-
     # Filters (reuse from universe.py pattern)
     board: Optional[str] = Query(default=None, description="Board filter: MAIN,GEM,STAR,BSE"),
-    size_category: Optional[str] = Query(default=None, description="Size: MEGA,LARGE,MID,SMALL,MICRO"),
+    size_category: Optional[str] = Query(
+        default=None, description="Size: MEGA,LARGE,MID,SMALL,MICRO"
+    ),
     industry_l1: Optional[str] = Query(default=None, description="Industry L1 filter (SW)"),
-    min_score: Optional[float] = Query(default=None, ge=0, le=100, description="Minimum score filter"),
-
+    min_score: Optional[float] = Query(
+        default=None, ge=0, le=100, description="Minimum score filter"
+    ),
     # Pagination
     page: int = Query(default=1, ge=1),
     page_size: int = Query(default=50, ge=1, le=200),
-
     # Sorting
     sort_by: ScreenerSortField = Query(default=ScreenerSortField.SCORE),
     sort_order: SortOrder = Query(default=SortOrder.DESC),
-
     db: AsyncSession = Depends(get_db),
 ):
     """
@@ -954,21 +1109,18 @@ async def get_screener(
 async def get_etf_screener(
     # Category filter
     category: Optional[EtfCategory] = Query(default=None, description="ETF category filter"),
-
     # Date
     date: Optional[datetime.date] = Query(default=None, description="Target date"),
-
     # Pagination
     page: int = Query(default=1, ge=1),
     page_size: int = Query(default=50, ge=1, le=200),
-
     # Sorting
     sort_by: EtfSortField = Query(default=EtfSortField.AMOUNT),
     sort_order: SortOrder = Query(default=SortOrder.DESC),
-
     # Representative filter
-    representative_only: bool = Query(default=True, description="Only show representative ETF per index"),
-
+    representative_only: bool = Query(
+        default=True, description="Only show representative ETF per index"
+    ),
     db: AsyncSession = Depends(get_db),
 ):
     """
@@ -1107,14 +1259,14 @@ async def get_etf_heatmap(
 @router.get("/sector-heatmap", response_model=SectorHeatmapResponse)
 async def get_sector_heatmap(
     # Metric selection
-    metric: SectorMetric = Query(default=SectorMetric.CHANGE, description="Metric for color mapping"),
-
+    metric: SectorMetric = Query(
+        default=SectorMetric.CHANGE, description="Metric for color mapping"
+    ),
     # Time parameters
     mode: TimeMode = Query(default=TimeMode.SNAPSHOT),
     date: Optional[datetime.date] = Query(default=None, description="Target date for snapshot"),
     start_date: Optional[datetime.date] = Query(default=None, description="Start date for period"),
     end_date: Optional[datetime.date] = Query(default=None, description="End date for period"),
-
     db: AsyncSession = Depends(get_db),
 ):
     """
@@ -1191,11 +1343,13 @@ async def get_sector_heatmap(
 async def get_sector_rotation(
     # Time range
     days: int = Query(default=60, ge=5, le=120, description="Number of trading days"),
-    end_date: Optional[datetime.date] = Query(default=None, description="End date (default: latest)"),
-
+    end_date: Optional[datetime.date] = Query(
+        default=None, description="End date (default: latest)"
+    ),
     # Sort options
-    sort_by: RotationSortBy = Query(default=RotationSortBy.TODAY_CHANGE, description="Sort industries by"),
-
+    sort_by: RotationSortBy = Query(
+        default=RotationSortBy.TODAY_CHANGE, description="Sort industries by"
+    ),
     db: AsyncSession = Depends(get_db),
 ):
     """
@@ -1226,12 +1380,12 @@ async def get_sector_rotation(
 async def get_etf_rotation(
     # Time range
     days: int = Query(default=30, ge=5, le=60, description="Number of trading days"),
-    end_date: Optional[datetime.date] = Query(default=None, description="End date (default: latest)"),
-
+    end_date: Optional[datetime.date] = Query(
+        default=None, description="End date (default: latest)"
+    ),
     # Pagination
     page: int = Query(default=1, ge=1),
     page_size: int = Query(default=30, ge=1, le=60),
-
     db: AsyncSession = Depends(get_db),
 ):
     """
@@ -1268,7 +1422,7 @@ async def get_etf_rotation(
                     top_change_pct=data.get("top_change_pct"),
                 )
                 for cat, data in row["categories"].items()
-            }
+            },
         )
         for row in result.get("rows", [])
     ]
@@ -1291,15 +1445,14 @@ async def get_etf_rotation(
 @router.get("/etf-rotation/{category}", response_model=EtfRotationDetailResponse)
 async def get_etf_rotation_detail(
     category: EtfCategory,
-
     # Time range
     days: int = Query(default=30, ge=5, le=60, description="Number of trading days"),
-    end_date: Optional[datetime.date] = Query(default=None, description="End date (default: latest)"),
-
+    end_date: Optional[datetime.date] = Query(
+        default=None, description="End date (default: latest)"
+    ),
     # Pagination
     page: int = Query(default=1, ge=1),
     page_size: int = Query(default=30, ge=1, le=60),
-
     db: AsyncSession = Depends(get_db),
 ):
     """
@@ -1336,7 +1489,7 @@ async def get_etf_rotation_detail(
                     rep_name=data.get("rep_name"),
                 )
                 for sub, data in row["sub_categories"].items()
-            }
+            },
         )
         for row in result.get("rows", [])
     ]
@@ -1357,8 +1510,9 @@ async def get_etf_rotation_detail(
 async def get_etf_rotation_flat(
     # Time range
     days: int = Query(default=60, ge=5, le=120, description="Number of trading days"),
-    end_date: Optional[datetime.date] = Query(default=None, description="End date (for pagination)"),
-
+    end_date: Optional[datetime.date] = Query(
+        default=None, description="End date (for pagination)"
+    ),
     db: AsyncSession = Depends(get_db),
 ):
     """
@@ -1465,7 +1619,9 @@ async def get_industry_etf_mapping(
 
 @router.get("/etf-subcategory-list", response_model=EtfSubcategoryListResponse)
 async def get_etf_subcategory_list(
-    category: str = Query(..., description="ETF 大类 (broad, sector, theme, cross_border, commodity, bond)"),
+    category: str = Query(
+        ..., description="ETF 大类 (broad, sector, theme, cross_border, commodity, bond)"
+    ),
     sub_category: str = Query(..., description="子品类名 (如 '沪深300', '银行')"),
     date: Optional[datetime.date] = Query(default=None, description="交易日期 (默认最新)"),
     db: AsyncSession = Depends(get_db),
@@ -1609,7 +1765,9 @@ async def preview_etf_prediction(
     service_config = PredictionConfig(
         divergence=FactorConfig(enabled=config.divergence.enabled, weight=config.divergence.weight),
         rsi=FactorConfig(enabled=config.rsi.enabled, weight=config.rsi.weight),
-        relative_strength=FactorConfig(enabled=config.relative_strength.enabled, weight=config.relative_strength.weight),
+        relative_strength=FactorConfig(
+            enabled=config.relative_strength.enabled, weight=config.relative_strength.weight
+        ),
         momentum=FactorConfig(enabled=config.momentum.enabled, weight=config.momentum.weight),
         activation=FactorConfig(enabled=config.activation.enabled, weight=config.activation.weight),
     )
@@ -1631,17 +1789,22 @@ async def preview_etf_prediction(
 
     for factor_key, factor_label in factor_names.items():
         factor_cfg = getattr(config, factor_key)
-        scores = [float(p.get(f"{factor_key}_score") or p.get("compression_score") or 0) for p in predictions]
+        scores = [
+            float(p.get(f"{factor_key}_score") or p.get("compression_score") or 0)
+            for p in predictions
+        ]
 
         if scores:
-            factor_stats.append(FactorStats(
-                name=factor_label,
-                enabled=factor_cfg.enabled,
-                weight=factor_cfg.weight,
-                min_score=Decimal(str(round(min(scores), 2))),
-                max_score=Decimal(str(round(max(scores), 2))),
-                avg_score=Decimal(str(round(sum(scores) / len(scores), 2))),
-            ))
+            factor_stats.append(
+                FactorStats(
+                    name=factor_label,
+                    enabled=factor_cfg.enabled,
+                    weight=factor_cfg.weight,
+                    min_score=Decimal(str(round(min(scores), 2))),
+                    max_score=Decimal(str(round(max(scores), 2))),
+                    avg_score=Decimal(str(round(sum(scores) / len(scores), 2))),
+                )
+            )
 
     # Calculate score distribution (10-point buckets)
     score_distribution = []
@@ -1650,10 +1813,12 @@ async def preview_etf_prediction(
 
     for low, high in buckets:
         count = sum(1 for s in scores if low <= s < high)
-        score_distribution.append(ScoreDistribution(
-            bucket=f"{low}-{high}",
-            count=count,
-        ))
+        score_distribution.append(
+            ScoreDistribution(
+                bucket=f"{low}-{high}",
+                count=count,
+            )
+        )
 
     # Overall stats
     min_score = Decimal(str(round(min(scores), 2))) if scores else Decimal("0")
