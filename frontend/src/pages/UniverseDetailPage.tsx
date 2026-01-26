@@ -96,106 +96,115 @@ export default function UniverseDetailPage() {
 
   return (
     <div className="space-y-4">
-      {/* Header Row 1: Navigation & Identity */}
-      <div className="flex items-center justify-between">
-        <div className="flex items-center gap-2">
-          <Button variant="ghost" size="icon" onClick={handleBack} className="-ml-2">
-            <ArrowLeft className="h-5 w-5" />
-          </Button>
-          <div className="flex items-baseline gap-2">
-            <h1 className="text-xl font-bold">{detail.name}</h1>
-            <span className="text-sm text-muted-foreground font-mono">{detail.code}</span>
-          </div>
-          <div className="flex gap-1 ml-2">
-             <Badge variant="outline" className="text-xs px-1 py-0 h-5">{detail.exchange?.toUpperCase()}</Badge>
-             {detail.industry_l1 && <Badge variant="secondary" className="text-xs px-1 py-0 h-5">{detail.industry_l1}</Badge>}
-             {detail.is_st && <Badge variant="destructive" className="text-xs px-1 py-0 h-5">ST</Badge>}
-             {detail.is_new && <Badge className="bg-green-500 text-white text-xs px-1 py-0 h-5">新股</Badge>}
-          </div>
-        </div>
-        <Button
-          variant="outline"
-          size="sm"
-          onClick={() => navigate(`/universe/${code}/inverse`)}
-          className="h-8"
-        >
-          <Shuffle className="h-3.5 w-3.5 mr-1" />
-          查找反向
-        </Button>
-      </div>
-
-      {/* Header Row 2: Price & Metrics */}
+      {/* Single-row Header: [Title Group] [Metrics Card] [Button] */}
       <div className={cn(
-        "grid grid-cols-1 lg:grid-cols-[auto_1fr] gap-4 items-center p-4 rounded-lg transition-colors",
+        "flex items-center gap-4 p-3 rounded-lg transition-colors",
         displayData.isHover ? "bg-muted/50" : "bg-card border"
       )}>
-        {/* Price Section */}
-        <div className="flex items-baseline gap-4 min-w-[200px]">
-          <div>
+        {/* Left: Back + Title Info */}
+        <div className="flex items-center gap-3 shrink-0">
+          <Button variant="ghost" size="icon" onClick={handleBack} className="-ml-1">
+            <ArrowLeft className="h-5 w-5" />
+          </Button>
+          
+          {/* Name/Code stacked */}
+          <div className="flex flex-col">
+            <h1 className="text-lg font-bold leading-tight">{detail.name}</h1>
+            <span className="text-xs text-muted-foreground font-mono">{detail.code}</span>
+          </div>
+
+          {/* Industry/Exchange stacked */}
+          <div className="flex flex-col text-xs">
+            {detail.industry_l1 && (
+              <span className="text-muted-foreground">{detail.industry_l1}</span>
+            )}
+            <span className="text-muted-foreground">{detail.exchange?.toUpperCase()}</span>
+          </div>
+
+          {/* Special badges */}
+          {(detail.is_st || detail.is_new) && (
+            <div className="flex gap-1">
+              {detail.is_st && <Badge variant="destructive" className="text-xs px-1 py-0 h-5">ST</Badge>}
+              {detail.is_new && <Badge className="bg-green-500 text-white text-xs px-1 py-0 h-5">新股</Badge>}
+            </div>
+          )}
+        </div>
+
+        {/* Center: Price + Metrics (flex-1 to take remaining space) */}
+        <div className="flex items-center gap-6 flex-1 min-w-0">
+          {/* Price block */}
+          <div className="shrink-0">
             <div className={cn(
-              "text-4xl font-bold font-mono tracking-tight",
+              "text-2xl font-bold font-mono tracking-tight leading-none",
               getPriceChangeColor(displayData.change_pct)
             )}>
               {formatPrice(displayData.price)}
             </div>
-            <div className="flex items-center gap-2 mt-1">
+            <div className="flex items-center gap-1.5 mt-0.5">
               <div className={cn(
-                "flex items-center text-lg font-medium",
+                "flex items-center text-sm font-medium",
                 getPriceChangeColor(displayData.change_pct)
               )}>
                 {displayData.change_pct != null && Number(displayData.change_pct) > 0 ? (
-                  <TrendingUp className="h-5 w-5 mr-1" />
+                  <TrendingUp className="h-3.5 w-3.5 mr-0.5" />
                 ) : displayData.change_pct != null && Number(displayData.change_pct) < 0 ? (
-                  <TrendingDown className="h-5 w-5 mr-1" />
+                  <TrendingDown className="h-3.5 w-3.5 mr-0.5" />
                 ) : null}
                 <span className="font-mono">{formatPriceChange(displayData.change_pct)}</span>
               </div>
-              <span className="text-xs text-muted-foreground font-mono">
+              <span className="text-[10px] text-muted-foreground font-mono">
                 {displayData.date}
-                {activeDate && activeDate !== detail.price_date && !displayData.isHover && " (选股)"}
               </span>
+            </div>
+          </div>
+
+          {/* Metrics inline */}
+          <div className="flex items-center gap-4 text-xs overflow-x-auto">
+            <div>
+              <div className="text-muted-foreground">高</div>
+              <div className="font-mono">{formatPrice(displayData.high)}</div>
+            </div>
+            <div>
+              <div className="text-muted-foreground">低</div>
+              <div className="font-mono">{formatPrice(displayData.low)}</div>
+            </div>
+            <div>
+              <div className="text-muted-foreground">开</div>
+              <div className="font-mono">{formatPrice(displayData.open)}</div>
+            </div>
+            <div>
+              <div className="text-muted-foreground">量</div>
+              <div className="font-mono">{formatVolume(displayData.volume)}</div>
+            </div>
+            <div>
+              <div className="text-muted-foreground">市值</div>
+              <div className="font-mono">{formatMarketCap(detail.market_cap)}</div>
+            </div>
+            <div>
+              <div className="text-muted-foreground">流值</div>
+              <div className="font-mono">{formatMarketCap(detail.circ_mv)}</div>
+            </div>
+            <div>
+              <div className="text-muted-foreground">PE</div>
+              <div className="font-mono">{formatRatio(detail.pe_ttm)}</div>
+            </div>
+            <div>
+              <div className="text-muted-foreground">换手</div>
+              <div className="font-mono">{formatTurnover(detail.turnover)}</div>
             </div>
           </div>
         </div>
 
-        {/* Metrics Grid */}
-        <div className="grid grid-cols-4 lg:grid-cols-8 gap-x-4 gap-y-2 text-sm">
-           {/* Dynamic */}
-           <div>
-             <div className="text-xs text-muted-foreground">高</div>
-             <div className="font-mono">{formatPrice(displayData.high)}</div>
-           </div>
-           <div>
-             <div className="text-xs text-muted-foreground">低</div>
-             <div className="font-mono">{formatPrice(displayData.low)}</div>
-           </div>
-           <div>
-             <div className="text-xs text-muted-foreground">开</div>
-             <div className="font-mono">{formatPrice(displayData.open)}</div>
-           </div>
-           <div>
-             <div className="text-xs text-muted-foreground">量</div>
-             <div className="font-mono">{formatVolume(displayData.volume)}</div>
-           </div>
-
-           {/* Static */}
-           <div>
-             <div className="text-xs text-muted-foreground">市值</div>
-             <div className="font-mono">{formatMarketCap(detail.market_cap)}</div>
-           </div>
-           <div>
-             <div className="text-xs text-muted-foreground">流值</div>
-             <div className="font-mono">{formatMarketCap(detail.circ_mv)}</div>
-           </div>
-           <div>
-             <div className="text-xs text-muted-foreground">PE</div>
-             <div className="font-mono">{formatRatio(detail.pe_ttm)}</div>
-           </div>
-           <div>
-             <div className="text-xs text-muted-foreground">换手</div>
-             <div className="font-mono">{formatTurnover(detail.turnover)}</div>
-           </div>
-        </div>
+        {/* Right: Button */}
+        <Button
+          variant="outline"
+          size="sm"
+          onClick={() => navigate(`/universe/${code}/inverse`)}
+          className="shrink-0"
+        >
+          <Shuffle className="h-3.5 w-3.5 mr-1" />
+          查找反向
+        </Button>
       </div>
 
       {/* Stock Chart */}
