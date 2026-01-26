@@ -1,5 +1,12 @@
 import { useState, useMemo, useCallback } from 'react'
-import { AlertDialog, AlertDialogContent, AlertDialogTitle } from '@/components/ui/alert-dialog'
+import {
+  AlertDialog,
+  AlertDialogContent,
+  AlertDialogTitle,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogAction,
+} from '@/components/ui/alert-dialog'
 import { Button } from '@/components/ui/button'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Toggle } from '@/components/ui/toggle'
@@ -321,6 +328,7 @@ export function StockSelectorSheet({
 }: StockSelectorSheetProps) {
   const [tab, setTab] = useState<'stock' | 'etf'>('stock')
   const [etfCategory, setEtfCategory] = useState<EtfCategory>('broad')
+  const [errorMessage, setErrorMessage] = useState<string | null>(null)
   const [filters, setFilters] = useState<StockFilters>({
     hideST: true,
     hideGEM: true,
@@ -367,7 +375,7 @@ export function StockSelectorSheet({
     })
 
     if (leaderItems.length === 0) {
-      alert('未找到符合条件的龙头股')
+      setErrorMessage('未找到符合条件的龙头股')
       return
     }
 
@@ -378,7 +386,7 @@ export function StockSelectorSheet({
     // 添加到股票池
     const codesToAdd = selected.map(item => item.code).filter(code => !selectedCodes.has(code))
     if (codesToAdd.length === 0) {
-      alert('所有龙头股已添加到股票池')
+      setErrorMessage('所有龙头股已添加到股票池')
       return
     }
 
@@ -414,6 +422,7 @@ export function StockSelectorSheet({
   }, [allTracksSelected, selectedCodes, onToggleStock, onBatchAddStocks, onBatchRemoveStocks])
 
   return (
+    <>
     <AlertDialog open={open} onOpenChange={onOpenChange}>
       <AlertDialogContent className="max-w-[calc(100vw-100px)] w-full h-[calc(100vh-60px)] overflow-hidden p-0 flex flex-col">
         <Tabs value={tab} onValueChange={(value) => setTab(value as 'stock' | 'etf')} className="flex-1 flex flex-col min-h-0">
@@ -535,5 +544,16 @@ export function StockSelectorSheet({
         </Tabs>
       </AlertDialogContent>
     </AlertDialog>
+
+    <AlertDialog open={!!errorMessage} onOpenChange={() => setErrorMessage(null)}>
+      <AlertDialogContent className="max-w-sm">
+        <AlertDialogTitle>提示</AlertDialogTitle>
+        <AlertDialogDescription>{errorMessage}</AlertDialogDescription>
+        <AlertDialogFooter>
+          <AlertDialogAction onClick={() => setErrorMessage(null)}>确定</AlertDialogAction>
+        </AlertDialogFooter>
+      </AlertDialogContent>
+    </AlertDialog>
+  </>
   )
 }

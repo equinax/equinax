@@ -88,16 +88,6 @@ export default function UniverseDetailPage() {
     isHover: false
   }
 
-  const getColorForPrice = (price: number | string | null | undefined, preclose: number | string | null | undefined) => {
-    if (price == null || preclose == null) return ''
-    const priceNum = typeof price === 'string' ? parseFloat(price) : price
-    const precloseNum = typeof preclose === 'string' ? parseFloat(preclose) : preclose
-    if (isNaN(priceNum) || isNaN(precloseNum) || precloseNum === 0) return ''
-    if (priceNum > precloseNum) return 'text-red-500'
-    if (priceNum < precloseNum) return 'text-green-500'
-    return ''
-  }
-
   const formatVolume = (volume: number | undefined | null) => {
     if (volume == null) return '-'
     const lots = volume / 100
@@ -157,7 +147,7 @@ export default function UniverseDetailPage() {
           {/* Group 1: Price / Change / Date */}
           <div className="flex flex-col leading-tight shrink-0">
             <span className={cn("text-lg font-bold font-mono", priceColor)}>
-              {formatPrice(displayData.price)}
+              {formatPrice(displayData.price, detail.asset_type)}
             </span>
             <span className={cn("font-mono flex items-center", priceColor)}>
               {displayData.change_pct != null && Number(displayData.change_pct) > 0 ? (
@@ -172,17 +162,18 @@ export default function UniverseDetailPage() {
 
           {/* Group 2: High / Low / Open */}
           <div className="flex flex-col leading-tight text-muted-foreground">
-            <span>高 <span className={cn("font-mono", displayData.isHover ? getColorForPrice(displayData.high, displayData.preclose) : priceColor)}>{formatPrice(displayData.high)}</span></span>
-            <span>低 <span className={cn("font-mono", displayData.isHover ? getColorForPrice(displayData.low, displayData.preclose) : priceColor)}>{formatPrice(displayData.low)}</span></span>
-            <span>开 <span className={cn("font-mono", displayData.isHover ? getColorForPrice(displayData.open, displayData.preclose) : priceColor)}>{formatPrice(displayData.open)}</span></span>
+            <span>高 <span className={cn("font-mono", priceColor)}>{formatPrice(displayData.high, detail.asset_type)}</span></span>
+            <span>低 <span className={cn("font-mono", priceColor)}>{formatPrice(displayData.low, detail.asset_type)}</span></span>
+            <span>开 <span className={cn("font-mono", priceColor)}>{formatPrice(displayData.open, detail.asset_type)}</span></span>
           </div>
 
-          {/* Group 3: MarketCap / CircMV / PE */}
-          <div className="flex flex-col leading-tight text-muted-foreground">
-            <span>市值 <span className="font-mono text-foreground">{formatMarketCap(detail.market_cap)}</span></span>
-            <span>流值 <span className="font-mono text-foreground">{formatMarketCap(detail.circ_mv)}</span></span>
-            <span>市盈 <span className="font-mono text-foreground">{formatRatio(detail.pe_ttm)}</span></span>
-          </div>
+          {!displayData.isHover && (
+            <div className="flex flex-col leading-tight text-muted-foreground">
+              <span>市值 <span className="font-mono text-foreground">{formatMarketCap(detail.market_cap)}</span></span>
+              <span>流值 <span className="font-mono text-foreground">{formatMarketCap(detail.circ_mv)}</span></span>
+              <span>市盈 <span className="font-mono text-foreground">{formatRatio(detail.pe_ttm)}</span></span>
+            </div>
+          )}
 
           {/* Group 4: Volume / Amount / Turnover */}
           <div className="flex flex-col leading-tight text-muted-foreground">

@@ -153,7 +153,7 @@ export function UniverseDetailDrawer({ code, open, onClose }: UniverseDetailDraw
                     'text-2xl font-bold font-mono',
                     getPriceChangeColor(detail.change_pct)
                   )}>
-                    {formatPrice(detail.price)}
+                    {formatPrice(detail.price, detail.asset_type)}
                   </p>
                   <div className={cn(
                     'flex items-center justify-end gap-1',

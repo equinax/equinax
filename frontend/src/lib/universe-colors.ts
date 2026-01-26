@@ -216,11 +216,16 @@ export function formatNumber(num: number | string | null | undefined, decimals =
 }
 
 // Format price with currency
-export function formatPrice(price: number | string | null | undefined): string {
+// ETF prices use 3 decimal places, stocks use 2
+export function formatPrice(
+  price: number | string | null | undefined,
+  assetType?: string | null
+): string {
   if (price === null || price === undefined) return '-'
   const num = typeof price === 'string' ? parseFloat(price) : price
   if (isNaN(num)) return '-'
-  return `¥${num.toFixed(2)}`
+  const decimals = assetType?.toLowerCase() === 'etf' ? 3 : 2
+  return `¥${num.toFixed(decimals)}`
 }
 
 // Format turnover rate as percentage

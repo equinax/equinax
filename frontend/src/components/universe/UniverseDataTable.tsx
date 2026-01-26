@@ -139,9 +139,9 @@ export function UniverseDataTable({
             )}
           </button>
         ),
-        cell: ({ getValue }) => (
+        cell: ({ row }) => (
           <span className="font-mono text-sm text-right block">
-            {formatPrice(getValue())}
+            {formatPrice(row.original.price, row.original.asset_type)}
           </span>
         ),
         size: 80,
