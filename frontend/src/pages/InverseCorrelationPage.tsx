@@ -330,32 +330,6 @@ export default function InverseCorrelationPage() {
         </div>
       </div>
 
-      {/* Algorithm explanation */}
-      <Card>
-        <CardHeader className="py-3">
-          <CardTitle className="text-sm">算法说明</CardTitle>
-          <CardDescription>
-            使用皮尔森相关系数计算与基准资产的价格走势相关性，筛选负相关标的用于对冲配置。
-          </CardDescription>
-        </CardHeader>
-        <CardContent className="pb-3">
-          <div className="grid grid-cols-3 gap-4 text-sm">
-            <div className="flex items-center gap-2">
-              <div className="w-3 h-3 rounded-full bg-blue-500" />
-              <span>ρ &lt; -0.4: 反向节奏（理想对冲）</span>
-            </div>
-            <div className="flex items-center gap-2">
-              <div className="w-3 h-3 rounded-full bg-gray-400" />
-              <span>-0.4 ≤ ρ ≤ 0.4: 节奏中性（震荡配仓）</span>
-            </div>
-            <div className="flex items-center gap-2">
-              <div className="w-3 h-3 rounded-full bg-green-500" />
-              <span>ρ &gt; 0.7: 高度同步（同节奏）</span>
-            </div>
-          </div>
-        </CardContent>
-      </Card>
-
       {/* Results table */}
       <Card>
         <CardHeader className="py-3 flex flex-row items-center justify-between">
@@ -403,7 +377,7 @@ export default function InverseCorrelationPage() {
                       onClick={() => handleRowClick(row.original.code)}
                     >
                       {row.getVisibleCells().map((cell) => (
-                        <TableCell key={cell.id}>
+                        <TableCell key={cell.id} className="py-1">
                           {flexRender(
                             cell.column.columnDef.cell,
                             cell.getContext()
@@ -462,6 +436,32 @@ export default function InverseCorrelationPage() {
               </div>
             </div>
           )}
+        </CardContent>
+      </Card>
+
+      {/* Algorithm explanation */}
+      <Card>
+        <CardHeader className="py-3">
+          <CardTitle className="text-sm">算法说明</CardTitle>
+          <CardDescription>
+            使用皮尔森相关系数计算与基准资产的价格走势相关性，筛选负相关标的用于对冲配置。
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="pb-3">
+          <div className="grid grid-cols-3 gap-4 text-sm">
+            <div className="flex items-center gap-2">
+              <div className="w-3 h-3 rounded-full bg-blue-500" />
+              <span>ρ &lt; -0.4: 反向节奏（理想对冲）</span>
+            </div>
+            <div className="flex items-center gap-2">
+              <div className="w-3 h-3 rounded-full bg-gray-400" />
+              <span>-0.4 ≤ ρ ≤ 0.4: 节奏中性（震荡配仓）</span>
+            </div>
+            <div className="flex items-center gap-2">
+              <div className="w-3 h-3 rounded-full bg-green-500" />
+              <span>ρ &gt; 0.7: 高度同步（同节奏）</span>
+            </div>
+          </div>
         </CardContent>
       </Card>
     </div>
