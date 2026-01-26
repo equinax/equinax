@@ -177,20 +177,13 @@ export default function AlphaRadarPage() {
     { query: { enabled: radarMode === 'etf' } }
   )
 
-  // Loading lock - prevent rapid date changes while data is loading
-  const isAnyLoading = isLoadingDashboard || isLoadingScreener || isLoadingEtfScreener
-
-  // Handle date change with loading lock
   const handleDateChange = useCallback((date: Date | undefined) => {
-    if (isAnyLoading) return // Ignore clicks while loading
     setSelectedDate(date)
-  }, [isAnyLoading])
+  }, [])
 
-  // Handle date range change with loading lock
   const handleDateRangeChange = useCallback((range: { from?: Date; to?: Date }) => {
-    if (isAnyLoading) return
     setDateRange(range)
-  }, [isAnyLoading])
+  }, [])
 
   // Handle radar mode change - reset to page 1
   const handleRadarModeChange = (mode: RadarMode) => {
@@ -250,7 +243,7 @@ export default function AlphaRadarPage() {
             onDateChange={handleDateChange}
             dateRange={dateRange}
             onDateRangeChange={handleDateRangeChange}
-            disabled={isAnyLoading}
+            disabled={false}
             defaultActiveDate={activeScreener?.date ?? undefined}
           />
         </div>
