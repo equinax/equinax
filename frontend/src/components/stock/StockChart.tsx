@@ -32,11 +32,22 @@ import { Skeleton } from '@/components/ui/skeleton'
 import { useGetKlineApiV1StocksCodeKlineGet } from '@/api/generated/stocks/stocks'
 import { calcMA, calcMACD, calcRSI } from '@/lib/indicators'
 
+export interface HoverData {
+  date: string
+  open: number
+  high: number
+  low: number
+  close: number
+  volume: number
+  change_pct: number
+}
+
 interface StockChartProps {
   code: string
   height?: number
   /** Optional end date (yyyy-MM-dd format). If provided, chart shows data ending at this date. */
   endDate?: string
+  onHoverData?: (data: HoverData | null) => void
 }
 
 type TimeRange = '1M' | '3M' | '6M' | '1Y' | '3Y' | '5Y' | 'ALL'
@@ -181,7 +192,7 @@ class VertLine implements ISeriesPrimitive<Time> {
   }
 }
 
-export function StockChart({ code, height = 500, endDate }: StockChartProps) {
+export function StockChart({ code, height = 500, endDate, onHoverData }: StockChartProps) {
   const containerRef = useRef<HTMLDivElement>(null)
   const chartRef = useRef<HTMLDivElement>(null)
   const chartApiRef = useRef<IChartApi | null>(null)
@@ -202,9 +213,6 @@ export function StockChart({ code, height = 500, endDate }: StockChartProps) {
     macd: false,
     rsi: false,
   })
-  const [tooltipData, setTooltipData] = useState<any>(null)
-  const [tooltipVisible, setTooltipVisible] = useState(false)
-  const [tooltipPosition, setTooltipPosition] = useState({ x: 0, y: 0 })
 
   // Fetch all K-line data once (time range buttons control zoom, not data fetching)
   const { data: klineData, isLoading } = useGetKlineApiV1StocksCodeKlineGet(
@@ -516,65 +524,50 @@ export function StockChart({ code, height = 500, endDate }: StockChartProps) {
     // Timer to handle delayed hiding of tooltip
     let hideTooltipTimer: NodeJS.Timeout | null = null;
 
-    // Handle mouse move for tooltip
     const handleMouseMove = (param: MouseEventParams<Time>) => {
       try {
         if (!param.time || !klineData?.data) {
-          setTooltipVisible(false);
-          return;
+          onHoverData?.(null)
+          return
         }
 
-        // Clear any pending hide timer when moving mouse
         if (hideTooltipTimer) {
-          clearTimeout(hideTooltipTimer);
-          hideTooltipTimer = null;
+          clearTimeout(hideTooltipTimer)
+          hideTooltipTimer = null
         }
 
-        // Find the closest data point to the hovered time
-        const sortedKline = [...klineData.data].sort((a, b) => a.date.localeCompare(b.date));
-        const timeStr = String(param.time);
-
-        // Find the data point for the hovered date
-        const dataPoint = sortedKline.find(d => d.date === timeStr);
+        const sortedKline = [...klineData.data].sort((a, b) => a.date.localeCompare(b.date))
+        const timeStr = String(param.time)
+        const dataPoint = sortedKline.find(d => d.date === timeStr)
 
         if (dataPoint) {
-          // Calculate change percentage
-          const open = Number(dataPoint.open) || 0;
-          const close = Number(dataPoint.close) || 0;
-          const change_pct = open !== 0 ? ((close - open) / open) * 100 : 0;
+          const open = Number(dataPoint.open) || 0
+          const close = Number(dataPoint.close) || 0
+          const change_pct = open !== 0 ? ((close - open) / open) * 100 : 0
 
-          setTooltipData({
+          onHoverData?.({
             date: dataPoint.date,
-            open: Number(dataPoint.open) || 0,
+            open,
             high: Number(dataPoint.high) || 0,
             low: Number(dataPoint.low) || 0,
-            close: Number(dataPoint.close) || 0,
+            close,
             volume: Number(dataPoint.volume) || 0,
             change_pct: parseFloat(change_pct.toFixed(2)),
-          });
-
-          // Get coordinates for tooltip positioning
-          if (param.point) {
-            setTooltipPosition({ x: param.point.x, y: param.point.y });
-            setTooltipVisible(true);
-          }
+          })
         } else {
-          // If no data point found, hide tooltip (e.g., when hovering over empty areas)
-          setTooltipVisible(false);
+          onHoverData?.(null)
         }
       } catch (error) {
-        console.error('Error in handleMouseMove:', error);
-        setTooltipVisible(false);
+        console.error('Error in handleMouseMove:', error)
+        onHoverData?.(null)
       }
-    };
+    }
 
-    // Handle mouse leave with delay to account for tooltip overlap
     const handleMouseLeave = () => {
-      // Set a small delay before hiding the tooltip to allow for mouse movement to tooltip
       hideTooltipTimer = setTimeout(() => {
-        setTooltipVisible(false);
-      }, 100); // 100ms delay to allow mouse to reach tooltip
-    };
+        onHoverData?.(null)
+      }, 100)
+    }
 
     // Subscribe to mouse events
     chart.subscribeCrosshairMove(handleMouseMove);
@@ -732,68 +725,6 @@ export function StockChart({ code, height = 500, endDate }: StockChartProps) {
           <Skeleton className="w-full" style={{ height }} />
         ) : (
           <div ref={chartRef} style={{ height }}>
-            {/* Custom tooltip overlay */}
-            {tooltipVisible && tooltipData && (
-              <div
-                className="absolute bg-popover text-popover-foreground rounded-lg shadow-xl p-3 border min-w-[220px] max-w-[300px] transition-opacity duration-200 z-50 pointer-events-none"
-                style={{
-                  position: 'absolute',
-                  top: tooltipPosition.y - 100, // Position above the cursor
-                  left: tooltipPosition.x + 10, // Position to the right of the cursor
-                  transform: 'translateY(-100%)',
-                }}
-              >
-                <div className="font-semibold text-sm mb-2 border-b pb-1">
-                  {tooltipData.date}
-                </div>
-
-                <div className="grid grid-cols-2 gap-x-3 gap-y-1 text-xs">
-                  <div className="flex justify-between">
-                    <span className="text-muted-foreground">开盘价:</span>
-                    <span className="font-mono">{typeof tooltipData.open === 'number' ? tooltipData.open.toFixed(2) : '-'}</span>
-                  </div>
-
-                  <div className="flex justify-between">
-                    <span className="text-muted-foreground">收盘价:</span>
-                    <span className="font-mono">{typeof tooltipData.close === 'number' ? tooltipData.close.toFixed(2) : '-'}</span>
-                  </div>
-
-                  <div className="flex justify-between">
-                    <span className="text-muted-foreground">最高价:</span>
-                    <span className="font-mono">{typeof tooltipData.high === 'number' ? tooltipData.high.toFixed(2) : '-'}</span>
-                  </div>
-
-                  <div className="flex justify-between">
-                    <span className="text-muted-foreground">最低价:</span>
-                    <span className="font-mono">{typeof tooltipData.low === 'number' ? tooltipData.low.toFixed(2) : '-'}</span>
-                  </div>
-
-                  <div className="flex justify-between">
-                    <span className="text-muted-foreground">涨跌幅:</span>
-                    <span
-                      className={`font-mono ${
-                        tooltipData.change_pct != null && typeof tooltipData.change_pct === 'number' && tooltipData.change_pct > 0
-                          ? 'text-profit'
-                          : tooltipData.change_pct != null && typeof tooltipData.change_pct === 'number' && tooltipData.change_pct < 0
-                            ? 'text-loss'
-                            : 'text-muted-foreground'
-                      }`}
-                    >
-                      {tooltipData.change_pct != null && typeof tooltipData.change_pct === 'number'
-                        ? `${tooltipData.change_pct > 0 ? '+' : ''}${tooltipData.change_pct.toFixed(2)}%`
-                        : '-'}
-                    </span>
-                  </div>
-
-                  <div className="flex justify-between">
-                    <span className="text-muted-foreground">成交量:</span>
-                    <span className="font-mono">
-                      {typeof tooltipData.volume === 'number' ? formatVolume(tooltipData.volume) : '-'}
-                    </span>
-                  </div>
-                </div>
-              </div>
-            )}
           </div>
         )}
 
@@ -858,12 +789,4 @@ export function StockChart({ code, height = 500, endDate }: StockChartProps) {
   )
 }
 
-// Helper function to format volume
-function formatVolume(volume: number): string {
-  if (volume >= 1e8) {
-    return `${(volume / 1e8).toFixed(2)}亿`;
-  } else if (volume >= 1e4) {
-    return `${(volume / 1e4).toFixed(2)}万`;
-  }
-  return volume.toLocaleString();
-}
+
