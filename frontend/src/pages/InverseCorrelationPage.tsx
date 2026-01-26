@@ -88,8 +88,10 @@ export default function InverseCorrelationPage() {
   // State for row selection
   const [selectedRows, setSelectedRows] = useState<Set<string>>(new Set())
   
-  // State for leader filter
+  // State for filters
   const [onlyLeader, setOnlyLeader] = useState(false)
+  const [excludeKcb, setExcludeKcb] = useState(false)
+  const [excludeSt, setExcludeSt] = useState(false)
 
   // Memoize query params to prevent unnecessary refetches
   const queryParams = useMemo(() => ({
@@ -99,7 +101,9 @@ export default function InverseCorrelationPage() {
     include_stocks: true,
     include_etfs: true,
     only_leader: onlyLeader,
-  }), [windowDays, onlyLeader])
+    exclude_kcb: excludeKcb,
+    exclude_st: excludeSt,
+  }), [windowDays, onlyLeader, excludeKcb, excludeSt])
 
   // Fetch correlation data
   const { data, isLoading, refetch, isFetching } = useGetCorrelationAnalysisApiV1UniverseCodeCorrelationGet(
@@ -304,8 +308,29 @@ export default function InverseCorrelationPage() {
               只看龙头
             </Label>
           </div>
+
+          <div className="flex items-center gap-2">
+            <Switch
+              id="exclude-kcb"
+              checked={excludeKcb}
+              onCheckedChange={setExcludeKcb}
+            />
+            <Label htmlFor="exclude-kcb" className="text-sm cursor-pointer">
+              排除科创
+            </Label>
+          </div>
+
+          <div className="flex items-center gap-2">
+            <Switch
+              id="exclude-st"
+              checked={excludeSt}
+              onCheckedChange={setExcludeSt}
+            />
+            <Label htmlFor="exclude-st" className="text-sm cursor-pointer">
+              排除ST
+            </Label>
+          </div>
           
-          {/* Time window selector */}
           <Select
             value={String(windowDays)}
             onValueChange={(value) => setWindowDays(Number(value) as WindowDays)}

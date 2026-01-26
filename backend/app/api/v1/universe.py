@@ -1005,6 +1005,8 @@ async def get_correlation_analysis(
     only_leader: bool = Query(
         default=False, description="只看龙头股（市值30-1000亿，换手率3-25%）"
     ),
+    exclude_kcb: bool = Query(default=False, description="排除科创板（68开头）"),
+    exclude_st: bool = Query(default=False, description="排除ST股票"),
     db: AsyncSession = Depends(get_db),
 ):
     """
@@ -1080,6 +1082,12 @@ async def get_correlation_analysis(
         .where(AssetMeta.status == 1)  # 只取上市中的
     )
     all_assets = {a.code: a for a in all_assets_result.scalars().all()}
+
+    # 4.0 基本筛选：排除科创板、排除ST
+    if exclude_kcb:
+        all_assets = {k: v for k, v in all_assets.items() if not k.startswith("sh.68")}
+    if exclude_st:
+        all_assets = {k: v for k, v in all_assets.items() if "ST" not in v.name.upper()}
 
     # 4.1 龙头筛选：市值30-1000亿，换手率3-25%
     if only_leader and all_assets:

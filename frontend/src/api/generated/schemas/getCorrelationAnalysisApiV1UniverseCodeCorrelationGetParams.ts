@@ -27,4 +27,12 @@ export type GetCorrelationAnalysisApiV1UniverseCodeCorrelationGetParams = {
    * 只看龙头股（市值30-1000亿，换手率3-25%）
    */
   only_leader?: boolean;
+  /**
+   * 排除科创板（68开头）
+   */
+  exclude_kcb?: boolean;
+  /**
+   * 排除ST股票
+   */
+  exclude_st?: boolean;
 };
