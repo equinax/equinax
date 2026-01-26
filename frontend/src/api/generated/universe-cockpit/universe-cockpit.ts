@@ -11,6 +11,8 @@ import type {
   UseQueryResult,
 } from "@tanstack/react-query";
 import type {
+  CorrelationResponse,
+  GetCorrelationAnalysisApiV1UniverseCodeCorrelationGetParams,
   GetIndustryTreeApiV1UniverseIndustriesTreeGetParams,
   GetUniverseSnapshotApiV1UniverseSnapshotGetParams,
   GetUniverseStatsApiV1UniverseStatsGetParams,
@@ -936,6 +938,290 @@ export const useGetAssetDetailApiV1UniverseCodeGet = <
     code,
     options,
   );
+
+  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
+    queryKey: QueryKey;
+  };
+
+  query.queryKey = queryOptions.queryKey;
+
+  return query;
+};
+
+/**
+ * 计算与指定资产的皮尔森相关系数分析。
+
+用于查找"反向节奏"标的 - 与当前股票负相关的股票和ETF，
+可用于对冲配置和调仓时机分析。
+
+算法：
+1. 获取基准资产最近N天的收盘价序列
+2. 对全市场股票/ETF计算与基准的皮尔森相关系数
+3. 筛选并按相关系数升序排列（最负相关的排在前面）
+
+相关性分类：
+- ρ > 0.7: 高度同步（同节奏）
+- ρ < -0.4: 反向节奏（理想对冲）
+- -0.4 <= ρ <= 0.4: 节奏中性（震荡配仓）
+ * @summary Get Correlation Analysis
+ */
+export const getCorrelationAnalysisApiV1UniverseCodeCorrelationGet = (
+  code: string,
+  params?: GetCorrelationAnalysisApiV1UniverseCodeCorrelationGetParams,
+  signal?: AbortSignal,
+) => {
+  return customInstance<CorrelationResponse>({
+    url: `/api/v1/universe/${code}/correlation`,
+    method: "GET",
+    params,
+    signal,
+  });
+};
+
+export const getGetCorrelationAnalysisApiV1UniverseCodeCorrelationGetQueryKey =
+  (
+    code: string,
+    params?: GetCorrelationAnalysisApiV1UniverseCodeCorrelationGetParams,
+  ) => {
+    return [
+      `/api/v1/universe/${code}/correlation`,
+      ...(params ? [params] : []),
+    ] as const;
+  };
+
+export const getGetCorrelationAnalysisApiV1UniverseCodeCorrelationGetInfiniteQueryOptions =
+  <
+    TData = InfiniteData<
+      Awaited<
+        ReturnType<typeof getCorrelationAnalysisApiV1UniverseCodeCorrelationGet>
+      >,
+      GetCorrelationAnalysisApiV1UniverseCodeCorrelationGetParams["page"]
+    >,
+    TError = HTTPValidationError,
+  >(
+    code: string,
+    params?: GetCorrelationAnalysisApiV1UniverseCodeCorrelationGetParams,
+    options?: {
+      query?: Partial<
+        UseInfiniteQueryOptions<
+          Awaited<
+            ReturnType<
+              typeof getCorrelationAnalysisApiV1UniverseCodeCorrelationGet
+            >
+          >,
+          TError,
+          TData,
+          Awaited<
+            ReturnType<
+              typeof getCorrelationAnalysisApiV1UniverseCodeCorrelationGet
+            >
+          >,
+          QueryKey,
+          GetCorrelationAnalysisApiV1UniverseCodeCorrelationGetParams["page"]
+        >
+      >;
+    },
+  ) => {
+    const { query: queryOptions } = options ?? {};
+
+    const queryKey =
+      queryOptions?.queryKey ??
+      getGetCorrelationAnalysisApiV1UniverseCodeCorrelationGetQueryKey(
+        code,
+        params,
+      );
+
+    const queryFn: QueryFunction<
+      Awaited<
+        ReturnType<typeof getCorrelationAnalysisApiV1UniverseCodeCorrelationGet>
+      >,
+      QueryKey,
+      GetCorrelationAnalysisApiV1UniverseCodeCorrelationGetParams["page"]
+    > = ({ signal, pageParam }) =>
+      getCorrelationAnalysisApiV1UniverseCodeCorrelationGet(
+        code,
+        { ...params, page: pageParam || params?.["page"] },
+        signal,
+      );
+
+    return {
+      queryKey,
+      queryFn,
+      enabled: !!code,
+      ...queryOptions,
+    } as UseInfiniteQueryOptions<
+      Awaited<
+        ReturnType<typeof getCorrelationAnalysisApiV1UniverseCodeCorrelationGet>
+      >,
+      TError,
+      TData,
+      Awaited<
+        ReturnType<typeof getCorrelationAnalysisApiV1UniverseCodeCorrelationGet>
+      >,
+      QueryKey,
+      GetCorrelationAnalysisApiV1UniverseCodeCorrelationGetParams["page"]
+    > & { queryKey: QueryKey };
+  };
+
+export type GetCorrelationAnalysisApiV1UniverseCodeCorrelationGetInfiniteQueryResult =
+  NonNullable<
+    Awaited<
+      ReturnType<typeof getCorrelationAnalysisApiV1UniverseCodeCorrelationGet>
+    >
+  >;
+export type GetCorrelationAnalysisApiV1UniverseCodeCorrelationGetInfiniteQueryError =
+  HTTPValidationError;
+
+/**
+ * @summary Get Correlation Analysis
+ */
+export const useGetCorrelationAnalysisApiV1UniverseCodeCorrelationGetInfinite =
+  <
+    TData = InfiniteData<
+      Awaited<
+        ReturnType<typeof getCorrelationAnalysisApiV1UniverseCodeCorrelationGet>
+      >,
+      GetCorrelationAnalysisApiV1UniverseCodeCorrelationGetParams["page"]
+    >,
+    TError = HTTPValidationError,
+  >(
+    code: string,
+    params?: GetCorrelationAnalysisApiV1UniverseCodeCorrelationGetParams,
+    options?: {
+      query?: Partial<
+        UseInfiniteQueryOptions<
+          Awaited<
+            ReturnType<
+              typeof getCorrelationAnalysisApiV1UniverseCodeCorrelationGet
+            >
+          >,
+          TError,
+          TData,
+          Awaited<
+            ReturnType<
+              typeof getCorrelationAnalysisApiV1UniverseCodeCorrelationGet
+            >
+          >,
+          QueryKey,
+          GetCorrelationAnalysisApiV1UniverseCodeCorrelationGetParams["page"]
+        >
+      >;
+    },
+  ): UseInfiniteQueryResult<TData, TError> & { queryKey: QueryKey } => {
+    const queryOptions =
+      getGetCorrelationAnalysisApiV1UniverseCodeCorrelationGetInfiniteQueryOptions(
+        code,
+        params,
+        options,
+      );
+
+    const query = useInfiniteQuery(queryOptions) as UseInfiniteQueryResult<
+      TData,
+      TError
+    > & { queryKey: QueryKey };
+
+    query.queryKey = queryOptions.queryKey;
+
+    return query;
+  };
+
+export const getGetCorrelationAnalysisApiV1UniverseCodeCorrelationGetQueryOptions =
+  <
+    TData = Awaited<
+      ReturnType<typeof getCorrelationAnalysisApiV1UniverseCodeCorrelationGet>
+    >,
+    TError = HTTPValidationError,
+  >(
+    code: string,
+    params?: GetCorrelationAnalysisApiV1UniverseCodeCorrelationGetParams,
+    options?: {
+      query?: Partial<
+        UseQueryOptions<
+          Awaited<
+            ReturnType<
+              typeof getCorrelationAnalysisApiV1UniverseCodeCorrelationGet
+            >
+          >,
+          TError,
+          TData
+        >
+      >;
+    },
+  ) => {
+    const { query: queryOptions } = options ?? {};
+
+    const queryKey =
+      queryOptions?.queryKey ??
+      getGetCorrelationAnalysisApiV1UniverseCodeCorrelationGetQueryKey(
+        code,
+        params,
+      );
+
+    const queryFn: QueryFunction<
+      Awaited<
+        ReturnType<typeof getCorrelationAnalysisApiV1UniverseCodeCorrelationGet>
+      >
+    > = ({ signal }) =>
+      getCorrelationAnalysisApiV1UniverseCodeCorrelationGet(
+        code,
+        params,
+        signal,
+      );
+
+    return {
+      queryKey,
+      queryFn,
+      enabled: !!code,
+      ...queryOptions,
+    } as UseQueryOptions<
+      Awaited<
+        ReturnType<typeof getCorrelationAnalysisApiV1UniverseCodeCorrelationGet>
+      >,
+      TError,
+      TData
+    > & { queryKey: QueryKey };
+  };
+
+export type GetCorrelationAnalysisApiV1UniverseCodeCorrelationGetQueryResult =
+  NonNullable<
+    Awaited<
+      ReturnType<typeof getCorrelationAnalysisApiV1UniverseCodeCorrelationGet>
+    >
+  >;
+export type GetCorrelationAnalysisApiV1UniverseCodeCorrelationGetQueryError =
+  HTTPValidationError;
+
+/**
+ * @summary Get Correlation Analysis
+ */
+export const useGetCorrelationAnalysisApiV1UniverseCodeCorrelationGet = <
+  TData = Awaited<
+    ReturnType<typeof getCorrelationAnalysisApiV1UniverseCodeCorrelationGet>
+  >,
+  TError = HTTPValidationError,
+>(
+  code: string,
+  params?: GetCorrelationAnalysisApiV1UniverseCodeCorrelationGetParams,
+  options?: {
+    query?: Partial<
+      UseQueryOptions<
+        Awaited<
+          ReturnType<
+            typeof getCorrelationAnalysisApiV1UniverseCodeCorrelationGet
+          >
+        >,
+        TError,
+        TData
+      >
+    >;
+  },
+): UseQueryResult<TData, TError> & { queryKey: QueryKey } => {
+  const queryOptions =
+    getGetCorrelationAnalysisApiV1UniverseCodeCorrelationGetQueryOptions(
+      code,
+      params,
+      options,
+    );
 
   const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
     queryKey: QueryKey;

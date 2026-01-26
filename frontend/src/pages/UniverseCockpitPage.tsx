@@ -2,7 +2,7 @@ import { useState, useMemo } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { Card, CardContent, CardHeader } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
-import { ChevronLeft, ChevronRight } from 'lucide-react'
+import { ChevronLeft, ChevronRight, TrendingUp } from 'lucide-react'
 import type { SortingState } from '@tanstack/react-table'
 import {
   useGetUniverseSnapshotApiV1UniverseSnapshotGet,
@@ -112,16 +112,26 @@ export default function UniverseCockpitPage() {
   return (
     <div className="space-y-4">
       {/* Header */}
-      <div>
-        <h1 className="text-2xl font-bold">市场发现</h1>
-        <p className="text-muted-foreground text-sm">
-          浏览和筛选股票、ETF数据
-          {snapshot?.date && (
-            <span className="ml-2">
-              · 数据日期: <span className="font-mono">{snapshot.date}</span>
-            </span>
-          )}
-        </p>
+      <div className="flex items-center justify-between">
+        <div>
+          <h1 className="text-2xl font-bold">市场发现</h1>
+          <p className="text-muted-foreground text-sm">
+            浏览和筛选股票、ETF数据
+            {snapshot?.date && (
+              <span className="ml-2">
+                · 数据日期: <span className="font-mono">{snapshot.date}</span>
+              </span>
+            )}
+          </p>
+        </div>
+        <Button
+          variant="outline"
+          onClick={() => navigate('/market/limit-up')}
+          className="gap-2"
+        >
+          <TrendingUp className="h-4 w-4" />
+          涨停聚焦
+        </Button>
       </div>
 
       {/* Stats Bar */}

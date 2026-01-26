@@ -3,7 +3,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Skeleton } from '@/components/ui/skeleton'
-import { TrendingUp, TrendingDown, ArrowLeft } from 'lucide-react'
+import { TrendingUp, TrendingDown, ArrowLeft, Shuffle } from 'lucide-react'
 import { StockChart } from '@/components/stock/StockChart'
 import { cn } from '@/lib/utils'
 import { useGetAssetDetailApiV1UniverseCodeGet } from '@/api/generated/universe-cockpit/universe-cockpit'
@@ -92,6 +92,15 @@ export default function UniverseDetailPage() {
                 <Badge className="bg-green-500 text-white">新股</Badge>
               )}
             </div>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => navigate(`/universe/${code}/inverse`)}
+              className="mt-2"
+            >
+              <Shuffle className="h-4 w-4 mr-1.5" />
+              查找反向
+            </Button>
           </div>
         </div>
         <div className="text-right">
