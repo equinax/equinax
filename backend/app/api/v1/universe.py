@@ -1083,35 +1083,27 @@ async def get_correlation_analysis(
 
     # 4.1 龙头筛选：市值30-1000亿，换手率3-25%
     if only_leader and all_assets:
-        leader_codes: set[str] = set()
+        latest_date_result = await db.execute(select(func.max(MarketDaily.date)))
+        latest_date = latest_date_result.scalar()
 
-        latest_val_result = await db.execute(
-            select(
-                IndicatorValuation.code,
-                IndicatorValuation.total_mv,
+        if latest_date:
+            leader_query = await db.execute(
+                select(MarketDaily.code)
+                .join(
+                    IndicatorValuation,
+                    and_(
+                        MarketDaily.code == IndicatorValuation.code,
+                        MarketDaily.date == IndicatorValuation.date,
+                    ),
+                )
+                .where(MarketDaily.date == latest_date)
+                .where(IndicatorValuation.total_mv >= 30)
+                .where(IndicatorValuation.total_mv <= 1000)
+                .where(MarketDaily.turn >= 3)
+                .where(MarketDaily.turn <= 25)
             )
-            .where(IndicatorValuation.code.in_(all_assets.keys()))
-            .where(IndicatorValuation.total_mv >= 30)
-            .where(IndicatorValuation.total_mv <= 1000)
-            .order_by(IndicatorValuation.code, desc(IndicatorValuation.date))
-            .distinct(IndicatorValuation.code)
-        )
-        valid_mcap_codes = {row.code for row in latest_val_result.all()}
-
-        latest_market_result = await db.execute(
-            select(
-                MarketDaily.code,
-                MarketDaily.turn,
-            )
-            .where(MarketDaily.code.in_(valid_mcap_codes))
-            .where(MarketDaily.turn >= 3)
-            .where(MarketDaily.turn <= 25)
-            .order_by(MarketDaily.code, desc(MarketDaily.date))
-            .distinct(MarketDaily.code)
-        )
-        leader_codes = {row.code for row in latest_market_result.all()}
-
-        all_assets = {k: v for k, v in all_assets.items() if k in leader_codes}
+            leader_codes = {row.code for row in leader_query.all()}
+            all_assets = {k: v for k, v in all_assets.items() if k in leader_codes}
 
     if not all_assets:
         return CorrelationResponse(
