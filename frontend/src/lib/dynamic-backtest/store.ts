@@ -167,7 +167,7 @@ export const useDynamicBacktestStore = create<DynamicBacktestStore>((set, get) =
     const temp = get().tempConfig
     if (!temp) return
     
-    // 应用新配置，清空交易记录和持仓
+    // 应用新配置，清空交易记录和持仓，但保留选中的股票
     set({
       initialCapital: temp.initialCapital,
       startDate: temp.startDate,
@@ -179,11 +179,10 @@ export const useDynamicBacktestStore = create<DynamicBacktestStore>((set, get) =
       metrics: null,
       isConfigLocked: true,
       tempConfig: null,
-      // 清空股票数据，触发重新加载
+      // 保留股票列表 (stocks, stockOrder)，但清空K线数据以触发重新加载
       stocks: new Map(),
-      stockOrder: [],
-      selectedStockCode: null,
-      benchmark: null,
+      stockOrder: get().stockOrder,  // 保留股票顺序
+      benchmark: null,  // 清空基准数据以触发重新加载
     })
   },
   
@@ -198,8 +197,7 @@ export const useDynamicBacktestStore = create<DynamicBacktestStore>((set, get) =
     const stocks = new Map(get().stocks)
     const stockOrder = [...get().stockOrder]
     
-    // 只有新股票才添加到顺序列表
-    if (!stocks.has(stock.code)) {
+    if (!stockOrder.includes(stock.code)) {
       stockOrder.push(stock.code)
     }
     stocks.set(stock.code, stock)

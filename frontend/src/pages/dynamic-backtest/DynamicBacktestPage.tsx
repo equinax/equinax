@@ -81,6 +81,16 @@ export default function DynamicBacktestPage() {
     setUrlStocksProcessed(true)
   }, [searchParams, urlStocksProcessed, store.stocks])
 
+  // 当 stocks 为空但 stockOrder 有值时（配置修改后），重新加载 K 线数据
+  useEffect(() => {
+    // 只在 stockOrder 有值但 stocks 为空时触发
+    if (store.stockOrder.length > 0 && store.stocks.size === 0 && !pendingStockCode) {
+      const [first, ...rest] = store.stockOrder
+      setPendingStockCode(first)
+      setPendingQueue(rest)
+    }
+  }, [store.stockOrder, store.stocks.size, pendingStockCode])
+
   // 按时间排序的交易列表（用于导航）
   const sortedTrades = useMemo(() => {
     return [...store.trades].sort((a, b) => {
