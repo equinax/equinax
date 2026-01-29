@@ -313,11 +313,11 @@ function MiniKlineChart({
         time: trade.date as Time,
         position: (trade.type === 'BUY' ? 'belowBar' : 'aboveBar') as SeriesMarkerPosition,
         color: isHighlighted 
-          ? '#facc15'  // 高亮时使用黄色
+          ? '#facc15'
           : (trade.type === 'BUY' ? marketColors.profit : marketColors.loss),
         shape: (trade.type === 'BUY' ? 'arrowUp' : 'arrowDown') as SeriesMarkerShape,
-        text: `${trade.type === 'BUY' ? 'B' : 'S'}${trade.executedShares}`,
-        size: isHighlighted ? 2 : 1,  // 高亮时放大
+        text: trade.type === 'BUY' ? 'B' : 'S',
+        size: isHighlighted ? 1 : 0.5,
       }
     }).sort((a, b) => (a.time as string).localeCompare(b.time as string))
     

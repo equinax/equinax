@@ -105,13 +105,13 @@ export function StockKlinePanel() {
     
     candlestickSeries.setData(chartData)
     
-    // 添加交易标记
     const markers: SeriesMarker<Time>[] = stockTrades.map(trade => ({
       time: trade.date as Time,
       position: (trade.type === 'BUY' ? 'belowBar' : 'aboveBar') as SeriesMarkerPosition,
       color: trade.type === 'BUY' ? marketColors.profit : marketColors.loss,
       shape: (trade.type === 'BUY' ? 'arrowUp' : 'arrowDown') as SeriesMarkerShape,
-      text: `${trade.type === 'BUY' ? 'B' : 'S'} ${trade.executedShares}股`,
+      text: trade.type === 'BUY' ? 'B' : 'S',
+      size: 0.5,
     })).sort((a, b) => (a.time as string).localeCompare(b.time as string))
     
     candlestickSeries.setMarkers(markers)
