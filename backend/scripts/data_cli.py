@@ -51,8 +51,7 @@ DEFAULT_STRATEGIES_PATH = FIXTURES_DIR / "default_strategies.json"
 
 # Default database URL
 DEFAULT_DATABASE_URL = os.environ.get(
-    "DATABASE_URL",
-    "postgresql+asyncpg://quant:quant_dev_password@localhost:54321/quantdb"
+    "DATABASE_URL", "postgresql+asyncpg://quant:quant_dev_password@localhost:54321/quantdb"
 )
 
 # Default system user
@@ -103,12 +102,24 @@ def get_sqlite_stats(db_path: Path) -> dict:
         conn = sqlite3.connect(str(db_path))
         cursor = conn.cursor()
 
-        stats = {"exists": True, "path": str(db_path), "size_mb": db_path.stat().st_size / 1024 / 1024}
+        stats = {
+            "exists": True,
+            "path": str(db_path),
+            "size_mb": db_path.stat().st_size / 1024 / 1024,
+        }
 
         # Try to get record counts from common tables
-        for table in ["daily_k_data", "stock_basic", "etf_basic", "stock_market_cap",
-                      "index_constituents", "northbound_holdings", "institutional_holdings",
-                      "industry_classification", "stock_industry_mapping"]:
+        for table in [
+            "daily_k_data",
+            "stock_basic",
+            "etf_basic",
+            "stock_market_cap",
+            "index_constituents",
+            "northbound_holdings",
+            "institutional_holdings",
+            "industry_classification",
+            "stock_industry_mapping",
+        ]:
             try:
                 cursor.execute(f"SELECT COUNT(*) FROM {table}")
                 stats[f"{table}_count"] = cursor.fetchone()[0]
@@ -168,7 +179,7 @@ async def _import_market_cap_fixture(pg_url: str, sqlite_path: Path) -> int:
                 total_mv = COALESCE(EXCLUDED.total_mv, indicator_valuation.total_mv),
                 circ_mv = COALESCE(EXCLUDED.circ_mv, indicator_valuation.circ_mv)
             """,
-            records
+            records,
         )
         return len(records)
     finally:
@@ -201,14 +212,14 @@ async def _import_northbound_fixture(pg_url: str, sqlite_path: Path) -> int:
     # Build records with all required boolean fields
     records = [
         (
-            row[0],                           # code
-            parse_date(row[1]),               # date
-            row[2],                           # northbound_holding_ratio
-            row[3],                           # northbound_holding_change
+            row[0],  # code
+            parse_date(row[1]),  # date
+            row[2],  # northbound_holding_ratio
+            row[3],  # northbound_holding_change
             row[2] > 5.0 if row[2] else False,  # is_northbound_heavy
-            False,                            # is_institutional
-            False,                            # is_retail_hot
-            False,                            # is_main_controlled
+            False,  # is_institutional
+            False,  # is_retail_hot
+            False,  # is_main_controlled
         )
         for row in rows
     ]
@@ -230,7 +241,7 @@ async def _import_northbound_fixture(pg_url: str, sqlite_path: Path) -> int:
                 northbound_holding_change = COALESCE(EXCLUDED.northbound_holding_change, stock_microstructure.northbound_holding_change),
                 is_northbound_heavy = COALESCE(EXCLUDED.is_northbound_heavy, stock_microstructure.is_northbound_heavy)
             """,
-            records
+            records,
         )
         return len(records)
     finally:
@@ -249,7 +260,9 @@ async def _import_institutional_fixture(pg_url: str, sqlite_path: Path) -> int:
     # Read from SQLite
     conn_sqlite = sqlite3.connect(str(sqlite_path))
     cursor = conn_sqlite.cursor()
-    cursor.execute("SELECT code, date, fund_holding_ratio, fund_holding_change FROM institutional_holdings")
+    cursor.execute(
+        "SELECT code, date, fund_holding_ratio, fund_holding_change FROM institutional_holdings"
+    )
     rows = cursor.fetchall()
     conn_sqlite.close()
 
@@ -264,12 +277,12 @@ async def _import_institutional_fixture(pg_url: str, sqlite_path: Path) -> int:
     # is_institutional = True when fund_holding_ratio > 10%
     records = [
         (
-            row[0],                           # code
-            parse_date(row[1]),               # date
+            row[0],  # code
+            parse_date(row[1]),  # date
             row[2] > 10.0 if row[2] else False,  # is_institutional (high fund holding)
-            False,                            # is_northbound_heavy (preserve existing)
-            False,                            # is_retail_hot
-            False,                            # is_main_controlled
+            False,  # is_northbound_heavy (preserve existing)
+            False,  # is_retail_hot
+            False,  # is_main_controlled
         )
         for row in rows
     ]
@@ -287,7 +300,7 @@ async def _import_institutional_fixture(pg_url: str, sqlite_path: Path) -> int:
             ON CONFLICT (code, date) DO UPDATE SET
                 is_institutional = COALESCE(EXCLUDED.is_institutional, stock_microstructure.is_institutional)
             """,
-            records
+            records,
         )
         return len(records)
     finally:
@@ -333,10 +346,7 @@ async def _create_default_user(database_url: str) -> int:
 
     try:
         # Check if user exists
-        exists = await conn.fetchval(
-            "SELECT 1 FROM users WHERE id = $1",
-            DEFAULT_USER_ID
-        )
+        exists = await conn.fetchval("SELECT 1 FROM users WHERE id = $1", DEFAULT_USER_ID)
 
         if exists:
             console.print(f"  Default user already exists: [cyan]{DEFAULT_USER_EMAIL}[/cyan]")
@@ -422,7 +432,7 @@ async def _load_strategies(database_url: str) -> int:
             exists = await conn.fetchval(
                 "SELECT 1 FROM strategies WHERE name = $1 AND user_id = $2",
                 strategy["name"],
-                DEFAULT_USER_ID
+                DEFAULT_USER_ID,
             )
 
             if exists:
@@ -453,7 +463,7 @@ async def _load_strategies(database_url: str) -> int:
                 json.dumps([]),  # indicators_used
                 json.dumps({}),  # parameters
                 False,  # is_validated
-                True,   # is_active
+                True,  # is_active
                 strategy.get("is_public", True),
                 "backtest",  # execution_mode
             )
@@ -480,8 +490,7 @@ def db_reset(
     """Reset the database (drop all tables and run migrations)."""
     if not force:
         confirm = typer.confirm(
-            "\nThis will DELETE ALL DATA in the database. Continue?",
-            default=False
+            "\nThis will DELETE ALL DATA in the database. Continue?", default=False
         )
         if not confirm:
             console.print("[yellow]Aborted.[/yellow]")
@@ -604,7 +613,7 @@ async def _refresh_continuous_aggregates(database_url: str) -> int:
             SELECT view_name FROM timescaledb_information.continuous_aggregates
             WHERE view_schema = 'public'
         """)
-        caggs = [row['view_name'] for row in rows]
+        caggs = [row["view_name"] for row in rows]
     except Exception:
         # Fallback to known aggregates if query fails
         caggs = ["market_daily_1w", "market_daily_1m"]
@@ -617,9 +626,7 @@ async def _refresh_continuous_aggregates(database_url: str) -> int:
         for view_name in caggs:
             console.print(f"  Refreshing [cyan]{view_name}[/cyan]...")
             try:
-                await conn.execute(
-                    f"CALL refresh_continuous_aggregate('{view_name}', NULL, NULL)"
-                )
+                await conn.execute(f"CALL refresh_continuous_aggregate('{view_name}', NULL, NULL)")
                 console.print(f"  [green]✓[/green] {view_name}")
             except Exception as e:
                 console.print(f"  [yellow]⚠[/yellow] {view_name}: {e}")
@@ -686,29 +693,33 @@ async def _init_database(database_url: str, force: bool) -> dict:
     # 1. Create default user first
     console.print("\n[1/10] Creating default user...")
     user_result = await _create_default_user(database_url)
-    results['user'] = 'created' if user_result == 0 else 'failed'
+    results["user"] = "created" if user_result == 0 else "failed"
 
     # 2. Import stocks
     stock_db = FIXTURES_DIR / "sample_stocks.db"
     if stock_db.exists():
         console.print("\n[2/10] Importing stock data...")
         stock_results = await migrate_stock_database(stock_db, pg_url)
-        results['stocks'] = stock_results
-        console.print(f"  Imported: {stock_results.get('stock_basic', 0)} stocks, {stock_results.get('daily_k_data', 0)} daily records")
+        results["stocks"] = stock_results
+        console.print(
+            f"  Imported: {stock_results.get('stock_basic', 0)} stocks, {stock_results.get('daily_k_data', 0)} daily records"
+        )
     else:
         console.print("\n[2/10] Skipping stocks (sample_stocks.db not found)")
-        results['stocks'] = {}
+        results["stocks"] = {}
 
     # 3. Import ETFs
     etf_db = FIXTURES_DIR / "sample_etfs.db"
     if etf_db.exists():
         console.print("\n[3/10] Importing ETF data...")
         etf_results = await migrate_etf_database(etf_db, pg_url)
-        results['etfs'] = etf_results
-        console.print(f"  Imported: {etf_results.get('etf_basic', 0)} ETFs, {etf_results.get('etf_daily', 0)} daily records")
+        results["etfs"] = etf_results
+        console.print(
+            f"  Imported: {etf_results.get('etf_basic', 0)} ETFs, {etf_results.get('etf_daily', 0)} daily records"
+        )
     else:
         console.print("\n[3/10] Skipping ETFs (sample_etfs.db not found)")
-        results['etfs'] = {}
+        results["etfs"] = {}
 
     # 4. Import market cap data
     market_cap_db = FIXTURES_DIR / "sample_market_cap.db"
@@ -716,14 +727,14 @@ async def _init_database(database_url: str, force: bool) -> dict:
         console.print("\n[4/10] Importing market cap data...")
         try:
             market_cap_count = await _import_market_cap_fixture(pg_url, market_cap_db)
-            results['market_cap'] = market_cap_count
+            results["market_cap"] = market_cap_count
             console.print(f"  Imported: {market_cap_count} market cap records")
         except Exception as e:
             console.print(f"  [yellow]Failed to import market cap: {e}[/yellow]")
-            results['market_cap'] = 0
+            results["market_cap"] = 0
     else:
         console.print("\n[4/10] Skipping market cap (sample_market_cap.db not found)")
-        results['market_cap'] = 0
+        results["market_cap"] = 0
 
     # 5. Import northbound holdings data
     northbound_db = FIXTURES_DIR / "sample_northbound.db"
@@ -731,14 +742,14 @@ async def _init_database(database_url: str, force: bool) -> dict:
         console.print("\n[5/10] Importing northbound holdings data...")
         try:
             northbound_count = await _import_northbound_fixture(pg_url, northbound_db)
-            results['northbound'] = northbound_count
+            results["northbound"] = northbound_count
             console.print(f"  Imported: {northbound_count} northbound records")
         except Exception as e:
             console.print(f"  [yellow]Failed to import northbound: {e}[/yellow]")
-            results['northbound'] = 0
+            results["northbound"] = 0
     else:
         console.print("\n[5/10] Skipping northbound (sample_northbound.db not found)")
-        results['northbound'] = 0
+        results["northbound"] = 0
 
     # 6. Import institutional holdings data
     institutional_db = FIXTURES_DIR / "sample_institutional.db"
@@ -746,14 +757,14 @@ async def _init_database(database_url: str, force: bool) -> dict:
         console.print("\n[6/10] Importing institutional holdings data...")
         try:
             institutional_count = await _import_institutional_fixture(pg_url, institutional_db)
-            results['institutional'] = institutional_count
+            results["institutional"] = institutional_count
             console.print(f"  Imported: {institutional_count} institutional records")
         except Exception as e:
             console.print(f"  [yellow]Failed to import institutional: {e}[/yellow]")
-            results['institutional'] = 0
+            results["institutional"] = 0
     else:
         console.print("\n[6/10] Skipping institutional (sample_institutional.db not found)")
-        results['institutional'] = 0
+        results["institutional"] = 0
 
     # 7. Import index constituents
     index_db = FIXTURES_DIR / "sample_indices.db"
@@ -762,20 +773,23 @@ async def _init_database(database_url: str, force: bool) -> dict:
         pg_conn = await asyncpg.connect(pg_url)
         try:
             index_count = await import_index_constituents(index_db, pg_conn, force=force)
-            results['indices'] = index_count
+            results["indices"] = index_count
             console.print(f"  Imported: {index_count} index constituent records")
         finally:
             await pg_conn.close()
     else:
         console.print("\n[7/10] Skipping indices (sample_indices.db not found)")
-        results['indices'] = 0
+        results["indices"] = 0
 
     # 8. Import industry classification
     industry_db = FIXTURES_DIR / "sample_industries.db"
     if industry_db.exists():
         console.print("\n[8/10] Importing industry classification...")
         try:
-            from scripts.import_sw_industry import import_industries_from_sqlite, update_stock_profile_industries
+            from scripts.import_sw_industry import (
+                import_industries_from_sqlite,
+                update_stock_profile_industries,
+            )
             from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession
             from sqlalchemy.orm import sessionmaker
 
@@ -789,7 +803,7 @@ async def _init_database(database_url: str, force: bool) -> dict:
             session = async_session()
             try:
                 ind_count, mapping_count = await import_industries_from_sqlite(session, industry_db)
-                results['industries'] = {'classifications': ind_count, 'mappings': mapping_count}
+                results["industries"] = {"classifications": ind_count, "mappings": mapping_count}
                 console.print(f"  Imported: {ind_count} industries, {mapping_count} stock mappings")
 
                 # Update stock_profile with industry L1/L2/L3
@@ -800,10 +814,10 @@ async def _init_database(database_url: str, force: bool) -> dict:
                 await engine.dispose()
         except Exception as e:
             console.print(f"  [yellow]Skipped industry import: {e}[/yellow]")
-            results['industries'] = {'error': str(e)}
+            results["industries"] = {"error": str(e)}
     else:
         console.print("\n[8/10] Skipping industries (sample_industries.db not found)")
-        results['industries'] = {}
+        results["industries"] = {}
 
     # 9. Calculate classification snapshot for the latest date in fixtures
     console.print("\n[9/10] Calculating classification data...")
@@ -820,8 +834,8 @@ async def _init_database(database_url: str, force: bool) -> dict:
         try:
             pg_conn = await asyncpg.connect(pg_url)
             row = await pg_conn.fetchrow("SELECT MAX(date) as max_date FROM market_daily")
-            if row and row['max_date']:
-                latest_date = str(row['max_date'])
+            if row and row["max_date"]:
+                latest_date = str(row["max_date"])
             await pg_conn.close()
         except:
             pass
@@ -835,7 +849,9 @@ async def _init_database(database_url: str, force: bool) -> dict:
 
         # Run classification tasks with explicit database URL
         ctx = {}  # Empty context for non-ARQ direct call
-        structural_result = await calculate_structural_classification(ctx, latest_date, async_db_url)
+        structural_result = await calculate_structural_classification(
+            ctx, latest_date, async_db_url
+        )
         console.print(f"  Structural: {structural_result.get('records_updated', 0)} records")
 
         style_result = await calculate_style_factors(ctx, latest_date, async_db_url)
@@ -847,34 +863,37 @@ async def _init_database(database_url: str, force: bool) -> dict:
         snapshot_result = await generate_classification_snapshot(ctx, latest_date, async_db_url)
         console.print(f"  Snapshot: {snapshot_result.get('records_generated', 0)} records")
 
-        results['classification'] = {
-            'date': latest_date,
-            'structural': structural_result.get('records_updated', 0),
-            'style': style_result.get('records_inserted', 0),
-            'regime': regime_result.get('regime', 'unknown'),
-            'snapshot': snapshot_result.get('records_generated', 0),
+        results["classification"] = {
+            "date": latest_date,
+            "structural": structural_result.get("records_updated", 0),
+            "style": style_result.get("records_inserted", 0),
+            "regime": regime_result.get("regime", "unknown"),
+            "snapshot": snapshot_result.get("records_generated", 0),
         }
     except Exception as e:
         console.print(f"  [yellow]Skipped classification: {e}[/yellow]")
         import traceback
+
         traceback.print_exc()
-        results['classification'] = {'error': str(e)}
+        results["classification"] = {"error": str(e)}
 
     # 10. Load default strategies
     console.print("\n[10/10] Loading default strategies...")
     if DEFAULT_STRATEGIES_PATH.exists():
         await _load_strategies(database_url)
-        results['strategies'] = 'loaded'
+        results["strategies"] = "loaded"
     else:
         console.print("  [dim]No default strategies file found[/dim]")
-        results['strategies'] = 'skipped'
+        results["strategies"] = "skipped"
 
     return results
 
 
 @app.command()
 def init(
-    force: bool = typer.Option(False, "--force", "-f", help="Force reinitialize even if data exists"),
+    force: bool = typer.Option(
+        False, "--force", "-f", help="Force reinitialize even if data exists"
+    ),
     database_url: str = typer.Option(DEFAULT_DATABASE_URL, "--database", "-d", help="Database URL"),
 ):
     """
@@ -914,21 +933,27 @@ def init(
     console.print("[bold green]Database initialized successfully![/bold green]")
     console.print("=" * 50)
 
-    stock_results = results.get('stocks', {})
-    etf_results = results.get('etfs', {})
-    market_cap_count = results.get('market_cap', 0)
-    northbound_count = results.get('northbound', 0)
-    index_count = results.get('indices', 0)
-    industry_results = results.get('industries', {})
+    stock_results = results.get("stocks", {})
+    etf_results = results.get("etfs", {})
+    market_cap_count = results.get("market_cap", 0)
+    northbound_count = results.get("northbound", 0)
+    index_count = results.get("indices", 0)
+    industry_results = results.get("industries", {})
 
     console.print(f"\n[cyan]Summary:[/cyan]")
     console.print(f"  User: {results.get('user', 'unknown')}")
-    console.print(f"  Stocks: {stock_results.get('stock_basic', 0)} symbols, {stock_results.get('daily_k_data', 0)} daily records")
-    console.print(f"  ETFs: {etf_results.get('etf_basic', 0)} symbols, {etf_results.get('etf_daily', 0)} daily records")
+    console.print(
+        f"  Stocks: {stock_results.get('stock_basic', 0)} symbols, {stock_results.get('daily_k_data', 0)} daily records"
+    )
+    console.print(
+        f"  ETFs: {etf_results.get('etf_basic', 0)} symbols, {etf_results.get('etf_daily', 0)} daily records"
+    )
     console.print(f"  Market cap: {market_cap_count} records")
     console.print(f"  Northbound: {northbound_count} records")
     console.print(f"  Index constituents: {index_count} records")
-    console.print(f"  Industries: {industry_results.get('classifications', 0)} categories, {industry_results.get('mappings', 0)} mappings")
+    console.print(
+        f"  Industries: {industry_results.get('classifications', 0)} categories, {industry_results.get('mappings', 0)} mappings"
+    )
     console.print(f"  Strategies: {results.get('strategies', 'unknown')}")
     console.print(f"\n  Time: {elapsed:.1f} seconds")
     console.print("\nRun 'python -m scripts.data_cli status' to verify.\n")
@@ -942,7 +967,9 @@ def init(
 @app.command()
 def status(
     database_url: str = typer.Option(DEFAULT_DATABASE_URL, "--database", "-d", help="Database URL"),
-    detailed: bool = typer.Option(False, "--detailed", help="Show detailed status including sync history"),
+    detailed: bool = typer.Option(
+        False, "--detailed", help="Show detailed status including sync history"
+    ),
 ):
     """
     Show comprehensive data status with health assessment.
@@ -954,9 +981,13 @@ def status(
     - Missing dates detection
     - Worker status (if running in Docker)
     """
-    console.print("\n[bold blue]════════════════════════════════════════════════════════[/bold blue]")
+    console.print(
+        "\n[bold blue]════════════════════════════════════════════════════════[/bold blue]"
+    )
     console.print("[bold blue]              Data System Status[/bold blue]")
-    console.print("[bold blue]════════════════════════════════════════════════════════[/bold blue]\n")
+    console.print(
+        "[bold blue]════════════════════════════════════════════════════════[/bold blue]\n"
+    )
 
     try:
         status_data = asyncio.run(_get_enhanced_pg_status(database_url))
@@ -965,15 +996,17 @@ def status(
         raise typer.Exit(1)
 
     # Health Score
-    health = status_data.get('health', {})
-    health_pct = health.get('score', 0)
+    health = status_data.get("health", {})
+    health_pct = health.get("score", 0)
     health_color = "green" if health_pct >= 90 else "yellow" if health_pct >= 70 else "red"
     console.print(f"[bold]Overall Health:[/bold] [{health_color}]{health_pct}%[/{health_color}]")
 
     # Last Sync
-    last_sync = status_data.get('last_sync')
+    last_sync = status_data.get("last_sync")
     if last_sync:
-        console.print(f"[bold]Last Sync:[/bold] {last_sync.get('completed_at', 'Unknown')} ({last_sync.get('status', 'unknown')})")
+        console.print(
+            f"[bold]Last Sync:[/bold] {last_sync.get('completed_at', 'Unknown')} ({last_sync.get('status', 'unknown')})"
+        )
     else:
         console.print("[bold]Last Sync:[/bold] [dim]No sync history[/dim]")
 
@@ -988,17 +1021,19 @@ def status(
     table.add_column("Date Range")
     table.add_column("Status")
 
-    for name, info in status_data.get('tables', {}).items():
+    for name, info in status_data.get("tables", {}).items():
         if isinstance(info, dict):
             count = f"{info.get('count', 0):,}"
-            date_range = info.get('date_range', '-')
-            status_icon = "[green]OK[/green]" if info.get('count', 0) > 0 else "[yellow]Empty[/yellow]"
+            date_range = info.get("date_range", "-")
+            status_icon = (
+                "[green]OK[/green]" if info.get("count", 0) > 0 else "[yellow]Empty[/yellow]"
+            )
             table.add_row(name, count, date_range, status_icon)
 
     console.print(table)
 
     # Missing Dates
-    missing_dates = status_data.get('missing_dates', [])
+    missing_dates = status_data.get("missing_dates", [])
     if missing_dates:
         console.print(f"\n[yellow]Missing Dates:[/yellow] {len(missing_dates)} trading day(s)")
         if detailed:
@@ -1013,7 +1048,7 @@ def status(
     # Sync History (if detailed)
     if detailed:
         console.print("\n[cyan]═══ Recent Sync History ═══[/cyan]\n")
-        sync_history = status_data.get('sync_history', [])
+        sync_history = status_data.get("sync_history", [])
         if sync_history:
             hist_table = Table(show_header=True, header_style="bold", box=None)
             hist_table.add_column("Time")
@@ -1023,13 +1058,19 @@ def status(
             hist_table.add_column("Records")
 
             for h in sync_history[:5]:
-                status_style = "green" if h['status'] == 'success' else "red" if h['status'] == 'failed' else "yellow"
+                status_style = (
+                    "green"
+                    if h["status"] == "success"
+                    else "red"
+                    if h["status"] == "failed"
+                    else "yellow"
+                )
                 hist_table.add_row(
-                    str(h.get('started_at', ''))[:19],
-                    h.get('sync_type', '-'),
+                    str(h.get("started_at", ""))[:19],
+                    h.get("sync_type", "-"),
                     f"[{status_style}]{h.get('status', '-')}[/{status_style}]",
-                    f"{h.get('duration_seconds', 0):.1f}s" if h.get('duration_seconds') else "-",
-                    str(h.get('records_imported', 0)),
+                    f"{h.get('duration_seconds', 0):.1f}s" if h.get("duration_seconds") else "-",
+                    str(h.get("records_imported", 0)),
                 )
             console.print(hist_table)
         else:
@@ -1054,7 +1095,7 @@ async def _get_enhanced_pg_status(database_url: str) -> dict:
     postgres_url = get_sync_pg_url(database_url)
     conn = await asyncpg.connect(postgres_url)
 
-    status = {'tables': {}, 'health': {}, 'missing_dates': [], 'sync_history': []}
+    status = {"tables": {}, "health": {}, "missing_dates": [], "sync_history": []}
 
     try:
         # Get table stats (same as before but organized differently)
@@ -1067,12 +1108,12 @@ async def _get_enhanced_pg_status(database_url: str) -> dict:
                        COUNT(CASE WHEN asset_type = 'index' THEN 1 END) as indices
                 FROM asset_meta
             """)
-            status['tables']['Assets'] = {
-                'count': row['count'],
-                'date_range': f"Stocks: {row['stocks']}, ETFs: {row['etfs']}, Indices: {row['indices']}"
+            status["tables"]["Assets"] = {
+                "count": row["count"],
+                "date_range": f"Stocks: {row['stocks']}, ETFs: {row['etfs']}, Indices: {row['indices']}",
             }
         except Exception:
-            status['tables']['Assets'] = {'count': 0, 'date_range': '-'}
+            status["tables"]["Assets"] = {"count": 0, "date_range": "-"}
 
         # Market daily
         try:
@@ -1082,31 +1123,31 @@ async def _get_enhanced_pg_status(database_url: str) -> dict:
                        MAX(date) as max_date
                 FROM market_daily
             """)
-            date_range = f"{row['min_date']} ~ {row['max_date']}" if row['min_date'] else '-'
-            status['tables']['Market Daily'] = {'count': row['count'], 'date_range': date_range}
+            date_range = f"{row['min_date']} ~ {row['max_date']}" if row["min_date"] else "-"
+            status["tables"]["Market Daily"] = {"count": row["count"], "date_range": date_range}
         except Exception:
-            status['tables']['Market Daily'] = {'count': 0, 'date_range': '-'}
+            status["tables"]["Market Daily"] = {"count": 0, "date_range": "-"}
 
         # Index constituents
         try:
             count = await conn.fetchval("SELECT COUNT(*) FROM index_constituents")
-            status['tables']['Index Constituents'] = {'count': count, 'date_range': 'Current only'}
+            status["tables"]["Index Constituents"] = {"count": count, "date_range": "Current only"}
         except Exception:
-            status['tables']['Index Constituents'] = {'count': 0, 'date_range': '-'}
+            status["tables"]["Index Constituents"] = {"count": 0, "date_range": "-"}
 
         # Index profiles
         try:
             count = await conn.fetchval("SELECT COUNT(*) FROM index_profile")
-            status['tables']['Index Profiles'] = {'count': count, 'date_range': 'Computed'}
+            status["tables"]["Index Profiles"] = {"count": count, "date_range": "Computed"}
         except Exception:
-            status['tables']['Index Profiles'] = {'count': 0, 'date_range': '-'}
+            status["tables"]["Index Profiles"] = {"count": 0, "date_range": "-"}
 
         # Industry classification
         try:
             count = await conn.fetchval("SELECT COUNT(*) FROM industry_classification")
-            status['tables']['Industries'] = {'count': count, 'date_range': 'Static'}
+            status["tables"]["Industries"] = {"count": count, "date_range": "Static"}
         except Exception:
-            status['tables']['Industries'] = {'count': 0, 'date_range': '-'}
+            status["tables"]["Industries"] = {"count": 0, "date_range": "-"}
 
         # Classification snapshot
         try:
@@ -1114,27 +1155,27 @@ async def _get_enhanced_pg_status(database_url: str) -> dict:
                 SELECT COUNT(*) as count, MAX(date) as latest
                 FROM classification_snapshot
             """)
-            status['tables']['Classification'] = {
-                'count': row['count'],
-                'date_range': str(row['latest']) if row['latest'] else '-'
+            status["tables"]["Classification"] = {
+                "count": row["count"],
+                "date_range": str(row["latest"]) if row["latest"] else "-",
             }
         except Exception:
-            status['tables']['Classification'] = {'count': 0, 'date_range': '-'}
+            status["tables"]["Classification"] = {"count": 0, "date_range": "-"}
 
         # Calculate health score
         score = 100
-        if status['tables'].get('Assets', {}).get('count', 0) == 0:
+        if status["tables"].get("Assets", {}).get("count", 0) == 0:
             score -= 30
-        if status['tables'].get('Market Daily', {}).get('count', 0) == 0:
+        if status["tables"].get("Market Daily", {}).get("count", 0) == 0:
             score -= 30
-        if status['tables'].get('Index Constituents', {}).get('count', 0) == 0:
+        if status["tables"].get("Index Constituents", {}).get("count", 0) == 0:
             score -= 10
-        if status['tables'].get('Industries', {}).get('count', 0) == 0:
+        if status["tables"].get("Industries", {}).get("count", 0) == 0:
             score -= 10
-        if status['tables'].get('Classification', {}).get('count', 0) == 0:
+        if status["tables"].get("Classification", {}).get("count", 0) == 0:
             score -= 10
 
-        status['health']['score'] = max(0, score)
+        status["health"]["score"] = max(0, score)
 
         # Get last sync from sync_history
         try:
@@ -1145,11 +1186,13 @@ async def _get_enhanced_pg_status(database_url: str) -> dict:
                 LIMIT 1
             """)
             if row:
-                status['last_sync'] = {
-                    'sync_type': row['sync_type'],
-                    'status': row['status'],
-                    'completed_at': str(row['completed_at'])[:19] if row['completed_at'] else None,
-                    'duration_seconds': float(row['duration_seconds']) if row['duration_seconds'] else None,
+                status["last_sync"] = {
+                    "sync_type": row["sync_type"],
+                    "status": row["status"],
+                    "completed_at": str(row["completed_at"])[:19] if row["completed_at"] else None,
+                    "duration_seconds": float(row["duration_seconds"])
+                    if row["duration_seconds"]
+                    else None,
                 }
         except Exception:
             pass
@@ -1163,7 +1206,7 @@ async def _get_enhanced_pg_status(database_url: str) -> dict:
                 ORDER BY started_at DESC
                 LIMIT 10
             """)
-            status['sync_history'] = [dict(row) for row in rows]
+            status["sync_history"] = [dict(row) for row in rows]
         except Exception:
             pass
 
@@ -1185,11 +1228,11 @@ async def _get_pg_status(database_url: str) -> dict:
     try:
         # Users
         count = await conn.fetchval("SELECT COUNT(*) FROM users")
-        status['users'] = {'count': count}
+        status["users"] = {"count": count}
 
         # Strategies
         count = await conn.fetchval("SELECT COUNT(*) FROM strategies")
-        status['strategies'] = {'count': count}
+        status["strategies"] = {"count": count}
 
         # Asset meta (stocks + ETFs)
         try:
@@ -1199,12 +1242,12 @@ async def _get_pg_status(database_url: str) -> dict:
                        COUNT(CASE WHEN asset_type = 'etf' THEN 1 END) as etfs
                 FROM asset_meta
             """)
-            status['asset_meta'] = {
-                'count': row['count'],
-                'date_range': f"stocks: {row['stocks']}, etfs: {row['etfs']}"
+            status["asset_meta"] = {
+                "count": row["count"],
+                "date_range": f"stocks: {row['stocks']}, etfs: {row['etfs']}",
             }
         except Exception:
-            status['asset_meta'] = {'count': 0, 'date_range': '-'}
+            status["asset_meta"] = {"count": 0, "date_range": "-"}
 
         # Market daily
         try:
@@ -1214,31 +1257,31 @@ async def _get_pg_status(database_url: str) -> dict:
                        MAX(date) as max_date
                 FROM market_daily
             """)
-            date_range = f"{row['min_date']} ~ {row['max_date']}" if row['min_date'] else '-'
-            status['market_daily'] = {'count': row['count'], 'date_range': date_range}
+            date_range = f"{row['min_date']} ~ {row['max_date']}" if row["min_date"] else "-"
+            status["market_daily"] = {"count": row["count"], "date_range": date_range}
         except Exception:
-            status['market_daily'] = {'count': 0, 'date_range': '-'}
+            status["market_daily"] = {"count": 0, "date_range": "-"}
 
         # Index constituents
         try:
             count = await conn.fetchval("SELECT COUNT(*) FROM index_constituents")
-            status['index_constituents'] = {'count': count}
+            status["index_constituents"] = {"count": count}
         except Exception:
-            status['index_constituents'] = {'count': 0}
+            status["index_constituents"] = {"count": 0}
 
         # Industry classification
         try:
             count = await conn.fetchval("SELECT COUNT(*) FROM industry_classification")
-            status['industry_classification'] = {'count': count}
+            status["industry_classification"] = {"count": count}
         except Exception:
-            status['industry_classification'] = {'count': 0}
+            status["industry_classification"] = {"count": 0}
 
         # Backtests
         try:
             count = await conn.fetchval("SELECT COUNT(*) FROM backtests")
-            status['backtests'] = {'count': count}
+            status["backtests"] = {"count": count}
         except Exception:
-            status['backtests'] = {'count': 0}
+            status["backtests"] = {"count": 0}
 
     finally:
         await conn.close()
@@ -1253,11 +1296,19 @@ async def _get_pg_status(database_url: str) -> dict:
 
 @app.command()
 def download(
-    data_type: str = typer.Argument("all", help="Data type: stocks, etfs, indices, industries, all"),
+    data_type: str = typer.Argument(
+        "all", help="Data type: stocks, etfs, indices, industries, all"
+    ),
     full: bool = typer.Option(False, "--full", help="Download full history"),
-    years: str = typer.Option(None, "--years", "-y", help="Years to download (comma-separated): 2023,2024,2025"),
-    mode: str = typer.Option("all", "--mode", "-m", help="Download mode for stocks/etfs: all, basic, daily, adjust"),
-    force: bool = typer.Option(False, "--force", "-f", help="Force re-download even if data exists"),
+    years: str = typer.Option(
+        None, "--years", "-y", help="Years to download (comma-separated): 2023,2024,2025"
+    ),
+    mode: str = typer.Option(
+        "all", "--mode", "-m", help="Download mode for stocks/etfs: all, basic, daily, adjust"
+    ),
+    force: bool = typer.Option(
+        False, "--force", "-f", help="Force re-download even if data exists"
+    ),
 ):
     """
     Download data from external sources to data/cache/.
@@ -1288,7 +1339,7 @@ def download(
     # Parse years if provided
     year_list = None
     if years:
-        year_list = [int(y.strip()) for y in years.split(',')]
+        year_list = [int(y.strip()) for y in years.split(",")]
         console.print(f"Target years: {year_list}")
 
     # Define all available downloaders
@@ -1315,10 +1366,13 @@ def download(
                 console.print(f"  [green]✓ Downloaded {count} industry records[/green]")
             else:
                 console.print(f"  [yellow]Unknown data type: {dtype}[/yellow]")
-                console.print(f"  [dim]Note: market_cap, northbound, institutional downloads are deprecated.[/dim]")
+                console.print(
+                    f"  [dim]Note: market_cap, northbound, institutional downloads are deprecated.[/dim]"
+                )
         except Exception as e:
             console.print(f"  [red]✗ {dtype} download failed: {e}[/red]")
             import traceback
+
             traceback.print_exc()
 
     console.print("\n[bold green]Download complete![/bold green]")
@@ -1383,13 +1437,13 @@ async def _get_pg_loaded_dates(pg_url: str, table: str) -> set:
         try:
             if table == "market_daily":
                 rows = await conn.fetch("SELECT DISTINCT date FROM market_daily")
-                return {str(row['date']) for row in rows}
+                return {str(row["date"]) for row in rows}
             elif table == "indicator_valuation":
                 rows = await conn.fetch("SELECT DISTINCT date FROM indicator_valuation")
-                return {str(row['date']) for row in rows}
+                return {str(row["date"]) for row in rows}
             elif table == "stock_microstructure":
                 rows = await conn.fetch("SELECT DISTINCT date FROM stock_microstructure")
-                return {str(row['date']) for row in rows}
+                return {str(row["date"]) for row in rows}
             return set()
         finally:
             await conn.close()
@@ -1399,10 +1453,16 @@ async def _get_pg_loaded_dates(pg_url: str, table: str) -> set:
 
 @app.command()
 def load(
-    data_type: str = typer.Argument("all", help="Data type: stocks, etfs, indices, industries, all"),
+    data_type: str = typer.Argument(
+        "all", help="Data type: stocks, etfs, indices, industries, all"
+    ),
     full: bool = typer.Option(False, "--full", help="Load all data"),
-    years: str = typer.Option(None, "--years", "-y", help="Years to load (comma-separated): 2023,2024"),
-    source: str = typer.Option(None, "--source", "-s", help="Source directory (default: data/cache/)"),
+    years: str = typer.Option(
+        None, "--years", "-y", help="Years to load (comma-separated): 2023,2024"
+    ),
+    source: str = typer.Option(
+        None, "--source", "-s", help="Source directory (default: data/cache/)"
+    ),
     skip_check: bool = typer.Option(False, "--skip-check", help="Skip cache integrity check"),
     database_url: str = typer.Option(DEFAULT_DATABASE_URL, "--database", "-d", help="Database URL"),
 ):
@@ -1431,7 +1491,7 @@ def load(
     # Parse years if provided
     year_list = []
     if years:
-        year_list = [y.strip() for y in years.split(',')]
+        year_list = [y.strip() for y in years.split(",")]
         console.print(f"Target years: {year_list}")
 
     # Determine types to load
@@ -1449,7 +1509,9 @@ def load(
             console.print(f"\n[yellow]Missing data in cache:[/yellow]")
             for dtype in cache_status["missing"]:
                 console.print(f"  - {dtype}")
-            console.print(f"\n[dim]Run 'data_cli download {' '.join(cache_status['missing'])}' to download[/dim]")
+            console.print(
+                f"\n[dim]Run 'data_cli download {' '.join(cache_status['missing'])}' to download[/dim]"
+            )
 
             # Filter out missing types
             types_to_load = [t for t in types_to_load if t not in cache_status["missing"]]
@@ -1485,10 +1547,15 @@ def load(
                     db_file = source_dir / f"a_stock_{year}.db"
                     if db_file.exists():
                         cmd = [
-                            "python", "-m", "scripts.migrate_all_data",
-                            "--source", str(db_file),
-                            "--type", "stock",
-                            "-d", pg_url,
+                            "python",
+                            "-m",
+                            "scripts.migrate_all_data",
+                            "--source",
+                            str(db_file),
+                            "--type",
+                            "stock",
+                            "-d",
+                            pg_url,
                         ]
                         console.print(f"  Command: {' '.join(cmd)}")
                         result = subprocess.run(cmd, cwd=str(BACKEND_DIR), capture_output=False)
@@ -1501,10 +1568,15 @@ def load(
             else:
                 # Load all stock databases
                 cmd = [
-                    "python", "-m", "scripts.migrate_all_data",
-                    "--source-dir", str(source_dir),
-                    "--type", "stock",
-                    "-d", pg_url,
+                    "python",
+                    "-m",
+                    "scripts.migrate_all_data",
+                    "--source-dir",
+                    str(source_dir),
+                    "--type",
+                    "stock",
+                    "-d",
+                    pg_url,
                     "--all",
                 ]
                 console.print(f"  Command: {' '.join(cmd)}")
@@ -1522,10 +1594,15 @@ def load(
                     db_file = source_dir / f"etf_{year}.db"
                     if db_file.exists():
                         cmd = [
-                            "python", "-m", "scripts.migrate_all_data",
-                            "--source", str(db_file),
-                            "--type", "etf",
-                            "-d", pg_url,
+                            "python",
+                            "-m",
+                            "scripts.migrate_all_data",
+                            "--source",
+                            str(db_file),
+                            "--type",
+                            "etf",
+                            "-d",
+                            pg_url,
                         ]
                         console.print(f"  Command: {' '.join(cmd)}")
                         result = subprocess.run(cmd, cwd=str(BACKEND_DIR), capture_output=False)
@@ -1538,10 +1615,15 @@ def load(
             else:
                 # Load all ETF databases
                 cmd = [
-                    "python", "-m", "scripts.migrate_all_data",
-                    "--source-dir", str(source_dir),
-                    "--type", "etf",
-                    "-d", pg_url,
+                    "python",
+                    "-m",
+                    "scripts.migrate_all_data",
+                    "--source-dir",
+                    str(source_dir),
+                    "--type",
+                    "etf",
+                    "-d",
+                    pg_url,
                     "--all",
                 ]
                 console.print(f"  Command: {' '.join(cmd)}")
@@ -1565,8 +1647,11 @@ def load(
             industry_db = source_dir / "industry_classification.db"
             if industry_db.exists():
                 cmd = [
-                    "python", "-m", "scripts.import_sw_industry",
-                    "--source", str(industry_db),
+                    "python",
+                    "-m",
+                    "scripts.import_sw_industry",
+                    "--source",
+                    str(industry_db),
                 ]
                 console.print(f"  Command: {' '.join(cmd)}")
                 result = subprocess.run(cmd, cwd=str(BACKEND_DIR), capture_output=False)
@@ -1579,7 +1664,9 @@ def load(
 
         else:
             console.print(f"  [yellow]⚠ Unknown data type: {dtype}[/yellow]")
-            console.print(f"  [dim]Note: market_cap, northbound, institutional loads are deprecated.[/dim]")
+            console.print(
+                f"  [dim]Note: market_cap, northbound, institutional loads are deprecated.[/dim]"
+            )
 
     # After loading stocks, run classification computations
     # IMPORTANT: Frontend API always queries based on the LATEST date in market_daily
@@ -1592,8 +1679,11 @@ def load(
         # This is because the frontend uses: SELECT MAX(date) FROM market_daily
         # and then joins stock_style_exposure WHERE date == latest_date
         cmd = [
-            "python", "-m", "scripts.compute_classifications",
-            "--database-url", pg_url,
+            "python",
+            "-m",
+            "scripts.compute_classifications",
+            "--database-url",
+            pg_url,
         ]
         console.print(f"  Computing for database's latest trading date...")
         result = subprocess.run(cmd, cwd=str(BACKEND_DIR), capture_output=False)
@@ -1653,7 +1743,7 @@ async def _load_market_cap_from_source(pg_url: str, sqlite_path: Path, years: li
                 total_mv = COALESCE(EXCLUDED.total_mv, indicator_valuation.total_mv),
                 circ_mv = COALESCE(EXCLUDED.circ_mv, indicator_valuation.circ_mv)
             """,
-            records
+            records,
         )
         return len(records)
     finally:
@@ -1690,7 +1780,9 @@ async def _load_northbound_from_source(pg_url: str, sqlite_path: Path, years: li
             row[2],
             row[3],
             row[2] > 5.0 if row[2] else False,
-            False, False, False  # is_institutional, is_retail_hot, is_main_controlled
+            False,
+            False,
+            False,  # is_institutional, is_retail_hot, is_main_controlled
         )
         for row in rows
     ]
@@ -1709,14 +1801,16 @@ async def _load_northbound_from_source(pg_url: str, sqlite_path: Path, years: li
                 northbound_holding_change = COALESCE(EXCLUDED.northbound_holding_change, stock_microstructure.northbound_holding_change),
                 is_northbound_heavy = COALESCE(EXCLUDED.is_northbound_heavy, stock_microstructure.is_northbound_heavy)
             """,
-            records
+            records,
         )
         return len(records)
     finally:
         await pg_conn.close()
 
 
-async def _load_institutional_from_source(pg_url: str, sqlite_path: Path, years: list = None) -> int:
+async def _load_institutional_from_source(
+    pg_url: str, sqlite_path: Path, years: list = None
+) -> int:
     """Load institutional holdings from full SQLite database to PostgreSQL."""
     import asyncpg
 
@@ -1745,7 +1839,9 @@ async def _load_institutional_from_source(pg_url: str, sqlite_path: Path, years:
             row[0],
             parse_date(row[1]),
             row[2] > 10.0 if row[2] else False,  # is_institutional
-            False, False, False  # is_northbound_heavy, is_retail_hot, is_main_controlled
+            False,
+            False,
+            False,  # is_northbound_heavy, is_retail_hot, is_main_controlled
         )
         for row in rows
     ]
@@ -1761,7 +1857,7 @@ async def _load_institutional_from_source(pg_url: str, sqlite_path: Path, years:
             ON CONFLICT (code, date) DO UPDATE SET
                 is_institutional = COALESCE(EXCLUDED.is_institutional, stock_microstructure.is_institutional)
             """,
-            records
+            records,
         )
         return len(records)
     finally:
@@ -1776,7 +1872,9 @@ async def _load_institutional_from_source(pg_url: str, sqlite_path: Path, years:
 @app.command()
 def sync(
     full: bool = typer.Option(False, "--full", "-f", help="Force full sync instead of incremental"),
-    check: bool = typer.Option(False, "--check", "-c", help="Check what needs to sync without syncing"),
+    check: bool = typer.Option(
+        False, "--check", "-c", help="Check what needs to sync without syncing"
+    ),
     source: str = typer.Option(None, "--source", "-s", help="Source directory for data"),
     database_url: str = typer.Option(DEFAULT_DATABASE_URL, "--database", "-d", help="Database URL"),
 ):
@@ -1809,22 +1907,23 @@ def sync(
         if check:
             console.print("\n[cyan]Sync Preview (--check mode, no changes made):[/cyan]")
             console.print(f"  Would sync {result.get('days_to_sync', 0)} trading day(s)")
-            if result.get('missing_dates'):
+            if result.get("missing_dates"):
                 console.print("  Missing dates:")
-                for d in result['missing_dates'][:10]:
+                for d in result["missing_dates"][:10]:
                     console.print(f"    - {d}")
-                if len(result.get('missing_dates', [])) > 10:
+                if len(result.get("missing_dates", [])) > 10:
                     console.print(f"    ... and {len(result['missing_dates']) - 10} more")
         else:
             console.print("\n[bold green]Sync complete![/bold green]")
             console.print(f"  Records imported: {result.get('records_imported', 0)}")
             console.print(f"  Duration: {result.get('duration_seconds', 0):.1f}s")
-            if result.get('error'):
+            if result.get("error"):
                 console.print(f"  [yellow]Warning: {result['error']}[/yellow]")
 
     except Exception as e:
         console.print(f"\n[red]Sync failed: {e}[/red]")
         import traceback
+
         traceback.print_exc()
         raise typer.Exit(1)
 
@@ -1848,13 +1947,13 @@ async def _run_sync(
     conn = await asyncpg.connect(pg_url)
 
     result = {
-        'sync_type': 'full' if full else 'daily',
-        'records_imported': 0,
-        'records_downloaded': 0,
-        'missing_dates': [],
-        'days_to_sync': 0,
-        'duration_seconds': 0,
-        'error': None,
+        "sync_type": "full" if full else "daily",
+        "records_imported": 0,
+        "records_downloaded": 0,
+        "missing_dates": [],
+        "days_to_sync": 0,
+        "duration_seconds": 0,
+        "error": None,
     }
 
     start_time = datetime.now()
@@ -1863,14 +1962,18 @@ async def _run_sync(
     try:
         # Create sync history record (unless check only)
         if not check_only:
-            await conn.execute("""
+            await conn.execute(
+                """
                 INSERT INTO sync_history (id, sync_type, status, triggered_by)
                 VALUES ($1, $2, 'running', 'cli')
-            """, sync_id, result['sync_type'])
+            """,
+                sync_id,
+                result["sync_type"],
+            )
 
         # Get database's latest date
         row = await conn.fetchrow("SELECT MAX(date) as max_date FROM market_daily")
-        db_latest = row['max_date'] if row and row['max_date'] else None
+        db_latest = row["max_date"] if row and row["max_date"] else None
 
         if db_latest:
             console.print(f"  Database latest date: {db_latest}")
@@ -1879,28 +1982,26 @@ async def _run_sync(
             today = date.today()
             if db_latest < today:
                 # There might be missing dates
-                result['missing_dates'] = [str(db_latest + timedelta(days=1))]  # Simplified
-                result['days_to_sync'] = (today - db_latest).days
+                result["missing_dates"] = [str(db_latest + timedelta(days=1))]  # Simplified
+                result["days_to_sync"] = (today - db_latest).days
         else:
             console.print("  [yellow]Database is empty[/yellow]")
-            result['days_to_sync'] = 1
+            result["days_to_sync"] = 1
 
         if check_only:
             return result
 
         # Perform sync if needed
-        if result['days_to_sync'] > 0 or full:
+        if result["days_to_sync"] > 0 or full:
             console.print(f"  Syncing {result['days_to_sync']} day(s)...")
-            console.print("  [dim]Running data import...[/dim]")
+            console.print("  [dim]Running data import (TuShare)...[/dim]")
 
-            from workers.batch_sync import (
-                sync_stocks_batch,
-                sync_etfs_batch,
-                sync_indices_batch,
+            from workers.trading_days import get_latest_trading_day
+            from workers.source_sync import (
+                sync_daily_data_with_source,
                 sync_adjust_factors,
                 get_pg_max_date,
                 get_pg_index_max_date,
-                get_latest_trading_day,
             )
 
             from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession
@@ -1916,27 +2017,25 @@ async def _run_sync(
 
             async with async_session() as session:
                 latest_trading_day = get_latest_trading_day()
-                pg_stock_date = await get_pg_max_date(session, 'stock')
-                pg_etf_date = await get_pg_max_date(session, 'etf')
-                pg_index_date = await get_pg_index_max_date(session)
 
-                records_imported = 0
+                # Sync daily data using TuShare
+                sync_result = await sync_daily_data_with_source(
+                    session,
+                    latest_trading_day,
+                    asset_types=["stock", "etf", "index"],
+                    progress_callback=None,
+                )
 
-                if full or pg_stock_date is None or pg_stock_date < latest_trading_day:
-                    stock_result = await sync_stocks_batch(session, None)
-                    records_imported += stock_result.get("market_daily_count", 0)
+                records_imported = (
+                    sync_result.get("stock_count", 0)
+                    + sync_result.get("etf_count", 0)
+                    + sync_result.get("index_count", 0)
+                )
 
-                if full or pg_etf_date is None or pg_etf_date < latest_trading_day:
-                    etf_result = await sync_etfs_batch(session, None)
-                    records_imported += etf_result.get("market_daily_count", 0)
-
-                if full or pg_index_date is None or pg_index_date < latest_trading_day:
-                    index_result = await sync_indices_batch(session, None)
-                    records_imported += index_result.get("market_daily_count", 0)
-
+                # Sync adjust factors
                 adjust_result = await sync_adjust_factors(session, None)
-                result['records_imported'] = records_imported
-                result['records_downloaded'] = records_imported
+                result["records_imported"] = records_imported
+                result["records_downloaded"] = records_imported
 
             await engine.dispose()
 
@@ -1958,13 +2057,14 @@ async def _run_sync(
                     console.print("  [green]Classifications updated[/green]")
                 except Exception as e:
                     console.print(f"  [yellow]Classification failed: {e}[/yellow]")
-                    result['error'] = str(e)
+                    result["error"] = str(e)
 
         # Update sync history
         elapsed = (datetime.now() - start_time).total_seconds()
-        result['duration_seconds'] = elapsed
+        result["duration_seconds"] = elapsed
 
-        await conn.execute("""
+        await conn.execute(
+            """
             UPDATE sync_history
             SET status = $1,
                 completed_at = NOW(),
@@ -1972,20 +2072,29 @@ async def _run_sync(
                 records_imported = $3,
                 records_downloaded = $4
             WHERE id = $5
-        """, 'success' if not result['error'] else 'partial', elapsed,
-            result['records_imported'], result['records_downloaded'], sync_id)
+        """,
+            "success" if not result["error"] else "partial",
+            elapsed,
+            result["records_imported"],
+            result["records_downloaded"],
+            sync_id,
+        )
 
     except Exception as e:
         # Mark sync as failed
         if not check_only:
             try:
-                await conn.execute("""
+                await conn.execute(
+                    """
                     UPDATE sync_history
                     SET status = 'failed',
                         completed_at = NOW(),
                         error_message = $1
                     WHERE id = $2
-                """, str(e), sync_id)
+                """,
+                    str(e),
+                    sync_id,
+                )
             except:
                 pass
         raise
@@ -2024,20 +2133,26 @@ def fix(
     console.print("\n[bold blue]Data Quality Check[/bold blue]\n")
 
     try:
-        result = asyncio.run(_run_fix(database_url, check_only=check, repair=repair, target_date=target_date))
+        result = asyncio.run(
+            _run_fix(database_url, check_only=check, repair=repair, target_date=target_date)
+        )
 
         console.print("\n[cyan]═══ Issues Found ═══[/cyan]\n")
 
-        issues = result.get('issues', [])
+        issues = result.get("issues", [])
         if not issues:
             console.print("[green]No issues detected![/green]")
         else:
             for issue in issues:
-                status = "[green]Fixed[/green]" if issue.get('fixed') else "[yellow]Pending[/yellow]"
+                status = (
+                    "[green]Fixed[/green]" if issue.get("fixed") else "[yellow]Pending[/yellow]"
+                )
                 console.print(f"  [{issue['severity']}] {issue['description']} - {status}")
 
             if check and not repair:
-                console.print(f"\n[dim]Run 'python -m scripts.data_cli fix --repair' to fix issues[/dim]")
+                console.print(
+                    f"\n[dim]Run 'python -m scripts.data_cli fix --repair' to fix issues[/dim]"
+                )
 
         if repair:
             console.print(f"\n[bold green]Repair complete![/bold green]")
@@ -2046,6 +2161,7 @@ def fix(
     except Exception as e:
         console.print(f"\n[red]Fix check failed: {e}[/red]")
         import traceback
+
         traceback.print_exc()
         raise typer.Exit(1)
 
@@ -2069,8 +2185,8 @@ async def _run_fix(
     conn = await asyncpg.connect(pg_url)
 
     result = {
-        'issues': [],
-        'fixed_count': 0,
+        "issues": [],
+        "fixed_count": 0,
     }
 
     try:
@@ -2082,15 +2198,15 @@ async def _run_fix(
                 (SELECT MAX(date) FROM classification_snapshot) as class_latest
         """)
 
-        if row['market_latest'] and row['class_latest']:
-            if row['market_latest'] > row['class_latest']:
+        if row["market_latest"] and row["class_latest"]:
+            if row["market_latest"] > row["class_latest"]:
                 issue = {
-                    'severity': 'WARN',
-                    'type': 'stale_classification',
-                    'description': f"Classification snapshot stale (market: {row['market_latest']}, class: {row['class_latest']})",
-                    'fixed': False,
+                    "severity": "WARN",
+                    "type": "stale_classification",
+                    "description": f"Classification snapshot stale (market: {row['market_latest']}, class: {row['class_latest']})",
+                    "fixed": False,
                 }
-                result['issues'].append(issue)
+                result["issues"].append(issue)
 
                 if repair:
                     console.print(f"    Recomputing classification for {row['market_latest']}...")
@@ -2101,14 +2217,16 @@ async def _run_fix(
                             generate_classification_snapshot,
                         )
 
-                        async_db_url = database_url.replace("postgresql://", "postgresql+asyncpg://")
+                        async_db_url = database_url.replace(
+                            "postgresql://", "postgresql+asyncpg://"
+                        )
                         ctx = {}
-                        calc_date = str(row['market_latest'])
+                        calc_date = str(row["market_latest"])
                         await calculate_structural_classification(ctx, calc_date, async_db_url)
                         await calculate_style_factors(ctx, calc_date, async_db_url)
                         await generate_classification_snapshot(ctx, calc_date, async_db_url)
-                        issue['fixed'] = True
-                        result['fixed_count'] += 1
+                        issue["fixed"] = True
+                        result["fixed_count"] += 1
                     except Exception as e:
                         console.print(f"    [red]Failed: {e}[/red]")
 
@@ -2120,44 +2238,47 @@ async def _run_fix(
             FROM index_profile
         """)
 
-        if row and row['total'] > 0:
-            if row['with_composition'] < row['total']:
+        if row and row["total"] > 0:
+            if row["with_composition"] < row["total"]:
                 issue = {
-                    'severity': 'INFO',
-                    'type': 'missing_index_composition',
-                    'description': f"Index composition: {row['with_composition']}/{row['total']} computed",
-                    'fixed': False,
+                    "severity": "INFO",
+                    "type": "missing_index_composition",
+                    "description": f"Index composition: {row['with_composition']}/{row['total']} computed",
+                    "fixed": False,
                 }
-                result['issues'].append(issue)
+                result["issues"].append(issue)
 
                 if repair:
                     console.print("    Computing index compositions...")
                     try:
                         from workers.index_tasks import calculate_index_industry_composition
+
                         ctx = {}
-                        async_db_url = database_url.replace("postgresql://", "postgresql+asyncpg://")
+                        async_db_url = database_url.replace(
+                            "postgresql://", "postgresql+asyncpg://"
+                        )
                         await calculate_index_industry_composition(ctx, database_url=async_db_url)
-                        issue['fixed'] = True
-                        result['fixed_count'] += 1
+                        issue["fixed"] = True
+                        result["fixed_count"] += 1
                     except Exception as e:
                         console.print(f"    [red]Failed: {e}[/red]")
 
         # Check 3: Empty tables
         console.print("  Checking for empty tables...")
         empty_tables = []
-        for table in ['asset_meta', 'market_daily', 'index_constituents']:
+        for table in ["asset_meta", "market_daily", "index_constituents"]:
             count = await conn.fetchval(f"SELECT COUNT(*) FROM {table}")
             if count == 0:
                 empty_tables.append(table)
 
         if empty_tables:
             issue = {
-                'severity': 'ERROR',
-                'type': 'empty_tables',
-                'description': f"Empty tables: {', '.join(empty_tables)}",
-                'fixed': False,
+                "severity": "ERROR",
+                "type": "empty_tables",
+                "description": f"Empty tables: {', '.join(empty_tables)}",
+                "fixed": False,
             }
-            result['issues'].append(issue)
+            result["issues"].append(issue)
 
     finally:
         await conn.close()
@@ -2213,7 +2334,9 @@ def update(
 @app.command("copy-cache")
 def copy_cache(
     source: str = typer.Option(None, "--source", "-s", help="Source directory to copy from"),
-    target: str = typer.Option(None, "--target", "-t", help="Target directory (default: data/cache/)"),
+    target: str = typer.Option(
+        None, "--target", "-t", help="Target directory (default: data/cache/)"
+    ),
     force: bool = typer.Option(False, "--force", "-f", help="Overwrite existing files"),
 ):
     """
@@ -2279,7 +2402,9 @@ def copy_cache(
 def generate_fixtures_cmd(
     stocks: int = typer.Option(100, "--stocks", "-s", help="Number of sample stocks"),
     days: int = typer.Option(30, "--days", "-d", help="Number of days of history"),
-    source: str = typer.Option(None, "--source", help="Source data directory (default: data/cache/)"),
+    source: str = typer.Option(
+        None, "--source", help="Source data directory (default: data/cache/)"
+    ),
 ):
     """
     Generate fixture files from cache dataset.

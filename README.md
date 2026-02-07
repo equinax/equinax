@@ -123,22 +123,19 @@ just data-backfill 7  # 补全最近 7 天数据（使用 TuShare）
 
 ### 数据源
 
-系统支持两种数据源：
+**本系统仅使用 TuShare Pro 作为数据源。**
 
-| 数据源 | 特点 | 配置 |
-|--------|------|------|
-| **TuShare**（默认） | 高效稳定，每日仅需几次 API 调用 | 需要 `TUSHARE_API_KEY` |
-| **AkShare** | 免费，但容易被限流 | 无需配置 |
-
-TuShare 使用批量 API，一次请求获取全市场数据：
+TuShare 使用批量 API，一次请求获取全市场数据，高效稳定：
 - `pro.daily()` - 全市场股票日线
 - `pro.fund_daily()` - 全市场 ETF 日线
+- `pro.index_daily()` - 指数日线
+- `pro.daily_basic()` - 估值数据 (PE, PB 等)
+- `pro.adj_factor()` - 复权因子
 
 在 `backend/.env.docker` 中配置：
 
 ```env
-DATA_SOURCE=tushare          # 或 akshare
-TUSHARE_API_KEY=your_key     # TuShare Pro API Key
+TUSHARE_API_KEY=your_key     # TuShare Pro API Key (需要 5000+ 积分)
 ```
 
 ## 前端开发
@@ -164,7 +161,7 @@ trader/
 │   │   ├── services/       # 业务逻辑
 │   │   └── domain/engine/  # Backtrader 集成
 │   ├── data/               # 数据模块
-│   │   ├── downloads/      # 下载脚本 (AKShare/BaoStock)
+│   │   ├── downloads/      # 数据下载脚本 (TuShare)
 │   │   ├── cache/          # SQLite 缓存 (git-ignored)
 │   │   └── fixtures/       # 小样本数据
 │   ├── scripts/            # CLI 工具 (data_cli.py, fixtures.py)
@@ -185,7 +182,6 @@ trader/
 DATABASE_URL=postgresql+asyncpg://quant:quant_dev_password@db:5432/quantdb
 REDIS_URL=redis://redis:6379/0
 SECRET_KEY=dev-secret-key-change-in-production
-DATA_SOURCE=tushare           # 数据源: tushare 或 akshare
 TUSHARE_API_KEY=your_key      # TuShare Pro API Key (需要 5000+ 积分)
 ```
 

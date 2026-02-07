@@ -25,8 +25,10 @@ router = APIRouter()
 # Pydantic Schemas
 # ============================================
 
+
 class DataTableStatus(BaseModel):
     """Status of a data table."""
+
     name: str
     record_count: int
     date_range: Optional[str] = None
@@ -35,6 +37,7 @@ class DataTableStatus(BaseModel):
 
 class HealthDeduction(BaseModel):
     """Health score deduction item."""
+
     table: str
     reason: str
     points: int
@@ -42,6 +45,7 @@ class HealthDeduction(BaseModel):
 
 class SyncHistoryItem(BaseModel):
     """Sync history entry."""
+
     id: str
     sync_type: str
     status: str
@@ -59,8 +63,11 @@ class SyncHistoryItem(BaseModel):
 
 class DataSyncStatusResponse(BaseModel):
     """Full data sync status response."""
+
     health_score: int = Field(ge=0, le=100, description="Overall health percentage")
-    health_deductions: List[HealthDeduction] = Field(default_factory=list, description="Health score deduction breakdown")
+    health_deductions: List[HealthDeduction] = Field(
+        default_factory=list, description="Health score deduction breakdown"
+    )
     last_sync: Optional[SyncHistoryItem] = None
     next_scheduled: str = "Daily 16:30 CST"
     tables: List[DataTableStatus]
@@ -70,12 +77,14 @@ class DataSyncStatusResponse(BaseModel):
 
 class TriggerSyncRequest(BaseModel):
     """Request to trigger a sync."""
+
     sync_type: str = Field(default="daily", description="Type: daily, full")
     force: bool = Field(default=False, description="Force sync even if not needed")
 
 
 class TriggerSyncResponse(BaseModel):
     """Response after triggering sync."""
+
     job_id: str
     status: str
     message: str
@@ -83,6 +92,7 @@ class TriggerSyncResponse(BaseModel):
 
 class DataCompletenessResponse(BaseModel):
     """Data completeness metrics."""
+
     total_assets: int
     total_trading_days: int
     data_coverage_pct: float
@@ -93,6 +103,7 @@ class DataCompletenessResponse(BaseModel):
 
 class SyncAnalysis(BaseModel):
     """Pre-sync data analysis."""
+
     latest_data_date: Optional[str] = None
     latest_trading_day: Optional[str] = None
     trading_day_source: str = "baostock"  # baostock, akshare, rule-based
@@ -104,6 +115,7 @@ class SyncAnalysis(BaseModel):
 
 class SyncEventLog(BaseModel):
     """Single event log entry."""
+
     type: str
     timestamp: str
     data: dict
@@ -111,6 +123,7 @@ class SyncEventLog(BaseModel):
 
 class SyncJobDetail(BaseModel):
     """Detailed sync job info including event log."""
+
     id: str
     sync_type: str
     status: str
@@ -130,6 +143,7 @@ class SyncJobDetail(BaseModel):
 
 class PaginatedSyncHistory(BaseModel):
     """Paginated sync history response."""
+
     items: List[SyncHistoryItem]
     total: int
     limit: int
@@ -139,6 +153,7 @@ class PaginatedSyncHistory(BaseModel):
 # ============================================
 # API Endpoints
 # ============================================
+
 
 @router.get("/status", response_model=DataSyncStatusResponse)
 async def get_sync_status(
@@ -160,19 +175,23 @@ async def get_sync_status(
     try:
         result = await db.execute(
             select(
-                func.count(AssetMeta.code).label('count'),
-                func.count().filter(AssetMeta.asset_type == AssetType.STOCK).label('stocks'),
-                func.count().filter(AssetMeta.asset_type == AssetType.ETF).label('etfs'),
-                func.count().filter(AssetMeta.asset_type == AssetType.INDEX).label('indices'),
+                func.count(AssetMeta.code).label("count"),
+                func.count().filter(AssetMeta.asset_type == AssetType.STOCK).label("stocks"),
+                func.count().filter(AssetMeta.asset_type == AssetType.ETF).label("etfs"),
+                func.count().filter(AssetMeta.asset_type == AssetType.INDEX).label("indices"),
             )
         )
         row = result.first()
-        tables.append(DataTableStatus(
-            name="Assets",
-            record_count=row.count if row else 0,
-            date_range=f"Stocks: {row.stocks}, ETFs: {row.etfs}, Indices: {row.indices}" if row else "-",
-            status="OK" if row and row.count > 0 else "Empty",
-        ))
+        tables.append(
+            DataTableStatus(
+                name="Assets",
+                record_count=row.count if row else 0,
+                date_range=f"Stocks: {row.stocks}, ETFs: {row.etfs}, Indices: {row.indices}"
+                if row
+                else "-",
+                status="OK" if row and row.count > 0 else "Empty",
+            )
+        )
     except Exception:
         tables.append(DataTableStatus(name="Assets", record_count=0, status="Error"))
 
@@ -180,19 +199,21 @@ async def get_sync_status(
     try:
         result = await db.execute(
             select(
-                func.count(MarketDaily.code).label('count'),
-                func.min(MarketDaily.date).label('min_date'),
-                func.max(MarketDaily.date).label('max_date'),
+                func.count(MarketDaily.code).label("count"),
+                func.min(MarketDaily.date).label("min_date"),
+                func.max(MarketDaily.date).label("max_date"),
             )
         )
         row = result.first()
         date_range = f"{row.min_date} ~ {row.max_date}" if row and row.min_date else "-"
-        tables.append(DataTableStatus(
-            name="Market Daily",
-            record_count=row.count if row else 0,
-            date_range=date_range,
-            status="OK" if row and row.count > 0 else "Empty",
-        ))
+        tables.append(
+            DataTableStatus(
+                name="Market Daily",
+                record_count=row.count if row else 0,
+                date_range=date_range,
+                status="OK" if row and row.count > 0 else "Empty",
+            )
+        )
     except Exception:
         tables.append(DataTableStatus(name="Market Daily", record_count=0, status="Error"))
 
@@ -201,18 +222,22 @@ async def get_sync_status(
     health_deductions: List[HealthDeduction] = []
     for t in tables:
         if t.status == "Empty":
-            health_deductions.append(HealthDeduction(
-                table=t.name,
-                reason="表数据为空",
-                points=-20,
-            ))
+            health_deductions.append(
+                HealthDeduction(
+                    table=t.name,
+                    reason="表数据为空",
+                    points=-20,
+                )
+            )
             health_score -= 20
         elif t.status == "Error":
-            health_deductions.append(HealthDeduction(
-                table=t.name,
-                reason="查询出错",
-                points=-10,
-            ))
+            health_deductions.append(
+                HealthDeduction(
+                    table=t.name,
+                    reason="查询出错",
+                    points=-10,
+                )
+            )
             health_score -= 10
     health_score = max(0, health_score)
 
@@ -220,9 +245,7 @@ async def get_sync_status(
     last_sync = None
     try:
         result = await db.execute(
-            select(SyncHistory)
-            .order_by(desc(SyncHistory.started_at))
-            .limit(1)
+            select(SyncHistory).order_by(desc(SyncHistory.started_at)).limit(1)
         )
         sync_row = result.scalar_one_or_none()
         if sync_row:
@@ -232,7 +255,9 @@ async def get_sync_status(
                 status=sync_row.status,
                 started_at=sync_row.started_at,
                 completed_at=sync_row.completed_at,
-                duration_seconds=float(sync_row.duration_seconds) if sync_row.duration_seconds else None,
+                duration_seconds=float(sync_row.duration_seconds)
+                if sync_row.duration_seconds
+                else None,
                 records_downloaded=sync_row.records_downloaded,
                 records_imported=sync_row.records_imported,
                 records_classified=sync_row.records_classified,
@@ -331,10 +356,7 @@ async def get_sync_history(
 
     # Get paginated items
     result = await db.execute(
-        select(SyncHistory)
-        .order_by(desc(SyncHistory.started_at))
-        .limit(limit)
-        .offset(offset)
+        select(SyncHistory).order_by(desc(SyncHistory.started_at)).limit(limit).offset(offset)
     )
     rows = result.scalars().all()
 
@@ -372,9 +394,7 @@ async def get_sync_job(
 
     Use this endpoint to poll for job progress after triggering a sync.
     """
-    result = await db.execute(
-        select(SyncHistory).where(SyncHistory.id == job_id)
-    )
+    result = await db.execute(select(SyncHistory).where(SyncHistory.id == job_id))
     row = result.scalar_one_or_none()
 
     if not row:
@@ -408,9 +428,7 @@ async def cancel_sync_job(
     This marks the job as cancelled in the database.
     Note: This does NOT actually stop the worker process - it just updates the status.
     """
-    result = await db.execute(
-        select(SyncHistory).where(SyncHistory.id == job_id)
-    )
+    result = await db.execute(select(SyncHistory).where(SyncHistory.id == job_id))
     job = result.scalar_one_or_none()
 
     if not job:
@@ -471,7 +489,9 @@ async def get_active_sync_job(
             # Mark as stale
             row.status = "stale"
             row.completed_at = datetime.now()
-            row.error_message = f"Task exceeded {STALE_THRESHOLD_MINUTES} minutes timeout - marked as stale"
+            row.error_message = (
+                f"Task exceeded {STALE_THRESHOLD_MINUTES} minutes timeout - marked as stale"
+            )
             await db.commit()
 
     return SyncHistoryItem(
@@ -500,9 +520,7 @@ async def stream_sync_events(
     Events include: plan, progress, step_complete, job_complete, error.
     """
     # Verify job exists
-    result = await db.execute(
-        select(SyncHistory).where(SyncHistory.id == job_id)
-    )
+    result = await db.execute(select(SyncHistory).where(SyncHistory.id == job_id))
     job = result.scalar_one_or_none()
     if not job:
         raise HTTPException(
@@ -517,7 +535,7 @@ async def stream_sync_events(
             "Cache-Control": "no-cache",
             "Connection": "keep-alive",
             "X-Accel-Buffering": "no",
-        }
+        },
     )
 
 
@@ -537,9 +555,9 @@ async def get_data_completeness(
     # Get date range and trading days
     date_result = await db.execute(
         select(
-            func.count(func.distinct(MarketDaily.date)).label('days'),
-            func.min(MarketDaily.date).label('min_date'),
-            func.max(MarketDaily.date).label('max_date'),
+            func.count(func.distinct(MarketDaily.date)).label("days"),
+            func.min(MarketDaily.date).label("min_date"),
+            func.max(MarketDaily.date).label("max_date"),
         )
     )
     date_row = date_result.first()
@@ -573,9 +591,11 @@ async def analyze_sync_requirements(
     Compares with latest trading day (not today) to account for weekends/holidays.
     """
     from datetime import date
-    from workers.batch_sync import (
+    from workers.trading_days import (
         get_latest_trading_day_with_source,
         get_trading_days_between,
+    )
+    from workers.source_sync import (
         get_pg_max_date,
         get_pg_index_max_date,
     )
@@ -588,8 +608,8 @@ async def analyze_sync_requirements(
     latest_trading_day_str = latest_trading_day.strftime("%Y-%m-%d")
 
     # Get latest data date for each data type
-    stock_date = await get_pg_max_date(db, 'stock')
-    etf_date = await get_pg_max_date(db, 'etf')
+    stock_date = await get_pg_max_date(db, "stock")
+    etf_date = await get_pg_max_date(db, "etf")
     index_date = await get_pg_index_max_date(db)
 
     # Determine which data types need sync
@@ -654,9 +674,7 @@ async def get_sync_job_detail(
     1. Progress recovery when SSE reconnects
     2. Viewing history logs
     """
-    result = await db.execute(
-        select(SyncHistory).where(SyncHistory.id == job_id)
-    )
+    result = await db.execute(select(SyncHistory).where(SyncHistory.id == job_id))
     job = result.scalar_one_or_none()
 
     if not job:

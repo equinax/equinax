@@ -2,6 +2,7 @@
 多数据源架构
 
 支持在不同数据源之间切换，提供统一的数据获取接口。
+注意：TuShare Pro 是主要数据源，此模块用于辅助数据获取（如 baostock 交易日历）。
 
 Usage:
     from data.downloads.sources import get_source, DataSource
@@ -9,10 +10,6 @@ Usage:
     # 获取默认数据源
     source = get_source('baostock')
     df = source.get_stock_list()
-
-    # 按数据类型获取推荐数据源
-    source = get_source_for('stock_daily')  # -> BaoStock
-    source = get_source_for('market_cap')   # -> easyquotation (if available)
 """
 
 import os
@@ -26,9 +23,11 @@ _SOURCES: Dict[str, Type[DataSource]] = {}
 
 def register_source(name: str):
     """装饰器：注册数据源"""
+
     def decorator(cls):
         _SOURCES[name] = cls
         return cls
+
     return decorator
 
 
@@ -43,7 +42,7 @@ def get_source(name: str = None) -> DataSource:
         DataSource 实例
     """
     if name is None:
-        name = os.environ.get('DATA_SOURCE', 'baostock')
+        name = os.environ.get("DATA_SOURCE", "baostock")
 
     if name not in _SOURCES:
         available = list(_SOURCES.keys())
@@ -62,22 +61,20 @@ def get_source_for(data_type: str) -> DataSource:
     Returns:
         推荐的 DataSource 实例
     """
-    # 数据类型到推荐数据源的映射
+    # 数据类型到推荐数据源的映射 (主要数据通过 TuShare 在 workers/source_sync 处理)
     recommendations = {
-        'stock_daily': 'baostock',      # 股票日线 → BaoStock (最快、免费)
-        'etf_daily': 'akshare',         # ETF日线 → AKShare
-        'market_cap': 'easyquotation',  # 市值 → easyquotation (快速实时)
-        'index': 'akshare',             # 指数成分 → AKShare
-        'industry': 'akshare',          # 行业分类 → AKShare
-        'northbound': 'akshare',        # 北向持仓 → AKShare
-        'institutional': 'akshare',     # 机构持仓 → AKShare
+        "stock_daily": "baostock",  # 股票日线 → BaoStock (用于交易日历)
+        "etf_daily": "baostock",  # ETF日线
+        "market_cap": "baostock",  # 市值
+        "index": "baostock",  # 指数成分
+        "industry": "baostock",  # 行业分类
     }
 
-    source_name = recommendations.get(data_type, 'akshare')
+    source_name = recommendations.get(data_type, "baostock")
 
-    # 如果推荐的数据源不可用，回退到 akshare
-    if source_name not in _SOURCES:
-        source_name = 'akshare' if 'akshare' in _SOURCES else list(_SOURCES.keys())[0]
+    # 如果推荐的数据源不可用，使用第一个可用的
+    if source_name not in _SOURCES and _SOURCES:
+        source_name = list(_SOURCES.keys())[0]
 
     return _SOURCES[source_name]()
 
@@ -90,11 +87,6 @@ def list_sources() -> Dict[str, str]:
 # 导入并注册各数据源
 try:
     from .baostock_source import BaoStockSource
-except ImportError:
-    pass
-
-try:
-    from .akshare_source import AKShareSource
 except ImportError:
     pass
 
@@ -115,16 +107,15 @@ from .concurrent import (
 
 __all__ = [
     # 数据源基类和注册
-    'DataSource',
-    'register_source',
-    'get_source',
-    'get_source_for',
-    'list_sources',
-
+    "DataSource",
+    "register_source",
+    "get_source",
+    "get_source_for",
+    "list_sources",
     # 并发工具
-    'ConcurrentDownloader',
-    'DownloadResult',
-    'download_batch_sync',
-    'download_batch_async',
-    'ProgressTracker',
+    "ConcurrentDownloader",
+    "DownloadResult",
+    "download_batch_sync",
+    "download_batch_async",
+    "ProgressTracker",
 ]

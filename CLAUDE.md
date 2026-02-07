@@ -5,7 +5,7 @@
 A Chinese stock quantitative trading platform with:
 - **Backend**: FastAPI + PostgreSQL (TimescaleDB) + Redis + ARQ workers
 - **Frontend**: React + Vite + TypeScript + TailwindCSS + shadcn/ui
-- **Data Pipeline**: trading_data directory with akshare-based data downloaders
+- **Data Pipeline**: TuShare Pro API for all market data (stocks, ETFs, indices)
 
 ## Docker Environment
 
@@ -71,13 +71,20 @@ docker compose up -d api
 
 ## Data Sources
 
-- **trading_data** (`/Users/dan/Code/q/trading_data`): Local SQLite cache with:
-  - Daily K-line data
-  - Industry classification (SW申万 + EM东财)
-  - Stock profiles
-  - Market cap data
+**IMPORTANT: TuShare is the ONLY data source for this project.**
 
-Data is downloaded via akshare and cached in SQLite, then imported to PostgreSQL.
+- All market data (stocks, ETFs, indices) comes from TuShare Pro API
+- Do NOT use akshare - it has been removed due to instability and rate limiting issues
+- TuShare API key is required: `TUSHARE_API_KEY` environment variable
+
+Key TuShare APIs used:
+- `pro.daily()` - Stock daily OHLC data
+- `pro.fund_daily()` - ETF daily data  
+- `pro.index_daily()` - Index daily data
+- `pro.daily_basic()` - Stock valuation data (PE, PB, etc.)
+- `pro.adj_factor()` - Adjustment factors for backtesting
+
+Legacy data in SQLite (`/Users/dan/Code/q/trading_data`) may exist but is not actively used.
 
 ## Key Directories
 
