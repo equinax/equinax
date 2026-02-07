@@ -4,7 +4,7 @@ import { Card, CardContent } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Skeleton } from '@/components/ui/skeleton'
-import { TrendingUp, TrendingDown, ArrowLeft, Shuffle } from 'lucide-react'
+import { TrendingUp, TrendingDown, ArrowLeft, Shuffle, Loader2 } from 'lucide-react'
 import { StockChart, HoverData } from '@/components/stock/StockChart'
 import { cn } from '@/lib/utils'
 import { useGetAssetDetailApiV1UniverseCodeGet } from '@/api/generated/universe-cockpit/universe-cockpit'
@@ -22,6 +22,7 @@ export default function UniverseDetailPage() {
   const navigate = useNavigate()
   const [searchParams] = useSearchParams()
   const [hoverData, setHoverData] = useState<HoverData | null>(null)
+  const [isChartLoading, setIsChartLoading] = useState(false)
 
   const fromPage = searchParams.get('from')
   const activeDate = searchParams.get('date')
@@ -183,16 +184,21 @@ export default function UniverseDetailPage() {
           </div>
         </div>
 
-        {/* Button */}
-        <Button
-          variant="outline"
-          size="sm"
-          onClick={() => navigate(`/universe/${code}/inverse`)}
-          className="shrink-0 h-7 text-xs"
-        >
-          <Shuffle className="h-3 w-3 mr-1" />
-          查找反向
-        </Button>
+        {/* Loading indicator + Button */}
+        <div className="flex items-center gap-2 shrink-0">
+          {isChartLoading && (
+            <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
+          )}
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => navigate(`/universe/${code}/inverse`)}
+            className="h-7 text-xs"
+          >
+            <Shuffle className="h-3 w-3 mr-1" />
+            查找反向
+          </Button>
+        </div>
       </div>
 
       {/* Chart */}
@@ -202,6 +208,7 @@ export default function UniverseDetailPage() {
           height="100%"
           endDate={activeDate || undefined} 
           onHoverData={setHoverData}
+          onLoadingChange={setIsChartLoading}
         />
       </CardContent>
     </Card>

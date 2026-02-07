@@ -56,6 +56,7 @@ interface StockChartProps {
   height?: number | string
   endDate?: string
   onHoverData?: (data: HoverData | null) => void
+  onLoadingChange?: (isLoading: boolean) => void
 }
 
 type TimeRange = '1M' | '3M' | '6M' | '1Y' | '3Y' | '5Y' | 'ALL'
@@ -200,18 +201,45 @@ class VertLine implements ISeriesPrimitive<Time> {
   }
 }
 
-export function StockChart({ code, height = 500, endDate, onHoverData }: StockChartProps) {
+export function StockChart({ code, height = 500, endDate, onHoverData, onLoadingChange }: StockChartProps) {
   const containerRef = useRef<HTMLDivElement>(null)
   const chartRef = useRef<HTMLDivElement>(null)
   const chartApiRef = useRef<IChartApi | null>(null)
+  
+  const seriesRefs = useRef<{
+    candle: ISeriesApi<'Candlestick'> | null
+    volume: ISeriesApi<'Histogram'> | null
+    ma5: ISeriesApi<'Line'> | null
+    ma10: ISeriesApi<'Line'> | null
+    ma20: ISeriesApi<'Line'> | null
+    ma60: ISeriesApi<'Line'> | null
+    macdHist: ISeriesApi<'Histogram'> | null
+    macdDif: ISeriesApi<'Line'> | null
+    macdDea: ISeriesApi<'Line'> | null
+    rsi: ISeriesApi<'Line'> | null
+  }>({
+    candle: null,
+    volume: null,
+    ma5: null,
+    ma10: null,
+    ma20: null,
+    ma60: null,
+    macdHist: null,
+    macdDif: null,
+    macdDea: null,
+    rsi: null,
+  })
+
   const [chartHeight, setChartHeight] = useState<number>(typeof height === 'number' ? height : 500)
+  const [chartVersion, setChartVersion] = useState(0)
+  const prevChartVersionRef = useRef(0)
+  const savedRangeRef = useRef<LogicalRange | null>(null)
 
   const { theme } = useTheme()
   const isDark = theme === 'dark' || (theme === 'system' && window.matchMedia('(prefers-color-scheme: dark)').matches)
   const colors = getMarketColorsForTheme(isDark)
   const chartColors = getChartThemeColors(isDark)
 
-  // State
   const [timeRange, setTimeRange] = useState<TimeRange>('6M')
   const [indicators, setIndicators] = useState<IndicatorState>({
     ma5: true,
@@ -223,18 +251,20 @@ export function StockChart({ code, height = 500, endDate, onHoverData }: StockCh
     rsi: false,
   })
 
-  // Extra data fetched via incremental loading
   const [extraKlineData, setExtraKlineData] = useState<KLineData[]>([])
   const isFetchingRef = useRef(false)
   const oldestDateRef = useRef<string | null>(null)
+  const prevDataLengthRef = useRef(0)
+  const mergedKlineDataRef = useRef<KLineData[]>([])
+  const activeVertLineRef = useRef<VertLine | null>(null)
 
-  // Reset extra data when stock code changes
   useEffect(() => {
     setExtraKlineData([])
     oldestDateRef.current = null
+    prevDataLengthRef.current = 0
+    savedRangeRef.current = null
   }, [code])
 
-  // Fetch all K-line data once (time range buttons control zoom, not data fetching)
   const { data: klineData, isLoading } = useGetKlineApiV1StocksCodeKlineGet(
     code,
     { limit: 1000 },
@@ -246,10 +276,12 @@ export function StockChart({ code, height = 500, endDate, onHoverData }: StockCh
     }
   )
 
-  // Mutation for fetching missing historical data
   const fetchMissingMutation = useFetchMissingKlineApiV1StocksCodeKlineFetchMissingPost()
 
-  // Merge initial data with extra fetched data
+  useEffect(() => {
+    onLoadingChange?.(fetchMissingMutation.isPending)
+  }, [fetchMissingMutation.isPending, onLoadingChange])
+
   const mergedKlineData = useMemo(() => {
     if (!klineData?.data) return []
     const allData = [...klineData.data, ...extraKlineData]
@@ -258,7 +290,10 @@ export function StockChart({ code, height = 500, endDate, onHoverData }: StockCh
     return Array.from(uniqueMap.values()).sort((a, b) => a.date.localeCompare(b.date))
   }, [klineData, extraKlineData])
 
-  // Calculate indicators
+  useEffect(() => {
+    mergedKlineDataRef.current = mergedKlineData
+  }, [mergedKlineData])
+
   const calculatedIndicators = useMemo(() => {
     if (mergedKlineData.length === 0) return null
 
@@ -274,12 +309,10 @@ export function StockChart({ code, height = 500, endDate, onHoverData }: StockCh
     }
   }, [mergedKlineData])
 
-  // Toggle indicator
   const toggleIndicator = (key: keyof IndicatorState) => {
     setIndicators(prev => ({ ...prev, [key]: !prev[key] }))
   }
 
-  // Toggle all MA
   const toggleAllMA = () => {
     const allOn = indicators.ma5 && indicators.ma10 && indicators.ma20 && indicators.ma60
     setIndicators(prev => ({
@@ -291,7 +324,6 @@ export function StockChart({ code, height = 500, endDate, onHoverData }: StockCh
     }))
   }
 
-  // Fetch older historical data when user scrolls to left edge
   const fetchOlderData = useCallback(async (beforeDate: string) => {
     if (isFetchingRef.current || !code) return
     
@@ -326,21 +358,23 @@ export function StockChart({ code, height = 500, endDate, onHoverData }: StockCh
     }
   }, [code, fetchMissingMutation])
 
-  // Count enabled sub-charts
   const subChartCount = [indicators.volume, indicators.macd, indicators.rsi].filter(Boolean).length
 
-  // Create/update chart
   useEffect(() => {
-    if (!chartRef.current || mergedKlineData.length === 0) return
+    if (!chartRef.current) return
 
-    // Clean up existing chart
     if (chartApiRef.current) {
       try {
+        savedRangeRef.current = chartApiRef.current.timeScale().getVisibleLogicalRange()
         chartApiRef.current.remove()
       } catch {
         // Chart already disposed
       }
       chartApiRef.current = null
+      activeVertLineRef.current = null
+      Object.keys(seriesRefs.current).forEach(key => {
+        seriesRefs.current[key as keyof typeof seriesRefs.current] = null
+      })
     }
 
     const chart = createChart(chartRef.current, {
@@ -397,16 +431,7 @@ export function StockChart({ code, height = 500, endDate, onHoverData }: StockCh
     })
     chartApiRef.current = chart
 
-    // Use merged data (initial + extra fetched)
-    const sortedKline = mergedKlineData
-    
-    // Track oldest date
-    if (sortedKline.length > 0) {
-      oldestDateRef.current = sortedKline[0].date
-    }
-
-    // Add candlestick series (main chart)
-    const candleSeries = chart.addCandlestickSeries({
+    seriesRefs.current.candle = chart.addCandlestickSeries({
       upColor: colors.profit,
       downColor: colors.loss,
       borderUpColor: colors.profit,
@@ -416,32 +441,10 @@ export function StockChart({ code, height = 500, endDate, onHoverData }: StockCh
       priceScaleId: 'right',
     })
 
-    const candleData: CandlestickData<Time>[] = sortedKline.map(d => ({
-      time: d.date as Time,
-      open: Number(d.open) || 0,
-      high: Number(d.high) || 0,
-      low: Number(d.low) || 0,
-      close: Number(d.close) || 0,
-    }))
-    candleSeries.setData(candleData)
-
-    // Add vertical line primitive for reference date
-    if (endDate) {
-      const dateExists = sortedKline.some(d => d.date === endDate)
-      if (dateExists) {
-        const vertLine = new VertLine(chart, candleSeries, endDate as Time, '#1E40AF')
-        candleSeries.attachPrimitive(vertLine)
-      }
-    }
-
-    // MA line series storage
-    const lineSeries: { [key: string]: ISeriesApi<'Line'> } = {}
-
-    // Add MA lines
     const maKeys = ['ma5', 'ma10', 'ma20', 'ma60'] as const
     maKeys.forEach(key => {
-      if (indicators[key] && calculatedIndicators) {
-        lineSeries[key] = chart.addLineSeries({
+      if (indicators[key]) {
+        seriesRefs.current[key] = chart.addLineSeries({
           color: INDICATOR_COLORS[key],
           lineWidth: 1,
           priceLineVisible: false,
@@ -451,26 +454,11 @@ export function StockChart({ code, height = 500, endDate, onHoverData }: StockCh
       }
     })
 
-    // Set MA data
-    if (calculatedIndicators) {
-      const mapToLineData = (dataMap: Map<string, number>): LineData<Time>[] =>
-        Array.from(dataMap.entries())
-          .map(([date, value]) => ({ time: date as Time, value }))
-          .sort((a, b) => (a.time as string).localeCompare(b.time as string))
-
-      if (lineSeries.ma5) lineSeries.ma5.setData(mapToLineData(calculatedIndicators.ma5))
-      if (lineSeries.ma10) lineSeries.ma10.setData(mapToLineData(calculatedIndicators.ma10))
-      if (lineSeries.ma20) lineSeries.ma20.setData(mapToLineData(calculatedIndicators.ma20))
-      if (lineSeries.ma60) lineSeries.ma60.setData(mapToLineData(calculatedIndicators.ma60))
-    }
-
-    // Sub-chart index tracker
     let subChartIndex = 0
     const getSubChartMargins = () => {
       const totalSubCharts = subChartCount
       if (totalSubCharts === 0) return { top: 0.7, bottom: 0 }
 
-      // Calculate margin based on position
       const baseTop = 0.65
       const perChart = 0.35 / totalSubCharts
       const top = baseTop + subChartIndex * perChart
@@ -479,9 +467,8 @@ export function StockChart({ code, height = 500, endDate, onHoverData }: StockCh
       return { top, bottom: Math.max(0, bottom) }
     }
 
-    // Add Volume sub-chart
     if (indicators.volume) {
-      const volumeSeries = chart.addHistogramSeries({
+      seriesRefs.current.volume = chart.addHistogramSeries({
         priceFormat: { type: 'volume' },
         priceScaleId: 'volume',
       })
@@ -490,28 +477,17 @@ export function StockChart({ code, height = 500, endDate, onHoverData }: StockCh
         visible: false,
         scaleMargins: getSubChartMargins(),
       })
-
-      const volumeData: HistogramData<Time>[] = sortedKline.map(d => {
-        const change = (Number(d.close) || 0) - (Number(d.open) || 0)
-        return {
-          time: d.date as Time,
-          value: Number(d.volume) || 0,
-          color: change >= 0 ? `${colors.profit}80` : `${colors.loss}80`,
-        }
-      })
-      volumeSeries.setData(volumeData)
     }
 
-    // Add MACD sub-chart
-    if (indicators.macd && calculatedIndicators) {
+    if (indicators.macd) {
       const macdScaleId = 'macd'
       const margins = getSubChartMargins()
 
-      const macdHistSeries = chart.addHistogramSeries({
+      seriesRefs.current.macdHist = chart.addHistogramSeries({
         priceScaleId: macdScaleId,
       })
 
-      const macdDifSeries = chart.addLineSeries({
+      seriesRefs.current.macdDif = chart.addLineSeries({
         color: INDICATOR_COLORS.macdDif,
         lineWidth: 1,
         priceLineVisible: false,
@@ -519,7 +495,7 @@ export function StockChart({ code, height = 500, endDate, onHoverData }: StockCh
         priceScaleId: macdScaleId,
       })
 
-      const macdDeaSeries = chart.addLineSeries({
+      seriesRefs.current.macdDea = chart.addLineSeries({
         color: INDICATOR_COLORS.macdDea,
         lineWidth: 1,
         priceLineVisible: false,
@@ -531,32 +507,13 @@ export function StockChart({ code, height = 500, endDate, onHoverData }: StockCh
         visible: false,
         scaleMargins: margins,
       })
-
-      const { macd } = calculatedIndicators
-      const histData: HistogramData<Time>[] = Array.from(macd.hist.entries())
-        .map(([date, value]) => ({
-          time: date as Time,
-          value,
-          color: value >= 0 ? `${colors.profit}80` : `${colors.loss}80`,
-        }))
-        .sort((a, b) => (a.time as string).localeCompare(b.time as string))
-
-      const mapToLineData = (dataMap: Map<string, number>): LineData<Time>[] =>
-        Array.from(dataMap.entries())
-          .map(([date, value]) => ({ time: date as Time, value }))
-          .sort((a, b) => (a.time as string).localeCompare(b.time as string))
-
-      macdHistSeries.setData(histData)
-      macdDifSeries.setData(mapToLineData(macd.dif))
-      macdDeaSeries.setData(mapToLineData(macd.dea))
     }
 
-    // Add RSI sub-chart
-    if (indicators.rsi && calculatedIndicators) {
+    if (indicators.rsi) {
       const rsiScaleId = 'rsi'
       const margins = getSubChartMargins()
 
-      const rsiSeries = chart.addLineSeries({
+      seriesRefs.current.rsi = chart.addLineSeries({
         color: INDICATOR_COLORS.rsi,
         lineWidth: 1,
         priceLineVisible: false,
@@ -568,23 +525,10 @@ export function StockChart({ code, height = 500, endDate, onHoverData }: StockCh
         visible: false,
         scaleMargins: margins,
       })
-
-      const mapToLineData = (dataMap: Map<string, number>): LineData<Time>[] =>
-        Array.from(dataMap.entries())
-          .map(([date, value]) => ({ time: date as Time, value }))
-          .sort((a, b) => (a.time as string).localeCompare(b.time as string))
-
-      rsiSeries.setData(mapToLineData(calculatedIndicators.rsi))
     }
 
-    // Set initial visible range based on timeRange and endDate
-    const sortedDates = sortedKline.map(d => d.date)
-    const { from, to } = getVisibleRange(timeRange, sortedKline.length, endDate, sortedDates)
-    if (sortedKline.length > 0) {
-      chart.timeScale().setVisibleLogicalRange({ from, to })
-    }
+    setChartVersion(v => v + 1)
 
-    // Resize handler
     const resizeObserver = new ResizeObserver((entries) => {
       for (const entry of entries) {
         const width = entry.contentRect.width
@@ -602,12 +546,12 @@ export function StockChart({ code, height = 500, endDate, onHoverData }: StockCh
       resizeObserver.observe(containerRef.current)
     }
 
-    // Timer to handle delayed hiding of tooltip
     let hideTooltipTimer: NodeJS.Timeout | null = null;
 
     const handleMouseMove = (param: MouseEventParams<Time>) => {
       try {
-        if (!param.time || mergedKlineData.length === 0) {
+        const currentData = mergedKlineDataRef.current
+        if (!param.time || currentData.length === 0) {
           onHoverData?.(null)
           return
         }
@@ -618,13 +562,12 @@ export function StockChart({ code, height = 500, endDate, onHoverData }: StockCh
         }
 
         const timeStr = String(param.time)
-        const dataPoint = mergedKlineData.find(d => d.date === timeStr)
+        const dataPoint = currentData.find(d => d.date === timeStr)
 
         if (dataPoint) {
           const open = Number(dataPoint.open) || 0
           const close = Number(dataPoint.close) || 0
           const preclose = Number(dataPoint.preclose) || 0
-          // Calculate change_pct based on preclose (昨收) for consistency
           const change_pct = preclose !== 0 ? ((close - preclose) / preclose) * 100 : 0
 
           onHoverData?.({
@@ -654,7 +597,6 @@ export function StockChart({ code, height = 500, endDate, onHoverData }: StockCh
       }, 100)
     }
 
-    // Infinite scroll: fetch older data when user scrolls near left edge
     const handleVisibleRangeChange = (logicalRange: LogicalRange | null) => {
       if (!logicalRange || isFetchingRef.current) return
       
@@ -665,17 +607,11 @@ export function StockChart({ code, height = 500, endDate, onHoverData }: StockCh
     }
 
     chart.timeScale().subscribeVisibleLogicalRangeChange(handleVisibleRangeChange)
-
-    // Subscribe to mouse events
     chart.subscribeCrosshairMove(handleMouseMove);
 
-    // Also handle mouse leave on the chart element
     const chartContainer = chartRef.current;
     if (chartContainer) {
-      // Use capture phase to ensure we catch all mouseleave events
       chartContainer.addEventListener('mouseleave', handleMouseLeave, { capture: true });
-
-      // Listen for mouseenter to cancel the hide timer
       const handleMouseEnter = () => {
         if (hideTooltipTimer) {
           clearTimeout(hideTooltipTimer);
@@ -685,11 +621,7 @@ export function StockChart({ code, height = 500, endDate, onHoverData }: StockCh
       chartContainer.addEventListener('mouseenter', handleMouseEnter);
 
       return () => {
-        // Cleanup timers and event listeners
-        if (hideTooltipTimer) {
-          clearTimeout(hideTooltipTimer);
-        }
-
+        if (hideTooltipTimer) clearTimeout(hideTooltipTimer);
         try {
           resizeObserver.disconnect();
           chart.timeScale().unsubscribeVisibleLogicalRangeChange(handleVisibleRangeChange);
@@ -703,23 +635,132 @@ export function StockChart({ code, height = 500, endDate, onHoverData }: StockCh
           console.error('Error cleaning up chart:', error);
         }
       };
-    } else {
-      return () => {
-        if (hideTooltipTimer) {
-          clearTimeout(hideTooltipTimer);
-        }
-
-        try {
-          resizeObserver.disconnect();
-          chart.timeScale().unsubscribeVisibleLogicalRangeChange(handleVisibleRangeChange);
-          chart.unsubscribeCrosshairMove(handleMouseMove);
-          chart.remove();
-        } catch (error) {
-          console.error('Error cleaning up chart:', error);
-        }
-      };
     }
-  }, [isDark, chartHeight, mergedKlineData, calculatedIndicators, indicators, colors, chartColors, subChartCount, timeRange, endDate, fetchOlderData, onHoverData])
+  }, [isDark, chartHeight, indicators, colors, chartColors, subChartCount, fetchOlderData, onHoverData])
+
+  useEffect(() => {
+    if (!chartApiRef.current || mergedKlineData.length === 0) return
+
+    const chart = chartApiRef.current
+    const sortedKline = mergedKlineData
+
+    if (sortedKline.length > 0) {
+      oldestDateRef.current = sortedKline[0].date
+    }
+
+    if (seriesRefs.current.candle) {
+      const candleData: CandlestickData<Time>[] = sortedKline.map(d => ({
+        time: d.date as Time,
+        open: Number(d.open) || 0,
+        high: Number(d.high) || 0,
+        low: Number(d.low) || 0,
+        close: Number(d.close) || 0,
+      }))
+      seriesRefs.current.candle.setData(candleData)
+    }
+
+    if (calculatedIndicators) {
+      const mapToLineData = (dataMap: Map<string, number>): LineData<Time>[] =>
+        Array.from(dataMap.entries())
+          .map(([date, value]) => ({ time: date as Time, value }))
+          .sort((a, b) => (a.time as string).localeCompare(b.time as string))
+
+      if (seriesRefs.current.ma5) seriesRefs.current.ma5.setData(mapToLineData(calculatedIndicators.ma5))
+      if (seriesRefs.current.ma10) seriesRefs.current.ma10.setData(mapToLineData(calculatedIndicators.ma10))
+      if (seriesRefs.current.ma20) seriesRefs.current.ma20.setData(mapToLineData(calculatedIndicators.ma20))
+      if (seriesRefs.current.ma60) seriesRefs.current.ma60.setData(mapToLineData(calculatedIndicators.ma60))
+      
+      if (seriesRefs.current.macdHist && seriesRefs.current.macdDif && seriesRefs.current.macdDea) {
+        const { macd } = calculatedIndicators
+        const histData: HistogramData<Time>[] = Array.from(macd.hist.entries())
+          .map(([date, value]) => ({
+            time: date as Time,
+            value,
+            color: value >= 0 ? `${colors.profit}80` : `${colors.loss}80`,
+          }))
+          .sort((a, b) => (a.time as string).localeCompare(b.time as string))
+        
+        seriesRefs.current.macdHist.setData(histData)
+        seriesRefs.current.macdDif.setData(mapToLineData(macd.dif))
+        seriesRefs.current.macdDea.setData(mapToLineData(macd.dea))
+      }
+
+      if (seriesRefs.current.rsi) {
+        seriesRefs.current.rsi.setData(mapToLineData(calculatedIndicators.rsi))
+      }
+    }
+
+    if (seriesRefs.current.volume) {
+      const volumeData: HistogramData<Time>[] = sortedKline.map(d => {
+        const change = (Number(d.close) || 0) - (Number(d.open) || 0)
+        return {
+          time: d.date as Time,
+          value: Number(d.volume) || 0,
+          color: change >= 0 ? `${colors.profit}80` : `${colors.loss}80`,
+        }
+      })
+      seriesRefs.current.volume.setData(volumeData)
+    }
+
+    const prevLen = prevDataLengthRef.current
+    const currLen = sortedKline.length
+    const shift = currLen - prevLen
+    const isChartRecreated = chartVersion !== prevChartVersionRef.current
+
+    if (isChartRecreated) {
+      if (savedRangeRef.current) {
+        chart.timeScale().setVisibleLogicalRange(savedRangeRef.current)
+      } else {
+        const sortedDates = sortedKline.map(d => d.date)
+        const { from, to } = getVisibleRange(timeRange, currLen, endDate, sortedDates)
+        chart.timeScale().setVisibleLogicalRange({ from, to })
+      }
+      prevChartVersionRef.current = chartVersion
+    } else if (prevLen === 0) {
+      const sortedDates = sortedKline.map(d => d.date)
+      const { from, to } = getVisibleRange(timeRange, currLen, endDate, sortedDates)
+      chart.timeScale().setVisibleLogicalRange({ from, to })
+    } else if (shift > 0) {
+      const currentRange = chart.timeScale().getVisibleLogicalRange()
+      if (currentRange) {
+        chart.timeScale().setVisibleLogicalRange({
+          from: currentRange.from + shift,
+          to: currentRange.to + shift,
+        })
+      }
+    }
+
+    prevDataLengthRef.current = currLen
+
+  }, [mergedKlineData, calculatedIndicators, chartVersion, colors])
+
+  useEffect(() => {
+    if (!chartApiRef.current || mergedKlineData.length === 0) return
+    
+    const sortedDates = mergedKlineData.map(d => d.date)
+    const { from, to } = getVisibleRange(timeRange, mergedKlineData.length, endDate, sortedDates)
+    chartApiRef.current.timeScale().setVisibleLogicalRange({ from, to })
+  }, [timeRange, endDate])
+
+  useEffect(() => {
+    if (!chartApiRef.current || !seriesRefs.current.candle || !endDate) return
+    
+    if (activeVertLineRef.current) {
+       try {
+         seriesRefs.current.candle.detachPrimitive(activeVertLineRef.current)
+       } catch (e) {
+         console.warn('Failed to detach primitive', e)
+       }
+       activeVertLineRef.current = null
+    }
+
+    const dateExists = mergedKlineData.some(d => d.date === endDate)
+    if (dateExists) {
+      const vertLine = new VertLine(chartApiRef.current, seriesRefs.current.candle, endDate as Time, '#1E40AF')
+      seriesRefs.current.candle.attachPrimitive(vertLine)
+      activeVertLineRef.current = vertLine
+    }
+  }, [endDate, mergedKlineData, chartVersion])
 
   const isFlexHeight = typeof height === 'string'
 
@@ -841,7 +882,14 @@ export function StockChart({ code, height = 500, endDate, onHoverData }: StockCh
         {isLoading ? (
           <Skeleton className="w-full h-full" style={isFlexHeight ? undefined : { height }} />
         ) : (
-          <div ref={chartRef} className={isFlexHeight ? "h-full" : ""} style={isFlexHeight ? undefined : { height }}>
+          <div 
+            ref={chartRef} 
+            className={isFlexHeight ? "h-full" : ""} 
+            style={{ 
+              touchAction: 'pan-y',
+              ...(isFlexHeight ? {} : { height }) 
+            }}
+          >
           </div>
         )}
       </div>
