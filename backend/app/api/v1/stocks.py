@@ -540,6 +540,69 @@ async def get_kline(
     )
 
 
+class FetchMissingKlineRequest(BaseModel):
+    """Request body for fetching missing K-line data."""
+
+    start_date: date
+    end_date: date
+
+
+class FetchMissingKlineResponse(BaseModel):
+    """Response for fetch missing K-line endpoint."""
+
+    code: str
+    inserted_count: int
+    data: List[KLineData]
+    total: int
+
+
+@router.post("/{code}/kline/fetch-missing", response_model=FetchMissingKlineResponse)
+async def fetch_missing_kline(
+    code: str,
+    request: FetchMissingKlineRequest,
+    db: AsyncSession = Depends(get_db),
+):
+    """Fetch missing K-line data from TuShare and store in database.
+
+    This endpoint is called by the frontend when the user scrolls to a date range
+    that has missing data. It fetches the data from TuShare and stores it in the
+    database, then returns the updated K-line data for that range.
+    """
+    from app.services.kline_fetcher import get_kline_fetcher
+
+    asset_result = await db.execute(select(AssetMeta).where(AssetMeta.code == code))
+    asset = asset_result.scalar_one_or_none()
+
+    if not asset:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Asset not found",
+        )
+
+    fetcher = get_kline_fetcher()
+    inserted_count = await fetcher.fetch_and_store_kline(
+        db, code, request.start_date, request.end_date
+    )
+
+    query = (
+        select(MarketDaily)
+        .where(MarketDaily.code == code)
+        .where(MarketDaily.date >= request.start_date)
+        .where(MarketDaily.date <= request.end_date)
+        .order_by(MarketDaily.date)
+    )
+
+    result = await db.execute(query)
+    kline_data = result.scalars().all()
+
+    return FetchMissingKlineResponse(
+        code=code,
+        inserted_count=inserted_count,
+        data=[KLineData.model_validate(k) for k in kline_data],
+        total=len(kline_data),
+    )
+
+
 @router.get("/{code}/indicators", response_model=List[TechnicalIndicatorResponse])
 async def get_indicators(
     code: str,

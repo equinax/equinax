@@ -595,3 +595,5 @@ export * from "./validationError";
 export * from "./validationErrorLocItem";
 export * from "./validationResult";
 export * from "./windowDays";
+export * from "./fetchMissingKlineRequest";
+export * from "./fetchMissingKlineResponse";

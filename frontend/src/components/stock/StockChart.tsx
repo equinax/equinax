@@ -8,7 +8,7 @@
  * - Hover tooltip showing detailed data for each date
  */
 
-import { useEffect, useRef, useState, useMemo } from 'react'
+import { useEffect, useRef, useState, useMemo, useCallback } from 'react'
 import {
   createChart,
   IChartApi,
@@ -23,6 +23,7 @@ import {
   ISeriesPrimitive,
   SeriesType,
   MouseEventParams,
+  LogicalRange,
 } from 'lightweight-charts'
 import { useTheme } from '@/components/theme-provider'
 import { getMarketColorsForTheme } from '@/lib/market-colors'
@@ -30,7 +31,11 @@ import { getChartThemeColors, INDICATOR_COLORS } from '@/lib/chart-theme'
 import { Button } from '@/components/ui/button'
 import { Skeleton } from '@/components/ui/skeleton'
 import { cn } from '@/lib/utils'
-import { useGetKlineApiV1StocksCodeKlineGet } from '@/api/generated/stocks/stocks'
+import {
+  useGetKlineApiV1StocksCodeKlineGet,
+  useFetchMissingKlineApiV1StocksCodeKlineFetchMissingPost,
+} from '@/api/generated/stocks/stocks'
+import type { KLineData } from '@/api/generated/schemas'
 import { calcMA, calcMACD, calcRSI } from '@/lib/indicators'
 
 export interface HoverData {
@@ -218,6 +223,17 @@ export function StockChart({ code, height = 500, endDate, onHoverData }: StockCh
     rsi: false,
   })
 
+  // Extra data fetched via incremental loading
+  const [extraKlineData, setExtraKlineData] = useState<KLineData[]>([])
+  const isFetchingRef = useRef(false)
+  const oldestDateRef = useRef<string | null>(null)
+
+  // Reset extra data when stock code changes
+  useEffect(() => {
+    setExtraKlineData([])
+    oldestDateRef.current = null
+  }, [code])
+
   // Fetch all K-line data once (time range buttons control zoom, not data fetching)
   const { data: klineData, isLoading } = useGetKlineApiV1StocksCodeKlineGet(
     code,
@@ -230,13 +246,23 @@ export function StockChart({ code, height = 500, endDate, onHoverData }: StockCh
     }
   )
 
+  // Mutation for fetching missing historical data
+  const fetchMissingMutation = useFetchMissingKlineApiV1StocksCodeKlineFetchMissingPost()
+
+  // Merge initial data with extra fetched data
+  const mergedKlineData = useMemo(() => {
+    if (!klineData?.data) return []
+    const allData = [...klineData.data, ...extraKlineData]
+    const uniqueMap = new Map<string, KLineData>()
+    allData.forEach(d => uniqueMap.set(d.date, d))
+    return Array.from(uniqueMap.values()).sort((a, b) => a.date.localeCompare(b.date))
+  }, [klineData, extraKlineData])
+
   // Calculate indicators
   const calculatedIndicators = useMemo(() => {
-    if (!klineData?.data || klineData.data.length === 0) return null
+    if (mergedKlineData.length === 0) return null
 
-    const sortedData = [...klineData.data]
-      .sort((a, b) => a.date.localeCompare(b.date))
-      .map(d => ({ date: d.date, close: Number(d.close) || 0 }))
+    const sortedData = mergedKlineData.map(d => ({ date: d.date, close: Number(d.close) || 0 }))
 
     return {
       ma5: calcMA(sortedData, 5),
@@ -246,7 +272,7 @@ export function StockChart({ code, height = 500, endDate, onHoverData }: StockCh
       macd: calcMACD(sortedData),
       rsi: calcRSI(sortedData, 14),
     }
-  }, [klineData])
+  }, [mergedKlineData])
 
   // Toggle indicator
   const toggleIndicator = (key: keyof IndicatorState) => {
@@ -265,12 +291,47 @@ export function StockChart({ code, height = 500, endDate, onHoverData }: StockCh
     }))
   }
 
+  // Fetch older historical data when user scrolls to left edge
+  const fetchOlderData = useCallback(async (beforeDate: string) => {
+    if (isFetchingRef.current || !code) return
+    
+    isFetchingRef.current = true
+    
+    const endDate = new Date(beforeDate)
+    endDate.setDate(endDate.getDate() - 1)
+    const startDate = new Date(endDate)
+    startDate.setFullYear(startDate.getFullYear() - 1)
+    
+    const startStr = startDate.toISOString().split('T')[0]
+    const endStr = endDate.toISOString().split('T')[0]
+    
+    try {
+      const result = await fetchMissingMutation.mutateAsync({
+        code,
+        data: { start_date: startStr, end_date: endStr },
+      })
+      
+      if (result.data && result.data.length > 0) {
+        setExtraKlineData(prev => {
+          const allData = [...prev, ...result.data]
+          const uniqueMap = new Map<string, KLineData>()
+          allData.forEach(d => uniqueMap.set(d.date, d))
+          return Array.from(uniqueMap.values())
+        })
+      }
+    } catch (error) {
+      console.error('Failed to fetch older data:', error)
+    } finally {
+      isFetchingRef.current = false
+    }
+  }, [code, fetchMissingMutation])
+
   // Count enabled sub-charts
   const subChartCount = [indicators.volume, indicators.macd, indicators.rsi].filter(Boolean).length
 
   // Create/update chart
   useEffect(() => {
-    if (!chartRef.current || !klineData?.data) return
+    if (!chartRef.current || mergedKlineData.length === 0) return
 
     // Clean up existing chart
     if (chartApiRef.current) {
@@ -310,10 +371,21 @@ export function StockChart({ code, height = 500, endDate, onHoverData }: StockCh
       timeScale: {
         borderColor: chartColors.border,
         timeVisible: false,
-        fixLeftEdge: true,
-        fixRightEdge: true,
+        fixLeftEdge: false,
+        fixRightEdge: false,
         rightOffset: 5,
-        minBarSpacing: 3,
+        minBarSpacing: 1,
+      },
+      handleScroll: {
+        mouseWheel: true,
+        pressedMouseMove: true,
+        horzTouchDrag: true,
+        vertTouchDrag: false,
+      },
+      handleScale: {
+        axisPressedMouseMove: true,
+        mouseWheel: true,
+        pinch: true,
       },
       rightPriceScale: {
         visible: true,
@@ -325,8 +397,13 @@ export function StockChart({ code, height = 500, endDate, onHoverData }: StockCh
     })
     chartApiRef.current = chart
 
-    // Sort K-line data
-    const sortedKline = [...klineData.data].sort((a, b) => a.date.localeCompare(b.date))
+    // Use merged data (initial + extra fetched)
+    const sortedKline = mergedKlineData
+    
+    // Track oldest date
+    if (sortedKline.length > 0) {
+      oldestDateRef.current = sortedKline[0].date
+    }
 
     // Add candlestick series (main chart)
     const candleSeries = chart.addCandlestickSeries({
@@ -530,7 +607,7 @@ export function StockChart({ code, height = 500, endDate, onHoverData }: StockCh
 
     const handleMouseMove = (param: MouseEventParams<Time>) => {
       try {
-        if (!param.time || !klineData?.data) {
+        if (!param.time || mergedKlineData.length === 0) {
           onHoverData?.(null)
           return
         }
@@ -540,9 +617,8 @@ export function StockChart({ code, height = 500, endDate, onHoverData }: StockCh
           hideTooltipTimer = null
         }
 
-        const sortedKline = [...klineData.data].sort((a, b) => a.date.localeCompare(b.date))
         const timeStr = String(param.time)
-        const dataPoint = sortedKline.find(d => d.date === timeStr)
+        const dataPoint = mergedKlineData.find(d => d.date === timeStr)
 
         if (dataPoint) {
           const open = Number(dataPoint.open) || 0
@@ -578,6 +654,18 @@ export function StockChart({ code, height = 500, endDate, onHoverData }: StockCh
       }, 100)
     }
 
+    // Infinite scroll: fetch older data when user scrolls near left edge
+    const handleVisibleRangeChange = (logicalRange: LogicalRange | null) => {
+      if (!logicalRange || isFetchingRef.current) return
+      
+      const FETCH_THRESHOLD = 10
+      if (logicalRange.from < FETCH_THRESHOLD && oldestDateRef.current) {
+        fetchOlderData(oldestDateRef.current)
+      }
+    }
+
+    chart.timeScale().subscribeVisibleLogicalRangeChange(handleVisibleRangeChange)
+
     // Subscribe to mouse events
     chart.subscribeCrosshairMove(handleMouseMove);
 
@@ -604,6 +692,7 @@ export function StockChart({ code, height = 500, endDate, onHoverData }: StockCh
 
         try {
           resizeObserver.disconnect();
+          chart.timeScale().unsubscribeVisibleLogicalRangeChange(handleVisibleRangeChange);
           chart.unsubscribeCrosshairMove(handleMouseMove);
           if (chartContainer) {
             chartContainer.removeEventListener('mouseleave', handleMouseLeave, { capture: true });
@@ -622,6 +711,7 @@ export function StockChart({ code, height = 500, endDate, onHoverData }: StockCh
 
         try {
           resizeObserver.disconnect();
+          chart.timeScale().unsubscribeVisibleLogicalRangeChange(handleVisibleRangeChange);
           chart.unsubscribeCrosshairMove(handleMouseMove);
           chart.remove();
         } catch (error) {
@@ -629,7 +719,7 @@ export function StockChart({ code, height = 500, endDate, onHoverData }: StockCh
         }
       };
     }
-  }, [isDark, chartHeight, klineData, calculatedIndicators, indicators, colors, chartColors, subChartCount, timeRange, endDate])
+  }, [isDark, chartHeight, mergedKlineData, calculatedIndicators, indicators, colors, chartColors, subChartCount, timeRange, endDate, fetchOlderData, onHoverData])
 
   const isFlexHeight = typeof height === 'string'
 
