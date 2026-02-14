@@ -988,20 +988,19 @@ export function StockChart({ code, height = 500, endDate, onHoverData, onLoading
       )}
 
       {/* Chart container */}
-      <div className={cn(minimal ? "" : "border-t", isFlexHeight ? "flex-1 min-h-0" : "")}>
-        {isLoading ? (
-          <Skeleton className="w-full h-full" style={isFlexHeight ? undefined : { height }} />
-        ) : (
-          <div 
-            ref={chartRef} 
-            className={isFlexHeight ? "h-full" : ""} 
-            style={{ 
-              touchAction: 'pan-y',
-              ...(isFlexHeight ? {} : { height }) 
-            }}
-          >
-          </div>
+      <div className={cn(minimal ? "" : "border-t", isFlexHeight ? "flex-1 min-h-0" : "", "relative")}>
+        {isLoading && (
+          <Skeleton className="w-full h-full absolute inset-0 z-10" style={isFlexHeight ? undefined : { height }} />
         )}
+        <div 
+          ref={chartRef} 
+          className={isFlexHeight ? "h-full" : ""} 
+          style={{ 
+            touchAction: 'pan-y',
+            ...(isFlexHeight ? {} : { height }) 
+          }}
+        >
+        </div>
       </div>
 
       {/* Legend */}
