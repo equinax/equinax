@@ -22,10 +22,10 @@ import { Checkbox } from '@/components/ui/checkbox'
 import { Progress } from '@/components/ui/progress'
 import { ComputingConsole } from '@/components/ui/computing-console'
 import { motion } from 'motion/react'
-import { ArrowUpDown, ArrowUp, ArrowDown } from 'lucide-react'
+import { ArrowUpDown, ArrowUp, ArrowDown, ShieldAlert } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { useComputingProgress } from '@/hooks/useComputingProgress'
-import type { ScreenerItem, TimeMode } from '@/api/generated/schemas'
+import type { ScreenerItem, TimeMode, DashboardResponse } from '@/api/generated/schemas'
 
 interface RadarDataTableProps {
   data: ScreenerItem[]
@@ -36,6 +36,134 @@ interface RadarDataTableProps {
   activeDate?: string
   rowSelection?: RowSelectionState
   onRowSelectionChange?: OnChangeFn<RowSelectionState>
+  abstain?: boolean
+  abstainReason?: string
+  dashboard?: DashboardResponse
+}
+
+function MarketAbstainPanel({ dashboard }: { dashboard?: DashboardResponse }) {
+  if (!dashboard) {
+    return (
+      <div className="flex flex-col items-center justify-center p-8 text-center space-y-3 bg-amber-50 dark:bg-amber-950/20 border border-amber-200 dark:border-amber-800 rounded-lg m-4">
+        <ShieldAlert className="h-10 w-10 text-amber-600 dark:text-amber-400" />
+        <h3 className="text-lg font-semibold text-amber-800 dark:text-amber-200">今日市场环境不适合选股</h3>
+        <p className="text-muted-foreground max-w-md">
+          Alpha Radar 检测到市场处于高风险状态，暂停推荐以保护您的资金安全。建议观望。
+        </p>
+      </div>
+    )
+  }
+
+  const { market_state, market_breadth, smart_money } = dashboard
+  const regimeScore = Number(market_state.regime_score)
+  const upDownRatio = Number(market_breadth.up_down_ratio)
+  
+  // Helper for regime style
+  const getRegimeStyle = (regime: string, score: number) => {
+    if (regime === 'BULL' || score > 30) return 'text-profit bg-profit/10 border-profit/20'
+    if (regime === 'BEAR' || score < -30) return 'text-loss bg-loss/10 border-loss/20'
+    return 'text-amber-600 bg-amber-100 dark:bg-amber-900/30 border-amber-200 dark:border-amber-800'
+  }
+
+  // Generate analysis text
+  let analysisText = "市场情绪偏弱，建议谨慎操作。"
+  if (market_state.regime === 'BEAR' || regimeScore < -30) {
+    analysisText = "市场处于熊市状态，大盘持续走弱。"
+  } else if (market_state.regime === 'RANGE' && regimeScore < 0) {
+    analysisText = "市场处于弱势震荡，方向不明。"
+  }
+  
+  if (upDownRatio < 1) {
+    analysisText += " 多数个股下跌，赚钱效应较差。"
+  }
+  
+  if (smart_money.money_flow_proxy === 'outflow') {
+    analysisText += " 资金整体呈流出态势，市场缺乏增量资金。"
+  }
+
+  // Actionable advice
+  let advice = "⚠️ 操作建议：建议观望或适当减仓，等待市场企稳信号。不建议追涨或加仓。"
+  if (regimeScore < -50) {
+    advice = "⚠️ 操作建议：市场风险较高，建议减仓至半仓以下或清仓观望。"
+  }
+
+  return (
+    <div className="bg-amber-50 dark:bg-amber-950/20 border border-amber-200 dark:border-amber-800 rounded-lg m-4 p-6">
+      {/* Header */}
+      <div className="flex items-start gap-4 mb-6">
+        <div className="p-2 bg-amber-100 dark:bg-amber-900/40 rounded-full shrink-0">
+          <ShieldAlert className="h-6 w-6 text-amber-600 dark:text-amber-400" />
+        </div>
+        <div>
+          <h3 className="text-lg font-bold text-amber-800 dark:text-amber-200">今日市场环境不适合选股</h3>
+          <p className="text-amber-700/80 dark:text-amber-300/80 mt-1">
+            Alpha Radar 检测到市场处于高风险状态，暂停推荐以保护您的资金安全
+          </p>
+        </div>
+      </div>
+
+      {/* Metrics Grid */}
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
+        {/* Regime */}
+        <div className="bg-background/50 rounded-md p-3 border">
+          <div className="text-xs text-muted-foreground mb-1">市场状态</div>
+          <div className="flex items-center gap-2">
+            <span className={cn("text-sm font-medium px-2 py-0.5 rounded border", getRegimeStyle(market_state.regime, regimeScore))}>
+              {market_state.regime_description}
+            </span>
+            <span className={cn("text-sm font-mono", regimeScore > 0 ? "text-profit" : regimeScore < 0 ? "text-loss" : "text-muted-foreground")}>
+              {regimeScore.toFixed(0)}
+            </span>
+          </div>
+        </div>
+
+        {/* Up/Down */}
+        <div className="bg-background/50 rounded-md p-3 border">
+          <div className="text-xs text-muted-foreground mb-1">涨跌比</div>
+          <div className="flex items-center gap-2 text-sm">
+            <span className="text-profit font-medium">{market_breadth.up_count}</span>
+            <span className="text-muted-foreground">/</span>
+            <span className="text-loss font-medium">{market_breadth.down_count}</span>
+          </div>
+        </div>
+
+        {/* Money Flow */}
+        <div className="bg-background/50 rounded-md p-3 border">
+          <div className="text-xs text-muted-foreground mb-1">资金流向</div>
+          <div className="flex items-center gap-2 text-sm">
+             <span className={cn("font-medium", 
+               smart_money.money_flow_proxy === 'inflow' ? "text-profit" : 
+               smart_money.money_flow_proxy === 'outflow' ? "text-loss" : "text-muted-foreground"
+             )}>
+               {smart_money.money_flow_proxy === 'inflow' ? '流入' : 
+                smart_money.money_flow_proxy === 'outflow' ? '流出' : '平衡'}
+             </span>
+          </div>
+        </div>
+
+        {/* Limit Up/Down */}
+        <div className="bg-background/50 rounded-md p-3 border">
+          <div className="text-xs text-muted-foreground mb-1">涨跌停</div>
+          <div className="flex items-center gap-2 text-sm">
+            <span className="text-profit font-medium">{market_breadth.limit_up_count || 0}</span>
+            <span className="text-muted-foreground">/</span>
+            <span className="text-loss font-medium">{market_breadth.limit_down_count || 0}</span>
+          </div>
+        </div>
+      </div>
+
+      {/* Analysis & Advice */}
+      <div className="space-y-3">
+        <p className="text-sm text-foreground/80 leading-relaxed">
+          <span className="font-semibold">分析：</span>{analysisText}
+        </p>
+        
+        <div className="bg-amber-100/50 dark:bg-amber-900/30 border border-amber-300 dark:border-amber-700 rounded-lg p-3 text-sm font-medium text-amber-900 dark:text-amber-100">
+          {advice}
+        </div>
+      </div>
+    </div>
+  )
 }
 
 // Quant label styles
@@ -74,6 +202,8 @@ export function RadarDataTable({
   activeDate,
   rowSelection,
   onRowSelectionChange,
+  abstain,
+  dashboard,
 }: RadarDataTableProps) {
   const navigate = useNavigate()
 
@@ -445,8 +575,12 @@ export function RadarDataTable({
             ))
           ) : (
             <TableRow>
-              <TableCell colSpan={columns.length} className="h-24 text-center">
-                暂无数据
+              <TableCell colSpan={columns.length} className={cn("p-0", !abstain && "h-24 text-center")}>
+                {abstain ? (
+                  <MarketAbstainPanel dashboard={dashboard} />
+                ) : (
+                  "暂无数据"
+                )}
               </TableCell>
             </TableRow>
           )}

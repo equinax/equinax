@@ -409,6 +409,9 @@ export default function AlphaRadarPage() {
               activeDate={screener?.date ?? undefined}
               rowSelection={rowSelection}
               onRowSelectionChange={setRowSelection}
+              abstain={screener?.abstain}
+              abstainReason={screener?.abstain_reason ?? undefined}
+              dashboard={dashboard}
             />
           ) : (
             <EtfDataTable

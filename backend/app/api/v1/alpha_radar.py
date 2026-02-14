@@ -282,6 +282,8 @@ class ScreenerResponse(BaseModel):
     date: Optional[datetime.date] = None
     start_date: Optional[datetime.date] = None
     end_date: Optional[datetime.date] = None
+    abstain: bool = False
+    abstain_reason: Optional[str] = None
 
 
 # ============================================
@@ -1175,6 +1177,8 @@ async def get_screener(
         date=result.get("date"),
         start_date=result.get("start_date"),
         end_date=result.get("end_date"),
+        abstain=result.get("abstain", False),
+        abstain_reason=result.get("abstain_reason"),
     )
 
 
