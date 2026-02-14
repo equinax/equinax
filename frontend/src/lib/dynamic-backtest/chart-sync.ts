@@ -205,6 +205,10 @@ class ChartSyncManager {
   getChartCount(): number {
     return this.charts.size
   }
+
+  getChart(id: string): IChartApi | null {
+    return this.charts.get(id)?.chart ?? null
+  }
 }
 
 export { ChartSyncManager }

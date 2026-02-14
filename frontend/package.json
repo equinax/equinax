@@ -41,6 +41,8 @@
     "date-fns": "^3.2.0",
     "echarts": "^5.4.3",
     "echarts-for-react": "^3.0.2",
+    "html2canvas": "^1.4.1",
+    "jspdf": "^4.1.0",
     "lightweight-charts": "^4.1.1",
     "lucide-react": "^0.311.0",
     "motion": "^12.23.26",

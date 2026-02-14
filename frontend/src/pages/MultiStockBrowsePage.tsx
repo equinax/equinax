@@ -1,16 +1,19 @@
-import { useEffect, useMemo, useRef, useCallback } from 'react'
+import { useEffect, useMemo, useRef, useCallback, useState } from 'react'
 import { useSearchParams, useNavigate } from 'react-router-dom'
 import { useQueries } from '@tanstack/react-query'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Skeleton } from '@/components/ui/skeleton'
-import { ArrowLeft } from 'lucide-react'
+import { ArrowLeft, FileDown, Loader2 } from 'lucide-react'
 import { StockChart } from '@/components/stock/StockChart'
 import type { PriceLine, VerticalMarker } from '@/components/stock/StockChart'
 import { ChartSyncManager } from '@/lib/dynamic-backtest/chart-sync'
 import { useEvaluatePerformanceApiV1AlphaRadarEvaluatePerformancePost } from '@/api/generated/alpha-radar/alpha-radar'
 import { getKlineApiV1StocksCodeKlineGet, getGetKlineApiV1StocksCodeKlineGetQueryKey, useGetKlineApiV1StocksCodeKlineGet } from '@/api/generated/stocks/stocks'
 import { cn } from '@/lib/utils'
+import { QUANT_LABEL_CN, formatMv, formatVol } from '@/lib/quant-labels'
+import { generateStockReport } from '@/lib/generate-report'
+import type { ReportStock } from '@/lib/generate-report'
 import type { IChartApi, ISeriesApi, SeriesType } from 'lightweight-charts'
 import { DateAxisBar } from '@/components/stock/DateAxisBar'
 
@@ -87,6 +90,7 @@ export default function MultiStockBrowsePage() {
   }, [searchParams])
 
   const syncManagerRef = useRef<ChartSyncManager>(new ChartSyncManager())
+  const [isExporting, setIsExporting] = useState(false)
 
   const evalMutation = useEvaluatePerformanceApiV1AlphaRadarEvaluatePerformancePost()
 
@@ -214,6 +218,54 @@ export default function MultiStockBrowsePage() {
     return evalMutation.data?.period_stats?.find(s => s.period === period)
   }
 
+  const handleExportReport = useCallback(async () => {
+    if (isExporting) return
+    setIsExporting(true)
+    try {
+      const savedRange = syncManagerRef.current.getRange()
+
+      const charts = codes
+        .map(code => ({ code, chart: syncManagerRef.current.getChart(code) }))
+        .filter((e): e is { code: string; chart: import('lightweight-charts').IChartApi } => e.chart !== null)
+
+      for (const { chart } of charts) {
+        chart.timeScale().fitContent()
+      }
+      await new Promise(r => requestAnimationFrame(() => requestAnimationFrame(r)))
+
+      const reportStocks: ReportStock[] = []
+      for (const { code, chart } of charts) {
+        const canvas = chart.takeScreenshot()
+        const chartImage = canvas.toDataURL('image/png')
+        const info = stockMap[code]
+
+        reportStocks.push({
+          code,
+          name: info?.name ?? code,
+          buyPrice: info?.buy_price ? parseFloat(String(info.buy_price)) : undefined,
+          totalMv: info?.total_mv,
+          circMv: info?.circ_mv,
+          volume: info?.volume,
+          turnover: info?.turnover,
+          peTtm: info?.pe_ttm,
+          pbMrq: info?.pb_mrq,
+          quantLabels: labelsMap[code],
+          chartImage,
+        })
+      }
+
+      if (savedRange) {
+        syncManagerRef.current.setRange(savedRange)
+      }
+
+      if (reportStocks.length > 0) {
+        await generateStockReport(date, reportStocks)
+      }
+    } finally {
+      setIsExporting(false)
+    }
+  }, [codes, date, stockMap, labelsMap, isExporting])
+
   if (codes.length === 0 || !date) {
     return (
       <div className="space-y-4">
@@ -257,6 +309,16 @@ export default function MultiStockBrowsePage() {
               {evalMutation.data.assessment}
             </Badge>
           )}
+          <Button
+            variant="outline"
+            size="sm"
+            className="ml-auto h-7 gap-1.5 text-xs"
+            disabled={isExporting || codes.length === 0}
+            onClick={handleExportReport}
+          >
+            {isExporting ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <FileDown className="h-3.5 w-3.5" />}
+            导出报告
+          </Button>
         </div>
         <div className="px-3 py-2">
           {evalMutation.isPending ? (
@@ -365,30 +427,7 @@ export default function MultiStockBrowsePage() {
   )
 }
 
-const QUANT_LABEL_CN: Record<string, string> = {
-  main_accumulation: '主力吸筹',
-  undervalued: '低估值',
-  oversold: '超卖',
-  high_volatility: '高波动',
-  breakout: '突破',
-  volume_surge: '放量',
-}
 
-const formatMv = (val: string | number | null | undefined): string => {
-  if (val == null) return '—'
-  const num = parseFloat(String(val))
-  if (num >= 10000) return `${(num / 10000).toFixed(0)}万亿`
-  if (num >= 1) return `${num.toFixed(0)}亿`
-  return `${(num * 10000).toFixed(0)}万`
-}
-
-const formatVol = (val: string | number | null | undefined): string => {
-  if (val == null) return '—'
-  const num = parseFloat(String(val))
-  if (num >= 100000000) return `${(num / 100000000).toFixed(2)}亿`
-  if (num >= 10000) return `${(num / 10000).toFixed(0)}万`
-  return `${num.toFixed(0)}`
-}
 
 interface StockChartItemProps {
   code: string
