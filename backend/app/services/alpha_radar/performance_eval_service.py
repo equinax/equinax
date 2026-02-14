@@ -24,6 +24,7 @@ class PerformanceEvalService:
         codes: list[str],
         date: datetime.date,
         periods: list[int] = [1, 3, 5, 10, 20],
+        base_price: str = "t0_close",
     ) -> dict:
         """
         Evaluate the performance of recommended stocks after a given date.
@@ -32,6 +33,7 @@ class PerformanceEvalService:
             codes: List of stock codes to evaluate (e.g. ["sh.600000", "sz.000001"])
             date: Recommendation date (T0)
             periods: Evaluation periods in trading days
+            base_price: 't0_close' for T0 close price, 't1_open' for T+1 open price
 
         Returns:
             dict with stocks, period_stats, assessment, date, total_stocks
@@ -45,13 +47,13 @@ class PerformanceEvalService:
                 "assessment": "无数据",
             }
 
-        # 1. Get stock names from asset_meta
         name_map = await self._get_stock_names(codes)
 
-        # 2. Get reference close prices on the recommendation date
+        if base_price == "t1_open":
+            return await self._evaluate_t1_open(codes, date, periods, name_map)
+
         ref_prices = await self._get_close_prices(codes, date)
 
-        # 3. For each period, find the Nth trading day after date and get close prices
         period_dates = await self._get_future_trading_dates(date, max(periods))
         period_prices: dict[int, dict[str, Decimal]] = {}
         for period in periods:
@@ -61,7 +63,6 @@ class PerformanceEvalService:
             else:
                 period_prices[period] = {}
 
-        # 4. Build per-stock results
         stocks = []
         for code in codes:
             ref_price = ref_prices.get(code)
@@ -85,7 +86,95 @@ class PerformanceEvalService:
                 }
             )
 
-        # 5. Calculate aggregate stats per period
+        period_stats = self._calc_period_stats(stocks, periods)
+        assessment = self._generate_assessment(period_stats, periods)
+
+        return {
+            "date": date,
+            "total_stocks": len(codes),
+            "stocks": stocks,
+            "period_stats": period_stats,
+            "assessment": assessment,
+        }
+
+    async def _evaluate_t1_open(
+        self,
+        codes: list[str],
+        date: datetime.date,
+        periods: list[int],
+        name_map: dict[str, str],
+    ) -> dict:
+        max_needed = max(periods) + 1
+        period_dates_list = await self._get_future_trading_dates(date, max_needed)
+
+        if len(period_dates_list) == 0:
+            return {
+                "date": date,
+                "total_stocks": len(codes),
+                "stocks": [],
+                "period_stats": [],
+                "assessment": "无数据",
+                "period_dates": {p: None for p in periods},
+            }
+
+        t1_date = period_dates_list[0]
+        buy_prices = await self._get_open_prices(codes, t1_date)
+
+        response_period_dates: dict[int, Optional[str]] = {}
+        for period in periods:
+            idx = period
+            if idx < len(period_dates_list):
+                response_period_dates[period] = period_dates_list[idx].isoformat()
+            else:
+                response_period_dates[period] = None
+
+        period_prices: dict[int, dict[str, Decimal]] = {}
+        for period in periods:
+            idx = period
+            if idx < len(period_dates_list):
+                target_date = period_dates_list[idx]
+                period_prices[period] = await self._get_close_prices(codes, target_date)
+            else:
+                period_prices[period] = {}
+
+        stocks = []
+        for code in codes:
+            buy_price_val = buy_prices.get(code)
+            returns: dict[int, Optional[Decimal]] = {}
+            for period in periods:
+                if buy_price_val and code in period_prices[period]:
+                    future_close = period_prices[period][code]
+                    ret = (future_close - buy_price_val) / buy_price_val * 100
+                    returns[period] = Decimal(str(ret)).quantize(
+                        Decimal("0.01"), rounding=ROUND_HALF_UP
+                    )
+                else:
+                    returns[period] = None
+
+            stocks.append(
+                {
+                    "code": code,
+                    "name": name_map.get(code, code),
+                    "ref_price": buy_price_val,
+                    "buy_price": buy_price_val,
+                    "buy_date": t1_date,
+                    "returns": returns,
+                }
+            )
+
+        period_stats = self._calc_period_stats(stocks, periods)
+        assessment = self._generate_assessment(period_stats, periods)
+
+        return {
+            "date": date,
+            "total_stocks": len(codes),
+            "stocks": stocks,
+            "period_stats": period_stats,
+            "assessment": assessment,
+            "period_dates": response_period_dates,
+        }
+
+    def _calc_period_stats(self, stocks: list[dict], periods: list[int]) -> list[dict]:
         period_stats = []
         for period in periods:
             rets = [s["returns"][period] for s in stocks if s["returns"][period] is not None]
@@ -149,17 +238,7 @@ class PerformanceEvalService:
                     "profit_loss_ratio": profit_loss_ratio,
                 }
             )
-
-        # 6. Generate assessment text
-        assessment = self._generate_assessment(period_stats, periods)
-
-        return {
-            "date": date,
-            "total_stocks": len(codes),
-            "stocks": stocks,
-            "period_stats": period_stats,
-            "assessment": assessment,
-        }
+        return period_stats
 
     async def _get_stock_names(self, codes: list[str]) -> dict[str, str]:
         """Get stock names from asset_meta table."""
@@ -176,6 +255,19 @@ class PerformanceEvalService:
         result = await self.db.execute(
             text(
                 "SELECT code, close FROM market_daily "
+                "WHERE code = ANY(:codes) AND date = :target_date"
+            ),
+            {"codes": codes, "target_date": target_date},
+        )
+        return {row[0]: Decimal(str(row[1])) for row in result.fetchall()}
+
+    async def _get_open_prices(
+        self, codes: list[str], target_date: datetime.date
+    ) -> dict[str, Decimal]:
+        """Get open prices for given codes on a specific date."""
+        result = await self.db.execute(
+            text(
+                "SELECT code, open FROM market_daily "
                 "WHERE code = ANY(:codes) AND date = :target_date"
             ),
             {"codes": codes, "target_date": target_date},

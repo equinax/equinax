@@ -5,6 +5,8 @@
  * Request for evaluating screener recommendation performance.
  */
 export interface PerformanceEvalRequest {
+  /** Price basis: 't0_close' (recommendation day close) or 't1_open' (next trading day open = buy price) */
+  base_price?: string;
   /** List of stock codes to evaluate */
   codes: string[];
   /** Recommendation date (T0) */

@@ -9,7 +9,7 @@ from typing import List, Optional
 from decimal import Decimal
 from enum import Enum
 
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel, Field
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -823,6 +823,10 @@ class PerformanceEvalRequest(BaseModel):
     periods: List[int] = Field(
         default=[1, 3, 5, 10, 20], description="Evaluation periods in trading days"
     )
+    base_price: str = Field(
+        default="t0_close",
+        description="Price basis: 't0_close' (recommendation day close) or 't1_open' (next trading day open = buy price)",
+    )
 
 
 class StockPerformance(BaseModel):
@@ -832,6 +836,12 @@ class StockPerformance(BaseModel):
     name: str
     ref_price: Optional[Decimal] = Field(
         default=None, description="Close price on recommendation date"
+    )
+    buy_price: Optional[Decimal] = Field(
+        default=None, description="T+1 open price (buy price), only when base_price=t1_open"
+    )
+    buy_date: Optional[datetime.date] = Field(
+        default=None, description="Actual buy date (T+1 trading day)"
     )
     returns: dict[int, Optional[Decimal]] = Field(
         description="Period -> return % (None if future date not available)"
@@ -860,6 +870,11 @@ class PerformanceEvalResponse(BaseModel):
     stocks: List[StockPerformance]
     period_stats: List[PeriodStats]
     assessment: str
+    base_price: str = Field(default="t0_close", description="Price basis used for calculation")
+    period_dates: Optional[dict[int, Optional[str]]] = Field(
+        default=None,
+        description="Period -> actual trading date, only when base_price=t1_open",
+    )
 
 
 # ============================================
@@ -1933,20 +1948,40 @@ async def evaluate_performance(
     IMPORTANT: Only uses data available AFTER the recommendation date.
     No look-ahead bias.
     """
-    from app.services.alpha_radar.performance_eval_service import PerformanceEvalService
+    import logging
 
-    service = PerformanceEvalService(db)
-    result = await service.evaluate_performance(
-        codes=request.codes,
-        date=request.date,
-        periods=request.periods,
-    )
+    logger = logging.getLogger(__name__)
+
+    try:
+        from app.services.alpha_radar.performance_eval_service import PerformanceEvalService
+
+        service = PerformanceEvalService(db)
+        result = await service.evaluate_performance(
+            codes=request.codes,
+            date=request.date,
+            periods=request.periods,
+            base_price=request.base_price,
+        )
+    except Exception as e:
+        logger.error(
+            "evaluate_performance failed for date=%s, codes=%s: %s",
+            request.date,
+            request.codes,
+            str(e),
+            exc_info=True,
+        )
+        raise HTTPException(
+            status_code=500,
+            detail=f"Performance evaluation failed: {str(e)}",
+        )
 
     stocks = [
         StockPerformance(
             code=s["code"],
             name=s["name"],
             ref_price=s.get("ref_price"),
+            buy_price=s.get("buy_price"),
+            buy_date=s.get("buy_date"),
             returns=s.get("returns", {}),
         )
         for s in result["stocks"]
@@ -1973,4 +2008,6 @@ async def evaluate_performance(
         stocks=stocks,
         period_stats=period_stats_list,
         assessment=result["assessment"],
+        base_price=request.base_price,
+        period_dates=result.get("period_dates"),
     )

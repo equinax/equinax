@@ -51,12 +51,29 @@ export interface HoverData {
   change_pct: number
 }
 
+export interface PriceLine {
+  price: number
+  color: string
+  label: string
+  lineStyle?: 'solid' | 'dashed'
+}
+
+export interface VerticalMarker {
+  date: string    // YYYY-MM-DD format
+  color: string
+  label?: string  // optional label (not rendered on chart, for reference)
+}
+
 interface StockChartProps {
   code: string
   height?: number | string
   endDate?: string
   onHoverData?: (data: HoverData | null) => void
   onLoadingChange?: (isLoading: boolean) => void
+  priceLines?: PriceLine[]
+  verticalMarkers?: VerticalMarker[]
+  onChartReady?: (chartApi: IChartApi) => void
+  minimal?: boolean
 }
 
 type TimeRange = '1M' | '3M' | '6M' | '1Y' | '3Y' | '5Y' | 'ALL'
@@ -98,14 +115,13 @@ function getVisibleRange(
   range: TimeRange,
   dataLength: number,
   referenceDate?: string,
-  sortedDates?: string[]
+  sortedDates?: string[],
+  markerDates?: string[]
 ): { from: number; to: number } {
-  // Default: show all data
   if (range === 'ALL' || dataLength === 0) {
     return { from: 0, to: dataLength - 1 }
   }
 
-  // Find reference point index (either referenceDate or last data point)
   let refIndex = dataLength - 1
   if (referenceDate && sortedDates) {
     const idx = sortedDates.indexOf(referenceDate)
@@ -113,18 +129,28 @@ function getVisibleRange(
   }
 
   const visibleDays = TRADING_DAYS_MAP[range]
+  let from: number
+  let to: number
 
-  // If reference date is provided, center the view on it
   if (referenceDate && sortedDates) {
     const halfDays = Math.floor(visibleDays / 2)
-    const from = Math.max(0, refIndex - halfDays)
-    const to = Math.min(dataLength - 1, refIndex + halfDays)
-    return { from, to }
+    from = Math.max(0, refIndex - halfDays)
+    to = Math.min(dataLength - 1, refIndex + halfDays)
+  } else {
+    from = Math.max(0, dataLength - visibleDays)
+    to = dataLength - 1
   }
 
-  // Otherwise, show most recent data
-  const from = Math.max(0, dataLength - visibleDays)
-  const to = dataLength - 1
+  if (markerDates && sortedDates) {
+    for (const md of markerDates) {
+      const idx = sortedDates.indexOf(md)
+      if (idx >= 0 && idx > to) {
+        to = idx + 5
+      }
+    }
+    to = Math.min(to, dataLength - 1)
+  }
+
   return { from, to }
 }
 
@@ -201,10 +227,22 @@ class VertLine implements ISeriesPrimitive<Time> {
   }
 }
 
-export function StockChart({ code, height = 500, endDate, onHoverData, onLoadingChange }: StockChartProps) {
+export function StockChart({ code, height = 500, endDate, onHoverData, onLoadingChange, priceLines, verticalMarkers, onChartReady, minimal = false }: StockChartProps) {
   const containerRef = useRef<HTMLDivElement>(null)
   const chartRef = useRef<HTMLDivElement>(null)
   const chartApiRef = useRef<IChartApi | null>(null)
+
+  const onHoverDataRef = useRef(onHoverData)
+  onHoverDataRef.current = onHoverData
+  const onChartReadyRef = useRef(onChartReady)
+  onChartReadyRef.current = onChartReady
+  const priceLinesRef = useRef(priceLines)
+  priceLinesRef.current = priceLines
+  const verticalMarkersRef = useRef(verticalMarkers)
+  verticalMarkersRef.current = verticalMarkers
+
+  const priceLinesKey = priceLines?.map(p => `${p.price}:${p.color}`).join('|') ?? ''
+  const verticalMarkersKey = verticalMarkers?.map(m => m.date).join('|') ?? ''
   
   const seriesRefs = useRef<{
     candle: ISeriesApi<'Candlestick'> | null
@@ -237,11 +275,19 @@ export function StockChart({ code, height = 500, endDate, onHoverData, onLoading
 
   const { theme } = useTheme()
   const isDark = theme === 'dark' || (theme === 'system' && window.matchMedia('(prefers-color-scheme: dark)').matches)
-  const colors = getMarketColorsForTheme(isDark)
-  const chartColors = getChartThemeColors(isDark)
+  const colors = useMemo(() => getMarketColorsForTheme(isDark), [isDark])
+  const chartColors = useMemo(() => getChartThemeColors(isDark), [isDark])
 
   const [timeRange, setTimeRange] = useState<TimeRange>('6M')
-  const [indicators, setIndicators] = useState<IndicatorState>({
+  const [indicators, setIndicators] = useState<IndicatorState>(() => minimal ? {
+    ma5: false,
+    ma10: false,
+    ma20: false,
+    ma60: false,
+    volume: true,
+    macd: false,
+    rsi: false,
+  } : {
     ma5: true,
     ma10: true,
     ma20: true,
@@ -256,7 +302,8 @@ export function StockChart({ code, height = 500, endDate, onHoverData, onLoading
   const oldestDateRef = useRef<string | null>(null)
   const prevDataLengthRef = useRef(0)
   const mergedKlineDataRef = useRef<KLineData[]>([])
-  const activeVertLineRef = useRef<VertLine | null>(null)
+  const activeVertLinesRef = useRef<VertLine[]>([])
+  const activePriceLinesRef = useRef<ReturnType<ISeriesApi<'Candlestick'>['createPriceLine']>[]>([])
 
   useEffect(() => {
     setExtraKlineData([])
@@ -324,6 +371,12 @@ export function StockChart({ code, height = 500, endDate, onHoverData, onLoading
     }))
   }
 
+  // Stabilize mutation ref to avoid re-creating chart on every render
+  const fetchMissingMutateRef = useRef(fetchMissingMutation.mutateAsync)
+  useEffect(() => {
+    fetchMissingMutateRef.current = fetchMissingMutation.mutateAsync
+  }, [fetchMissingMutation.mutateAsync])
+
   const fetchOlderData = useCallback(async (beforeDate: string) => {
     if (isFetchingRef.current || !code) return
     
@@ -338,7 +391,7 @@ export function StockChart({ code, height = 500, endDate, onHoverData, onLoading
     const endStr = endDate.toISOString().split('T')[0]
     
     try {
-      const result = await fetchMissingMutation.mutateAsync({
+      const result = await fetchMissingMutateRef.current({
         code,
         data: { start_date: startStr, end_date: endStr },
       })
@@ -356,7 +409,7 @@ export function StockChart({ code, height = 500, endDate, onHoverData, onLoading
     } finally {
       isFetchingRef.current = false
     }
-  }, [code, fetchMissingMutation])
+  }, [code])
 
   const subChartCount = [indicators.volume, indicators.macd, indicators.rsi].filter(Boolean).length
 
@@ -371,7 +424,7 @@ export function StockChart({ code, height = 500, endDate, onHoverData, onLoading
         // Chart already disposed
       }
       chartApiRef.current = null
-      activeVertLineRef.current = null
+      activeVertLinesRef.current = []
       Object.keys(seriesRefs.current).forEach(key => {
         seriesRefs.current[key as keyof typeof seriesRefs.current] = null
       })
@@ -405,6 +458,7 @@ export function StockChart({ code, height = 500, endDate, onHoverData, onLoading
       timeScale: {
         borderColor: chartColors.border,
         timeVisible: false,
+        visible: !minimal,
         fixLeftEdge: false,
         fixRightEdge: false,
         rightOffset: 5,
@@ -424,12 +478,13 @@ export function StockChart({ code, height = 500, endDate, onHoverData, onLoading
       rightPriceScale: {
         visible: true,
         borderColor: chartColors.border,
-        scaleMargins: { top: 0.05, bottom: subChartCount > 0 ? 0.35 : 0.05 },
+        scaleMargins: { top: 0.05, bottom: minimal ? 0.15 : (subChartCount > 0 ? 0.35 : 0.05) },
       },
       height: chartHeight,
       width: chartRef.current.clientWidth,
     })
     chartApiRef.current = chart
+    onChartReadyRef.current?.(chart)
 
     seriesRefs.current.candle = chart.addCandlestickSeries({
       upColor: colors.profit,
@@ -552,7 +607,7 @@ export function StockChart({ code, height = 500, endDate, onHoverData, onLoading
       try {
         const currentData = mergedKlineDataRef.current
         if (!param.time || currentData.length === 0) {
-          onHoverData?.(null)
+          onHoverDataRef.current?.(null)
           return
         }
 
@@ -570,7 +625,7 @@ export function StockChart({ code, height = 500, endDate, onHoverData, onLoading
           const preclose = Number(dataPoint.preclose) || 0
           const change_pct = preclose !== 0 ? ((close - preclose) / preclose) * 100 : 0
 
-          onHoverData?.({
+          onHoverDataRef.current?.({
             date: dataPoint.date,
             open,
             high: Number(dataPoint.high) || 0,
@@ -583,17 +638,17 @@ export function StockChart({ code, height = 500, endDate, onHoverData, onLoading
             change_pct: parseFloat(change_pct.toFixed(2)),
           })
         } else {
-          onHoverData?.(null)
+          onHoverDataRef.current?.(null)
         }
       } catch (error) {
         console.error('Error in handleMouseMove:', error)
-        onHoverData?.(null)
+        onHoverDataRef.current?.(null)
       }
     }
 
     const handleMouseLeave = () => {
       hideTooltipTimer = setTimeout(() => {
-        onHoverData?.(null)
+        onHoverDataRef.current?.(null)
       }, 100)
     }
 
@@ -636,7 +691,7 @@ export function StockChart({ code, height = 500, endDate, onHoverData, onLoading
         }
       };
     }
-  }, [isDark, chartHeight, indicators, colors, chartColors, subChartCount, fetchOlderData, onHoverData])
+  }, [isDark, chartHeight, indicators, colors, chartColors, subChartCount, fetchOlderData])
 
   useEffect(() => {
     if (!chartApiRef.current || mergedKlineData.length === 0) return
@@ -707,26 +762,30 @@ export function StockChart({ code, height = 500, endDate, onHoverData, onLoading
     const shift = currLen - prevLen
     const isChartRecreated = chartVersion !== prevChartVersionRef.current
 
+    const markerDates = verticalMarkersRef.current?.map(m => m.date)
+
     if (isChartRecreated) {
       if (savedRangeRef.current) {
         chart.timeScale().setVisibleLogicalRange(savedRangeRef.current)
       } else {
         const sortedDates = sortedKline.map(d => d.date)
-        const { from, to } = getVisibleRange(timeRange, currLen, endDate, sortedDates)
+        const { from, to } = getVisibleRange(timeRange, currLen, endDate, sortedDates, markerDates)
         chart.timeScale().setVisibleLogicalRange({ from, to })
       }
       prevChartVersionRef.current = chartVersion
     } else if (prevLen === 0) {
       const sortedDates = sortedKline.map(d => d.date)
-      const { from, to } = getVisibleRange(timeRange, currLen, endDate, sortedDates)
+      const { from, to } = getVisibleRange(timeRange, currLen, endDate, sortedDates, markerDates)
       chart.timeScale().setVisibleLogicalRange({ from, to })
     } else if (shift > 0) {
-      const currentRange = chart.timeScale().getVisibleLogicalRange()
-      if (currentRange) {
-        chart.timeScale().setVisibleLogicalRange({
-          from: currentRange.from + shift,
-          to: currentRange.to + shift,
-        })
+      if (!minimal) {
+        const currentRange = chart.timeScale().getVisibleLogicalRange()
+        if (currentRange) {
+          chart.timeScale().setVisibleLogicalRange({
+            from: currentRange.from + shift,
+            to: currentRange.to + shift,
+          })
+        }
       }
     }
 
@@ -735,32 +794,81 @@ export function StockChart({ code, height = 500, endDate, onHoverData, onLoading
   }, [mergedKlineData, calculatedIndicators, chartVersion, colors])
 
   useEffect(() => {
+    if (minimal) return
     if (!chartApiRef.current || mergedKlineData.length === 0) return
     
     const sortedDates = mergedKlineData.map(d => d.date)
-    const { from, to } = getVisibleRange(timeRange, mergedKlineData.length, endDate, sortedDates)
+    const markerDates = verticalMarkersRef.current?.map(m => m.date)
+    const { from, to } = getVisibleRange(timeRange, mergedKlineData.length, endDate, sortedDates, markerDates)
     chartApiRef.current.timeScale().setVisibleLogicalRange({ from, to })
   }, [timeRange, endDate])
 
   useEffect(() => {
-    if (!chartApiRef.current || !seriesRefs.current.candle || !endDate) return
-    
-    if (activeVertLineRef.current) {
-       try {
-         seriesRefs.current.candle.detachPrimitive(activeVertLineRef.current)
-       } catch (e) {
-         console.warn('Failed to detach primitive', e)
-       }
-       activeVertLineRef.current = null
+    if (!chartApiRef.current || !seriesRefs.current.candle) return
+
+    for (const vl of activeVertLinesRef.current) {
+      try {
+        seriesRefs.current.candle.detachPrimitive(vl)
+      } catch (e) {
+        console.warn('Failed to detach primitive', e)
+      }
+    }
+    activeVertLinesRef.current = []
+
+    const newVertLines: VertLine[] = []
+
+    if (endDate) {
+      const dateExists = mergedKlineData.some(d => d.date === endDate)
+      if (dateExists) {
+        const vertLine = new VertLine(chartApiRef.current, seriesRefs.current.candle, endDate as Time, '#1E40AF')
+        seriesRefs.current.candle.attachPrimitive(vertLine)
+        newVertLines.push(vertLine)
+      }
     }
 
-    const dateExists = mergedKlineData.some(d => d.date === endDate)
-    if (dateExists) {
-      const vertLine = new VertLine(chartApiRef.current, seriesRefs.current.candle, endDate as Time, '#1E40AF')
-      seriesRefs.current.candle.attachPrimitive(vertLine)
-      activeVertLineRef.current = vertLine
+    if (verticalMarkersRef.current) {
+      for (const marker of verticalMarkersRef.current) {
+        const dateExists = mergedKlineDataRef.current.some(d => d.date === marker.date)
+        if (dateExists) {
+          const vertLine = new VertLine(chartApiRef.current!, seriesRefs.current.candle!, marker.date as Time, marker.color)
+          seriesRefs.current.candle!.attachPrimitive(vertLine)
+          newVertLines.push(vertLine)
+        }
+      }
     }
-  }, [endDate, mergedKlineData, chartVersion])
+
+    activeVertLinesRef.current = newVertLines
+  }, [endDate, verticalMarkersKey, chartVersion, mergedKlineData.length])
+
+  useEffect(() => {
+    if (!seriesRefs.current.candle) return
+
+    for (const pl of activePriceLinesRef.current) {
+      try {
+        seriesRefs.current.candle.removePriceLine(pl)
+      } catch {
+        // noop
+      }
+    }
+    activePriceLinesRef.current = []
+
+    if (!priceLinesRef.current || priceLinesRef.current.length === 0) return
+
+    const newPriceLines: typeof activePriceLinesRef.current = []
+    for (const pl of priceLinesRef.current) {
+      const priceLine = seriesRefs.current.candle.createPriceLine({
+        price: pl.price,
+        color: pl.color,
+        lineWidth: 1,
+        lineStyle: pl.lineStyle === 'solid' ? LineStyle.Solid : LineStyle.Dashed,
+        lineVisible: true,
+        axisLabelVisible: true,
+        title: pl.label,
+      })
+      newPriceLines.push(priceLine)
+    }
+    activePriceLinesRef.current = newPriceLines
+  }, [priceLinesKey, chartVersion, mergedKlineData.length])
 
   const isFlexHeight = typeof height === 'string'
 
@@ -783,102 +891,104 @@ export function StockChart({ code, height = 500, endDate, onHoverData, onLoading
   return (
     <div className={cn("flex flex-col", isFlexHeight ? "h-full" : "")} ref={containerRef}>
       {/* Toolbar */}
-      <div className="flex flex-wrap items-center gap-4 px-4 pt-2">
-        {/* Time range selector */}
-        <div className="flex items-center gap-1">
-          {TIME_RANGES.map(({ key, label }) => (
+      {!minimal && (
+        <div className="flex flex-wrap items-center gap-4 px-4 pt-2">
+          {/* Time range selector */}
+          <div className="flex items-center gap-1">
+            {TIME_RANGES.map(({ key, label }) => (
+              <Button
+                key={key}
+                variant={timeRange === key ? 'default' : 'outline'}
+                size="sm"
+                className="h-7 px-2 text-xs"
+                onClick={() => setTimeRange(key)}
+              >
+                {label}
+              </Button>
+            ))}
+          </div>
+
+          {/* Separator */}
+          <div className="w-px h-5 bg-border" />
+
+          {/* MA toggles */}
+          <div className="flex items-center gap-1">
+            <span className="text-xs text-muted-foreground mr-1">MA:</span>
             <Button
-              key={key}
-              variant={timeRange === key ? 'default' : 'outline'}
+              variant={indicators.ma5 && indicators.ma10 && indicators.ma20 && indicators.ma60 ? 'default' : 'outline'}
               size="sm"
-              className="h-7 px-2 text-xs"
-              onClick={() => setTimeRange(key)}
+              className="h-6 px-2 text-xs"
+              onClick={toggleAllMA}
             >
-              {label}
+              All
             </Button>
-          ))}
-        </div>
+            <Button
+              variant={indicators.ma5 ? 'default' : 'outline'}
+              size="sm"
+              className="h-6 px-2 text-xs"
+              onClick={() => toggleIndicator('ma5')}
+            >
+              5
+            </Button>
+            <Button
+              variant={indicators.ma10 ? 'default' : 'outline'}
+              size="sm"
+              className="h-6 px-2 text-xs"
+              onClick={() => toggleIndicator('ma10')}
+            >
+              10
+            </Button>
+            <Button
+              variant={indicators.ma20 ? 'default' : 'outline'}
+              size="sm"
+              className="h-6 px-2 text-xs"
+              onClick={() => toggleIndicator('ma20')}
+            >
+              20
+            </Button>
+            <Button
+              variant={indicators.ma60 ? 'default' : 'outline'}
+              size="sm"
+              className="h-6 px-2 text-xs"
+              onClick={() => toggleIndicator('ma60')}
+            >
+              60
+            </Button>
+          </div>
 
-        {/* Separator */}
-        <div className="w-px h-5 bg-border" />
-
-        {/* MA toggles */}
-        <div className="flex items-center gap-1">
-          <span className="text-xs text-muted-foreground mr-1">MA:</span>
-          <Button
-            variant={indicators.ma5 && indicators.ma10 && indicators.ma20 && indicators.ma60 ? 'default' : 'outline'}
-            size="sm"
-            className="h-6 px-2 text-xs"
-            onClick={toggleAllMA}
-          >
-            All
-          </Button>
-          <Button
-            variant={indicators.ma5 ? 'default' : 'outline'}
-            size="sm"
-            className="h-6 px-2 text-xs"
-            onClick={() => toggleIndicator('ma5')}
-          >
-            5
-          </Button>
-          <Button
-            variant={indicators.ma10 ? 'default' : 'outline'}
-            size="sm"
-            className="h-6 px-2 text-xs"
-            onClick={() => toggleIndicator('ma10')}
-          >
-            10
-          </Button>
-          <Button
-            variant={indicators.ma20 ? 'default' : 'outline'}
-            size="sm"
-            className="h-6 px-2 text-xs"
-            onClick={() => toggleIndicator('ma20')}
-          >
-            20
-          </Button>
-          <Button
-            variant={indicators.ma60 ? 'default' : 'outline'}
-            size="sm"
-            className="h-6 px-2 text-xs"
-            onClick={() => toggleIndicator('ma60')}
-          >
-            60
-          </Button>
+          {/* Sub-chart toggles */}
+          <div className="flex items-center gap-1">
+            <span className="text-xs text-muted-foreground mr-1">副图:</span>
+            <Button
+              variant={indicators.volume ? 'default' : 'outline'}
+              size="sm"
+              className="h-6 px-2 text-xs"
+              onClick={() => toggleIndicator('volume')}
+            >
+              成交量
+            </Button>
+            <Button
+              variant={indicators.macd ? 'default' : 'outline'}
+              size="sm"
+              className="h-6 px-2 text-xs"
+              onClick={() => toggleIndicator('macd')}
+            >
+              MACD
+            </Button>
+            <Button
+              variant={indicators.rsi ? 'default' : 'outline'}
+              size="sm"
+              className="h-6 px-2 text-xs"
+              onClick={() => toggleIndicator('rsi')}
+            >
+              RSI
+            </Button>
+          </div>
         </div>
-
-        {/* Sub-chart toggles */}
-        <div className="flex items-center gap-1">
-          <span className="text-xs text-muted-foreground mr-1">副图:</span>
-          <Button
-            variant={indicators.volume ? 'default' : 'outline'}
-            size="sm"
-            className="h-6 px-2 text-xs"
-            onClick={() => toggleIndicator('volume')}
-          >
-            成交量
-          </Button>
-          <Button
-            variant={indicators.macd ? 'default' : 'outline'}
-            size="sm"
-            className="h-6 px-2 text-xs"
-            onClick={() => toggleIndicator('macd')}
-          >
-            MACD
-          </Button>
-          <Button
-            variant={indicators.rsi ? 'default' : 'outline'}
-            size="sm"
-            className="h-6 px-2 text-xs"
-            onClick={() => toggleIndicator('rsi')}
-          >
-            RSI
-          </Button>
-        </div>
-      </div>
+      )}
 
       {/* Chart container */}
-      <div className={cn("border-t", isFlexHeight ? "flex-1 min-h-0" : "")}>
+      <div className={cn(minimal ? "" : "border-t", isFlexHeight ? "flex-1 min-h-0" : "")}>
         {isLoading ? (
           <Skeleton className="w-full h-full" style={isFlexHeight ? undefined : { height }} />
         ) : (
@@ -895,61 +1005,63 @@ export function StockChart({ code, height = 500, endDate, onHoverData, onLoading
       </div>
 
       {/* Legend */}
-      <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs text-muted-foreground px-4 py-2 border-t shrink-0">
-          <span className="flex items-center gap-1">
-            <span className="w-3 h-3 rounded-sm" style={{ backgroundColor: colors.profit }} />
-            <span className="w-3 h-3 rounded-sm" style={{ backgroundColor: colors.loss }} />
-            K线
-          </span>
-          {indicators.ma5 && (
+      {!minimal && (
+        <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs text-muted-foreground px-4 py-2 border-t shrink-0">
             <span className="flex items-center gap-1">
-              <span className="w-3 h-0.5 rounded" style={{ backgroundColor: INDICATOR_COLORS.ma5 }} />
-              MA5
+              <span className="w-3 h-3 rounded-sm" style={{ backgroundColor: colors.profit }} />
+              <span className="w-3 h-3 rounded-sm" style={{ backgroundColor: colors.loss }} />
+              K线
             </span>
-          )}
-          {indicators.ma10 && (
-            <span className="flex items-center gap-1">
-              <span className="w-3 h-0.5 rounded" style={{ backgroundColor: INDICATOR_COLORS.ma10 }} />
-              MA10
-            </span>
-          )}
-          {indicators.ma20 && (
-            <span className="flex items-center gap-1">
-              <span className="w-3 h-0.5 rounded" style={{ backgroundColor: INDICATOR_COLORS.ma20 }} />
-              MA20
-            </span>
-          )}
-          {indicators.ma60 && (
-            <span className="flex items-center gap-1">
-              <span className="w-3 h-0.5 rounded" style={{ backgroundColor: INDICATOR_COLORS.ma60 }} />
-              MA60
-            </span>
-          )}
-          {indicators.volume && (
-            <span className="flex items-center gap-1">
-              <span className="w-3 h-2 rounded-sm" style={{ backgroundColor: INDICATOR_COLORS.volume }} />
-              成交量
-            </span>
-          )}
-          {indicators.macd && (
-            <>
+            {indicators.ma5 && (
               <span className="flex items-center gap-1">
-                <span className="w-3 h-0.5 rounded" style={{ backgroundColor: INDICATOR_COLORS.macdDif }} />
-                DIF
+                <span className="w-3 h-0.5 rounded" style={{ backgroundColor: INDICATOR_COLORS.ma5 }} />
+                MA5
               </span>
+            )}
+            {indicators.ma10 && (
               <span className="flex items-center gap-1">
-                <span className="w-3 h-0.5 rounded" style={{ backgroundColor: INDICATOR_COLORS.macdDea }} />
-                DEA
+                <span className="w-3 h-0.5 rounded" style={{ backgroundColor: INDICATOR_COLORS.ma10 }} />
+                MA10
               </span>
-            </>
-          )}
-          {indicators.rsi && (
-            <span className="flex items-center gap-1">
-                <span className="w-3 h-0.5 rounded" style={{ backgroundColor: INDICATOR_COLORS.rsi }} />
-                RSI(14)
-            </span>
-          )}
-      </div>
+            )}
+            {indicators.ma20 && (
+              <span className="flex items-center gap-1">
+                <span className="w-3 h-0.5 rounded" style={{ backgroundColor: INDICATOR_COLORS.ma20 }} />
+                MA20
+              </span>
+            )}
+            {indicators.ma60 && (
+              <span className="flex items-center gap-1">
+                <span className="w-3 h-0.5 rounded" style={{ backgroundColor: INDICATOR_COLORS.ma60 }} />
+                MA60
+              </span>
+            )}
+            {indicators.volume && (
+              <span className="flex items-center gap-1">
+                <span className="w-3 h-2 rounded-sm" style={{ backgroundColor: INDICATOR_COLORS.volume }} />
+                成交量
+              </span>
+            )}
+            {indicators.macd && (
+              <>
+                <span className="flex items-center gap-1">
+                  <span className="w-3 h-0.5 rounded" style={{ backgroundColor: INDICATOR_COLORS.macdDif }} />
+                  DIF
+                </span>
+                <span className="flex items-center gap-1">
+                  <span className="w-3 h-0.5 rounded" style={{ backgroundColor: INDICATOR_COLORS.macdDea }} />
+                  DEA
+                </span>
+              </>
+            )}
+            {indicators.rsi && (
+              <span className="flex items-center gap-1">
+                  <span className="w-3 h-0.5 rounded" style={{ backgroundColor: INDICATOR_COLORS.rsi }} />
+                  RSI(14)
+              </span>
+            )}
+        </div>
+      )}
     </div>
   )
 }
