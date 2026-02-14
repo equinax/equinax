@@ -235,6 +235,16 @@ export default function AlphaRadarPage() {
     navigate(`/alpha-radar/multi-browse?${params.toString()}`)
   }, [rowSelection, screener?.date, selectedDate, navigate])
 
+  const handleSelectTopN = useCallback((n: number) => {
+    const items = screener?.items
+    if (!items) return
+    const selection: RowSelectionState = {}
+    for (let i = 0; i < Math.min(n, items.length); i++) {
+      selection[items[i].code] = true
+    }
+    setRowSelection(selection)
+  }, [screener?.items])
+
   // Get active screener data based on mode
   const activeScreener = radarMode === 'stock' ? screener : etfScreener
   const isLoadingActiveScreener = radarMode === 'stock' ? isLoadingScreener : isLoadingEtfScreener
@@ -351,6 +361,23 @@ export default function AlphaRadarPage() {
 
             {/* Spacer */}
             <div className="flex-1" />
+
+            {/* Quick select top N - stock mode only */}
+            {radarMode === 'stock' && (
+              <div className="flex items-center gap-1 shrink-0">
+                {[3, 5, 10, 20].map((n) => (
+                  <Button
+                    key={n}
+                    variant="ghost"
+                    size="sm"
+                    className="h-6 px-2 text-xs text-muted-foreground hover:text-foreground"
+                    onClick={() => handleSelectTopN(n)}
+                  >
+                    前{n}
+                  </Button>
+                ))}
+              </div>
+            )}
 
             {/* Count */}
             <span className="text-sm text-muted-foreground shrink-0">
