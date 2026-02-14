@@ -3,20 +3,22 @@
  * 使用原生 API + ref 方式实现多图共享时间轴，避免 React 状态更新的性能问题
  */
 
-import { IChartApi, LogicalRange } from 'lightweight-charts'
+import { IChartApi, ISeriesApi, SeriesType, Time, LogicalRange, MouseEventParams } from 'lightweight-charts'
+
+interface ChartEntry {
+  chart: IChartApi
+  series: ISeriesApi<SeriesType> | null
+}
 
 class ChartSyncManager {
-  private charts: Map<string, IChartApi> = new Map()
+  private charts: Map<string, ChartEntry> = new Map()
   private isUpdating = false
+  private isCrosshairUpdating = false
   private currentRange: LogicalRange | null = null
   
-  /**
-   * 注册图表到同步管理器
-   */
-  register(id: string, chart: IChartApi) {
-    this.charts.set(id, chart)
+  register(id: string, chart: IChartApi, series?: ISeriesApi<SeriesType>) {
+    this.charts.set(id, { chart, series: series ?? null })
     
-    // 监听时间范围变化
     chart.timeScale().subscribeVisibleLogicalRangeChange((range) => {
       if (this.isUpdating) return
       if (!range) return
@@ -24,8 +26,12 @@ class ChartSyncManager {
       this.currentRange = range
       this.syncAll(id, range)
     })
+
+    chart.subscribeCrosshairMove((param: MouseEventParams<Time>) => {
+      if (this.isCrosshairUpdating) return
+      this.syncCrosshair(id, param)
+    })
     
-    // 如果已有范围，同步新图表
     if (this.currentRange) {
       this.isUpdating = true
       try {
@@ -34,53 +40,98 @@ class ChartSyncManager {
         // ignore
       }
       this.isUpdating = false
+    } else {
+      try {
+        const existingRange = chart.timeScale().getVisibleLogicalRange()
+        if (existingRange) {
+          this.currentRange = existingRange
+        }
+      } catch {
+        // ignore
+      }
     }
   }
   
-  /**
-   * 注销图表
-   */
   unregister(id: string) {
     this.charts.delete(id)
   }
-  
-  /**
-   * 同步所有图表到指定范围
-   */
-  private syncAll(sourceId: string, range: LogicalRange) {
+
+  setSeries(id: string, series: ISeriesApi<SeriesType>) {
+    const entry = this.charts.get(id)
+    if (entry) {
+      entry.series = series
+    }
+  }
+
+  applyCurrentRange(id: string) {
+    if (!this.currentRange) return
+    const entry = this.charts.get(id)
+    if (!entry) return
     this.isUpdating = true
-    
-    this.charts.forEach((chart, id) => {
-      if (id === sourceId) return
-      
-      try {
-        const currentRange = chart.timeScale().getVisibleLogicalRange()
-        if (currentRange && 
-            (Math.abs(currentRange.from - range.from) > 0.1 || 
-             Math.abs(currentRange.to - range.to) > 0.1)) {
-          chart.timeScale().setVisibleLogicalRange(range)
-        }
-      } catch {
-        // 图表可能已销毁
-      }
-    })
-    
-    // 使用 requestAnimationFrame 确保同步完成后再解锁
+    try {
+      entry.chart.timeScale().setVisibleLogicalRange(this.currentRange)
+    } catch {
+      // ignore
+    }
     requestAnimationFrame(() => {
       this.isUpdating = false
     })
   }
   
-  /**
-   * 强制同步所有图表到指定范围
-   */
+  private syncAll(sourceId: string, range: LogicalRange) {
+    this.isUpdating = true
+    
+    this.charts.forEach((entry, id) => {
+      if (id === sourceId) return
+      
+      try {
+        const currentRange = entry.chart.timeScale().getVisibleLogicalRange()
+        if (currentRange && 
+            (Math.abs(currentRange.from - range.from) > 0.1 || 
+             Math.abs(currentRange.to - range.to) > 0.1)) {
+          entry.chart.timeScale().setVisibleLogicalRange(range)
+        }
+      } catch {
+      }
+    })
+    
+    requestAnimationFrame(() => {
+      this.isUpdating = false
+    })
+  }
+
+  private syncCrosshair(sourceId: string, param: MouseEventParams<Time>) {
+    this.isCrosshairUpdating = true
+
+    this.charts.forEach((entry, id) => {
+      if (id === sourceId) return
+      if (!entry.series) return
+
+      try {
+        if (!param.time) {
+          entry.chart.clearCrosshairPosition()
+        } else {
+          const data = param.seriesData?.values().next().value
+          const price = data && ('close' in data ? (data as { close: number }).close : ('value' in data ? (data as { value: number }).value : 0))
+          entry.chart.setCrosshairPosition(price ?? 0, param.time, entry.series)
+        }
+      } catch {
+        // ignore - can happen if target chart's series has no data yet
+      }
+    })
+
+    requestAnimationFrame(() => {
+      this.isCrosshairUpdating = false
+    })
+  }
+  
   setRange(range: LogicalRange) {
     this.currentRange = range
     this.isUpdating = true
     
-    this.charts.forEach((chart) => {
+    this.charts.forEach((entry) => {
       try {
-        chart.timeScale().setVisibleLogicalRange(range)
+        entry.chart.timeScale().setVisibleLogicalRange(range)
       } catch {
         // ignore
       }
@@ -91,52 +142,39 @@ class ChartSyncManager {
     })
   }
   
-  /**
-   * 获取当前范围
-   */
   getRange(): LogicalRange | null {
     return this.currentRange
   }
   
-  /**
-   * 重置
-   */
   reset() {
     this.charts.clear()
     this.currentRange = null
     this.isUpdating = false
+    this.isCrosshairUpdating = false
   }
   
-  /**
-   * 滚动所有图表到指定日期（将该日期居中显示）
-   */
   scrollToDate(date: string) {
     if (this.charts.size === 0) return
     
-    // 获取第一个图表来计算时间坐标
-    const firstChart = this.charts.values().next().value
-    if (!firstChart) return
+    const firstEntry = this.charts.values().next().value
+    if (!firstEntry) return
     
     try {
-      const timeScale = firstChart.timeScale()
-      const coordinate = timeScale.timeToCoordinate(date as import('lightweight-charts').Time)
+      const timeScale = firstEntry.chart.timeScale()
+      const coordinate = timeScale.timeToCoordinate(date as Time)
       
-      // 获取当前可见范围的宽度
       const currentRange = timeScale.getVisibleLogicalRange()
       if (!currentRange) return
       
       const rangeWidth = Number(currentRange.to) - Number(currentRange.from)
       
       if (coordinate === null) {
-        // 日期不在可见范围，尝试直接滚动
         const visibleData = timeScale.getVisibleRange()
         if (visibleData) {
-          // 计算目标范围，将日期居中
           const targetDate = new Date(date).getTime()
           const fromDate = new Date(visibleData.from as string).getTime()
           const dayMs = 24 * 60 * 60 * 1000
           
-          // 估算索引位置
           const daysFromStart = Math.floor((targetDate - fromDate) / dayMs)
           const centerOffset = rangeWidth / 2
           
@@ -148,7 +186,6 @@ class ChartSyncManager {
           this.setRange(newRange)
         }
       } else {
-        // 日期在可见范围内，滚动使其居中
         const logicalIndex = timeScale.coordinateToLogical(coordinate)
         
         if (logicalIndex !== null) {
@@ -165,9 +202,6 @@ class ChartSyncManager {
     }
   }
   
-  /**
-   * 获取注册的图表数量
-   */
   getChartCount(): number {
     return this.charts.size
   }

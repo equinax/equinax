@@ -1,5 +1,6 @@
-import { useEffect, useMemo, useRef } from 'react'
+import { useEffect, useMemo, useRef, useCallback } from 'react'
 import { useSearchParams, useNavigate } from 'react-router-dom'
+import { useQueries } from '@tanstack/react-query'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Skeleton } from '@/components/ui/skeleton'
@@ -8,9 +9,10 @@ import { StockChart } from '@/components/stock/StockChart'
 import type { PriceLine, VerticalMarker } from '@/components/stock/StockChart'
 import { ChartSyncManager } from '@/lib/dynamic-backtest/chart-sync'
 import { useEvaluatePerformanceApiV1AlphaRadarEvaluatePerformancePost } from '@/api/generated/alpha-radar/alpha-radar'
-import { useGetKlineApiV1StocksCodeKlineGet } from '@/api/generated/stocks/stocks'
+import { getKlineApiV1StocksCodeKlineGet, getGetKlineApiV1StocksCodeKlineGetQueryKey, useGetKlineApiV1StocksCodeKlineGet } from '@/api/generated/stocks/stocks'
 import { cn } from '@/lib/utils'
-import type { IChartApi } from 'lightweight-charts'
+import type { IChartApi, ISeriesApi, SeriesType } from 'lightweight-charts'
+import { DateAxisBar } from '@/components/stock/DateAxisBar'
 
 // Helper to format percentage strings
 const formatPercent = (val: string | null | undefined) => {
@@ -113,6 +115,33 @@ export default function MultiStockBrowsePage() {
     return markers
   }, [evalMutation.data?.period_dates])
 
+  const klineQueries = useQueries({
+    queries: codes.map(code => ({
+      queryKey: getGetKlineApiV1StocksCodeKlineGetQueryKey(code, { limit: 1000 }),
+      queryFn: () => getKlineApiV1StocksCodeKlineGet(code, { limit: 1000 }),
+      staleTime: 5 * 60 * 1000,
+      enabled: !!code,
+    })),
+  })
+
+  const klineQueryData = klineQueries.map(q => q.data)
+
+  const sharedDates = useMemo(() => {
+    const dateSet = new Set<string>()
+    for (const data of klineQueryData) {
+      if (data?.data) {
+        for (const d of data.data) {
+          dateSet.add(d.date)
+        }
+      }
+    }
+    return Array.from(dateSet).sort()
+  }, [klineQueryData])
+
+  const dateAxisChartReadyCallback = useCallback((chart: IChartApi, series: ISeriesApi<SeriesType>) => {
+    syncManagerRef.current.register('__date_axis__', chart, series)
+  }, [])
+
   const priceLinesMap = useMemo(() => {
     const map: Record<string, PriceLine[]> = {}
     for (const code of codes) {
@@ -127,10 +156,20 @@ export default function MultiStockBrowsePage() {
   }, [codes, stockMap])
 
   const chartReadyCallbacks = useMemo(() => {
-    const map: Record<string, (chart: IChartApi) => void> = {}
+    const map: Record<string, (chart: IChartApi, series: ISeriesApi<SeriesType>) => void> = {}
     for (const code of codes) {
-      map[code] = (chart: IChartApi) => {
-        syncManagerRef.current.register(code, chart)
+      map[code] = (chart: IChartApi, series: ISeriesApi<SeriesType>) => {
+        syncManagerRef.current.register(code, chart, series)
+      }
+    }
+    return map
+  }, [codes])
+
+  const dataLoadedCallbacks = useMemo(() => {
+    const map: Record<string, () => void> = {}
+    for (const code of codes) {
+      map[code] = () => {
+        syncManagerRef.current.applyCurrentRange(code)
       }
     }
     return map
@@ -269,6 +308,11 @@ export default function MultiStockBrowsePage() {
 
       {/* Charts List */}
       <div className="space-y-0">
+        <DateAxisBar
+          sharedDates={sharedDates}
+          endDate={date}
+          onChartReady={dateAxisChartReadyCallback}
+        />
         {codes.map((code, index) => (
           <StockChartItem
             key={code}
@@ -280,6 +324,8 @@ export default function MultiStockBrowsePage() {
             priceLines={priceLinesMap[code] ?? []}
             verticalMarkers={verticalMarkers}
             onChartReady={chartReadyCallbacks[code]}
+            onDataLoaded={dataLoadedCallbacks[code]}
+            sharedDates={sharedDates}
           />
         ))}
       </div>
@@ -295,10 +341,12 @@ interface StockChartItemProps {
   evalDone: boolean
   priceLines: PriceLine[]
   verticalMarkers: VerticalMarker[]
-  onChartReady: (chart: IChartApi) => void
+  onChartReady: (chart: IChartApi, series: ISeriesApi<SeriesType>) => void
+  onDataLoaded: () => void
+  sharedDates: string[]
 }
 
-function StockChartItem({ code, date, isFirst, stockInfo, evalDone, priceLines, verticalMarkers, onChartReady }: StockChartItemProps) {
+function StockChartItem({ code, date, isFirst, stockInfo, evalDone, priceLines, verticalMarkers, onChartReady, onDataLoaded, sharedDates }: StockChartItemProps) {
   const { data: klineData } = useGetKlineApiV1StocksCodeKlineGet(
     code,
     { limit: 1000 },
@@ -338,7 +386,9 @@ function StockChartItem({ code, date, isFirst, stockInfo, evalDone, priceLines, 
           priceLines={priceLines}
           verticalMarkers={verticalMarkers}
           onChartReady={onChartReady}
+          onDataLoaded={onDataLoaded}
           minimal={true}
+          sharedDates={sharedDates}
         />
       </div>
     </div>

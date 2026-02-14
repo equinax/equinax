@@ -19,6 +19,7 @@ import {
   CandlestickData,
   LineData,
   HistogramData,
+  WhitespaceData,
   Coordinate,
   ISeriesPrimitive,
   SeriesType,
@@ -37,6 +38,7 @@ import {
 } from '@/api/generated/stocks/stocks'
 import type { KLineData } from '@/api/generated/schemas'
 import { calcMA, calcMACD, calcRSI } from '@/lib/indicators'
+import { PRICE_SCALE_MIN_WIDTH } from '@/components/stock/DateAxisBar'
 
 export interface HoverData {
   date: string
@@ -72,8 +74,11 @@ interface StockChartProps {
   onLoadingChange?: (isLoading: boolean) => void
   priceLines?: PriceLine[]
   verticalMarkers?: VerticalMarker[]
-  onChartReady?: (chartApi: IChartApi) => void
+  onChartReady?: (chartApi: IChartApi, series: ISeriesApi<SeriesType>) => void
+  onDataLoaded?: () => void
   minimal?: boolean
+  /** Shared dates across multiple charts for x-axis alignment */
+  sharedDates?: string[]
 }
 
 type TimeRange = '1M' | '3M' | '6M' | '1Y' | '3Y' | '5Y' | 'ALL'
@@ -227,7 +232,7 @@ class VertLine implements ISeriesPrimitive<Time> {
   }
 }
 
-export function StockChart({ code, height = 500, endDate, onHoverData, onLoadingChange, priceLines, verticalMarkers, onChartReady, minimal = false }: StockChartProps) {
+export function StockChart({ code, height = 500, endDate, onHoverData, onLoadingChange, priceLines, verticalMarkers, onChartReady, onDataLoaded, minimal = false, sharedDates }: StockChartProps) {
   const containerRef = useRef<HTMLDivElement>(null)
   const chartRef = useRef<HTMLDivElement>(null)
   const chartApiRef = useRef<IChartApi | null>(null)
@@ -236,10 +241,14 @@ export function StockChart({ code, height = 500, endDate, onHoverData, onLoading
   onHoverDataRef.current = onHoverData
   const onChartReadyRef = useRef(onChartReady)
   onChartReadyRef.current = onChartReady
+  const onDataLoadedRef = useRef(onDataLoaded)
+  onDataLoadedRef.current = onDataLoaded
   const priceLinesRef = useRef(priceLines)
   priceLinesRef.current = priceLines
   const verticalMarkersRef = useRef(verticalMarkers)
   verticalMarkersRef.current = verticalMarkers
+  const sharedDatesRef = useRef(sharedDates)
+  sharedDatesRef.current = sharedDates
 
   const priceLinesKey = priceLines?.map(p => `${p.price}:${p.color}`).join('|') ?? ''
   const verticalMarkersKey = verticalMarkers?.map(m => m.date).join('|') ?? ''
@@ -304,6 +313,7 @@ export function StockChart({ code, height = 500, endDate, onHoverData, onLoading
   const mergedKlineDataRef = useRef<KLineData[]>([])
   const activeVertLinesRef = useRef<VertLine[]>([])
   const activePriceLinesRef = useRef<ReturnType<ISeriesApi<'Candlestick'>['createPriceLine']>[]>([])
+  const alignmentSeriesRef = useRef<ISeriesApi<'Line'> | null>(null)
 
   useEffect(() => {
     setExtraKlineData([])
@@ -479,12 +489,12 @@ export function StockChart({ code, height = 500, endDate, onHoverData, onLoading
         visible: true,
         borderColor: chartColors.border,
         scaleMargins: { top: 0.05, bottom: minimal ? 0.15 : (subChartCount > 0 ? 0.35 : 0.05) },
+        minimumWidth: minimal ? PRICE_SCALE_MIN_WIDTH : undefined,
       },
       height: chartHeight,
       width: chartRef.current.clientWidth,
     })
     chartApiRef.current = chart
-    onChartReadyRef.current?.(chart)
 
     seriesRefs.current.candle = chart.addCandlestickSeries({
       upColor: colors.profit,
@@ -495,6 +505,20 @@ export function StockChart({ code, height = 500, endDate, onHoverData, onLoading
       wickDownColor: colors.loss,
       priceScaleId: 'right',
     })
+
+    onChartReadyRef.current?.(chart, seriesRefs.current.candle)
+
+    if (sharedDatesRef.current && sharedDatesRef.current.length > 0) {
+      alignmentSeriesRef.current = chart.addLineSeries({
+        color: 'transparent',
+        lineWidth: 1,
+        lastValueVisible: false,
+        priceLineVisible: false,
+        crosshairMarkerVisible: false,
+      })
+    } else {
+      alignmentSeriesRef.current = null
+    }
 
     const maKeys = ['ma5', 'ma10', 'ma20', 'ma60'] as const
     maKeys.forEach(key => {
@@ -714,6 +738,13 @@ export function StockChart({ code, height = 500, endDate, onHoverData, onLoading
       seriesRefs.current.candle.setData(candleData)
     }
 
+    if (alignmentSeriesRef.current && sharedDatesRef.current && sharedDatesRef.current.length > 0) {
+      const whitespaceData: WhitespaceData<Time>[] = sharedDatesRef.current.map(date => ({
+        time: date as Time,
+      }))
+      alignmentSeriesRef.current.setData(whitespaceData)
+    }
+
     if (calculatedIndicators) {
       const mapToLineData = (dataMap: Map<string, number>): LineData<Time>[] =>
         Array.from(dataMap.entries())
@@ -764,21 +795,27 @@ export function StockChart({ code, height = 500, endDate, onHoverData, onLoading
 
     const markerDates = verticalMarkersRef.current?.map(m => m.date)
 
+    // When onChartReady is provided, an external sync manager controls the range.
+    // Only set the initial range on first data load; after that, let the sync manager drive.
+    const isSyncManaged = !!onChartReadyRef.current
+
     if (isChartRecreated) {
       if (savedRangeRef.current) {
         chart.timeScale().setVisibleLogicalRange(savedRangeRef.current)
-      } else {
+      } else if (!isSyncManaged) {
         const sortedDates = sortedKline.map(d => d.date)
         const { from, to } = getVisibleRange(timeRange, currLen, endDate, sortedDates, markerDates)
         chart.timeScale().setVisibleLogicalRange({ from, to })
       }
       prevChartVersionRef.current = chartVersion
     } else if (prevLen === 0) {
-      const sortedDates = sortedKline.map(d => d.date)
-      const { from, to } = getVisibleRange(timeRange, currLen, endDate, sortedDates, markerDates)
-      chart.timeScale().setVisibleLogicalRange({ from, to })
+      if (!isSyncManaged) {
+        const sortedDates = sortedKline.map(d => d.date)
+        const { from, to } = getVisibleRange(timeRange, currLen, endDate, sortedDates, markerDates)
+        chart.timeScale().setVisibleLogicalRange({ from, to })
+      }
     } else if (shift > 0) {
-      if (!minimal) {
+      if (!minimal && !isSyncManaged) {
         const currentRange = chart.timeScale().getVisibleLogicalRange()
         if (currentRange) {
           chart.timeScale().setVisibleLogicalRange({
@@ -790,6 +827,10 @@ export function StockChart({ code, height = 500, endDate, onHoverData, onLoading
     }
 
     prevDataLengthRef.current = currLen
+
+    if (isSyncManaged && currLen > 0) {
+      onDataLoadedRef.current?.()
+    }
 
   }, [mergedKlineData, calculatedIndicators, chartVersion, colors])
 
