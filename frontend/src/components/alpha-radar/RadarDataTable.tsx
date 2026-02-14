@@ -7,6 +7,7 @@ import {
   type ColumnDef,
   type SortingState,
   type OnChangeFn,
+  type RowSelectionState,
 } from '@tanstack/react-table'
 import {
   Table,
@@ -17,6 +18,7 @@ import {
   TableRow,
 } from '@/components/ui/table'
 import { Badge } from '@/components/ui/badge'
+import { Checkbox } from '@/components/ui/checkbox'
 import { Progress } from '@/components/ui/progress'
 import { ComputingConsole } from '@/components/ui/computing-console'
 import { motion } from 'motion/react'
@@ -32,6 +34,8 @@ interface RadarDataTableProps {
   onSortingChange: OnChangeFn<SortingState>
   timeMode: TimeMode
   activeDate?: string
+  rowSelection?: RowSelectionState
+  onRowSelectionChange?: OnChangeFn<RowSelectionState>
 }
 
 // Quant label styles
@@ -68,6 +72,8 @@ export function RadarDataTable({
   onSortingChange,
   timeMode,
   activeDate,
+  rowSelection,
+  onRowSelectionChange,
 }: RadarDataTableProps) {
   const navigate = useNavigate()
 
@@ -85,6 +91,35 @@ export function RadarDataTable({
   // Define columns
   const columns = useMemo<ColumnDef<ScreenerItem>[]>(() => {
     const baseColumns: ColumnDef<ScreenerItem>[] = [
+      {
+        id: 'select',
+        header: ({ table }) => (
+          <div className="px-1">
+            <Checkbox
+              checked={
+                table.getIsAllPageRowsSelected() ||
+                (table.getIsSomePageRowsSelected() && 'indeterminate')
+              }
+              onCheckedChange={(value) => table.toggleAllPageRowsSelected(!!value)}
+              aria-label="全选"
+              className="h-4 w-4"
+            />
+          </div>
+        ),
+        cell: ({ row }) => (
+          <div className="px-1" onClick={(e) => e.stopPropagation()}>
+            <Checkbox
+              checked={row.getIsSelected()}
+              onCheckedChange={(value) => row.toggleSelected(!!value)}
+              aria-label="选择"
+              className="h-4 w-4"
+            />
+          </div>
+        ),
+        enableSorting: false,
+        enableHiding: false,
+        size: 32,
+      },
       // Code & Name
       {
         accessorKey: 'code',
@@ -345,10 +380,13 @@ export function RadarDataTable({
   const table = useReactTable({
     data,
     columns,
-    state: { sorting },
+    state: { sorting, rowSelection: rowSelection ?? {} },
     onSortingChange,
+    onRowSelectionChange: onRowSelectionChange,
     getCoreRowModel: getCoreRowModel(),
     manualSorting: true,
+    getRowId: (row) => row.code,
+    enableRowSelection: true,
   })
 
   // Loading state with computing console
@@ -392,7 +430,10 @@ export function RadarDataTable({
                   delay: index * 0.02,
                   ease: 'easeOut',
                 }}
-                className="cursor-pointer hover:bg-muted/50 border-b transition-colors"
+                className={cn(
+                  "cursor-pointer hover:bg-muted/50 border-b transition-colors",
+                  row.getIsSelected() && "bg-primary/5"
+                )}
                 onClick={() => handleRowClick(row.original.code)}
               >
                 {row.getVisibleCells().map((cell) => (

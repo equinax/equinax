@@ -1,11 +1,12 @@
 import { useState, useMemo, useCallback, useEffect } from 'react'
-import { useSearchParams } from 'react-router-dom'
+import { useSearchParams, useNavigate } from 'react-router-dom'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs'
-import { ChevronLeft, ChevronRight } from 'lucide-react'
-import type { SortingState, Updater } from '@tanstack/react-table'
+import { ChevronLeft, ChevronRight, BarChart3, X } from 'lucide-react'
+import type { SortingState, Updater, RowSelectionState } from '@tanstack/react-table'
 import { format } from 'date-fns'
+import { motion, AnimatePresence } from 'motion/react'
 import {
   useGetDashboardApiV1AlphaRadarDashboardGet,
   useGetScreenerApiV1AlphaRadarScreenerGet,
@@ -53,6 +54,8 @@ const sortFieldMap: Record<string, string> = {
 
 export default function AlphaRadarPage() {
   const [searchParams, setSearchParams] = useSearchParams()
+  const navigate = useNavigate()
+  const [rowSelection, setRowSelection] = useState<RowSelectionState>({})
 
   // Parse date string to Date object (avoiding timezone issues)
   const parseDateString = (dateStr: string): Date => {
@@ -179,6 +182,7 @@ export default function AlphaRadarPage() {
 
   const handleDateChange = useCallback((date: Date | undefined) => {
     setSelectedDate(date)
+    setRowSelection({})
   }, [])
 
   const handleDateRangeChange = useCallback((range: { from?: Date; to?: Date }) => {
@@ -189,12 +193,14 @@ export default function AlphaRadarPage() {
   const handleRadarModeChange = (mode: RadarMode) => {
     setRadarMode(mode)
     setPage(1)
+    setRowSelection({})
   }
 
   // Handle tab change (stock screener) - reset to page 1
   const handleTabChange = (tab: string) => {
     setActiveTab(tab as ScreenerTab)
     setPage(1)
+    setRowSelection({})
   }
 
   // Handle ETF category change - reset to page 1
@@ -216,7 +222,18 @@ export default function AlphaRadarPage() {
   const handleTimeModeChange = (mode: TimeMode) => {
     setTimeMode(mode)
     setPage(1)
+    setRowSelection({})
   }
+
+  const handleMultiBrowse = useCallback(() => {
+    const selectedCodes = Object.keys(rowSelection)
+    if (selectedCodes.length === 0) return
+    const dateParam = screener?.date ?? (selectedDate ? formatDateString(selectedDate) : '')
+    const params = new URLSearchParams()
+    params.set('codes', selectedCodes.join(','))
+    if (dateParam) params.set('date', dateParam)
+    navigate(`/alpha-radar/multi-browse?${params.toString()}`)
+  }, [rowSelection, screener?.date, selectedDate, navigate])
 
   // Get active screener data based on mode
   const activeScreener = radarMode === 'stock' ? screener : etfScreener
@@ -351,6 +368,8 @@ export default function AlphaRadarPage() {
               onSortingChange={handleSortingChange}
               timeMode={timeMode}
               activeDate={screener?.date ?? undefined}
+              rowSelection={rowSelection}
+              onRowSelectionChange={setRowSelection}
             />
           ) : (
             <EtfDataTable
@@ -390,6 +409,40 @@ export default function AlphaRadarPage() {
           )}
         </CardContent>
       </Card>
+
+      <AnimatePresence>
+        {radarMode === 'stock' && Object.keys(rowSelection).length > 0 && (
+          <motion.div
+            initial={{ y: 100, opacity: 0 }}
+            animate={{ y: 0, opacity: 1 }}
+            exit={{ y: 100, opacity: 0 }}
+            transition={{ type: 'spring', damping: 25, stiffness: 300 }}
+            className="fixed bottom-6 left-1/2 -translate-x-1/2 z-50"
+          >
+            <div className="flex items-center gap-3 bg-background/95 backdrop-blur-sm border rounded-full shadow-lg px-4 py-2">
+              <span className="text-sm text-muted-foreground">
+                已选 <span className="font-medium text-foreground">{Object.keys(rowSelection).length}</span> 只
+              </span>
+              <Button
+                size="sm"
+                onClick={handleMultiBrowse}
+                className="rounded-full gap-1.5"
+              >
+                <BarChart3 className="h-4 w-4" />
+                浏览K线
+              </Button>
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => setRowSelection({})}
+                className="rounded-full h-8 w-8 p-0"
+              >
+                <X className="h-4 w-4" />
+              </Button>
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </div>
   )
 }

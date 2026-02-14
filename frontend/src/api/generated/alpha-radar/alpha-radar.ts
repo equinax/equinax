@@ -40,6 +40,8 @@ import type {
   GetSectorRotationApiV1AlphaRadarSectorRotationGetParams,
   HTTPValidationError,
   IndustryEtfMappingResponse,
+  PerformanceEvalRequest,
+  PerformanceEvalResponse,
   PredictionConfigInput,
   ScreenerResponse,
   SectorHeatmapResponse,
@@ -3282,6 +3284,112 @@ export const usePreviewEtfPredictionApiV1AlphaRadarEtfPredictionPreviewPost = <
 > => {
   const mutationOptions =
     getPreviewEtfPredictionApiV1AlphaRadarEtfPredictionPreviewPostMutationOptions(
+      options,
+    );
+
+  return useMutation(mutationOptions);
+};
+/**
+ * Evaluate the performance of recommended stocks after a given date.
+
+Calculates returns for T+1, T+3, T+5, T+10, T+20 trading days.
+Provides win rate, profit/loss ratio, and comprehensive assessment.
+
+IMPORTANT: Only uses data available AFTER the recommendation date.
+No look-ahead bias.
+ * @summary Evaluate Performance
+ */
+export const evaluatePerformanceApiV1AlphaRadarEvaluatePerformancePost = (
+  performanceEvalRequest: PerformanceEvalRequest,
+) => {
+  return customInstance<PerformanceEvalResponse>({
+    url: `/api/v1/alpha-radar/evaluate-performance`,
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    data: performanceEvalRequest,
+  });
+};
+
+export const getEvaluatePerformanceApiV1AlphaRadarEvaluatePerformancePostMutationOptions =
+  <TError = HTTPValidationError, TContext = unknown>(options?: {
+    mutation?: UseMutationOptions<
+      Awaited<
+        ReturnType<
+          typeof evaluatePerformanceApiV1AlphaRadarEvaluatePerformancePost
+        >
+      >,
+      TError,
+      { data: PerformanceEvalRequest },
+      TContext
+    >;
+  }): UseMutationOptions<
+    Awaited<
+      ReturnType<
+        typeof evaluatePerformanceApiV1AlphaRadarEvaluatePerformancePost
+      >
+    >,
+    TError,
+    { data: PerformanceEvalRequest },
+    TContext
+  > => {
+    const { mutation: mutationOptions } = options ?? {};
+
+    const mutationFn: MutationFunction<
+      Awaited<
+        ReturnType<
+          typeof evaluatePerformanceApiV1AlphaRadarEvaluatePerformancePost
+        >
+      >,
+      { data: PerformanceEvalRequest }
+    > = (props) => {
+      const { data } = props ?? {};
+
+      return evaluatePerformanceApiV1AlphaRadarEvaluatePerformancePost(data);
+    };
+
+    return { mutationFn, ...mutationOptions };
+  };
+
+export type EvaluatePerformanceApiV1AlphaRadarEvaluatePerformancePostMutationResult =
+  NonNullable<
+    Awaited<
+      ReturnType<
+        typeof evaluatePerformanceApiV1AlphaRadarEvaluatePerformancePost
+      >
+    >
+  >;
+export type EvaluatePerformanceApiV1AlphaRadarEvaluatePerformancePostMutationBody =
+  PerformanceEvalRequest;
+export type EvaluatePerformanceApiV1AlphaRadarEvaluatePerformancePostMutationError =
+  HTTPValidationError;
+
+/**
+ * @summary Evaluate Performance
+ */
+export const useEvaluatePerformanceApiV1AlphaRadarEvaluatePerformancePost = <
+  TError = HTTPValidationError,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<
+      ReturnType<
+        typeof evaluatePerformanceApiV1AlphaRadarEvaluatePerformancePost
+      >
+    >,
+    TError,
+    { data: PerformanceEvalRequest },
+    TContext
+  >;
+}): UseMutationResult<
+  Awaited<
+    ReturnType<typeof evaluatePerformanceApiV1AlphaRadarEvaluatePerformancePost>
+  >,
+  TError,
+  { data: PerformanceEvalRequest },
+  TContext
+> => {
+  const mutationOptions =
+    getEvaluatePerformanceApiV1AlphaRadarEvaluatePerformancePostMutationOptions(
       options,
     );
 

@@ -811,6 +811,58 @@ class SortOrder(str, Enum):
 
 
 # ============================================
+# Performance Evaluation Schemas
+# ============================================
+
+
+class PerformanceEvalRequest(BaseModel):
+    """Request for evaluating screener recommendation performance."""
+
+    codes: List[str] = Field(description="List of stock codes to evaluate")
+    date: datetime.date = Field(description="Recommendation date (T0)")
+    periods: List[int] = Field(
+        default=[1, 3, 5, 10, 20], description="Evaluation periods in trading days"
+    )
+
+
+class StockPerformance(BaseModel):
+    """Performance of a single stock after recommendation."""
+
+    code: str
+    name: str
+    ref_price: Optional[Decimal] = Field(
+        default=None, description="Close price on recommendation date"
+    )
+    returns: dict[int, Optional[Decimal]] = Field(
+        description="Period -> return % (None if future date not available)"
+    )
+
+
+class PeriodStats(BaseModel):
+    """Aggregate statistics for a single evaluation period."""
+
+    period: int
+    win_count: int
+    lose_count: int
+    total: int
+    win_rate: Optional[Decimal] = None
+    avg_return: Optional[Decimal] = None
+    avg_win: Optional[Decimal] = None
+    avg_loss: Optional[Decimal] = None
+    profit_loss_ratio: Optional[Decimal] = None
+
+
+class PerformanceEvalResponse(BaseModel):
+    """Response for performance evaluation."""
+
+    date: datetime.date
+    total_stocks: int
+    stocks: List[StockPerformance]
+    period_stats: List[PeriodStats]
+    assessment: str
+
+
+# ============================================
 # API Endpoints
 # ============================================
 
@@ -1864,4 +1916,61 @@ async def preview_etf_prediction(
         min_score=min_score,
         max_score=max_score,
         avg_score=avg_score,
+    )
+
+
+@router.post("/evaluate-performance", response_model=PerformanceEvalResponse)
+async def evaluate_performance(
+    request: PerformanceEvalRequest,
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    Evaluate the performance of recommended stocks after a given date.
+
+    Calculates returns for T+1, T+3, T+5, T+10, T+20 trading days.
+    Provides win rate, profit/loss ratio, and comprehensive assessment.
+
+    IMPORTANT: Only uses data available AFTER the recommendation date.
+    No look-ahead bias.
+    """
+    from app.services.alpha_radar.performance_eval_service import PerformanceEvalService
+
+    service = PerformanceEvalService(db)
+    result = await service.evaluate_performance(
+        codes=request.codes,
+        date=request.date,
+        periods=request.periods,
+    )
+
+    stocks = [
+        StockPerformance(
+            code=s["code"],
+            name=s["name"],
+            ref_price=s.get("ref_price"),
+            returns=s.get("returns", {}),
+        )
+        for s in result["stocks"]
+    ]
+
+    period_stats_list = [
+        PeriodStats(
+            period=ps["period"],
+            win_count=ps["win_count"],
+            lose_count=ps["lose_count"],
+            total=ps["total"],
+            win_rate=ps.get("win_rate"),
+            avg_return=ps.get("avg_return"),
+            avg_win=ps.get("avg_win"),
+            avg_loss=ps.get("avg_loss"),
+            profit_loss_ratio=ps.get("profit_loss_ratio"),
+        )
+        for ps in result["period_stats"]
+    ]
+
+    return PerformanceEvalResponse(
+        date=result["date"],
+        total_stocks=result["total_stocks"],
+        stocks=stocks,
+        period_stats=period_stats_list,
+        assessment=result["assessment"],
     )

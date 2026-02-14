@@ -15,6 +15,7 @@ import LimitUpFocusPage from '@/pages/LimitUpFocusPage'
 import SettingsPage from '@/pages/SettingsPage'
 import DataSyncPage from '@/pages/DataSyncPage'
 import AlphaRadarPage from '@/pages/AlphaRadarPage'
+import MultiStockBrowsePage from '@/pages/MultiStockBrowsePage'
 import IndustryRotationPage from '@/pages/IndustryRotationPage'
 import EtfRotationPage from '@/pages/EtfRotationPage'
 import DynamicBacktestPage from '@/pages/dynamic-backtest'
@@ -40,6 +41,7 @@ function App() {
           <Route path="settings" element={<SettingsPage />} />
           <Route path="data-sync" element={<DataSyncPage />} />
           <Route path="alpha-radar" element={<AlphaRadarPage />} />
+          <Route path="alpha-radar/multi-browse" element={<MultiStockBrowsePage />} />
           <Route path="industry-rotation" element={<IndustryRotationPage />} />
           <Route path="etf-rotation" element={<EtfRotationPage />} />
         </Route>
