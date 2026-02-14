@@ -85,8 +85,12 @@ export default function AlphaRadarPage() {
     return dateParam ? parseDateString(dateParam) : undefined
   })
 
-  // Tab state (for stock screener)
-  const [activeTab, setActiveTab] = useState<ScreenerTab>('panorama')
+  // Tab state (for stock screener) - restore from URL
+  const [activeTab, setActiveTab] = useState<ScreenerTab>(() => {
+    const tabParam = searchParams.get('tab')
+    const validTabs = STOCK_TABS.map(t => t.value) as readonly string[]
+    return validTabs.includes(tabParam || '') ? (tabParam as ScreenerTab) : 'panorama'
+  })
 
   // Initialize ETF category from URL params (default: all)
   const [etfCategory, setEtfCategory] = useState<EtfCategory | 'all'>(() => {
@@ -112,6 +116,13 @@ export default function AlphaRadarPage() {
         prev.delete('date')
       }
 
+      // Sync activeTab (only when in stock mode and not default)
+      if (radarMode === 'stock' && activeTab !== 'panorama') {
+        prev.set('tab', activeTab)
+      } else {
+        prev.delete('tab')
+      }
+
       // Sync etfCategory (only when in ETF mode)
       if (radarMode === 'etf' && etfCategory !== 'all') {
         prev.set('category', etfCategory)
@@ -121,7 +132,7 @@ export default function AlphaRadarPage() {
 
       return prev
     }, { replace: true })
-  }, [radarMode, selectedDate, etfCategory, setSearchParams])
+  }, [radarMode, selectedDate, activeTab, etfCategory, setSearchParams])
 
   // Pagination state
   const [page, setPage] = useState(1)
@@ -244,8 +255,11 @@ export default function AlphaRadarPage() {
         params.set('labels', JSON.stringify(labelsMap))
       }
     }
+    if (activeTab !== 'panorama') {
+      params.set('tab', activeTab)
+    }
     navigate(`/alpha-radar/multi-browse?${params.toString()}`)
-  }, [rowSelection, screener?.date, screener?.items, selectedDate, navigate])
+  }, [rowSelection, screener?.date, screener?.items, selectedDate, activeTab, navigate])
 
   const handleSelectTopN = useCallback((n: number) => {
     const items = screener?.items

@@ -71,6 +71,13 @@ const PERIOD_COLORS: Record<number, string> = {
 const PRICE_LINE_PERIODS = [3, 5, 10] as const
 const PRICE_LINE_LABELS: Record<number, string> = { 3: 'B3', 5: 'B5', 10: 'B10', 20: 'B20' }
 
+const STOCK_TAB_LABELS: Record<string, string> = {
+  panorama: '全景综合',
+  smart: '聪明钱吸筹',
+  value: '深度价值',
+  trend: '超级趋势',
+}
+
 export default function MultiStockBrowsePage() {
   const [searchParams] = useSearchParams()
   const navigate = useNavigate()
@@ -80,6 +87,8 @@ export default function MultiStockBrowsePage() {
     [searchParams]
   )
   const date = searchParams.get('date') ?? ''
+  const tab = searchParams.get('tab') ?? ''
+  const tabLabel = STOCK_TAB_LABELS[tab] ?? ''
   const labelsMap = useMemo<Record<string, string[]>>(() => {
     try {
       const raw = searchParams.get('labels')
@@ -91,6 +100,13 @@ export default function MultiStockBrowsePage() {
 
   const syncManagerRef = useRef<ChartSyncManager>(new ChartSyncManager())
   const [isExporting, setIsExporting] = useState(false)
+
+  const handleGoBack = useCallback(() => {
+    const params = new URLSearchParams()
+    if (date) params.set('date', date)
+    if (tab) params.set('tab', tab)
+    navigate(`/alpha-radar?${params.toString()}`)
+  }, [navigate, date, tab])
 
   const evalMutation = useEvaluatePerformanceApiV1AlphaRadarEvaluatePerformancePost()
 
@@ -270,7 +286,7 @@ export default function MultiStockBrowsePage() {
     return (
       <div className="space-y-4">
         <div className="flex items-center gap-4">
-          <Button variant="ghost" size="icon" onClick={() => navigate(-1)}>
+          <Button variant="ghost" size="icon" onClick={handleGoBack}>
             <ArrowLeft className="h-5 w-5" />
           </Button>
           <h1 className="text-2xl font-bold tracking-tight">多股浏览</h1>
@@ -287,12 +303,18 @@ export default function MultiStockBrowsePage() {
       {/* Header */}
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-2">
-          <Button variant="ghost" size="sm" className="-ml-2 gap-1 text-muted-foreground hover:text-foreground" onClick={() => navigate(-1)}>
+          <Button variant="ghost" size="sm" className="-ml-2 gap-1 text-muted-foreground hover:text-foreground" onClick={handleGoBack}>
             <ArrowLeft className="h-4 w-4" />
             返回选股
           </Button>
           <span className="text-muted-foreground">·</span>
           <h1 className="text-xl font-bold tracking-tight">多股浏览</h1>
+          {tabLabel && (
+            <>
+              <span className="text-muted-foreground">·</span>
+              <Badge variant="secondary" className="font-normal text-xs">{tabLabel}</Badge>
+            </>
+          )}
         </div>
         <span className="text-muted-foreground font-mono text-sm">
           {date} · {codes.length}只股票
