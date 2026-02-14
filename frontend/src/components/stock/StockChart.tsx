@@ -64,6 +64,7 @@ export interface VerticalMarker {
   date: string    // YYYY-MM-DD format
   color: string
   label?: string  // optional label (not rendered on chart, for reference)
+  lineStyle?: 'solid' | 'dashed'
 }
 
 interface StockChartProps {
@@ -163,10 +164,12 @@ function getVisibleRange(
 class VertLinePaneRenderer {
   _x: Coordinate | null = null
   _color: string
+  _solid: boolean
 
-  constructor(x: Coordinate | null, color: string) {
+  constructor(x: Coordinate | null, color: string, solid: boolean = false) {
     this._x = x
     this._color = color
+    this._solid = solid
   }
 
   draw(target: { useBitmapCoordinateSpace: (fn: (scope: { context: CanvasRenderingContext2D; bitmapSize: { width: number; height: number }; horizontalPixelRatio: number }) => void) => void }) {
@@ -178,7 +181,9 @@ class VertLinePaneRenderer {
       ctx.save()
       ctx.strokeStyle = this._color
       ctx.lineWidth = 1 * scope.horizontalPixelRatio
-      ctx.setLineDash([4 * scope.horizontalPixelRatio, 4 * scope.horizontalPixelRatio])
+      if (!this._solid) {
+        ctx.setLineDash([4 * scope.horizontalPixelRatio, 4 * scope.horizontalPixelRatio])
+      }
       ctx.beginPath()
       ctx.moveTo(x + 0.5, 0)
       ctx.lineTo(x + 0.5, scope.bitmapSize.height)
@@ -203,23 +208,25 @@ class VertLinePaneView {
   }
 
   renderer() {
-    return new VertLinePaneRenderer(this._x, this._source._color)
+    return new VertLinePaneRenderer(this._x, this._source._color, this._source._solid)
   }
 }
 
-// Vertical line primitive - draws a dashed vertical line at specified time
+// Vertical line primitive - draws a vertical line at specified time
 class VertLine implements ISeriesPrimitive<Time> {
   _chart: IChartApi
   _series: ISeriesApi<SeriesType>
   _time: Time
   _color: string
+  _solid: boolean
   _paneViews: VertLinePaneView[]
 
-  constructor(chart: IChartApi, series: ISeriesApi<SeriesType>, time: Time, color: string = '#1E40AF') {
+  constructor(chart: IChartApi, series: ISeriesApi<SeriesType>, time: Time, color: string = '#1E40AF', solid: boolean = false) {
     this._chart = chart
     this._series = series
     this._time = time
     this._color = color
+    this._solid = solid
     this._paneViews = [new VertLinePaneView(this)]
   }
 
@@ -504,6 +511,8 @@ export function StockChart({ code, height = 500, endDate, onHoverData, onLoading
       wickUpColor: colors.profit,
       wickDownColor: colors.loss,
       priceScaleId: 'right',
+      lastValueVisible: !minimal,
+      priceLineVisible: !minimal,
     })
 
     onChartReadyRef.current?.(chart, seriesRefs.current.candle)
@@ -550,6 +559,8 @@ export function StockChart({ code, height = 500, endDate, onHoverData, onLoading
       seriesRefs.current.volume = chart.addHistogramSeries({
         priceFormat: { type: 'volume' },
         priceScaleId: 'volume',
+        lastValueVisible: !minimal,
+        priceLineVisible: false,
       })
 
       chart.priceScale('volume').applyOptions({
@@ -859,11 +870,20 @@ export function StockChart({ code, height = 500, endDate, onHoverData, onLoading
     const newVertLines: VertLine[] = []
 
     if (endDate) {
-      const dateExists = mergedKlineData.some(d => d.date === endDate)
-      if (dateExists) {
-        const vertLine = new VertLine(chartApiRef.current, seriesRefs.current.candle, endDate as Time, '#1E40AF')
-        seriesRefs.current.candle.attachPrimitive(vertLine)
-        newVertLines.push(vertLine)
+      const sortedDates = mergedKlineData.map(d => d.date).sort()
+
+      const recDateExists = sortedDates.includes(endDate)
+      if (recDateExists) {
+        const recLine = new VertLine(chartApiRef.current, seriesRefs.current.candle, endDate as Time, '#9ca3af', false)
+        seriesRefs.current.candle.attachPrimitive(recLine)
+        newVertLines.push(recLine)
+      }
+
+      const purchaseDate = sortedDates.find(d => d > endDate)
+      if (purchaseDate) {
+        const buyLine = new VertLine(chartApiRef.current, seriesRefs.current.candle, purchaseDate as Time, '#1E40AF', true)
+        seriesRefs.current.candle.attachPrimitive(buyLine)
+        newVertLines.push(buyLine)
       }
     }
 
@@ -871,7 +891,7 @@ export function StockChart({ code, height = 500, endDate, onHoverData, onLoading
       for (const marker of verticalMarkersRef.current) {
         const dateExists = mergedKlineDataRef.current.some(d => d.date === marker.date)
         if (dateExists) {
-          const vertLine = new VertLine(chartApiRef.current!, seriesRefs.current.candle!, marker.date as Time, marker.color)
+          const vertLine = new VertLine(chartApiRef.current!, seriesRefs.current.candle!, marker.date as Time, marker.color, marker.lineStyle === 'solid')
           seriesRefs.current.candle!.attachPrimitive(vertLine)
           newVertLines.push(vertLine)
         }

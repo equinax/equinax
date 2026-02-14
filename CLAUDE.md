@@ -131,3 +131,7 @@ docker compose exec api python -m scripts.import_sw_industry --system em  # EM o
 
 ## 注意
 在前端永远不要直接使用 fetch 来调用 rest 接口, 而是要通过 api:generate 之后,从 src/api/generated 里面去调用
+
+## Screenshots
+
+When taking screenshots (e.g. via Playwright for verification), save them to `.sisyphus/screenshots/` — this path is gitignored. Do NOT save screenshots or verification markdown files in the project root.

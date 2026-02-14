@@ -65,6 +65,9 @@ const PERIOD_COLORS: Record<number, string> = {
   20: '#ec4899',  // pink — Buy+20
 }
 
+const PRICE_LINE_PERIODS = [3, 5, 10] as const
+const PRICE_LINE_LABELS: Record<number, string> = { 3: 'B3', 5: 'B5', 10: 'B10', 20: 'B20' }
+
 export default function MultiStockBrowsePage() {
   const [searchParams] = useSearchParams()
   const navigate = useNavigate()
@@ -74,6 +77,14 @@ export default function MultiStockBrowsePage() {
     [searchParams]
   )
   const date = searchParams.get('date') ?? ''
+  const labelsMap = useMemo<Record<string, string[]>>(() => {
+    try {
+      const raw = searchParams.get('labels')
+      return raw ? JSON.parse(raw) : {}
+    } catch {
+      return {}
+    }
+  }, [searchParams])
 
   const syncManagerRef = useRef<ChartSyncManager>(new ChartSyncManager())
 
@@ -147,10 +158,31 @@ export default function MultiStockBrowsePage() {
     for (const code of codes) {
       const stockInfo = stockMap[code]
       const buyPrice = stockInfo?.buy_price ? parseFloat(String(stockInfo.buy_price)) : null
-      map[code] = buyPrice ? [
+      if (!buyPrice) {
+        map[code] = []
+        continue
+      }
+
+      const lines: PriceLine[] = [
         { price: buyPrice, color: '#3b82f6', label: '成本', lineStyle: 'solid' as const },
         { price: buyPrice * 0.95, color: '#ef4444', label: '止损 -5%', lineStyle: 'dashed' as const },
-      ] : []
+      ]
+
+      for (const period of PRICE_LINE_PERIODS) {
+        const ret = stockInfo?.returns?.[String(period)]
+        if (ret != null) {
+          const retPct = parseFloat(String(ret))
+          const periodPrice = buyPrice * (1 + retPct / 100)
+          lines.push({
+            price: periodPrice,
+            color: PERIOD_COLORS[period],
+            label: PRICE_LINE_LABELS[period],
+            lineStyle: 'solid' as const,
+          })
+        }
+      }
+
+      map[code] = lines
     }
     return map
   }, [codes, stockMap])
@@ -201,24 +233,23 @@ export default function MultiStockBrowsePage() {
   return (
     <div className="space-y-4">
       {/* Header */}
-      <div className="flex flex-col gap-2">
+      <div className="flex items-center justify-between">
         <div className="flex items-center gap-2">
           <Button variant="ghost" size="sm" className="-ml-2 gap-1 text-muted-foreground hover:text-foreground" onClick={() => navigate(-1)}>
             <ArrowLeft className="h-4 w-4" />
             返回选股
           </Button>
+          <span className="text-muted-foreground">·</span>
+          <h1 className="text-xl font-bold tracking-tight">多股浏览</h1>
         </div>
-        <div className="flex items-baseline justify-between">
-          <h1 className="text-3xl font-bold tracking-tight">多股浏览</h1>
-          <span className="text-muted-foreground font-mono">
-            {date} · {codes.length}只股票
-          </span>
-        </div>
+        <span className="text-muted-foreground font-mono text-sm">
+          {date} · {codes.length}只股票
+        </span>
       </div>
 
       {/* Performance Panel */}
       <div className="border bg-background">
-        <div className="flex items-center gap-2 px-3 py-2 border-b bg-[#d1b2ad]/35 backdrop-blur-[2px]">
+        <div className="flex items-center gap-2 px-3 py-2 border-b">
           <span className="text-sm font-medium">表现评估</span>
           {evalMutation.isPending && <Skeleton className="h-5 w-24" />}
           {evalMutation.data && (
@@ -326,6 +357,7 @@ export default function MultiStockBrowsePage() {
             onChartReady={chartReadyCallbacks[code]}
             onDataLoaded={dataLoadedCallbacks[code]}
             sharedDates={sharedDates}
+            quantLabels={labelsMap[code]}
           />
         ))}
       </div>
@@ -333,20 +365,56 @@ export default function MultiStockBrowsePage() {
   )
 }
 
+const QUANT_LABEL_CN: Record<string, string> = {
+  main_accumulation: '主力吸筹',
+  undervalued: '低估值',
+  oversold: '超卖',
+  high_volatility: '高波动',
+  breakout: '突破',
+  volume_surge: '放量',
+}
+
+const formatMv = (val: string | number | null | undefined): string => {
+  if (val == null) return '—'
+  const num = parseFloat(String(val))
+  if (num >= 10000) return `${(num / 10000).toFixed(0)}万亿`
+  if (num >= 1) return `${num.toFixed(0)}亿`
+  return `${(num * 10000).toFixed(0)}万`
+}
+
+const formatVol = (val: string | number | null | undefined): string => {
+  if (val == null) return '—'
+  const num = parseFloat(String(val))
+  if (num >= 100000000) return `${(num / 100000000).toFixed(2)}亿`
+  if (num >= 10000) return `${(num / 10000).toFixed(0)}万`
+  return `${num.toFixed(0)}`
+}
+
 interface StockChartItemProps {
   code: string
   date: string
   isFirst: boolean
-  stockInfo: { name: string; buy_price?: string | number | null; returns?: Record<string, string | null> } | undefined
+  stockInfo: {
+    name: string
+    buy_price?: string | number | null
+    returns?: Record<string, string | null>
+    total_mv?: string | number | null
+    circ_mv?: string | number | null
+    volume?: string | number | null
+    turnover?: string | number | null
+    pe_ttm?: string | number | null
+    pb_mrq?: string | number | null
+  } | undefined
   evalDone: boolean
   priceLines: PriceLine[]
   verticalMarkers: VerticalMarker[]
   onChartReady: (chart: IChartApi, series: ISeriesApi<SeriesType>) => void
   onDataLoaded: () => void
   sharedDates: string[]
+  quantLabels?: string[]
 }
 
-function StockChartItem({ code, date, isFirst, stockInfo, evalDone, priceLines, verticalMarkers, onChartReady, onDataLoaded, sharedDates }: StockChartItemProps) {
+function StockChartItem({ code, date, isFirst, stockInfo, evalDone, priceLines, verticalMarkers, onChartReady, onDataLoaded, sharedDates, quantLabels }: StockChartItemProps) {
   const { data: klineData } = useGetKlineApiV1StocksCodeKlineGet(
     code,
     { limit: 1000 },
@@ -358,20 +426,38 @@ function StockChartItem({ code, date, isFirst, stockInfo, evalDone, priceLines, 
 
   return (
     <div className={cn("relative border-x border-b bg-background", isFirst && "border-t")}>
-      <div className="absolute left-0 top-0 z-10 flex items-center gap-2 bg-[#d1b2ad]/35 px-2 py-1 text-sm backdrop-blur-[2px]">
+      <div className="absolute left-0 right-0 top-0 z-10 flex items-center gap-2 bg-[#d1b2ad]/35 px-2 py-1 text-sm backdrop-blur-[2px]">
         <span className="font-mono font-medium">{code}</span>
         <span className="text-muted-foreground">{displayName}</span>
         {buyPrice && (
           <span className="font-mono text-xs">¥{buyPrice}</span>
         )}
-        <div className="flex items-center gap-2 ml-1">
+        {stockInfo && (stockInfo.total_mv || stockInfo.volume || stockInfo.pe_ttm) && (
+          <>
+            {stockInfo.total_mv != null && <span className="text-xs text-muted-foreground">市值 {formatMv(stockInfo.total_mv)}</span>}
+            {stockInfo.circ_mv != null && <span className="text-xs text-muted-foreground">流值 {formatMv(stockInfo.circ_mv)}</span>}
+            {stockInfo.volume != null && <span className="text-xs text-muted-foreground">量 {formatVol(stockInfo.volume)}</span>}
+            {stockInfo.turnover != null && <span className="text-xs text-muted-foreground">换手 {parseFloat(String(stockInfo.turnover)).toFixed(1)}%</span>}
+            {stockInfo.pe_ttm != null && <span className="text-xs text-muted-foreground">PE {parseFloat(String(stockInfo.pe_ttm)).toFixed(1)}</span>}
+            {stockInfo.pb_mrq != null && <span className="text-xs text-muted-foreground">PB {parseFloat(String(stockInfo.pb_mrq)).toFixed(2)}</span>}
+          </>
+        )}
+        {quantLabels && quantLabels.length > 0 && (
+          <span className="text-xs">
+            <span className="text-muted-foreground">推荐:</span>
+            {quantLabels.map(l => (
+              <span key={l} className="text-amber-600 dark:text-amber-400 ml-0.5">{QUANT_LABEL_CN[l] ?? l}</span>
+            ))}
+          </span>
+        )}
+        <div className="flex items-center gap-2 ml-auto">
           {EVAL_PERIODS.map(p => {
             const ret = stockInfo?.returns?.[String(p)]
             if (!ret) return null
             return (
               <span key={p} className={cn("font-mono text-xs flex items-center", getValueColor(ret))}>
                 <span className="inline-block w-1.5 h-1.5 rounded-full mr-1" style={{ backgroundColor: PERIOD_COLORS[p] }} />
-                {PERIOD_LABELS[p]}: {formatPercent(ret)}
+                {PRICE_LINE_LABELS[p] ?? PERIOD_LABELS[p]}: {formatPercent(ret)}
               </span>
             )
           })}

@@ -846,6 +846,12 @@ class StockPerformance(BaseModel):
     returns: dict[int, Optional[Decimal]] = Field(
         description="Period -> return % (None if future date not available)"
     )
+    total_mv: Optional[Decimal] = Field(default=None, description="总市值 (万元)")
+    circ_mv: Optional[Decimal] = Field(default=None, description="流通市值 (万元)")
+    volume: Optional[Decimal] = Field(default=None, description="成交量")
+    turnover: Optional[Decimal] = Field(default=None, description="换手率 (%)")
+    pe_ttm: Optional[Decimal] = Field(default=None, description="市盈率TTM")
+    pb_mrq: Optional[Decimal] = Field(default=None, description="市净率MRQ")
 
 
 class PeriodStats(BaseModel):
@@ -1983,6 +1989,12 @@ async def evaluate_performance(
             buy_price=s.get("buy_price"),
             buy_date=s.get("buy_date"),
             returns=s.get("returns", {}),
+            total_mv=s.get("total_mv"),
+            circ_mv=s.get("circ_mv"),
+            volume=s.get("volume"),
+            turnover=s.get("turnover"),
+            pe_ttm=s.get("pe_ttm"),
+            pb_mrq=s.get("pb_mrq"),
         )
         for s in result["stocks"]
     ]

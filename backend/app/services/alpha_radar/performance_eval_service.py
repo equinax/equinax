@@ -119,6 +119,7 @@ class PerformanceEvalService:
 
         t1_date = period_dates_list[0]
         buy_prices = await self._get_open_prices(codes, t1_date)
+        stock_details = await self._get_stock_details(codes, date)
 
         response_period_dates: dict[int, Optional[str]] = {}
         for period in periods:
@@ -151,6 +152,7 @@ class PerformanceEvalService:
                 else:
                     returns[period] = None
 
+            detail = stock_details.get(code, {})
             stocks.append(
                 {
                     "code": code,
@@ -159,6 +161,12 @@ class PerformanceEvalService:
                     "buy_price": buy_price_val,
                     "buy_date": t1_date,
                     "returns": returns,
+                    "total_mv": detail.get("total_mv"),
+                    "circ_mv": detail.get("circ_mv"),
+                    "volume": detail.get("volume"),
+                    "turnover": detail.get("turnover"),
+                    "pe_ttm": detail.get("pe_ttm"),
+                    "pb_mrq": detail.get("pb_mrq"),
                 }
             )
 
@@ -247,6 +255,50 @@ class PerformanceEvalService:
             {"codes": codes},
         )
         return {row[0]: row[1] for row in result.fetchall()}
+
+    async def _get_stock_details(self, codes: list[str], date: datetime.date) -> dict[str, dict]:
+        """Get financial details (valuation + market) for stocks on a given date.
+
+        Returns dict keyed by code with total_mv, circ_mv, pe_ttm, pb_mrq,
+        volume, turnover fields.
+        """
+        details: dict[str, dict] = {}
+
+        # Valuation data from indicator_valuation
+        # Use <= date to handle weekends/holidays (fall back to nearest prior trading day)
+        val_result = await self.db.execute(
+            text(
+                "SELECT DISTINCT ON (code) code, total_mv, circ_mv, pe_ttm, pb_mrq "
+                "FROM indicator_valuation "
+                "WHERE code = ANY(:codes) AND date <= :date "
+                "ORDER BY code, date DESC"
+            ),
+            {"codes": codes, "date": date},
+        )
+        for row in val_result.fetchall():
+            details[row[0]] = {
+                "total_mv": Decimal(str(row[1])) if row[1] is not None else None,
+                "circ_mv": Decimal(str(row[2])) if row[2] is not None else None,
+                "pe_ttm": Decimal(str(row[3])) if row[3] is not None else None,
+                "pb_mrq": Decimal(str(row[4])) if row[4] is not None else None,
+            }
+
+        # Market data from market_daily (volume, turn -> turnover)
+        mkt_result = await self.db.execute(
+            text(
+                "SELECT DISTINCT ON (code) code, volume, turn "
+                "FROM market_daily "
+                "WHERE code = ANY(:codes) AND date <= :date "
+                "ORDER BY code, date DESC"
+            ),
+            {"codes": codes, "date": date},
+        )
+        for row in mkt_result.fetchall():
+            entry = details.setdefault(row[0], {})
+            entry["volume"] = Decimal(str(row[1])) if row[1] is not None else None
+            entry["turnover"] = Decimal(str(row[2])) if row[2] is not None else None
+
+        return details
 
     async def _get_close_prices(
         self, codes: list[str], target_date: datetime.date

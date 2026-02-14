@@ -232,8 +232,20 @@ export default function AlphaRadarPage() {
     const params = new URLSearchParams()
     params.set('codes', selectedCodes.join(','))
     if (dateParam) params.set('date', dateParam)
+    const items = screener?.items
+    if (items) {
+      const labelsMap: Record<string, string[]> = {}
+      for (const item of items) {
+        if (selectedCodes.includes(item.code) && item.quant_labels?.length) {
+          labelsMap[item.code] = item.quant_labels
+        }
+      }
+      if (Object.keys(labelsMap).length > 0) {
+        params.set('labels', JSON.stringify(labelsMap))
+      }
+    }
     navigate(`/alpha-radar/multi-browse?${params.toString()}`)
-  }, [rowSelection, screener?.date, selectedDate, navigate])
+  }, [rowSelection, screener?.date, screener?.items, selectedDate, navigate])
 
   const handleSelectTopN = useCallback((n: number) => {
     const items = screener?.items
