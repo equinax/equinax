@@ -72,10 +72,7 @@ const PRICE_LINE_PERIODS = [3, 5, 10] as const
 const PRICE_LINE_LABELS: Record<number, string> = { 3: 'B3', 5: 'B5', 10: 'B10', 20: 'B20' }
 
 const STOCK_TAB_LABELS: Record<string, string> = {
-  panorama: '全景综合',
-  smart: '聪明钱吸筹',
-  value: '深度价值',
-  trend: '超级趋势',
+  weekly: '周内短线',
   rally: '主升浪',
   dragon: '龙头先锋',
 }

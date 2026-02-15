@@ -12,6 +12,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.services.alpha_radar.polars_engine import PolarsEngine
 from app.services.alpha_radar.scoring import ScoringEngine
+from app.services.alpha_radar.engine import score_tab
+from app.services.alpha_radar.engine.config import STRATEGIES
 
 
 class ScreenerService:
@@ -46,7 +48,7 @@ class ScreenerService:
         Get screener results with scoring and filtering.
 
         Args:
-            tab: Screener tab (panorama, smart, value, trend)
+            tab: Screener tab (weekly, rally, dragon)
             mode: Time mode (snapshot, period)
             target_date: Target date for snapshot mode
             start_date: Start date for period mode
@@ -115,12 +117,12 @@ class ScreenerService:
         if "is_st" in df.columns:
             df = df.filter(pl.col("is_st").fill_null(0) != 1)
 
-        if tab in ("trend", "panorama", "smart", "rally", "dragon"):
+        if tab in ("weekly", "rally", "dragon"):
             if "near_limit_up" in df.columns:
                 df = df.filter(pl.col("near_limit_up") == False)  # noqa: E712
 
-        if tab == "smart" and "pct_chg" in df.columns:
-            df = df.filter(pl.col("pct_chg").fill_null(0.0).abs() <= 7.0)
+        if tab == "weekly" and "pct_chg" in df.columns:
+            df = df.filter(pl.col("pct_chg").fill_null(0.0).abs() <= 5.0)
         elif tab == "dragon" and "pct_chg" in df.columns:
             df = df.filter(pl.col("pct_chg").fill_null(0.0).abs() <= 5.0)
 
@@ -178,8 +180,8 @@ class ScreenerService:
                     how="left",
                 )
                 df = df.with_columns(pl.col("sector_momentum_5d").fill_null(0.0))
-        # Iter 14/15: Load and join per-stock moneyflow for trend/dragon scoring
-        if tab in ("trend", "dragon"):
+        # Iter 14/15: Load and join per-stock moneyflow for dragon scoring
+        if tab in STRATEGIES and STRATEGIES[tab].requires_moneyflow:  # type: ignore[literal-required]
             mf_date = target_date if mode == "snapshot" else end_date
             if mf_date:
                 moneyflow_df = await self.polars_engine.load_moneyflow_data(mf_date)
@@ -216,24 +218,8 @@ class ScreenerService:
             }
 
         # Calculate scores based on tab
-        if tab == "panorama":
-            df = scoring_engine.calculate_panorama_score(df)
-            score_col = "panorama_score"
-        elif tab == "smart":
-            df = scoring_engine.calculate_smart_accumulation_score(df)
-            score_col = "smart_score"
-        elif tab == "value":
-            df = scoring_engine.calculate_deep_value_score(df)
-            score_col = "value_score"
-        elif tab == "trend":
-            df = scoring_engine.calculate_super_trend_score(df)
-            score_col = "trend_score"
-        elif tab == "rally":
-            df = scoring_engine.calculate_main_rally_score(df)
-            score_col = "rally_score"
-        elif tab == "dragon":
-            df = scoring_engine.calculate_dragon_leader_score(df)
-            score_col = "dragon_score"
+        if tab in STRATEGIES:
+            df, score_col = score_tab(tab, df, market_regime_score=regime["market_regime_score"])  # type: ignore[arg-type]
         else:
             df = scoring_engine.calculate_panorama_score(df)
             score_col = "panorama_score"

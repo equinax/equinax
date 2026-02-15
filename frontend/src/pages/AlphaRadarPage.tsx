@@ -26,10 +26,7 @@ type RadarMode = 'stock' | 'etf'
 
 // Tab configuration for stock screener
 const STOCK_TABS = [
-  { value: 'panorama', label: '全景综合', description: '动量+估值+质量+主力+技术' },
-  { value: 'smart', label: '聪明钱吸筹', description: '主力强度+量价+价格位置' },
-  { value: 'value', label: '深度价值', description: '低估+质量+稳定+分红' },
-  { value: 'trend', label: '超级趋势', description: '动量+突破+量能+趋势' },
+  { value: 'weekly', label: '周内短线', description: '稳定T+6，偏防守' },
   { value: 'rally', label: '主升浪', description: 'MA多头+量能阶梯+趋势质量' },
   { value: 'dragon', label: '龙头先锋', description: '主力吸筹+突破蓄力+量价一致' },
 ] as const
@@ -91,7 +88,7 @@ export default function AlphaRadarPage() {
   const [activeTab, setActiveTab] = useState<ScreenerTab>(() => {
     const tabParam = searchParams.get('tab')
     const validTabs = STOCK_TABS.map(t => t.value) as readonly string[]
-    return validTabs.includes(tabParam || '') ? (tabParam as ScreenerTab) : 'panorama'
+    return validTabs.includes(tabParam || '') ? (tabParam as ScreenerTab) : 'weekly'
   })
 
   // Initialize ETF category from URL params (default: all)
@@ -119,7 +116,7 @@ export default function AlphaRadarPage() {
       }
 
       // Sync activeTab (only when in stock mode and not default)
-      if (radarMode === 'stock' && activeTab !== 'panorama') {
+      if (radarMode === 'stock' && activeTab !== 'weekly') {
         prev.set('tab', activeTab)
       } else {
         prev.delete('tab')
@@ -257,7 +254,7 @@ export default function AlphaRadarPage() {
         params.set('labels', JSON.stringify(labelsMap))
       }
     }
-    if (activeTab !== 'panorama') {
+    if (activeTab !== 'weekly') {
       params.set('tab', activeTab)
     }
     navigate(`/alpha-radar/multi-browse?${params.toString()}`)

@@ -8,10 +8,7 @@ export type ScreenerTab = (typeof ScreenerTab)[keyof typeof ScreenerTab];
 
 // eslint-disable-next-line @typescript-eslint/no-redeclare
 export const ScreenerTab = {
-  panorama: "panorama",
-  smart: "smart",
-  value: "value",
-  trend: "trend",
+  weekly: "weekly",
   rally: "rally",
   dragon: "dragon",
 } as const;

@@ -24,6 +24,8 @@ from sqlalchemy import text
 from app.db.session import async_session_maker
 from app.services.alpha_radar.polars_engine import PolarsEngine
 from app.services.alpha_radar.scoring import ScoringEngine
+from app.services.alpha_radar.engine import score_tab
+from app.services.alpha_radar.engine.config import STRATEGIES
 
 # Silence SQL logs
 logging.getLogger("sqlalchemy.engine").setLevel(logging.WARNING)
@@ -577,35 +579,19 @@ def compute_scores_for_date(
                 ]
             )
 
-    # Hard filter: exclude near_limit_up stocks for trend/panorama/smart (matches screener_service.py)
-    if tab in ("trend", "panorama", "smart", "rally", "dragon"):
+    # Hard filter: exclude near_limit_up stocks (matches screener_service.py)
+    if tab in ("weekly", "rally", "dragon"):
         if "near_limit_up" in df.columns:
             df = df.filter(pl.col("near_limit_up") == False)  # noqa: E712
 
-    if tab == "smart" and "pct_chg" in df.columns:
-        df = df.filter(pl.col("pct_chg").fill_null(0.0).abs() <= 7.0)
+    if tab == "weekly" and "pct_chg" in df.columns:
+        df = df.filter(pl.col("pct_chg").fill_null(0.0).abs() <= 5.0)
     elif tab == "dragon" and "pct_chg" in df.columns:
         df = df.filter(pl.col("pct_chg").fill_null(0.0).abs() <= 5.0)
 
     # Calculate scores
-    if tab == "panorama":
-        df = scoring.calculate_panorama_score(df)
-        score_col = "panorama_score"
-    elif tab == "smart":
-        df = scoring.calculate_smart_accumulation_score(df)
-        score_col = "smart_score"
-    elif tab == "value":
-        df = scoring.calculate_deep_value_score(df)
-        score_col = "value_score"
-    elif tab == "trend":
-        df = scoring.calculate_super_trend_score(df)
-        score_col = "trend_score"
-    elif tab == "rally":
-        df = scoring.calculate_main_rally_score(df)
-        score_col = "rally_score"
-    elif tab == "dragon":
-        df = scoring.calculate_dragon_leader_score(df)
-        score_col = "dragon_score"
+    if tab in STRATEGIES:
+        df, score_col = score_tab(tab, df, market_regime_score=regime_score)  # type: ignore[arg-type]
     else:
         return []
 
@@ -767,13 +753,13 @@ async def run_backtest(
     # Determine date range: earliest test date minus lookback, latest test date + period buffer
     earliest = min(test_dates)
     latest = max(test_dates)
-    # Add buffer for T+period evaluation (30 calendar days should cover ~20 trading days)
-    end_date = latest + datetime.timedelta(days=45)
+    # Buffer for T+period evaluation (55 calendar days covers ~30 trading days for dragon T+20)
+    end_date = latest + datetime.timedelta(days=55)
 
     log.info(f"=== Alpha Radar Backtest ===")
     log.info(f"Test dates: {len(test_dates)} dates ({earliest} to {latest})")
     log.info(f"Tabs: {', '.join(tabs)}")
-    log.info(f"Top N: {top_n}, Eval period: T+{period}")
+    log.info(f"Top N: {top_n}, Eval period: per-tab (from config)")
     log.info(f"Loading data...")
 
     async with async_session_maker() as db:
@@ -828,7 +814,8 @@ async def run_backtest(
                         abstained_dates.add(d)
                     elif low_regime and weak_days >= 3:
                         abstained_dates.add(d)
-            perf = evaluate_t_plus_n(recs, d, market_df, period)
+            tab_period = STRATEGIES[tab].eval_period_trading_days if tab in STRATEGIES else period  # type: ignore[literal-required]
+            perf = evaluate_t_plus_n(recs, d, market_df, tab_period)
             elapsed = time.time() - t0
             all_results[d][tab] = {
                 "recommendations": recs,
@@ -852,7 +839,7 @@ async def run_backtest(
                     chg_str = f"{r['pct_chg']:.2f}" if r.get("pct_chg") is not None else "N/A"
                     score_str = f"{r['score']:.1f}" if r.get("score") is not None else "N/A"
                     log.info(
-                        f"    {r['code']} {r['name']:<8} score={score_str} close={close_str} chg={chg_str}% → T+{period}: {ret_val}% {marker}"
+                        f"    {r['code']} {r['name']:<8} score={score_str} close={close_str} chg={chg_str}% → T+{tab_period}: {ret_val}% {marker}"
                     )
             elif verbose and d in abstained_dates and tab == tabs[0]:
                 regime_score, weak_days, rd = compute_regime_score(
@@ -867,9 +854,15 @@ async def run_backtest(
 
     # Print summary table
     total_elapsed = time.time() - t_start
-    log.info(f"\n{'=' * 110}")
-    log.info(f"{'Date':<14} {'PANORAMA':<26} {'SMART':<26} {'VALUE':<26} {'TREND':<26}")
-    log.info(f"{'=' * 110}")
+    col_width = 26
+    header_parts = [f"{'Date':<14}"]
+    for tab in tabs:
+        tp = STRATEGIES[tab].eval_period_trading_days if tab in STRATEGIES else period  # type: ignore[literal-required]
+        header_parts.append(f"{tab.upper()}(T+{tp})"[:col_width].ljust(col_width))
+    separator_width = 14 + col_width * len(tabs)
+    log.info(f"\n{'=' * separator_width}")
+    log.info(" ".join(header_parts))
+    log.info(f"{'=' * separator_width}")
 
     for d in test_dates:
         row_parts = [f"{d!s:<14}"]
@@ -936,7 +929,7 @@ def parse_args():
     parser.add_argument(
         "--tabs",
         type=str,
-        default="panorama,smart,value,trend,rally,dragon",
+        default="weekly,rally,dragon",
         help="Comma-separated tabs to test",
     )
     parser.add_argument("--verbose", "-v", action="store_true", help="Show per-stock details")

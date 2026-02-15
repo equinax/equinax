@@ -535,10 +535,9 @@ export const useGetDashboardApiV1AlphaRadarDashboardGet = <
  * Get intelligent screener results with composite scoring.
 
 Tabs:
-- panorama: Comprehensive score (momentum + value + quality + smart money + technical)
-- smart: Smart accumulation (main strength + volume pattern + price position)
-- value: Deep value (valuation rank + quality + stability + dividend)
-- trend: Super trend (momentum + breakout + volume confirm + trend strength)
+- weekly: Short-term T+6 (stable weekly profit plays)
+- rally: Main rally (MA multi-head + volume ladder + trend quality)
+- dragon: Dragon leader (smart money accumulation + breakout + volume-price)
 
 In period mode, returns period_return, max_drawdown, avg_turnover instead of daily metrics.
  * @summary Get Screener

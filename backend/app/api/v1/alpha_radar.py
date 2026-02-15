@@ -34,10 +34,7 @@ class TimeMode(str, Enum):
 class ScreenerTab(str, Enum):
     """Screener tab types with different scoring strategies."""
 
-    PANORAMA = "panorama"  # 全景综合
-    SMART_ACCUMULATION = "smart"  # 聪明钱吸筹
-    DEEP_VALUE = "value"  # 深度价值
-    SUPER_TREND = "trend"  # 趋势共振
+    WEEKLY = "weekly"  # 周内短线
     MAIN_RALLY = "rally"  # 主升浪
     DRAGON_LEADER = "dragon"  # 龙头先锋
 
@@ -1084,7 +1081,7 @@ async def get_dashboard(
 @router.get("/screener", response_model=ScreenerResponse)
 async def get_screener(
     # Tab selection
-    tab: ScreenerTab = Query(default=ScreenerTab.PANORAMA),
+    tab: ScreenerTab = Query(default=ScreenerTab.WEEKLY),
     # Time parameters
     mode: TimeMode = Query(default=TimeMode.SNAPSHOT),
     date: Optional[datetime.date] = Query(default=None, description="Target date for snapshot"),
@@ -1111,10 +1108,9 @@ async def get_screener(
     Get intelligent screener results with composite scoring.
 
     Tabs:
-    - panorama: Comprehensive score (momentum + value + quality + smart money + technical)
-    - smart: Smart accumulation (main strength + volume pattern + price position)
-    - value: Deep value (valuation rank + quality + stability + dividend)
-    - trend: Super trend (momentum + breakout + volume confirm + trend strength)
+    - weekly: Short-term T+6 (stable weekly profit plays)
+    - rally: Main rally (MA multi-head + volume ladder + trend quality)
+    - dragon: Dragon leader (smart money accumulation + breakout + volume-price)
 
     In period mode, returns period_return, max_drawdown, avg_turnover instead of daily metrics.
     """
