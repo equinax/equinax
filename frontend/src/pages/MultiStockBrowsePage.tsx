@@ -76,6 +76,8 @@ const STOCK_TAB_LABELS: Record<string, string> = {
   smart: '聪明钱吸筹',
   value: '深度价值',
   trend: '超级趋势',
+  rally: '主升浪',
+  dragon: '龙头先锋',
 }
 
 export default function MultiStockBrowsePage() {

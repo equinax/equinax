@@ -115,12 +115,14 @@ class ScreenerService:
         if "is_st" in df.columns:
             df = df.filter(pl.col("is_st").fill_null(0) != 1)
 
-        if tab in ("trend", "panorama", "smart"):
+        if tab in ("trend", "panorama", "smart", "rally", "dragon"):
             if "near_limit_up" in df.columns:
                 df = df.filter(pl.col("near_limit_up") == False)  # noqa: E712
 
         if tab == "smart" and "pct_chg" in df.columns:
             df = df.filter(pl.col("pct_chg").fill_null(0.0).abs() <= 7.0)
+        elif tab == "dragon" and "pct_chg" in df.columns:
+            df = df.filter(pl.col("pct_chg").fill_null(0.0).abs() <= 5.0)
 
         # Load and join style factors
         style_df = await self.polars_engine.load_style_factors(
@@ -176,6 +178,19 @@ class ScreenerService:
                     how="left",
                 )
                 df = df.with_columns(pl.col("sector_momentum_5d").fill_null(0.0))
+        # Iter 14/15: Load and join per-stock moneyflow for trend/dragon scoring
+        if tab in ("trend", "dragon"):
+            mf_date = target_date if mode == "snapshot" else end_date
+            if mf_date:
+                moneyflow_df = await self.polars_engine.load_moneyflow_data(mf_date)
+                if not moneyflow_df.is_empty():
+                    df = df.join(moneyflow_df, on="code", how="left")
+                    df = df.with_columns(
+                        [
+                            pl.col("mf_net_percentile").fill_null(50.0),
+                            pl.col("elg_net_percentile").fill_null(50.0),
+                        ]
+                    )
         if regime_date:
             regime = await self.polars_engine.load_market_regime(regime_date)
             scoring_engine = ScoringEngine(market_regime_score=regime["market_regime_score"])
@@ -213,6 +228,12 @@ class ScreenerService:
         elif tab == "trend":
             df = scoring_engine.calculate_super_trend_score(df)
             score_col = "trend_score"
+        elif tab == "rally":
+            df = scoring_engine.calculate_main_rally_score(df)
+            score_col = "rally_score"
+        elif tab == "dragon":
+            df = scoring_engine.calculate_dragon_leader_score(df)
+            score_col = "dragon_score"
         else:
             df = scoring_engine.calculate_panorama_score(df)
             score_col = "panorama_score"

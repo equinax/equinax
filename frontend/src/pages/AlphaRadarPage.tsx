@@ -30,6 +30,8 @@ const STOCK_TABS = [
   { value: 'smart', label: '聪明钱吸筹', description: '主力强度+量价+价格位置' },
   { value: 'value', label: '深度价值', description: '低估+质量+稳定+分红' },
   { value: 'trend', label: '超级趋势', description: '动量+突破+量能+趋势' },
+  { value: 'rally', label: '主升浪', description: 'MA多头+量能阶梯+趋势质量' },
+  { value: 'dragon', label: '龙头先锋', description: '主力吸筹+突破蓄力+量价一致' },
 ] as const
 
 // Tab configuration for ETF screener

@@ -38,6 +38,8 @@ class ScreenerTab(str, Enum):
     SMART_ACCUMULATION = "smart"  # 聪明钱吸筹
     DEEP_VALUE = "value"  # 深度价值
     SUPER_TREND = "trend"  # 趋势共振
+    MAIN_RALLY = "rally"  # 主升浪
+    DRAGON_LEADER = "dragon"  # 龙头先锋
 
 
 class MarketRegimeType(str, Enum):

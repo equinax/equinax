@@ -364,21 +364,49 @@ class PolarsEngine:
         )
         regime_score = max(0.0, min(100.0, regime_score))
 
-        # --- Iter 10: Tradeable-day gate (abstain mechanism) ---
-        # When market is deeply hostile, ANY stock recommendation has near-zero
-        # probability of success. Evidence: 12-08 had only 7/50 winners (14%) in
-        # top-50 candidates — no factor reweighting can fix this.
-        #
-        # Gate requires TWO simultaneous signals (prevents false positives):
-        #   1. regime_score < 45  (weak market regime)
-        #   2. weak_days >= 3     (3+ of last 5 days had <35% stocks positive)
-        #
-        # Validation on 8-date backtest:
-        #   12-08: regime=39.8, weak_days=3 → GATE (WR was 0%) ✅
-        #   12-22: regime=35.8, weak_days=1 → pass (WR=40%)    ✅
-        #   12-29: regime=38.4, weak_days=2 → pass (WR=80%)    ✅
-        #   All other dates: pass                                ✅
-        should_abstain = regime_score < 45 and weak_days >= 3
+        # Iter 13: Market-wide moneyflow signals for abstain logic
+        mf_result = await self.db.execute(
+            text("""
+                SELECT
+                    COUNT(*) FILTER (WHERE net_mf_amount > 0)::float
+                        / NULLIF(COUNT(*), 0) * 100 AS mf_pct_inflow,
+                    AVG(net_mf_amount) AS mf_avg_net
+                FROM moneyflow_daily
+                WHERE date = :target_date
+            """),
+            {"target_date": target_date},
+        )
+        mf_row = mf_result.fetchone()
+        mf_pct_inflow = float(mf_row[0]) if mf_row and mf_row[0] is not None else 50.0
+        mf_avg_net = float(mf_row[1]) if mf_row and mf_row[1] is not None else 0.0
+
+        # Iter 13: Limit-down count for extreme market stress
+        limit_result = await self.db.execute(
+            text("""
+                SELECT COUNT(*) FROM limit_list_daily
+                WHERE date = :target_date AND limit_type = 'D'
+            """),
+            {"target_date": target_date},
+        )
+        limit_row = limit_result.fetchone()
+        limit_down = int(limit_row[0]) if limit_row and limit_row[0] else 0
+
+        # Iter 13: Multi-signal tradeable-day gate
+        is_capitulation = breadth_today < 5.0 or limit_down > 500
+        hostile_breadth = breadth_today < 35.0
+        hostile_moneyflow = mf_pct_inflow < 32.0 or mf_avg_net < -1200
+        hostile_weakness = weak_days >= 2
+        low_regime = regime_score < 45
+
+        should_abstain = False
+        if not is_capitulation:
+            hostile_signals = sum(
+                [hostile_breadth, hostile_moneyflow, hostile_weakness, low_regime]
+            )
+            if hostile_breadth and hostile_signals >= 3:
+                should_abstain = True
+            elif low_regime and weak_days >= 3:
+                should_abstain = True
 
         return {
             "index_return_5d": round(ret_5d, 2),
@@ -388,7 +416,53 @@ class PolarsEngine:
             "breadth_today": round(breadth_today, 1),
             "market_regime_score": round(regime_score, 1),
             "should_abstain": should_abstain,
+            "mf_pct_inflow": round(mf_pct_inflow, 1),
+            "mf_avg_net": round(mf_avg_net, 1),
+            "limit_down": limit_down,
         }
+
+    async def load_moneyflow_data(self, target_date: date) -> pl.DataFrame:
+        """Load per-stock moneyflow data and compute percentiles for a single date.
+
+        Iter 14/15: Per-stock moneyflow percentiles used by trend/dragon scoring.
+        Returns DataFrame with columns: code, mf_net_percentile, elg_net_percentile.
+        """
+        result = await self.db.execute(
+            text("""
+                SELECT code, net_mf_amount, buy_elg_amount, sell_elg_amount
+                FROM moneyflow_daily
+                WHERE date = :target_date
+            """),
+            {"target_date": target_date},
+        )
+        rows = result.fetchall()
+        columns = result.keys()
+
+        if not rows:
+            return pl.DataFrame(
+                schema={
+                    "code": pl.Utf8,
+                    "mf_net_percentile": pl.Float64,
+                    "elg_net_percentile": pl.Float64,
+                }
+            )
+
+        data = {col: [row[i] for row in rows] for i, col in enumerate(columns)}
+        df = pl.DataFrame(data)
+
+        df = df.with_columns(
+            [
+                (pl.col("buy_elg_amount") - pl.col("sell_elg_amount")).alias("elg_net_raw"),
+            ]
+        )
+        df = df.with_columns(
+            [
+                (pl.col("net_mf_amount").rank() / pl.len() * 100).alias("mf_net_percentile"),
+                (pl.col("elg_net_raw").rank() / pl.len() * 100).alias("elg_net_percentile"),
+            ]
+        ).select(["code", "mf_net_percentile", "elg_net_percentile"])
+
+        return df
 
     async def load_valuation_data(
         self,

@@ -454,6 +454,97 @@ class TuShareDataSource(BaseDataSource):
         logger.info(f"[TuShare] Fetched {len(all_records)} records from {success_count} indices")
         return pd.DataFrame(all_records) if all_records else pd.DataFrame()
 
+    def fetch_moneyflow_by_date(self, trade_date: date) -> pd.DataFrame:
+        """
+        获取个股资金流向
+
+        使用 pro.moneyflow(trade_date='YYYYMMDD')
+        """
+        date_str = self._date_to_str(trade_date)
+        logger.info(f"[TuShare] Fetching moneyflow for {date_str}...")
+
+        try:
+            df = self._pro.moneyflow(trade_date=date_str)
+
+            if df is None or df.empty:
+                logger.warning(f"[TuShare] No moneyflow data for {date_str}")
+                return pd.DataFrame()
+
+            logger.info(f"[TuShare] Fetched {len(df)} moneyflow records for {date_str}")
+
+            records = []
+            for _, row in df.iterrows():
+                code = convert_tushare_code_to_standard(row["ts_code"])
+                records.append(
+                    {
+                        "code": code,
+                        "date": trade_date,
+                        "buy_sm_amount": self._safe_decimal(row.get("buy_sm_amount")),
+                        "buy_md_amount": self._safe_decimal(row.get("buy_md_amount")),
+                        "buy_lg_amount": self._safe_decimal(row.get("buy_lg_amount")),
+                        "buy_elg_amount": self._safe_decimal(row.get("buy_elg_amount")),
+                        "sell_sm_amount": self._safe_decimal(row.get("sell_sm_amount")),
+                        "sell_md_amount": self._safe_decimal(row.get("sell_md_amount")),
+                        "sell_lg_amount": self._safe_decimal(row.get("sell_lg_amount")),
+                        "sell_elg_amount": self._safe_decimal(row.get("sell_elg_amount")),
+                        "net_mf_amount": self._safe_decimal(row.get("net_mf_amount")),
+                    }
+                )
+
+            return pd.DataFrame(records)
+
+        except Exception as e:
+            logger.error(f"[TuShare] Error fetching moneyflow: {e}")
+            raise
+
+    def fetch_limit_list_by_date(self, trade_date: date) -> pd.DataFrame:
+        """
+        获取每日涨跌停统计
+
+        使用 pro.limit_list_d(trade_date='YYYYMMDD')
+        """
+        date_str = self._date_to_str(trade_date)
+        logger.info(f"[TuShare] Fetching limit_list_d for {date_str}...")
+
+        try:
+            df = self._pro.limit_list_d(trade_date=date_str)
+
+            if df is None or df.empty:
+                logger.warning(f"[TuShare] No limit_list_d data for {date_str}")
+                return pd.DataFrame()
+
+            logger.info(f"[TuShare] Fetched {len(df)} limit_list records for {date_str}")
+
+            records = []
+            for _, row in df.iterrows():
+                code = convert_tushare_code_to_standard(row["ts_code"])
+                records.append(
+                    {
+                        "code": code,
+                        "date": trade_date,
+                        "name": row.get("name") if pd.notna(row.get("name")) else None,
+                        "close": self._safe_decimal(row.get("close")),
+                        "pct_chg": self._safe_decimal(row.get("pct_chg")),
+                        "fd_amount": self._safe_decimal(row.get("fd_amount")),
+                        "first_time": row.get("first_time")
+                        if pd.notna(row.get("first_time"))
+                        else None,
+                        "last_time": row.get("last_time")
+                        if pd.notna(row.get("last_time"))
+                        else None,
+                        "open_times": self._safe_int(row.get("open_times")),
+                        "up_stat": row.get("up_stat") if pd.notna(row.get("up_stat")) else None,
+                        "limit_times": self._safe_int(row.get("limit_times")),
+                        "limit_type": row.get("limit") if pd.notna(row.get("limit")) else None,
+                    }
+                )
+
+            return pd.DataFrame(records)
+
+        except Exception as e:
+            logger.error(f"[TuShare] Error fetching limit_list_d: {e}")
+            raise
+
     def _convert_to_tushare_code(self, code: str) -> Optional[str]:
         """sh.000001 -> 000001.SH"""
         if code.startswith("sh."):

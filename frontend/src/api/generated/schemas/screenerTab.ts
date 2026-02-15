@@ -12,4 +12,6 @@ export const ScreenerTab = {
   smart: "smart",
   value: "value",
   trend: "trend",
+  rally: "rally",
+  dragon: "dragon",
 } as const;

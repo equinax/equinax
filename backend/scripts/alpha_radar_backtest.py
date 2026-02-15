@@ -37,8 +37,10 @@ async def load_all_data(
     start_date: datetime.date,
     end_date: datetime.date,
     lookback_days: int = 60,
-) -> tuple[pl.DataFrame, pl.DataFrame, pl.DataFrame, pl.DataFrame, pl.DataFrame]:
-    """Load ALL market, valuation, style, and profile data in one shot."""
+) -> tuple[
+    pl.DataFrame, pl.DataFrame, pl.DataFrame, pl.DataFrame, pl.DataFrame, pl.DataFrame, pl.DataFrame
+]:
+    """Load ALL market, valuation, style, profile, moneyflow, and limit data in one shot."""
 
     t0 = time.time()
 
@@ -175,25 +177,83 @@ async def load_all_data(
         )
     log.info(f"  Index data: {index_df.height} rows")
 
+    # 6. Moneyflow data (for regime enhancement)
+    result = await db.execute(
+        text("""
+            SELECT code, date, net_mf_amount,
+                   buy_lg_amount, sell_lg_amount,
+                   buy_elg_amount, sell_elg_amount
+            FROM moneyflow_daily
+            WHERE date >= :data_start AND date <= :end_date
+        """),
+        {"data_start": data_start, "end_date": end_date},
+    )
+    rows = result.fetchall()
+    columns = list(result.keys())
+    moneyflow_df = (
+        pl.DataFrame({col: [row[i] for row in rows] for i, col in enumerate(columns)})
+        if rows
+        else pl.DataFrame()
+    )
+    if not moneyflow_df.is_empty():
+        moneyflow_df = moneyflow_df.with_columns(
+            [
+                pl.col("date").cast(pl.Date),
+                pl.col("net_mf_amount").cast(pl.Float64),
+                pl.col("buy_lg_amount").cast(pl.Float64),
+                pl.col("sell_lg_amount").cast(pl.Float64),
+                pl.col("buy_elg_amount").cast(pl.Float64),
+                pl.col("sell_elg_amount").cast(pl.Float64),
+            ]
+        )
+    log.info(f"  Moneyflow data: {moneyflow_df.height} rows")
+
+    # 7. Limit list data (for regime enhancement)
+    result = await db.execute(
+        text("""
+            SELECT code, date, limit_type
+            FROM limit_list_daily
+            WHERE date >= :data_start AND date <= :end_date
+        """),
+        {"data_start": data_start, "end_date": end_date},
+    )
+    rows = result.fetchall()
+    columns = list(result.keys())
+    limit_df = (
+        pl.DataFrame({col: [row[i] for row in rows] for i, col in enumerate(columns)})
+        if rows
+        else pl.DataFrame()
+    )
+    if not limit_df.is_empty():
+        limit_df = limit_df.with_columns(pl.col("date").cast(pl.Date))
+    log.info(f"  Limit list data: {limit_df.height} rows")
+
     elapsed = time.time() - t0
     log.info(f"  Data load: {elapsed:.1f}s total")
-    return market_df, valuation_df, style_df, profile_df, index_df
+    return market_df, valuation_df, style_df, profile_df, index_df, moneyflow_df, limit_df
 
 
 def compute_regime_score(
-    target_date: datetime.date, index_df: pl.DataFrame, market_df: "pl.DataFrame | None" = None
-) -> tuple[float, int]:
-    """Compute market regime score from index + breadth divergence (no DB calls).
+    target_date: datetime.date,
+    index_df: pl.DataFrame,
+    market_df: "pl.DataFrame | None" = None,
+    moneyflow_df: "pl.DataFrame | None" = None,
+    limit_df: "pl.DataFrame | None" = None,
+) -> tuple[float, int, dict]:
+    """Compute market regime score from index + breadth + moneyflow + limits.
 
-    Iter 7 v2: Index component as BASE + breadth MODIFIER (divergence-based).
-    Must stay in sync with polars_engine.py load_market_regime().
+    Iter 13: Multi-signal regime with moneyflow/limit confirmation.
+    Returns (regime_score, weak_days, regime_details) where regime_details
+    contains diagnostic fields for the abstain decision.
     """
+    details: dict = {}
+
     if index_df.is_empty():
-        return 50.0, 0
+        return 50.0, 0, details
 
     idx = index_df.filter(pl.col("date") <= target_date).sort("date")
     if idx.height < 10:
-        return 50.0, 0
+        return 50.0, 0, details
 
     closes = idx["close"].to_list()
     close_today = closes[-1]
@@ -310,7 +370,47 @@ def compute_regime_score(
 
     score = index_component + breadth_modifier + breadth_today_modifier - fragility_penalty
     score = max(0.0, min(100.0, round(score, 1)))
-    return score, weak_days
+
+    # Iter 13: Moneyflow-based market-wide sentiment signal
+    mf_pct_inflow = 50.0
+    mf_avg_net = 0.0
+    mf_elg_net = 0.0
+    if moneyflow_df is not None and not moneyflow_df.is_empty():
+        mf_today = moneyflow_df.filter(pl.col("date") == target_date)
+        if not mf_today.is_empty():
+            mf_pct_inflow = (
+                mf_today.filter(pl.col("net_mf_amount") > 0).height / max(mf_today.height, 1) * 100
+            )
+            mf_avg_net = mf_today["net_mf_amount"].mean() or 0.0
+            elg_net = (mf_today["buy_elg_amount"] - mf_today["sell_elg_amount"]).mean()
+            mf_elg_net = elg_net if elg_net is not None else 0.0
+
+    # Iter 13: Limit up/down ratio
+    limit_up_count = 0
+    limit_down_count = 0
+    if limit_df is not None and not limit_df.is_empty():
+        lim_today = limit_df.filter(pl.col("date") == target_date)
+        if not lim_today.is_empty():
+            limit_up_count = lim_today.filter(pl.col("limit_type") == "U").height
+            limit_down_count = lim_today.filter(pl.col("limit_type") == "D").height
+
+    details = {
+        "index_component": index_component,
+        "ret_5d": ret_5d,
+        "breadth_today": breadth_today_val,
+        "breadth_5d_avg": breadth_5d_avg,
+        "breadth_modifier": breadth_modifier,
+        "breadth_today_modifier": breadth_today_modifier,
+        "fragility_penalty": fragility_penalty,
+        "panic_days": panic_days,
+        "mf_pct_inflow": mf_pct_inflow,
+        "mf_avg_net": mf_avg_net,
+        "mf_elg_net": mf_elg_net,
+        "limit_up": limit_up_count,
+        "limit_down": limit_down_count,
+    }
+
+    return score, weak_days, details
 
 
 def compute_scores_for_date(
@@ -323,15 +423,40 @@ def compute_scores_for_date(
     tab: str,
     top_n: int,
     lookback_days: int = 60,
+    moneyflow_df: "pl.DataFrame | None" = None,
+    limit_df: "pl.DataFrame | None" = None,
 ) -> list[dict]:
     """Compute scores for a single date using pre-loaded data. Pure Polars, no DB calls."""
 
     engine = PolarsEngine.__new__(PolarsEngine)  # Skip __init__ (needs db)
-    regime_score, weak_days = compute_regime_score(target_date, index_df, market_df)
+    regime_score, weak_days, regime_details = compute_regime_score(
+        target_date, index_df, market_df, moneyflow_df, limit_df
+    )
 
-    # Iter 10: Tradeable-day gate — abstain when market is deeply hostile.
-    # Two simultaneous signals required: low regime + sustained broad weakness.
-    should_abstain = regime_score < 45 and weak_days >= 3
+    # Iter 13: Multi-signal tradeable-day gate.
+    # Primary signal: target-day breadth < 35% (all hostile dates have this)
+    # Confirmation: moneyflow outflow OR sustained weakness OR high limit-downs
+    # Exception: extreme capitulation (breadth < 5% or limit_down > 500) = contrarian buy
+    breadth_today = regime_details.get("breadth_today", 50.0)
+    mf_pct_inflow = regime_details.get("mf_pct_inflow", 50.0)
+    mf_avg_net = regime_details.get("mf_avg_net", 0.0)
+    limit_down = regime_details.get("limit_down", 0)
+
+    is_capitulation = breadth_today < 5.0 or limit_down > 500
+    hostile_breadth = breadth_today < 35.0
+    hostile_moneyflow = mf_pct_inflow < 32.0 or mf_avg_net < -1200
+    hostile_weakness = weak_days >= 2
+    low_regime = regime_score < 45
+
+    should_abstain = False
+    if not is_capitulation:
+        # Path 1: Hostile breadth with multi-signal confirmation
+        hostile_signals = sum([hostile_breadth, hostile_moneyflow, hostile_weakness, low_regime])
+        if hostile_breadth and hostile_signals >= 3:
+            should_abstain = True
+        # Path 2: Sustained fragility (low regime + weak days, even without hostile breadth today)
+        elif low_regime and weak_days >= 3:
+            should_abstain = True
     if should_abstain:
         return []
 
@@ -424,13 +549,43 @@ def compute_scores_for_date(
         )
         df = df.with_columns(pl.col("sector_momentum_5d").fill_null(0.0))
 
+    # Iter 14: Join per-stock moneyflow data for scoring signals
+    # net_mf_amount = net moneyflow (positive = inflow); elg_net = extra-large order net (institutional)
+    # Normalize to percentile ranks so they're comparable across dates with different market volumes
+    if moneyflow_df is not None and not moneyflow_df.is_empty():
+        mf_today = moneyflow_df.filter(pl.col("date") == target_date)
+        if not mf_today.is_empty():
+            mf_features = mf_today.with_columns(
+                [
+                    (pl.col("buy_elg_amount") - pl.col("sell_elg_amount")).alias("elg_net_raw"),
+                ]
+            ).select(["code", "net_mf_amount", "elg_net_raw"])
+
+            # Rank-normalize to 0-100 percentile (robust across different market-cap regimes)
+            mf_features = mf_features.with_columns(
+                [
+                    (pl.col("net_mf_amount").rank() / pl.len() * 100).alias("mf_net_percentile"),
+                    (pl.col("elg_net_raw").rank() / pl.len() * 100).alias("elg_net_percentile"),
+                ]
+            ).select(["code", "mf_net_percentile", "elg_net_percentile"])
+
+            df = df.join(mf_features, on="code", how="left")
+            df = df.with_columns(
+                [
+                    pl.col("mf_net_percentile").fill_null(50.0),
+                    pl.col("elg_net_percentile").fill_null(50.0),
+                ]
+            )
+
     # Hard filter: exclude near_limit_up stocks for trend/panorama/smart (matches screener_service.py)
-    if tab in ("trend", "panorama", "smart"):
+    if tab in ("trend", "panorama", "smart", "rally", "dragon"):
         if "near_limit_up" in df.columns:
             df = df.filter(pl.col("near_limit_up") == False)  # noqa: E712
 
     if tab == "smart" and "pct_chg" in df.columns:
         df = df.filter(pl.col("pct_chg").fill_null(0.0).abs() <= 7.0)
+    elif tab == "dragon" and "pct_chg" in df.columns:
+        df = df.filter(pl.col("pct_chg").fill_null(0.0).abs() <= 5.0)
 
     # Calculate scores
     if tab == "panorama":
@@ -445,6 +600,12 @@ def compute_scores_for_date(
     elif tab == "trend":
         df = scoring.calculate_super_trend_score(df)
         score_col = "trend_score"
+    elif tab == "rally":
+        df = scoring.calculate_main_rally_score(df)
+        score_col = "rally_score"
+    elif tab == "dragon":
+        df = scoring.calculate_dragon_leader_score(df)
+        score_col = "dragon_score"
     else:
         return []
 
@@ -616,9 +777,15 @@ async def run_backtest(
     log.info(f"Loading data...")
 
     async with async_session_maker() as db:
-        market_df, valuation_df, style_df, profile_df, index_df = await load_all_data(
-            db, earliest, end_date, lookback_days=60
-        )
+        (
+            market_df,
+            valuation_df,
+            style_df,
+            profile_df,
+            index_df,
+            moneyflow_df,
+            limit_df,
+        ) = await load_all_data(db, earliest, end_date, lookback_days=60)
 
     log.info(f"\nRunning backtest...")
 
@@ -629,13 +796,38 @@ async def run_backtest(
         for tab in tabs:
             t0 = time.time()
             recs = compute_scores_for_date(
-                d, market_df, valuation_df, style_df, profile_df, index_df, tab, top_n
+                d,
+                market_df,
+                valuation_df,
+                style_df,
+                profile_df,
+                index_df,
+                tab,
+                top_n,
+                moneyflow_df=moneyflow_df,
+                limit_df=limit_df,
             )
             if not recs and tab == tabs[0]:
-                # Gate triggered — check if this is abstention vs genuinely empty
-                regime_score, weak_days = compute_regime_score(d, index_df, market_df)
-                if regime_score < 45 and weak_days >= 3:
-                    abstained_dates.add(d)
+                regime_score, weak_days, regime_details = compute_regime_score(
+                    d, index_df, market_df, moneyflow_df, limit_df
+                )
+                breadth_today = regime_details.get("breadth_today", 50.0)
+                mf_pct_inflow = regime_details.get("mf_pct_inflow", 50.0)
+                mf_avg_net = regime_details.get("mf_avg_net", 0.0)
+                limit_down = regime_details.get("limit_down", 0)
+                is_capitulation = breadth_today < 5.0 or limit_down > 500
+                hostile_breadth = breadth_today < 35.0
+                hostile_moneyflow = mf_pct_inflow < 32.0 or mf_avg_net < -1200
+                hostile_weakness = weak_days >= 2
+                low_regime = regime_score < 45
+                if not is_capitulation:
+                    hostile_signals = sum(
+                        [hostile_breadth, hostile_moneyflow, hostile_weakness, low_regime]
+                    )
+                    if hostile_breadth and hostile_signals >= 3:
+                        abstained_dates.add(d)
+                    elif low_regime and weak_days >= 3:
+                        abstained_dates.add(d)
             perf = evaluate_t_plus_n(recs, d, market_df, period)
             elapsed = time.time() - t0
             all_results[d][tab] = {
@@ -656,12 +848,22 @@ async def run_backtest(
                         if isinstance(ret_val, (int, float))
                         else "?"
                     )
+                    close_str = f"{r['close']:.2f}" if r.get("close") is not None else "N/A"
+                    chg_str = f"{r['pct_chg']:.2f}" if r.get("pct_chg") is not None else "N/A"
+                    score_str = f"{r['score']:.1f}" if r.get("score") is not None else "N/A"
                     log.info(
-                        f"    {r['code']} {r['name']:<8} score={r['score']:.1f} close={r['close']:.2f} chg={r['pct_chg']:.2f}% → T+{period}: {ret_val}% {marker}"
+                        f"    {r['code']} {r['name']:<8} score={score_str} close={close_str} chg={chg_str}% → T+{period}: {ret_val}% {marker}"
                     )
             elif verbose and d in abstained_dates and tab == tabs[0]:
-                regime_score, weak_days = compute_regime_score(d, index_df, market_df)
-                log.info(f"\n  {d} | ABSTAIN (regime={regime_score:.1f}, weak_days={weak_days})")
+                regime_score, weak_days, rd = compute_regime_score(
+                    d, index_df, market_df, moneyflow_df, limit_df
+                )
+                log.info(
+                    f"\n  {d} | ABSTAIN (regime={regime_score:.1f}, weak_days={weak_days}, "
+                    f"breadth={rd.get('breadth_today', 0):.1f}%, "
+                    f"mf_inflow={rd.get('mf_pct_inflow', 0):.1f}%, "
+                    f"mf_net={rd.get('mf_avg_net', 0):.0f})"
+                )
 
     # Print summary table
     total_elapsed = time.time() - t_start
@@ -734,7 +936,7 @@ def parse_args():
     parser.add_argument(
         "--tabs",
         type=str,
-        default="panorama,smart,value,trend",
+        default="panorama,smart,value,trend,rally,dragon",
         help="Comma-separated tabs to test",
     )
     parser.add_argument("--verbose", "-v", action="store_true", help="Show per-stock details")
@@ -748,14 +950,31 @@ def main():
         test_dates = [datetime.date.fromisoformat(d.strip()) for d in args.dates.split(",")]
     else:
         test_dates = [
-            datetime.date(2025, 12, 1),
+            datetime.date(2025, 2, 10),
+            datetime.date(2025, 2, 24),
+            datetime.date(2025, 3, 10),
+            datetime.date(2025, 3, 24),
+            datetime.date(2025, 4, 7),
+            datetime.date(2025, 4, 21),
+            datetime.date(2025, 5, 12),
+            datetime.date(2025, 5, 26),
+            datetime.date(2025, 6, 9),
+            datetime.date(2025, 6, 23),
+            datetime.date(2025, 7, 7),
+            datetime.date(2025, 7, 21),
+            datetime.date(2025, 8, 4),
+            datetime.date(2025, 8, 18),
+            datetime.date(2025, 9, 1),
+            datetime.date(2025, 9, 15),
+            datetime.date(2025, 10, 13),
+            datetime.date(2025, 10, 27),
+            datetime.date(2025, 11, 10),
+            datetime.date(2025, 11, 24),
             datetime.date(2025, 12, 8),
-            datetime.date(2025, 12, 15),
             datetime.date(2025, 12, 22),
-            datetime.date(2025, 12, 29),
             datetime.date(2026, 1, 5),
-            datetime.date(2026, 1, 12),
             datetime.date(2026, 1, 19),
+            datetime.date(2026, 2, 5),
         ]
 
     tabs = [t.strip() for t in args.tabs.split(",")]

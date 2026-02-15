@@ -1,10 +1,20 @@
 """Technical and fundamental indicator models."""
 
-from datetime import date, datetime
+from datetime import date as DateType, datetime
 from decimal import Decimal
 from typing import Optional
 
-from sqlalchemy import String, Date, DateTime, Numeric, BigInteger, Index, func, PrimaryKeyConstraint
+from sqlalchemy import (
+    String,
+    Integer,
+    Date,
+    DateTime,
+    Numeric,
+    BigInteger,
+    Index,
+    func,
+    PrimaryKeyConstraint,
+)
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.db.base import Base
@@ -21,7 +31,7 @@ class TechnicalIndicator(Base):
 
     # Composite primary key for TimescaleDB hypertable
     code: Mapped[str] = mapped_column(String(20), nullable=False)
-    date: Mapped[date] = mapped_column(Date, nullable=False)
+    date: Mapped[DateType] = mapped_column(Date, nullable=False)
 
     # Moving Averages
     ma_5: Mapped[Optional[Decimal]] = mapped_column(Numeric(12, 4), nullable=True)
@@ -89,9 +99,11 @@ class FundamentalIndicator(Base):
 
     # Composite primary key for TimescaleDB hypertable
     code: Mapped[str] = mapped_column(String(20), nullable=False)
-    report_date: Mapped[date] = mapped_column(Date, nullable=False)
+    report_date: Mapped[DateType] = mapped_column(Date, nullable=False)
 
-    report_type: Mapped[Optional[str]] = mapped_column(String(10), nullable=True)  # Q1, Q2, Q3, Q4, annual
+    report_type: Mapped[Optional[str]] = mapped_column(
+        String(10), nullable=True
+    )  # Q1, Q2, Q3, Q4, annual
 
     # Valuation
     pe_ratio: Mapped[Optional[Decimal]] = mapped_column(Numeric(12, 4), nullable=True)
@@ -139,3 +151,63 @@ class FundamentalIndicator(Base):
 
     def __repr__(self) -> str:
         return f"<FundamentalIndicator(code={self.code}, date={self.report_date})>"
+
+
+class MoneyflowDaily(Base):
+    __tablename__ = "moneyflow_daily"
+
+    code: Mapped[str] = mapped_column(String(20), nullable=False)
+    date: Mapped[DateType] = mapped_column(Date, nullable=False)
+
+    buy_sm_amount: Mapped[Optional[Decimal]] = mapped_column(Numeric(18, 2), nullable=True)
+    buy_md_amount: Mapped[Optional[Decimal]] = mapped_column(Numeric(18, 2), nullable=True)
+    buy_lg_amount: Mapped[Optional[Decimal]] = mapped_column(Numeric(18, 2), nullable=True)
+    buy_elg_amount: Mapped[Optional[Decimal]] = mapped_column(Numeric(18, 2), nullable=True)
+
+    sell_sm_amount: Mapped[Optional[Decimal]] = mapped_column(Numeric(18, 2), nullable=True)
+    sell_md_amount: Mapped[Optional[Decimal]] = mapped_column(Numeric(18, 2), nullable=True)
+    sell_lg_amount: Mapped[Optional[Decimal]] = mapped_column(Numeric(18, 2), nullable=True)
+    sell_elg_amount: Mapped[Optional[Decimal]] = mapped_column(Numeric(18, 2), nullable=True)
+
+    net_mf_amount: Mapped[Optional[Decimal]] = mapped_column(Numeric(18, 2), nullable=True)
+
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        server_default=func.now(),
+    )
+
+    __table_args__ = (
+        PrimaryKeyConstraint("code", "date"),
+        Index("idx_moneyflow_daily_date", "date"),
+        Index("idx_moneyflow_daily_code", "code"),
+    )
+
+
+class LimitListDaily(Base):
+    __tablename__ = "limit_list_daily"
+
+    code: Mapped[str] = mapped_column(String(20), nullable=False)
+    date: Mapped[DateType] = mapped_column(Date, nullable=False)
+
+    name: Mapped[Optional[str]] = mapped_column(String(50), nullable=True)
+    close: Mapped[Optional[Decimal]] = mapped_column(Numeric(12, 4), nullable=True)
+    pct_chg: Mapped[Optional[Decimal]] = mapped_column(Numeric(8, 4), nullable=True)
+    fd_amount: Mapped[Optional[Decimal]] = mapped_column(Numeric(18, 2), nullable=True)
+    first_time: Mapped[Optional[str]] = mapped_column(String(20), nullable=True)
+    last_time: Mapped[Optional[str]] = mapped_column(String(20), nullable=True)
+    open_times: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    up_stat: Mapped[Optional[str]] = mapped_column(String(20), nullable=True)
+    limit_times: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    limit_type: Mapped[Optional[str]] = mapped_column(String(5), nullable=True)
+
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        server_default=func.now(),
+    )
+
+    __table_args__ = (
+        PrimaryKeyConstraint("code", "date"),
+        Index("idx_limit_list_daily_date", "date"),
+        Index("idx_limit_list_daily_code", "code"),
+        Index("idx_limit_list_daily_type", "limit_type"),
+    )
