@@ -13,6 +13,8 @@ import argparse
 import asyncio
 import datetime
 import logging
+import os
+import random
 import sys
 import time
 from decimal import Decimal, ROUND_HALF_UP
@@ -32,6 +34,67 @@ logging.getLogger("sqlalchemy.engine").setLevel(logging.WARNING)
 logging.getLogger("sqlalchemy.engine.Engine").setLevel(logging.WARNING)
 logging.basicConfig(level=logging.INFO, format="%(message)s")
 log = logging.getLogger(__name__)
+
+# --- Date range for random sampling ---
+SAMPLE_RANGE_START = datetime.date(2025, 1, 6)
+SAMPLE_RANGE_END = datetime.date(2026, 2, 10)
+# Margin: skip first/last N trading days so lookback and evaluation windows have data
+SAMPLE_MARGIN_DAYS = 25
+
+
+def get_trading_days(
+    start: datetime.date = SAMPLE_RANGE_START,
+    end: datetime.date = SAMPLE_RANGE_END,
+) -> list[datetime.date]:
+    """Fetch SSE trading calendar from TuShare."""
+    import tushare as ts
+
+    api_key = os.environ.get("TUSHARE_API_KEY")
+    if not api_key:
+        raise ValueError("TUSHARE_API_KEY environment variable not set")
+    ts.set_token(api_key)
+    pro = ts.pro_api()
+
+    df = pro.trade_cal(
+        exchange="SSE",
+        start_date=start.strftime("%Y%m%d"),
+        end_date=end.strftime("%Y%m%d"),
+        is_open="1",
+    )
+    if df is None or df.empty:
+        raise RuntimeError("No trading days returned from TuShare trade_cal")
+
+    return sorted(datetime.datetime.strptime(d, "%Y%m%d").date() for d in df["cal_date"].tolist())
+
+
+def sample_trading_days(
+    n: int,
+    seed: int | None = None,
+    margin: int = SAMPLE_MARGIN_DAYS,
+) -> list[datetime.date]:
+    """Randomly sample N trading days from the available range.
+
+    Trims `margin` days from both ends so lookback (60d) and evaluation
+    windows (T+20) always have data.  Dates are returned sorted.
+
+    Args:
+        n: Number of dates to sample.
+        seed: Random seed for reproducibility. None = different each run.
+        margin: Number of trading days to skip at each end of the range.
+    """
+    all_days = get_trading_days()
+
+    if margin * 2 >= len(all_days):
+        raise ValueError(f"Margin {margin} too large for {len(all_days)} trading days")
+    eligible = all_days[margin : len(all_days) - margin]
+
+    if n > len(eligible):
+        raise ValueError(f"Requested {n} dates but only {len(eligible)} eligible trading days")
+
+    rng = random.Random(seed)
+    sampled = sorted(rng.sample(eligible, n))
+    log.info(f"Sampled {n} trading days (seed={seed}): {sampled[0]} .. {sampled[-1]}")
+    return sampled
 
 
 async def load_all_data(
@@ -963,7 +1026,7 @@ def parse_args():
         "--dates",
         type=str,
         default=None,
-        help="Comma-separated dates (YYYY-MM-DD). Default: 8 dates from 2025-12 to 2026-01",
+        help="Comma-separated dates (YYYY-MM-DD). Default: 25 randomly sampled trading days",
     )
     parser.add_argument(
         "--tabs",
@@ -972,6 +1035,12 @@ def parse_args():
         help="Comma-separated tabs to test",
     )
     parser.add_argument("--verbose", "-v", action="store_true", help="Show per-stock details")
+    parser.add_argument(
+        "--seed",
+        type=int,
+        default=None,
+        help="Random seed for date sampling (default: random each run)",
+    )
     return parser.parse_args()
 
 
@@ -981,33 +1050,7 @@ def main():
     if args.dates:
         test_dates = [datetime.date.fromisoformat(d.strip()) for d in args.dates.split(",")]
     else:
-        test_dates = [
-            datetime.date(2025, 2, 10),
-            datetime.date(2025, 2, 24),
-            datetime.date(2025, 3, 10),
-            datetime.date(2025, 3, 24),
-            datetime.date(2025, 4, 7),
-            datetime.date(2025, 4, 21),
-            datetime.date(2025, 5, 12),
-            datetime.date(2025, 5, 26),
-            datetime.date(2025, 6, 9),
-            datetime.date(2025, 6, 23),
-            datetime.date(2025, 7, 7),
-            datetime.date(2025, 7, 21),
-            datetime.date(2025, 8, 4),
-            datetime.date(2025, 8, 18),
-            datetime.date(2025, 9, 1),
-            datetime.date(2025, 9, 15),
-            datetime.date(2025, 10, 13),
-            datetime.date(2025, 10, 27),
-            datetime.date(2025, 11, 10),
-            datetime.date(2025, 11, 24),
-            datetime.date(2025, 12, 8),
-            datetime.date(2025, 12, 22),
-            datetime.date(2026, 1, 5),
-            datetime.date(2026, 1, 19),
-            datetime.date(2026, 2, 5),
-        ]
+        test_dates = sample_trading_days(n=25, seed=args.seed)
 
     tabs = [t.strip() for t in args.tabs.split(",")]
     asyncio.run(run_backtest(test_dates, tabs, args.top_n, args.period, args.verbose))

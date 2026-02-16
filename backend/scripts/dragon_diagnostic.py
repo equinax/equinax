@@ -27,6 +27,7 @@ from scripts.alpha_radar_backtest import (
     load_all_data,
     compute_regime_score,
     compute_scores_for_date,
+    sample_trading_days,
 )
 
 logging.getLogger("sqlalchemy.engine").setLevel(logging.WARNING)
@@ -674,38 +675,18 @@ async def analyze_what_real_dragons_look_like(
 async def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--dates", type=str, default=None)
+    parser.add_argument(
+        "--seed",
+        type=int,
+        default=None,
+        help="Random seed for date sampling (default: random each run)",
+    )
     args = parser.parse_args()
 
     if args.dates:
         test_dates = [datetime.date.fromisoformat(d.strip()) for d in args.dates.split(",")]
     else:
-        test_dates = [
-            datetime.date(2025, 2, 10),
-            datetime.date(2025, 2, 24),
-            datetime.date(2025, 3, 10),
-            datetime.date(2025, 3, 24),
-            datetime.date(2025, 4, 7),
-            datetime.date(2025, 4, 21),
-            datetime.date(2025, 5, 12),
-            datetime.date(2025, 5, 26),
-            datetime.date(2025, 6, 9),
-            datetime.date(2025, 6, 23),
-            datetime.date(2025, 7, 7),
-            datetime.date(2025, 7, 21),
-            datetime.date(2025, 8, 4),
-            datetime.date(2025, 8, 18),
-            datetime.date(2025, 9, 1),
-            datetime.date(2025, 9, 15),
-            datetime.date(2025, 10, 13),
-            datetime.date(2025, 10, 27),
-            datetime.date(2025, 11, 10),
-            datetime.date(2025, 11, 24),
-            datetime.date(2025, 12, 8),
-            datetime.date(2025, 12, 22),
-            datetime.date(2026, 1, 5),
-            datetime.date(2026, 1, 19),
-            datetime.date(2026, 2, 5),
-        ]
+        test_dates = sample_trading_days(n=25, seed=args.seed)
 
     earliest = min(test_dates)
     latest = max(test_dates)
