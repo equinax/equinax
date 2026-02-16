@@ -1,9 +1,10 @@
-import { QUANT_LABEL_CN, formatMv } from '@/lib/quant-labels'
+import { QUANT_LABEL_CN, formatMv, formatVol } from '@/lib/quant-labels'
 
-export interface ReportStock {
+export interface MarkdownReportStock {
   code: string
   name: string
   buyPrice?: number
+  refPrice?: number
   totalMv?: string | number | null
   circMv?: string | number | null
   volume?: string | number | null
@@ -11,102 +12,205 @@ export interface ReportStock {
   peTtm?: string | number | null
   pbMrq?: string | number | null
   quantLabels?: string[]
-  chartImage: string
+  returns?: Record<string, string | null>
 }
 
-function buildStockHTML(stock: ReportStock, date: string): string {
-  const labels = (stock.quantLabels ?? [])
-    .map(l => QUANT_LABEL_CN[l] ?? l)
-    .join('、')
-
-  const indicators = [
-    stock.totalMv != null && `总市值: ${formatMv(stock.totalMv)}`,
-    stock.circMv != null && `流通市值: ${formatMv(stock.circMv)}`,
-    stock.peTtm != null && `PE(TTM): ${parseFloat(String(stock.peTtm)).toFixed(1)}`,
-    stock.pbMrq != null && `PB(MRQ): ${parseFloat(String(stock.pbMrq)).toFixed(2)}`,
-    stock.turnover != null && `换手率: ${parseFloat(String(stock.turnover)).toFixed(1)}%`,
-    stock.buyPrice != null && `买入价: ¥${stock.buyPrice.toFixed(2)}`,
-  ].filter(Boolean)
-
-  return `
-    <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; width: 1050px; padding: 24px; box-sizing: border-box; background: #fff;">
-      <div style="display: flex; align-items: baseline; gap: 12px; margin-bottom: 12px;">
-        <span style="font-size: 20px; font-weight: 700; font-family: monospace;">${stock.code}</span>
-        <span style="font-size: 18px; font-weight: 600;">${stock.name}</span>
-        <span style="font-size: 13px; color: #6b7280; margin-left: auto;">推荐日期: ${date}</span>
-      </div>
-
-      <img src="${stock.chartImage}" style="width: 100%; border: 1px solid #e5e7eb; border-radius: 4px; margin-bottom: 16px;" />
-
-      <table style="width: 100%; border-collapse: collapse; font-size: 13px; margin-bottom: 12px;">
-        <tbody>
-          ${rowsFromPairs(indicators)}
-        </tbody>
-      </table>
-
-      ${labels ? `
-        <div style="font-size: 13px; padding: 8px 12px; background: #fffbeb; border: 1px solid #fde68a; border-radius: 4px;">
-          <span style="font-weight: 600; color: #92400e;">推荐理由:</span>
-          <span style="color: #78350f; margin-left: 4px;">${labels}</span>
-        </div>
-      ` : ''}
-    </div>
-  `
+export interface MarkdownPeriodStats {
+  period: number
+  winRate?: string | null
+  avgReturn?: string | null
+  avgWin?: string | null
+  avgLoss?: string | null
+  profitLossRatio?: string | null
+  winCount: number
+  loseCount: number
+  total: number
 }
 
-function rowsFromPairs(items: (string | false)[]): string {
-  const valid = items.filter(Boolean) as string[]
-  const rows: string[] = []
-  for (let i = 0; i < valid.length; i += 3) {
-    const cells = valid.slice(i, i + 3).map(item => {
-      const [label, value] = item.split(': ')
-      return `
-        <td style="padding: 6px 8px; border-bottom: 1px solid #f3f4f6; color: #6b7280; width: 100px;">${label}</td>
-        <td style="padding: 6px 8px; border-bottom: 1px solid #f3f4f6; font-weight: 500; font-family: monospace;">${value}</td>
-      `
-    }).join('')
-    rows.push(`<tr>${cells}</tr>`)
+export interface MarkdownReportData {
+  date: string
+  tab?: string
+  tabLabel?: string
+  assessment?: string
+  stocks: MarkdownReportStock[]
+  periodStats: MarkdownPeriodStats[]
+  periods: readonly number[]
+}
+
+// ── Markdown Report ──────────────────────────────────────────────
+
+const PERIOD_LABELS_MD: Record<number, string> = { 3: 'B+3', 5: 'B+5', 10: 'B+10', 20: 'B+20' }
+
+function fmtPct(val: string | null | undefined): string {
+  if (val == null) return '—'
+  const n = parseFloat(val)
+  return `${n >= 0 ? '+' : ''}${n.toFixed(2)}%`
+}
+
+function fmtNum(val: string | number | null | undefined): string {
+  if (val == null) return '—'
+  return parseFloat(String(val)).toFixed(2)
+}
+
+function fmtPrice(val: number | undefined): string {
+  if (val == null) return '—'
+  return `¥${val.toFixed(2)}`
+}
+
+function returnEmoji(val: string | null | undefined): string {
+  if (val == null) return ''
+  const n = parseFloat(val)
+  if (n >= 5) return ' 🔴'
+  if (n > 0) return ' 🟠'
+  if (n > -3) return ' 🟢'
+  return ' 🔻'
+}
+
+export function generateMarkdownReport(data: MarkdownReportData): void {
+  const { date, tabLabel, assessment, stocks, periodStats, periods } = data
+  const lines: string[] = []
+
+  // Header
+  const strategyNote = tabLabel ? ` · ${tabLabel}` : ''
+  lines.push(`# Alpha Radar 推荐报告${strategyNote}`)
+  lines.push('')
+  lines.push(`- **推荐日期**: ${date}`)
+  lines.push(`- **股票数量**: ${stocks.length}`)
+  if (assessment) lines.push(`- **综合评价**: ${assessment}`)
+  lines.push(`- **报告生成**: ${new Date().toLocaleString('zh-CN')}`)
+  lines.push('')
+
+  // Aggregate stats table
+  if (periodStats.length > 0) {
+    lines.push('## 整体表现')
+    lines.push('')
+    const pCols = periods.map(p => PERIOD_LABELS_MD[p] ?? `B+${p}`)
+    lines.push(`| 指标 | ${pCols.join(' | ')} |`)
+    lines.push(`| --- | ${pCols.map(() => '---:').join(' | ')} |`)
+
+    const findStats = (p: number) => periodStats.find(s => s.period === p)
+
+    // Win rate
+    lines.push(`| 胜率 | ${periods.map(p => {
+      const s = findStats(p)
+      return s?.winRate != null ? `${parseFloat(s.winRate).toFixed(1)}%` : '—'
+    }).join(' | ')} |`)
+
+    // Avg return
+    lines.push(`| 平均收益 | ${periods.map(p => {
+      const s = findStats(p)
+      return s?.avgReturn != null ? fmtPct(s.avgReturn) : '—'
+    }).join(' | ')} |`)
+
+    // P/L ratio
+    lines.push(`| 盈亏比 | ${periods.map(p => {
+      const s = findStats(p)
+      return s?.profitLossRatio != null ? fmtNum(s.profitLossRatio) : '—'
+    }).join(' | ')} |`)
+
+    // Win/Lose count
+    lines.push(`| 上涨/下跌 | ${periods.map(p => {
+      const s = findStats(p)
+      return s ? `${s.winCount}/${s.loseCount}` : '—'
+    }).join(' | ')} |`)
+
+    // Avg win
+    lines.push(`| 平均盈利 | ${periods.map(p => {
+      const s = findStats(p)
+      return s?.avgWin != null ? fmtPct(s.avgWin) : '—'
+    }).join(' | ')} |`)
+
+    // Avg loss
+    lines.push(`| 平均亏损 | ${periods.map(p => {
+      const s = findStats(p)
+      return s?.avgLoss != null ? fmtPct(s.avgLoss) : '—'
+    }).join(' | ')} |`)
+
+    lines.push('')
   }
-  return rows.join('')
-}
 
-export async function generateStockReport(date: string, stocks: ReportStock[]): Promise<void> {
-  const [{ default: jsPDF }, { default: html2canvas }] = await Promise.all([
-    import('jspdf'),
-    import('html2canvas'),
-  ])
+  // Per-stock summary table
+  lines.push('## 个股总览')
+  lines.push('')
+  const hasReturns = stocks.some(s => s.returns && Object.values(s.returns).some(v => v != null))
 
-  const pdf = new jsPDF({ orientation: 'landscape', unit: 'mm', format: 'a4' })
-  const pageW = pdf.internal.pageSize.getWidth()
-  const pageH = pdf.internal.pageSize.getHeight()
-  const margin = 8
-
-  for (let i = 0; i < stocks.length; i++) {
-    if (i > 0) pdf.addPage()
-
-    const container = document.createElement('div')
-    container.style.cssText = 'position:fixed;left:-9999px;top:0;width:1050px;background:#fff;'
-    container.innerHTML = buildStockHTML(stocks[i], date)
-    document.body.appendChild(container)
-
-    try {
-      const canvas = await html2canvas(container, {
-        scale: 2,
-        backgroundColor: '#ffffff',
-        logging: false,
-        useCORS: true,
+  if (hasReturns) {
+    const retCols = periods.map(p => PERIOD_LABELS_MD[p] ?? `B+${p}`)
+    lines.push(`| 代码 | 名称 | 买入价 | 总市值 | PE(TTM) | PB | ${retCols.join(' | ')} |`)
+    lines.push(`| --- | --- | ---: | ---: | ---: | ---: | ${retCols.map(() => '---:').join(' | ')} |`)
+    for (const s of stocks) {
+      const retVals = periods.map(p => {
+        const r = s.returns?.[String(p)]
+        return r != null ? `${fmtPct(r)}${returnEmoji(r)}` : '—'
       })
-
-      const imgData = canvas.toDataURL('image/jpeg', 0.92)
-      const contentW = pageW - margin * 2
-      const contentH = (canvas.height / canvas.width) * contentW
-      const finalH = Math.min(contentH, pageH - margin * 2)
-
-      pdf.addImage(imgData, 'JPEG', margin, margin, contentW, finalH)
-    } finally {
-      document.body.removeChild(container)
+      lines.push(`| ${s.code} | ${s.name} | ${fmtPrice(s.buyPrice)} | ${formatMv(s.totalMv)} | ${fmtNum(s.peTtm)} | ${fmtNum(s.pbMrq)} | ${retVals.join(' | ')} |`)
     }
+  } else {
+    lines.push(`| 代码 | 名称 | 买入价 | 总市值 | PE(TTM) | PB |`)
+    lines.push(`| --- | --- | ---: | ---: | ---: | ---: |`)
+    for (const s of stocks) {
+      lines.push(`| ${s.code} | ${s.name} | ${fmtPrice(s.buyPrice)} | ${formatMv(s.totalMv)} | ${fmtNum(s.peTtm)} | ${fmtNum(s.pbMrq)} |`)
+    }
+    lines.push('')
+    lines.push('> ⏳ 推荐日期较近，收益数据待验证')
+  }
+  lines.push('')
+
+  // Per-stock detail sections
+  lines.push('## 个股详情')
+  lines.push('')
+
+  for (const s of stocks) {
+    lines.push(`### ${s.code} ${s.name}`)
+    lines.push('')
+
+    // Fundamentals table
+    lines.push('| 指标 | 数值 |')
+    lines.push('| --- | ---: |')
+    lines.push(`| 买入价 (T+1 Open) | ${fmtPrice(s.buyPrice)} |`)
+    if (s.refPrice != null) lines.push(`| 推荐日收盘 | ${fmtPrice(s.refPrice)} |`)
+    lines.push(`| 总市值 | ${formatMv(s.totalMv)} |`)
+    lines.push(`| 流通市值 | ${formatMv(s.circMv)} |`)
+    lines.push(`| PE (TTM) | ${fmtNum(s.peTtm)} |`)
+    lines.push(`| PB (MRQ) | ${fmtNum(s.pbMrq)} |`)
+    lines.push(`| 换手率 | ${s.turnover != null ? `${parseFloat(String(s.turnover)).toFixed(1)}%` : '—'} |`)
+    lines.push(`| 成交量 | ${formatVol(s.volume)} |`)
+    lines.push('')
+
+    // Returns
+    if (s.returns && Object.values(s.returns).some(v => v != null)) {
+      lines.push('**持仓收益**:')
+      const retParts = periods
+        .filter(p => s.returns?.[String(p)] != null)
+        .map(p => `${PERIOD_LABELS_MD[p] ?? `B+${p}`}: ${fmtPct(s.returns![String(p)])}${returnEmoji(s.returns![String(p)])}`)
+      lines.push(retParts.join(' · '))
+      lines.push('')
+    }
+
+    // Quant labels
+    if (s.quantLabels && s.quantLabels.length > 0) {
+      const labelsCn = s.quantLabels.map(l => QUANT_LABEL_CN[l] ?? l)
+      lines.push(`**推荐理由**: ${labelsCn.join('、')}`)
+      lines.push('')
+    }
+
+    lines.push('---')
+    lines.push('')
   }
 
-  pdf.save(`投资参考报告_${date}.pdf`)
+  // Footer
+  lines.push('*本报告由 Alpha Radar 量化系统自动生成，仅供参考，不构成投资建议。*')
+  lines.push('')
+
+  // Download
+  const content = lines.join('\n')
+  const blob = new Blob([content], { type: 'text/markdown;charset=utf-8' })
+  const url = URL.createObjectURL(blob)
+  const a = document.createElement('a')
+  a.href = url
+  a.download = `推荐报告_${date}${tabLabel ? `_${tabLabel}` : ''}.md`
+  document.body.appendChild(a)
+  a.click()
+  document.body.removeChild(a)
+  URL.revokeObjectURL(url)
 }

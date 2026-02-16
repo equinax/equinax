@@ -12,8 +12,8 @@ import { useEvaluatePerformanceApiV1AlphaRadarEvaluatePerformancePost } from '@/
 import { getKlineApiV1StocksCodeKlineGet, getGetKlineApiV1StocksCodeKlineGetQueryKey, useGetKlineApiV1StocksCodeKlineGet } from '@/api/generated/stocks/stocks'
 import { cn } from '@/lib/utils'
 import { QUANT_LABEL_CN, formatMv, formatVol } from '@/lib/quant-labels'
-import { generateStockReport } from '@/lib/generate-report'
-import type { ReportStock } from '@/lib/generate-report'
+import { generateMarkdownReport } from '@/lib/generate-report'
+import type { MarkdownReportStock, MarkdownPeriodStats } from '@/lib/generate-report'
 import type { IChartApi, ISeriesApi, SeriesType } from 'lightweight-charts'
 import { DateAxisBar } from '@/components/stock/DateAxisBar'
 
@@ -233,31 +233,19 @@ export default function MultiStockBrowsePage() {
     return evalMutation.data?.period_stats?.find(s => s.period === period)
   }
 
-  const handleExportReport = useCallback(async () => {
-    if (isExporting) return
+  const handleExportReport = useCallback(() => {
+    if (isExporting || !evalMutation.data) return
     setIsExporting(true)
     try {
-      const savedRange = syncManagerRef.current.getRange()
-
-      const charts = codes
-        .map(code => ({ code, chart: syncManagerRef.current.getChart(code) }))
-        .filter((e): e is { code: string; chart: import('lightweight-charts').IChartApi } => e.chart !== null)
-
-      for (const { chart } of charts) {
-        chart.timeScale().fitContent()
-      }
-      await new Promise(r => requestAnimationFrame(() => requestAnimationFrame(r)))
-
-      const reportStocks: ReportStock[] = []
-      for (const { code, chart } of charts) {
-        const canvas = chart.takeScreenshot()
-        const chartImage = canvas.toDataURL('image/png')
+      const mdStocks: MarkdownReportStock[] = codes.map(code => {
         const info = stockMap[code]
-
-        reportStocks.push({
+        return {
           code,
           name: info?.name ?? code,
           buyPrice: info?.buy_price ? parseFloat(String(info.buy_price)) : undefined,
+          refPrice: evalMutation.data!.stocks.find(s => s.code === code)?.ref_price
+            ? parseFloat(String(evalMutation.data!.stocks.find(s => s.code === code)!.ref_price))
+            : undefined,
           totalMv: info?.total_mv,
           circMv: info?.circ_mv,
           volume: info?.volume,
@@ -265,21 +253,35 @@ export default function MultiStockBrowsePage() {
           peTtm: info?.pe_ttm,
           pbMrq: info?.pb_mrq,
           quantLabels: labelsMap[code],
-          chartImage,
-        })
-      }
+          returns: info?.returns as Record<string, string | null> | undefined,
+        }
+      })
 
-      if (savedRange) {
-        syncManagerRef.current.setRange(savedRange)
-      }
+      const mdPeriodStats: MarkdownPeriodStats[] = (evalMutation.data!.period_stats ?? []).map(s => ({
+        period: s.period,
+        winRate: s.win_rate as string | null | undefined,
+        avgReturn: s.avg_return as string | null | undefined,
+        avgWin: s.avg_win as string | null | undefined,
+        avgLoss: s.avg_loss as string | null | undefined,
+        profitLossRatio: s.profit_loss_ratio as string | null | undefined,
+        winCount: s.win_count,
+        loseCount: s.lose_count,
+        total: s.total,
+      }))
 
-      if (reportStocks.length > 0) {
-        await generateStockReport(date, reportStocks)
-      }
+      generateMarkdownReport({
+        date,
+        tab,
+        tabLabel,
+        assessment: evalMutation.data!.assessment,
+        stocks: mdStocks,
+        periodStats: mdPeriodStats,
+        periods: EVAL_PERIODS,
+      })
     } finally {
       setIsExporting(false)
     }
-  }, [codes, date, stockMap, labelsMap, isExporting])
+  }, [codes, date, tab, tabLabel, stockMap, labelsMap, evalMutation.data, isExporting])
 
   if (codes.length === 0 || !date) {
     return (
