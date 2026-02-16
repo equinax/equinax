@@ -247,7 +247,10 @@ data-fixtures *args='status':
 
 # Run comprehensive backtest report (generates .reports/)
 # Examples:
-#   just alpha-report                                    # Full 25-date backtest
+#   just alpha-report                                    # Normal: 25 biweekly dates
+#   just alpha-report --sample light                     # Light: ~5 dates, quick test
+#   just alpha-report --sample heavy                     # Heavy: ~54 weekly dates
+#   just alpha-report --sample full                      # Full: all trading days 2025-01~2026-02
 #   just alpha-report --dates 2025-06-09,2025-09-15      # Specific dates
 #   just alpha-report --tabs weekly                      # Single tab
 [group('alpha')]

@@ -5,7 +5,9 @@ Markdown reports (summary + per-date) for evaluating iteration progress.
 
 Usage:
     docker compose exec api python -m scripts.alpha_radar_report
-    docker compose exec api python -m scripts.alpha_radar_report --top-n 5 --output-dir .sisyphus/reports/my_run
+    docker compose exec api python -m scripts.alpha_radar_report --sample light   # ~5 dates, quick
+    docker compose exec api python -m scripts.alpha_radar_report --sample heavy   # ~50 dates, weekly
+    docker compose exec api python -m scripts.alpha_radar_report --sample full    # All trading days 2025-01 ~ 2026-02
     docker compose exec api python -m scripts.alpha_radar_report --dates 2025-03-10,2025-06-09
 """
 
@@ -16,6 +18,7 @@ import logging
 import os
 import sys
 import time
+import uuid
 
 log = logging.getLogger("alpha_radar_report")
 
@@ -25,7 +28,15 @@ TARGETS: dict[str, dict[str, float]] = {
     "dragon": {"wr": 55.0, "ar": 5.0},
 }
 
-DEFAULT_DATES = [
+LIGHT_DATES = [
+    datetime.date(2025, 2, 24),
+    datetime.date(2025, 5, 12),
+    datetime.date(2025, 8, 4),
+    datetime.date(2025, 10, 27),
+    datetime.date(2026, 1, 19),
+]
+
+NORMAL_DATES = [
     datetime.date(2025, 2, 10),
     datetime.date(2025, 2, 24),
     datetime.date(2025, 3, 10),
@@ -52,6 +63,89 @@ DEFAULT_DATES = [
     datetime.date(2026, 1, 19),
     datetime.date(2026, 2, 5),
 ]
+
+HEAVY_DATES = [
+    datetime.date(2025, 1, 6),
+    datetime.date(2025, 1, 13),
+    datetime.date(2025, 1, 20),
+    datetime.date(2025, 2, 10),
+    datetime.date(2025, 2, 17),
+    datetime.date(2025, 2, 24),
+    datetime.date(2025, 3, 3),
+    datetime.date(2025, 3, 10),
+    datetime.date(2025, 3, 17),
+    datetime.date(2025, 3, 24),
+    datetime.date(2025, 3, 31),
+    datetime.date(2025, 4, 7),
+    datetime.date(2025, 4, 14),
+    datetime.date(2025, 4, 21),
+    datetime.date(2025, 4, 28),
+    datetime.date(2025, 5, 5),
+    datetime.date(2025, 5, 12),
+    datetime.date(2025, 5, 19),
+    datetime.date(2025, 5, 26),
+    datetime.date(2025, 6, 2),
+    datetime.date(2025, 6, 9),
+    datetime.date(2025, 6, 16),
+    datetime.date(2025, 6, 23),
+    datetime.date(2025, 6, 30),
+    datetime.date(2025, 7, 7),
+    datetime.date(2025, 7, 14),
+    datetime.date(2025, 7, 21),
+    datetime.date(2025, 7, 28),
+    datetime.date(2025, 8, 4),
+    datetime.date(2025, 8, 11),
+    datetime.date(2025, 8, 18),
+    datetime.date(2025, 8, 25),
+    datetime.date(2025, 9, 1),
+    datetime.date(2025, 9, 8),
+    datetime.date(2025, 9, 15),
+    datetime.date(2025, 9, 22),
+    datetime.date(2025, 9, 29),
+    datetime.date(2025, 10, 13),
+    datetime.date(2025, 10, 20),
+    datetime.date(2025, 10, 27),
+    datetime.date(2025, 11, 3),
+    datetime.date(2025, 11, 10),
+    datetime.date(2025, 11, 17),
+    datetime.date(2025, 11, 24),
+    datetime.date(2025, 12, 1),
+    datetime.date(2025, 12, 8),
+    datetime.date(2025, 12, 15),
+    datetime.date(2025, 12, 22),
+    datetime.date(2025, 12, 29),
+    datetime.date(2026, 1, 5),
+    datetime.date(2026, 1, 12),
+    datetime.date(2026, 1, 19),
+    datetime.date(2026, 2, 2),
+    datetime.date(2026, 2, 9),
+]
+
+FULL_RANGE_START = datetime.date(2025, 1, 1)
+FULL_RANGE_END = datetime.date(2026, 2, 10)
+
+
+def _get_full_trading_days() -> list[datetime.date]:
+    import tushare as ts
+
+    api_key = os.environ.get("TUSHARE_API_KEY")
+    if not api_key:
+        raise ValueError("TUSHARE_API_KEY environment variable not set")
+    ts.set_token(api_key)
+    pro = ts.pro_api()
+
+    df = pro.trade_cal(
+        exchange="SSE",
+        start_date=FULL_RANGE_START.strftime("%Y%m%d"),
+        end_date=FULL_RANGE_END.strftime("%Y%m%d"),
+        is_open="1",
+    )
+    if df is None or df.empty:
+        raise RuntimeError("No trading days returned from TuShare trade_cal")
+
+    days = sorted(datetime.datetime.strptime(d, "%Y%m%d").date() for d in df["cal_date"].tolist())
+    log.info(f"Full mode: {len(days)} trading days from {days[0]} to {days[-1]}")
+    return days
 
 
 def _fmt(v: float | None, suffix: str = "%", decimals: int = 2) -> str:
@@ -406,16 +500,23 @@ def parse_args():
         help="Comma-separated tabs to test (default: weekly,rally,dragon)",
     )
     parser.add_argument(
+        "--sample",
+        type=str,
+        default="normal",
+        choices=["light", "normal", "heavy", "full"],
+        help="Sample size preset: light(~5), normal(25), heavy(~54), full(all trading days 2025-01~2026-02)",
+    )
+    parser.add_argument(
         "--dates",
         type=str,
         default=None,
-        help="Comma-separated dates (YYYY-MM-DD). Default: 25 biweekly dates 2025-02 to 2026-02",
+        help="Comma-separated dates (YYYY-MM-DD). Overrides --sample if provided.",
     )
     parser.add_argument(
         "--output-dir",
         type=str,
         default=None,
-        help="Output directory (default: .reports/YYYY-MM-DD_comprehensive)",
+        help="Output directory (default: .reports/YYYY-MM-DD_<random>)",
     )
     return parser.parse_args()
 
@@ -431,8 +532,14 @@ def main():
 
     if args.dates:
         test_dates = [datetime.date.fromisoformat(d.strip()) for d in args.dates.split(",")]
+    elif args.sample == "light":
+        test_dates = list(LIGHT_DATES)
+    elif args.sample == "heavy":
+        test_dates = list(HEAVY_DATES)
+    elif args.sample == "full":
+        test_dates = _get_full_trading_days()
     else:
-        test_dates = list(DEFAULT_DATES)
+        test_dates = list(NORMAL_DATES)
 
     tabs = [t.strip() for t in args.tabs.split(",")]
 
@@ -445,7 +552,8 @@ def main():
     output_dir = args.output_dir
     if not output_dir:
         today = datetime.date.today().isoformat()
-        output_dir = f".reports/{today}_comprehensive"
+        run_id = uuid.uuid4().hex[:6]
+        output_dir = f".reports/{today}_{run_id}"
 
     log.info(f"Running backtest: {len(test_dates)} dates × {len(tabs)} tabs, top_n={args.top_n}")
     t_start = time.time()
