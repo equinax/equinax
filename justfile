@@ -242,6 +242,19 @@ data-fixtures *args='status':
     docker compose exec api python -m scripts.fixtures {{args}}
 
 # ==============================================================================
+# Alpha Radar Commands
+# ==============================================================================
+
+# Run comprehensive backtest report (generates .reports/)
+# Examples:
+#   just alpha-report                                    # Full 25-date backtest
+#   just alpha-report --dates 2025-06-09,2025-09-15      # Specific dates
+#   just alpha-report --tabs weekly                      # Single tab
+[group('alpha')]
+alpha-report *args='':
+    docker compose exec api python -m scripts.alpha_radar_report {{args}}
+
+# ==============================================================================
 # Internal Helpers
 # ==============================================================================
 

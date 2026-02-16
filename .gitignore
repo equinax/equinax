@@ -94,3 +94,4 @@ credentials.json
 .tmp/
 .aider*
 .sisyphus*
+.reports*

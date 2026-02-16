@@ -777,8 +777,18 @@ async def run_backtest(
 
     all_results = {}
     abstained_dates = set()
+    regime_data: dict[datetime.date, dict] = {}
     for d in test_dates:
         all_results[d] = {}
+        # Always compute regime for every date (used by report generation)
+        regime_score, weak_days, regime_details = compute_regime_score(
+            d, index_df, market_df, moneyflow_df, limit_df
+        )
+        regime_data[d] = {
+            "regime_score": regime_score,
+            "weak_days": weak_days,
+            **regime_details,
+        }
         for tab in tabs:
             t0 = time.time()
             recs = compute_scores_for_date(
@@ -794,9 +804,6 @@ async def run_backtest(
                 limit_df=limit_df,
             )
             if not recs and tab == tabs[0]:
-                regime_score, weak_days, regime_details = compute_regime_score(
-                    d, index_df, market_df, moneyflow_df, limit_df
-                )
                 breadth_today = regime_details.get("breadth_today", 50.0)
                 mf_pct_inflow = regime_details.get("mf_pct_inflow", 50.0)
                 mf_avg_net = regime_details.get("mf_avg_net", 0.0)
@@ -842,11 +849,9 @@ async def run_backtest(
                         f"    {r['code']} {r['name']:<8} score={score_str} close={close_str} chg={chg_str}% → T+{tab_period}: {ret_val}% {marker}"
                     )
             elif verbose and d in abstained_dates and tab == tabs[0]:
-                regime_score, weak_days, rd = compute_regime_score(
-                    d, index_df, market_df, moneyflow_df, limit_df
-                )
+                rd = regime_data[d]
                 log.info(
-                    f"\n  {d} | ABSTAIN (regime={regime_score:.1f}, weak_days={weak_days}, "
+                    f"\n  {d} | ABSTAIN (regime={rd['regime_score']:.1f}, weak_days={rd['weak_days']}, "
                     f"breadth={rd.get('breadth_today', 0):.1f}%, "
                     f"mf_inflow={rd.get('mf_pct_inflow', 0):.1f}%, "
                     f"mf_net={rd.get('mf_avg_net', 0):.0f})"
@@ -913,7 +918,7 @@ async def run_backtest(
             log.info(f"{tab:<14} NO DATA")
 
     log.info(f"\nTotal time: {total_elapsed:.1f}s")
-    return all_results
+    return all_results, abstained_dates, regime_data
 
 
 def parse_args():

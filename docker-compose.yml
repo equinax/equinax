@@ -60,6 +60,7 @@ services:
       - ./backend/examples:/app/examples:cached
       - ./backend/cmd.py:/app/cmd.py:cached
       - ./backend/data:/app/data:cached
+      - ./.reports:/app/.reports
     ports:
       - "3080:8000"
     depends_on:
