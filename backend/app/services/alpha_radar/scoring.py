@@ -240,6 +240,11 @@ class ScoringEngine:
             "late_stage_stall": 0.0,
             "mf_net_percentile": 50.0,
             "elg_net_percentile": 50.0,
+            "near_limit_up": 0,
+            "vol_jump_1d": 1.0,
+            "vol_cv_10d": 0.5,
+            "atr_20d": 0.0,
+            "max_loss_20d": 0.0,
         }
 
         for col, default in required_columns.items():

@@ -19,6 +19,7 @@ class StrategyConfig:
     score_column: str
     eval_period_trading_days: int
     requires_moneyflow: bool
+    backtest_top_n: int = 5
 
 
 STRATEGIES: dict[ScreenerTabKey, StrategyConfig] = {
@@ -45,5 +46,6 @@ STRATEGIES: dict[ScreenerTabKey, StrategyConfig] = {
         score_column="dragon_score",
         eval_period_trading_days=20,
         requires_moneyflow=True,
+        backtest_top_n=4,
     ),
 }

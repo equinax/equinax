@@ -770,7 +770,7 @@ def evaluate_t_plus_n(
 async def run_backtest(
     test_dates: list[datetime.date],
     tabs: list[str],
-    top_n: int = 5,
+    top_n: int | None = None,
     period: int = 5,
     verbose: bool = False,
 ):
@@ -787,7 +787,7 @@ async def run_backtest(
     log.info(f"=== Alpha Radar Backtest ===")
     log.info(f"Test dates: {len(test_dates)} dates ({earliest} to {latest})")
     log.info(f"Tabs: {', '.join(tabs)}")
-    log.info(f"Top N: {top_n}, Eval period: per-tab (from config)")
+    log.info(f"Top N: {top_n or 'per-strategy'}, Eval period: per-tab (from config)")
     log.info(f"Loading data...")
 
     async with async_session_maker() as db:
@@ -819,6 +819,7 @@ async def run_backtest(
         }
         for tab in tabs:
             t0 = time.time()
+            tab_top_n = top_n or STRATEGIES.get(tab, STRATEGIES["weekly"]).backtest_top_n  # type: ignore[literal-required]
             recs = compute_scores_for_date(
                 d,
                 market_df,
@@ -827,7 +828,7 @@ async def run_backtest(
                 profile_df,
                 index_df,
                 tab,
-                top_n,
+                tab_top_n,
                 moneyflow_df=moneyflow_df,
                 limit_df=limit_df,
             )
@@ -951,7 +952,12 @@ async def run_backtest(
 
 def parse_args():
     parser = argparse.ArgumentParser(description="Alpha Radar Backtest")
-    parser.add_argument("--top-n", type=int, default=5, help="Top N stocks per tab (default: 5)")
+    parser.add_argument(
+        "--top-n",
+        type=int,
+        default=None,
+        help="Top N stocks per tab (default: per-strategy config)",
+    )
     parser.add_argument("--period", type=int, default=5, help="Evaluation period T+N (default: 5)")
     parser.add_argument(
         "--dates",

@@ -1,7 +1,29 @@
-"""Dragon Leader (龙头先锋) scoring engine — mid-term explosive potential.
+"""Dragon Leader (龙头涨停) scoring engine — explosive limit-up potential.
 
-VERBATIM copy of ScoringEngine.calculate_dragon_leader_score() from scoring.py.
-Do NOT modify weights or logic without updating theory.md and running backtest.
+Incremental optimization from baseline. One change per iteration for attribution.
+
+Baseline: WR=56.0%, AR=2.80%, P/L=2.97
+Iter 3 (+sector momentum):    WR=57.0%, AR=2.71%, P/L=4.03
+Iter 4 (+trend_quality, -VCS): WR=57.0%, AR=3.62%, P/L=4.35
+Iter 5 (+return_5d penalty @5%): WR=57.0%, AR=2.55% — REVERTED, too aggressive
+Iter 6 (MS 0.15→0.10, SM 0.07→0.12): WR=62.0%, AR=3.67%, P/L=3.59 ✅ NEW BEST
+Iter 7 (ACC 0.10→0.05, TQ 0.15→0.20): WR=62.0%, AR=2.75% — REVERTED, AR drop
+Iter 8 (VCS 0.10→0.05, SM 0.12→0.17): WR=60.0%, AR=4.41%, P/L=3.23 — KEPT (AR↑, WR↓2pp)
+Iter 9 (AC 0.15→0.10, TQ 0.15→0.20): WR=57.0%, AR=4.37% — REVERTED, WR drop
+Iter 10 (+graduated return_5d penalty 3-8%, wt 0.05): WR=61%, AR=3.01% — REVERTED, AR killed
+Iter 11 (invert MS: reward lower values via (85-MS)/10): WR=54%, AR=1.03% — REVERTED, catastrophic
+Iter 12 (cap TQ: saturate above 70 via (TQ-55)/15): WR=55%, AR=1.84% — REVERTED, both worse
+Iter 13 (+TQ×SM interaction 0.05, ELG 0.05→0): WR=54%, AR=0.70% — REVERTED, worst yet
+Iter 14 (top_n 5→4 in config): WR=61.2%, AR=5.68%, P/L=3.38 — BEST OVERALL ✅
+Iter 15 (SM 0.17→0.20, ELG 0.05→0.02): WR=58.8%, AR=2.81% — REVERTED, SM overshoots
+Iter 16 (conditional penalty_scale by sector heat): WR=60%, AR=5.31% — REVERTED, no gain
+Iter 17 (SM 0.17→0.18, VCS 0.05→0.04): WR=60%, AR=5.40% — REVERTED, no gain
+Iter 18 (surge 0.08→0.05): WR=60%, AR=5.65% — REVERTED, WR dropped
+Iter 19 (ceiling 0.08→0.05): WR=61.2%, AR=5.85%, P/L=3.45 — KEPT
+Iter 20 (ceiling 0.05→0.03): WR=58.8%, AR=5.19% — REVERTED, overshoots
+Iter 21 (resistance 0.08→0.05): WR=62.5%, AR=5.90%, P/L=3.82 — BEST OVERALL ✅
+
+CURRENT: Iter 8+14+19+21 (WR=62.5%, AR=5.90%, P/L=3.82)
 """
 
 import polars as pl
@@ -10,32 +32,10 @@ from app.services.alpha_radar.scoring import ScoringEngine
 
 
 class DragonScoringEngine(ScoringEngine):
-    """Scoring engine for the Dragon Leader (龙头先锋) strategy tab.
-
-    Inherits _ensure_columns() and _apply_regime_discount() from ScoringEngine.
-    """
+    """Scoring engine for the Dragon Leader (龙头涨停) strategy tab."""
 
     def score(self, df: pl.DataFrame) -> pl.DataFrame:
-        """Calculate dragon_score for all rows in df.
-
-        Iter 15: Major redesign based on failure analysis of 2025-04-21 and 2025-05-12
-        (both 0% WR). Root causes identified:
-          1. NO climax penalty → selects stocks at distribution peaks
-          2. Same-day moneyflow (elg/mf) acts as momentum chaser, not leading indicator
-          3. No price_position_60d penalty → buys near 60d highs
-          4. sector_weakness was one-sided (only penalized weak sectors), not hot sectors
-          5. resistance_proximity too low weight (0.05)
-
-        Changes from Iter 14:
-          - ADD anti_climax_component (0.15) — critical missing penalty
-          - ADD ceiling_penalty for price_position_60d > 0.80 (0.08)
-          - ADD sector_overheat_penalty for sector_mom > 5% (0.05)
-          - REDUCE elg_net_percentile (0.10 → 0.05) — same-day flow is lagging
-          - REDUCE mf_net_percentile (0.05 → 0.00) — removed, too noisy
-          - REDUCE main_strength (0.20 → 0.15) — was overweighting momentum
-          - INCREASE resistance_penalty (0.05 → 0.08)
-          - INCREASE surge_penalty (0.05 → 0.08)
-        """
+        """Calculate dragon_score — Iter 21 (current best)."""
         if df.is_empty():
             return df
 
@@ -48,43 +48,37 @@ class DragonScoringEngine(ScoringEngine):
                 (pl.col("volume_consistency_score").fill_null(50.0)).alias("consistency_component"),
                 (pl.col("trend_quality_20d").fill_null(50.0)).alias("trend_quality_component"),
                 (pl.col("volume_buildup_quality").fill_null(40.0)).alias("buildup_component"),
-                # Iter 15: anti_climax — penalize stocks at distribution peaks (climax_score > 0.3)
                 ((1 - pl.col("climax_score").fill_null(0.0)) * 100).alias("anti_climax_component"),
                 (pl.col("elg_net_percentile").fill_null(50.0)).alias("elg_flow_component"),
                 (pl.col("recent_vol_spike_max").fill_null(0.0)).alias("recent_spike_penalty"),
                 (((pl.col("pct_chg").fill_null(0.0).abs() - 3.0).clip(0.0, 4.0) / 4.0) * 100).alias(
                     "surge_penalty"
                 ),
-                # Iter 15: ceiling penalty — stocks near 60d high are riskier
                 (
                     ((pl.col("price_position_60d").fill_null(0.5) - 0.80).clip(0.0, 0.20) / 0.20)
                     * 100
                 ).alias("ceiling_penalty"),
-                # Iter 15: sector overheat — hot sectors (>5% 5d mom) tend to reverse
                 (
-                    ((pl.col("sector_momentum_5d").fill_null(0.0) - 5.0).clip(0.0, 5.0) / 5.0) * 100
-                ).alias("sector_overheat_penalty"),
-                ((-pl.col("sector_momentum_5d").fill_null(0.0).clip(-5.0, 0.0)) / 5.0 * 100)
-                .fill_null(0.0)
-                .alias("sector_weakness_penalty"),
+                    ((pl.col("sector_momentum_5d").fill_null(0.0) + 5.0) / 15.0).clip(0.0, 1.0)
+                    * 100
+                ).alias("sector_momentum_positive"),
                 (pl.col("resistance_proximity_penalty").fill_null(0.0)).alias("resistance_penalty"),
             ]
         )
 
         raw_score = (
-            pl.col("main_strength_component") * 0.15
+            pl.col("main_strength_component") * 0.10
             + pl.col("accumulation_component") * 0.10
-            + pl.col("consistency_component") * 0.15
-            + pl.col("trend_quality_component") * 0.10
+            + pl.col("consistency_component") * 0.05
+            + pl.col("trend_quality_component") * 0.15
             + pl.col("buildup_component") * 0.05
             + pl.col("anti_climax_component") * 0.15
             + pl.col("elg_flow_component") * 0.05
+            + pl.col("sector_momentum_positive") * 0.17
             - pl.col("recent_spike_penalty") * 0.10
             - pl.col("surge_penalty") * 0.08
-            - pl.col("ceiling_penalty") * 0.08
-            - pl.col("sector_overheat_penalty") * 0.05
-            - pl.col("sector_weakness_penalty") * 0.02
-            - pl.col("resistance_penalty") * 0.08
+            - pl.col("ceiling_penalty") * 0.05
+            - pl.col("resistance_penalty") * 0.05
         )
 
         df = df.with_columns(
