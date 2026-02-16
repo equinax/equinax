@@ -296,9 +296,19 @@ def generate_date_md(
         if recs:
             stocks = perf.get("stocks", [])
             stock_returns = {s["code"]: s.get("return") for s in stocks}
+            stock_limit_ups = {s["code"]: s for s in stocks}
 
-            lines.append("| # | 代码 | 名称 | 评分 | 收盘价 | 当日涨跌 | T+N收益 | 结果 |")
-            lines.append("|---|------|------|------|--------|----------|---------|------|")
+            has_limit_data = any(s.get("limit_up_count") is not None for s in stocks)
+            if has_limit_data:
+                lines.append(
+                    "| # | 代码 | 名称 | 评分 | 收盘价 | 当日涨跌 | T+N收益 | 涨停 | 连板 | 结果 |"
+                )
+                lines.append(
+                    "|---|------|------|------|--------|----------|---------|------|------|------|"
+                )
+            else:
+                lines.append("| # | 代码 | 名称 | 评分 | 收盘价 | 当日涨跌 | T+N收益 | 结果 |")
+                lines.append("|---|------|------|------|--------|----------|---------|------|")
 
             for i, r in enumerate(recs, 1):
                 code = r.get("code", "")
@@ -312,9 +322,17 @@ def generate_date_md(
                     marker = "✅" if ret > 0 else "❌"
                 else:
                     marker = "?"
-                lines.append(
-                    f"| {i} | {code} | {name} | {score} | {close} | {pct_chg} | {ret_str} | {marker} |"
-                )
+                if has_limit_data:
+                    s = stock_limit_ups.get(code, {})
+                    lu_count = s.get("limit_up_count", 0)
+                    lu_consec = s.get("max_consec_limit_up", 0)
+                    lines.append(
+                        f"| {i} | {code} | {name} | {score} | {close} | {pct_chg} | {ret_str} | {lu_count} | {lu_consec} | {marker} |"
+                    )
+                else:
+                    lines.append(
+                        f"| {i} | {code} | {name} | {score} | {close} | {pct_chg} | {ret_str} | {marker} |"
+                    )
 
             lines.append("")
 

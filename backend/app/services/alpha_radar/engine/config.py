@@ -32,15 +32,15 @@ STRATEGIES: dict[ScreenerTabKey, StrategyConfig] = {
     ),
     "rally": StrategyConfig(
         tab="rally",
-        label_cn="主升浪",
+        label_cn="大盘主升",
         description="MA多头+量能阶梯+趋势质量",
         score_column="rally_score",
-        eval_period_trading_days=5,
+        eval_period_trading_days=10,
         requires_moneyflow=False,
     ),
     "dragon": StrategyConfig(
         tab="dragon",
-        label_cn="龙头先锋",
+        label_cn="龙头涨停",
         description="主力吸筹+突破蓄力+量价一致",
         score_column="dragon_score",
         eval_period_trading_days=20,

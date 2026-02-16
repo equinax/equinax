@@ -632,6 +632,7 @@ def evaluate_t_plus_n(
     target_date: datetime.date,
     market_df: pl.DataFrame,
     period: int = 5,
+    limit_df: "pl.DataFrame | None" = None,
 ) -> dict:
     """Evaluate T+N performance using pre-loaded market data."""
 
@@ -716,17 +717,44 @@ def evaluate_t_plus_n(
     avg_loss = round(sum(losses) / len(losses), 2) if losses else None
     pl_ratio = round(avg_win / abs(avg_loss), 2) if avg_win and avg_loss and avg_loss != 0 else None
 
+    # Per-stock limit-up stats within evaluation window
+    limit_up_stats: dict[str, dict] = {}
+    if limit_df is not None and not limit_df.is_empty():
+        eval_window_dates = future_dates.head(period)["date"].to_list()
+        lu = limit_df.filter(
+            (pl.col("code").is_in(codes))
+            & (pl.col("date").is_in(eval_window_dates))
+            & (pl.col("limit_type") == "U")
+        ).sort(["code", "date"])
+        for code in codes:
+            code_dates = lu.filter(pl.col("code") == code)["date"].to_list()
+            count = len(code_dates)
+            max_consec = 0
+            if count > 0:
+                consec = 1
+                for i in range(1, len(code_dates)):
+                    idx_prev = eval_window_dates.index(code_dates[i - 1])
+                    idx_curr = eval_window_dates.index(code_dates[i])
+                    if idx_curr == idx_prev + 1:
+                        consec += 1
+                    else:
+                        max_consec = max(max_consec, consec)
+                        consec = 1
+                max_consec = max(max_consec, consec)
+            limit_up_stats[code] = {"limit_up_count": count, "max_consec_limit_up": max_consec}
+
     stock_details = []
     for row in perf.iter_rows(named=True):
         rec = next((r for r in recommendations if r["code"] == row["code"]), {})
-        stock_details.append(
-            {
-                "code": row["code"],
-                "name": rec.get("name", ""),
-                "score": rec.get("score", 0),
-                "return": row["return_pct"],
-            }
-        )
+        detail = {
+            "code": row["code"],
+            "name": rec.get("name", ""),
+            "score": rec.get("score", 0),
+            "return": row["return_pct"],
+        }
+        if row["code"] in limit_up_stats:
+            detail.update(limit_up_stats[row["code"]])
+        stock_details.append(detail)
 
     return {
         "win_rate": win_rate,
@@ -822,7 +850,7 @@ async def run_backtest(
                     elif low_regime and weak_days >= 3:
                         abstained_dates.add(d)
             tab_period = STRATEGIES[tab].eval_period_trading_days if tab in STRATEGIES else period  # type: ignore[literal-required]
-            perf = evaluate_t_plus_n(recs, d, market_df, tab_period)
+            perf = evaluate_t_plus_n(recs, d, market_df, tab_period, limit_df=limit_df)
             elapsed = time.time() - t0
             all_results[d][tab] = {
                 "recommendations": recs,
