@@ -2014,6 +2014,8 @@ async def evaluate_performance(
             turnover=s.get("turnover"),
             pe_ttm=s.get("pe_ttm"),
             pb_mrq=s.get("pb_mrq"),
+            limit_up_count=s.get("limit_up_count"),
+            max_consec_limit_up=s.get("max_consec_limit_up"),
         )
         for s in result["stocks"]
     ]
@@ -2029,6 +2031,8 @@ async def evaluate_performance(
             avg_win=ps.get("avg_win"),
             avg_loss=ps.get("avg_loss"),
             profit_loss_ratio=ps.get("profit_loss_ratio"),
+            avg_limit_up_count=ps.get("avg_limit_up_count"),
+            avg_max_consec_limit_up=ps.get("avg_max_consec_limit_up"),
         )
         for ps in result["period_stats"]
     ]

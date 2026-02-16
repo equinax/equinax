@@ -508,6 +508,7 @@ export default function MultiStockBrowsePage() {
             sharedDates={sharedDates}
             quantLabels={labelsMap[code]}
             evalPeriods={evalPeriods}
+            tab={tab}
           />
         ))}
       </div>
@@ -542,9 +543,10 @@ interface StockChartItemProps {
   sharedDates: string[]
   quantLabels?: string[]
   evalPeriods: readonly number[]
+  tab: string
 }
 
-function StockChartItem({ code, date, isFirst, stockInfo, evalDone, priceLines, verticalMarkers, onChartReady, onDataLoaded, sharedDates, quantLabels, evalPeriods }: StockChartItemProps) {
+function StockChartItem({ code, date, isFirst, stockInfo, evalDone, priceLines, verticalMarkers, onChartReady, onDataLoaded, sharedDates, quantLabels, evalPeriods, tab }: StockChartItemProps) {
   const { data: klineData } = useGetKlineApiV1StocksCodeKlineGet(
     code,
     { limit: 1000 },
@@ -581,6 +583,14 @@ function StockChartItem({ code, date, isFirst, stockInfo, evalDone, priceLines, 
     return 'text-muted-foreground'
   }
 
+  const isLimitUp = useMemo(() => {
+    if (!activeOhlc || tab !== 'dragon') return false
+    const { close, high, change_pct } = activeOhlc
+    if (close !== high || change_pct < 4.5) return false
+    const is20pctBoard = code.startsWith('sh.688') || code.startsWith('sz.30')
+    return is20pctBoard ? change_pct >= 19.5 : change_pct >= 9.5
+  }, [activeOhlc, tab, code])
+
   const cumulativeReturn = useMemo(() => {
     if (!hoverData || buyPrice == null || buyPrice === 0) return null
     return ((hoverData.close - buyPrice) / buyPrice) * 100
@@ -609,6 +619,9 @@ function StockChartItem({ code, date, isFirst, stockInfo, evalDone, priceLines, 
             <span className={cn("font-mono text-xs font-medium", activeOhlc.change_pct > 0 ? 'text-red-500' : activeOhlc.change_pct < 0 ? 'text-green-500' : 'text-muted-foreground')}>
               {activeOhlc.change_pct > 0 ? '+' : ''}{activeOhlc.change_pct.toFixed(2)}%
             </span>
+            {isLimitUp && (
+              <span className="text-xs font-bold text-red-600 bg-red-100 dark:bg-red-900/40 dark:text-red-400 px-1 rounded">涨停</span>
+            )}
           </>
         )}
         {stockInfo && (stockInfo.total_mv || stockInfo.volume || stockInfo.pe_ttm) && (
