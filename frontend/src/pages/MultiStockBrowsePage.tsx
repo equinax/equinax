@@ -54,27 +54,39 @@ const getAssessmentColor = (assessment: string) => {
   return 'bg-secondary text-secondary-foreground'
 }
 
-const EVAL_PERIODS = [3, 5, 10, 20] as const
+const EVAL_PERIODS_BY_TAB: Record<string, readonly number[]> = {
+  weekly: [3, 6],
+  rally: [3, 5, 10],
+  dragon: [3, 5, 10, 20],
+}
+const DEFAULT_EVAL_PERIODS = [3, 5, 10, 20] as const
 const PERIOD_LABELS: Record<number, string> = {
   3: 'Buy+3',
   5: 'Buy+5',
+  6: 'Buy+6',
   10: 'Buy+10',
   20: 'Buy+20',
 }
 const PERIOD_COLORS: Record<number, string> = {
-  3: '#f59e0b',   // amber — Buy+3
-  5: '#8b5cf6',   // violet — Buy+5
-  10: '#06b6d4',  // cyan — Buy+10
-  20: '#ec4899',  // pink — Buy+20
+  3: '#f59e0b',   // amber
+  5: '#8b5cf6',   // violet
+  6: '#10b981',   // emerald
+  10: '#06b6d4',  // cyan
+  20: '#ec4899',  // pink
 }
 
-const PRICE_LINE_PERIODS = [3, 5, 10] as const
-const PRICE_LINE_LABELS: Record<number, string> = { 3: 'B3', 5: 'B5', 10: 'B10', 20: 'B20' }
+const PRICE_LINE_PERIODS_BY_TAB: Record<string, readonly number[]> = {
+  weekly: [3, 6],
+  rally: [3, 5, 10],
+  dragon: [3, 5, 10, 20],
+}
+const DEFAULT_PRICE_LINE_PERIODS = [3, 5, 10] as const
+const PRICE_LINE_LABELS: Record<number, string> = { 3: 'B3', 5: 'B5', 6: 'B6', 10: 'B10', 20: 'B20' }
 
 const STOCK_TAB_LABELS: Record<string, string> = {
   weekly: '周内短线',
-  rally: '主升浪',
-  dragon: '龙头先锋',
+  rally: '大盘主升',
+  dragon: '龙头涨停',
 }
 
 export default function MultiStockBrowsePage() {
@@ -117,7 +129,8 @@ export default function MultiStockBrowsePage() {
 
   useEffect(() => {
     if (codes.length > 0 && date) {
-      evalMutation.mutate({ data: { codes, date, base_price: 't1_open', periods: [...EVAL_PERIODS] } })
+      const tabPeriods = EVAL_PERIODS_BY_TAB[tab] ?? DEFAULT_EVAL_PERIODS
+      evalMutation.mutate({ data: { codes, date, base_price: 't1_open', periods: [...tabPeriods], tab: tab || undefined } })
     }
   }, [codes, date])
 
@@ -129,10 +142,12 @@ export default function MultiStockBrowsePage() {
     }, {} as Record<string, typeof evalMutation.data.stocks[0]>)
   }, [evalMutation.data])
 
+  const evalPeriods = useMemo(() => EVAL_PERIODS_BY_TAB[tab] ?? DEFAULT_EVAL_PERIODS, [tab])
+
   const verticalMarkers = useMemo((): VerticalMarker[] => {
     if (!evalMutation.data?.period_dates) return []
     const markers: VerticalMarker[] = []
-    for (const period of EVAL_PERIODS) {
+    for (const period of evalPeriods) {
       const dateStr = (evalMutation.data.period_dates as Record<string, string | null>)?.[String(period)]
       if (dateStr) {
         markers.push({
@@ -143,7 +158,7 @@ export default function MultiStockBrowsePage() {
       }
     }
     return markers
-  }, [evalMutation.data?.period_dates])
+  }, [evalMutation.data?.period_dates, evalPeriods])
 
   const klineQueries = useQueries({
     queries: codes.map(code => ({
@@ -172,6 +187,8 @@ export default function MultiStockBrowsePage() {
     syncManagerRef.current.register('__date_axis__', chart, series)
   }, [])
 
+  const priceLinePeriods = useMemo(() => PRICE_LINE_PERIODS_BY_TAB[tab] ?? DEFAULT_PRICE_LINE_PERIODS, [tab])
+
   const priceLinesMap = useMemo(() => {
     const map: Record<string, PriceLine[]> = {}
     for (const code of codes) {
@@ -187,7 +204,7 @@ export default function MultiStockBrowsePage() {
         { price: buyPrice * 0.95, color: '#ef4444', label: '止损 -5%', lineStyle: 'dashed' as const },
       ]
 
-      for (const period of PRICE_LINE_PERIODS) {
+      for (const period of priceLinePeriods) {
         const ret = stockInfo?.returns?.[String(period)]
         if (ret != null) {
           const retPct = parseFloat(String(ret))
@@ -204,7 +221,7 @@ export default function MultiStockBrowsePage() {
       map[code] = lines
     }
     return map
-  }, [codes, stockMap])
+  }, [codes, stockMap, priceLinePeriods])
 
   const chartReadyCallbacks = useMemo(() => {
     const map: Record<string, (chart: IChartApi, series: ISeriesApi<SeriesType>) => void> = {}
@@ -226,7 +243,7 @@ export default function MultiStockBrowsePage() {
     return map
   }, [codes])
 
-  const periods = EVAL_PERIODS
+  const periods = evalPeriods
 
   // Find stats for a specific period
   const getStatsForPeriod = (period: number) => {
@@ -239,12 +256,13 @@ export default function MultiStockBrowsePage() {
     try {
       const mdStocks: MarkdownReportStock[] = codes.map(code => {
         const info = stockMap[code]
+        const stockData = evalMutation.data!.stocks.find(s => s.code === code)
         return {
           code,
           name: info?.name ?? code,
           buyPrice: info?.buy_price ? parseFloat(String(info.buy_price)) : undefined,
-          refPrice: evalMutation.data!.stocks.find(s => s.code === code)?.ref_price
-            ? parseFloat(String(evalMutation.data!.stocks.find(s => s.code === code)!.ref_price))
+          refPrice: stockData?.ref_price
+            ? parseFloat(String(stockData.ref_price))
             : undefined,
           totalMv: info?.total_mv,
           circMv: info?.circ_mv,
@@ -254,6 +272,8 @@ export default function MultiStockBrowsePage() {
           pbMrq: info?.pb_mrq,
           quantLabels: labelsMap[code],
           returns: info?.returns as Record<string, string | null> | undefined,
+          limitUpCount: stockData?.limit_up_count ?? undefined,
+          maxConsecLimitUp: stockData?.max_consec_limit_up ?? undefined,
         }
       })
 
@@ -276,7 +296,7 @@ export default function MultiStockBrowsePage() {
         assessment: evalMutation.data!.assessment,
         stocks: mdStocks,
         periodStats: mdPeriodStats,
-        periods: EVAL_PERIODS,
+        periods: evalPeriods,
       })
     } finally {
       setIsExporting(false)
@@ -411,6 +431,50 @@ export default function MultiStockBrowsePage() {
                       )
                     })}
                   </tr>
+                  {tab === 'dragon' && (
+                    <>
+                      <tr className="border-t border-muted/50">
+                        <td className="py-1.5 font-medium">涨停成功率</td>
+                        {periods.map(p => {
+                          const stocksWithLU = evalMutation.data!.stocks.filter(
+                            s => s.limit_up_count != null && s.limit_up_count > 0
+                          )
+                          const total = evalMutation.data!.stocks.length
+                          if (total === 0) return <td key={p} className="text-right py-1.5 text-muted-foreground">—</td>
+                          const rate = (stocksWithLU.length / total * 100).toFixed(1)
+                          return (
+                            <td key={p} className={cn("text-right py-1.5", parseFloat(rate) >= 50 ? 'text-red-500 font-medium' : 'text-foreground')}>
+                              {rate}%
+                            </td>
+                          )
+                        })}
+                      </tr>
+                      <tr className="border-t border-muted/50">
+                        <td className="py-1.5 font-medium">平均涨停次数</td>
+                        {periods.map(p => {
+                          const stats = getStatsForPeriod(p)
+                          const val = stats?.avg_limit_up_count
+                          return (
+                            <td key={p} className="text-right py-1.5 font-mono">
+                              {val != null ? parseFloat(String(val)).toFixed(1) : '—'}
+                            </td>
+                          )
+                        })}
+                      </tr>
+                      <tr className="border-t border-muted/50">
+                        <td className="py-1.5 font-medium">平均最大连板</td>
+                        {periods.map(p => {
+                          const stats = getStatsForPeriod(p)
+                          const val = stats?.avg_max_consec_limit_up
+                          return (
+                            <td key={p} className="text-right py-1.5 font-mono">
+                              {val != null ? parseFloat(String(val)).toFixed(1) : '—'}
+                            </td>
+                          )
+                        })}
+                      </tr>
+                    </>
+                  )}
                 </tbody>
               </table>
             </div>
@@ -443,6 +507,7 @@ export default function MultiStockBrowsePage() {
             onDataLoaded={dataLoadedCallbacks[code]}
             sharedDates={sharedDates}
             quantLabels={labelsMap[code]}
+            evalPeriods={evalPeriods}
           />
         ))}
       </div>
@@ -466,6 +531,8 @@ interface StockChartItemProps {
     turnover?: string | number | null
     pe_ttm?: string | number | null
     pb_mrq?: string | number | null
+    limit_up_count?: number | null
+    max_consec_limit_up?: number | null
   } | undefined
   evalDone: boolean
   priceLines: PriceLine[]
@@ -474,9 +541,10 @@ interface StockChartItemProps {
   onDataLoaded: () => void
   sharedDates: string[]
   quantLabels?: string[]
+  evalPeriods: readonly number[]
 }
 
-function StockChartItem({ code, date, isFirst, stockInfo, evalDone, priceLines, verticalMarkers, onChartReady, onDataLoaded, sharedDates, quantLabels }: StockChartItemProps) {
+function StockChartItem({ code, date, isFirst, stockInfo, evalDone, priceLines, verticalMarkers, onChartReady, onDataLoaded, sharedDates, quantLabels, evalPeriods }: StockChartItemProps) {
   const { data: klineData } = useGetKlineApiV1StocksCodeKlineGet(
     code,
     { limit: 1000 },
@@ -513,7 +581,13 @@ function StockChartItem({ code, date, isFirst, stockInfo, evalDone, priceLines, 
           </span>
         )}
         <div className="flex items-center gap-2 ml-auto">
-          {EVAL_PERIODS.map(p => {
+          {stockInfo?.limit_up_count != null && stockInfo.limit_up_count > 0 && (
+            <span className="font-mono text-xs text-red-500">
+              涨停{stockInfo.limit_up_count}次
+              {stockInfo.max_consec_limit_up != null && stockInfo.max_consec_limit_up > 1 && ` 连板${stockInfo.max_consec_limit_up}`}
+            </span>
+          )}
+          {evalPeriods.map(p => {
             const ret = stockInfo?.returns?.[String(p)]
             if (!ret) return null
             return (

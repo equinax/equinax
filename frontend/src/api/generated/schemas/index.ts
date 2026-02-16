@@ -619,3 +619,8 @@ export * from "./validationError";
 export * from "./validationErrorLocItem";
 export * from "./validationResult";
 export * from "./windowDays";
+export * from "./performanceEvalRequestTab";
+export * from "./periodStatsAvgLimitUpCount";
+export * from "./periodStatsAvgMaxConsecLimitUp";
+export * from "./stockPerformanceLimitUpCount";
+export * from "./stockPerformanceMaxConsecLimitUp";

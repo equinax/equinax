@@ -828,6 +828,10 @@ class PerformanceEvalRequest(BaseModel):
         default="t0_close",
         description="Price basis: 't0_close' (recommendation day close) or 't1_open' (next trading day open = buy price)",
     )
+    tab: Optional[str] = Field(
+        default=None,
+        description="Strategy tab key (weekly/rally/dragon). Used for assessment period and limit-up stats.",
+    )
 
 
 class StockPerformance(BaseModel):
@@ -853,6 +857,12 @@ class StockPerformance(BaseModel):
     turnover: Optional[Decimal] = Field(default=None, description="换手率 (%)")
     pe_ttm: Optional[Decimal] = Field(default=None, description="市盈率TTM")
     pb_mrq: Optional[Decimal] = Field(default=None, description="市净率MRQ")
+    limit_up_count: Optional[int] = Field(
+        default=None, description="涨停次数 (dragon tab only, within eval window)"
+    )
+    max_consec_limit_up: Optional[int] = Field(
+        default=None, description="最大连板数 (dragon tab only, within eval window)"
+    )
 
 
 class PeriodStats(BaseModel):
@@ -867,6 +877,12 @@ class PeriodStats(BaseModel):
     avg_win: Optional[Decimal] = None
     avg_loss: Optional[Decimal] = None
     profit_loss_ratio: Optional[Decimal] = None
+    avg_limit_up_count: Optional[Decimal] = Field(
+        default=None, description="平均涨停次数 (dragon tab only)"
+    )
+    avg_max_consec_limit_up: Optional[Decimal] = Field(
+        default=None, description="平均最大连板数 (dragon tab only)"
+    )
 
 
 class PerformanceEvalResponse(BaseModel):
@@ -1969,6 +1985,7 @@ async def evaluate_performance(
             date=request.date,
             periods=request.periods,
             base_price=request.base_price,
+            tab=request.tab,
         )
     except Exception as e:
         logger.error(

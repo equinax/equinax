@@ -3,6 +3,8 @@
 import type { StockPerformanceBuyDate } from "./stockPerformanceBuyDate";
 import type { StockPerformanceBuyPrice } from "./stockPerformanceBuyPrice";
 import type { StockPerformanceCircMv } from "./stockPerformanceCircMv";
+import type { StockPerformanceLimitUpCount } from "./stockPerformanceLimitUpCount";
+import type { StockPerformanceMaxConsecLimitUp } from "./stockPerformanceMaxConsecLimitUp";
 import type { StockPerformancePbMrq } from "./stockPerformancePbMrq";
 import type { StockPerformancePeTtm } from "./stockPerformancePeTtm";
 import type { StockPerformanceRefPrice } from "./stockPerformanceRefPrice";
@@ -22,6 +24,10 @@ export interface StockPerformance {
   /** 流通市值 (万元) */
   circ_mv?: StockPerformanceCircMv;
   code: string;
+  /** 涨停次数 (dragon tab only, within eval window) */
+  limit_up_count?: StockPerformanceLimitUpCount;
+  /** 最大连板数 (dragon tab only, within eval window) */
+  max_consec_limit_up?: StockPerformanceMaxConsecLimitUp;
   name: string;
   /** 市净率MRQ */
   pb_mrq?: StockPerformancePbMrq;

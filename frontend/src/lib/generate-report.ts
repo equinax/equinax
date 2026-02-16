@@ -13,6 +13,8 @@ export interface MarkdownReportStock {
   pbMrq?: string | number | null
   quantLabels?: string[]
   returns?: Record<string, string | null>
+  limitUpCount?: number | null
+  maxConsecLimitUp?: number | null
 }
 
 export interface MarkdownPeriodStats {
@@ -39,7 +41,7 @@ export interface MarkdownReportData {
 
 // ── Markdown Report ──────────────────────────────────────────────
 
-const PERIOD_LABELS_MD: Record<number, string> = { 3: 'B+3', 5: 'B+5', 10: 'B+10', 20: 'B+20' }
+const PERIOD_LABELS_MD: Record<number, string> = { 3: 'B+3', 5: 'B+5', 6: 'B+6', 10: 'B+10', 20: 'B+20' }
 
 function fmtPct(val: string | null | undefined): string {
   if (val == null) return '—'
@@ -184,6 +186,15 @@ export function generateMarkdownReport(data: MarkdownReportData): void {
         .filter(p => s.returns?.[String(p)] != null)
         .map(p => `${PERIOD_LABELS_MD[p] ?? `B+${p}`}: ${fmtPct(s.returns![String(p)])}${returnEmoji(s.returns![String(p)])}`)
       lines.push(retParts.join(' · '))
+      lines.push('')
+    }
+
+    if (s.limitUpCount != null && s.limitUpCount > 0) {
+      const parts = [`涨停 ${s.limitUpCount} 次`]
+      if (s.maxConsecLimitUp != null && s.maxConsecLimitUp > 1) {
+        parts.push(`最大连板 ${s.maxConsecLimitUp}`)
+      }
+      lines.push(`**涨停统计**: ${parts.join(' · ')}`)
       lines.push('')
     }
 

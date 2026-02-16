@@ -12,6 +12,12 @@ from typing import Optional
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
+TAB_PRIMARY_PERIOD = {
+    "weekly": 6,
+    "rally": 10,
+    "dragon": 20,
+}
+
 
 class PerformanceEvalService:
     """Service for evaluating screener recommendation performance."""
@@ -25,18 +31,10 @@ class PerformanceEvalService:
         date: datetime.date,
         periods: list[int] = [1, 3, 5, 10, 20],
         base_price: str = "t0_close",
+        tab: Optional[str] = None,
     ) -> dict:
         """
         Evaluate the performance of recommended stocks after a given date.
-
-        Args:
-            codes: List of stock codes to evaluate (e.g. ["sh.600000", "sz.000001"])
-            date: Recommendation date (T0)
-            periods: Evaluation periods in trading days
-            base_price: 't0_close' for T0 close price, 't1_open' for T+1 open price
-
-        Returns:
-            dict with stocks, period_stats, assessment, date, total_stocks
         """
         if not codes:
             return {
@@ -50,7 +48,7 @@ class PerformanceEvalService:
         name_map = await self._get_stock_names(codes)
 
         if base_price == "t1_open":
-            return await self._evaluate_t1_open(codes, date, periods, name_map)
+            return await self._evaluate_t1_open(codes, date, periods, name_map, tab)
 
         ref_prices = await self._get_close_prices(codes, date)
 
@@ -87,7 +85,7 @@ class PerformanceEvalService:
             )
 
         period_stats = self._calc_period_stats(stocks, periods)
-        assessment = self._generate_assessment(period_stats, periods)
+        assessment = self._generate_assessment(period_stats, periods, tab)
 
         return {
             "date": date,
@@ -103,6 +101,7 @@ class PerformanceEvalService:
         date: datetime.date,
         periods: list[int],
         name_map: dict[str, str],
+        tab: Optional[str] = None,
     ) -> dict:
         max_needed = max(periods) + 1
         period_dates_list = await self._get_future_trading_dates(date, max_needed)
@@ -138,6 +137,16 @@ class PerformanceEvalService:
             else:
                 period_prices[period] = {}
 
+        limit_up_stats: dict[str, dict] = {}
+        if tab == "dragon":
+            eval_end_idx = TAB_PRIMARY_PERIOD["dragon"]
+            if eval_end_idx < len(period_dates_list):
+                eval_dates = period_dates_list[1 : eval_end_idx + 1]
+            else:
+                eval_dates = period_dates_list[1:]
+            if eval_dates:
+                limit_up_stats = await self._get_limit_up_stats(codes, eval_dates)
+
         stocks = []
         for code in codes:
             buy_price_val = buy_prices.get(code)
@@ -153,6 +162,7 @@ class PerformanceEvalService:
                     returns[period] = None
 
             detail = stock_details.get(code, {})
+            lu_stats = limit_up_stats.get(code, {})
             stocks.append(
                 {
                     "code": code,
@@ -167,11 +177,13 @@ class PerformanceEvalService:
                     "turnover": detail.get("turnover"),
                     "pe_ttm": detail.get("pe_ttm"),
                     "pb_mrq": detail.get("pb_mrq"),
+                    "limit_up_count": lu_stats.get("limit_up_count"),
+                    "max_consec_limit_up": lu_stats.get("max_consec_limit_up"),
                 }
             )
 
         period_stats = self._calc_period_stats(stocks, periods)
-        assessment = self._generate_assessment(period_stats, periods)
+        assessment = self._generate_assessment(period_stats, periods, tab)
 
         return {
             "date": date,
@@ -233,19 +245,32 @@ class PerformanceEvalService:
                     Decimal("0.01"), rounding=ROUND_HALF_UP
                 )
 
-            period_stats.append(
-                {
-                    "period": period,
-                    "win_count": win_count,
-                    "lose_count": lose_count,
-                    "total": total,
-                    "win_rate": win_rate,
-                    "avg_return": avg_return,
-                    "avg_win": avg_win,
-                    "avg_loss": avg_loss,
-                    "profit_loss_ratio": profit_loss_ratio,
-                }
-            )
+            stat_entry: dict = {
+                "period": period,
+                "win_count": win_count,
+                "lose_count": lose_count,
+                "total": total,
+                "win_rate": win_rate,
+                "avg_return": avg_return,
+                "avg_win": avg_win,
+                "avg_loss": avg_loss,
+                "profit_loss_ratio": profit_loss_ratio,
+            }
+
+            lu_counts = [s["limit_up_count"] for s in stocks if s.get("limit_up_count") is not None]
+            consec_counts = [
+                s["max_consec_limit_up"] for s in stocks if s.get("max_consec_limit_up") is not None
+            ]
+            if lu_counts:
+                stat_entry["avg_limit_up_count"] = Decimal(
+                    str(sum(lu_counts) / len(lu_counts))
+                ).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
+            if consec_counts:
+                stat_entry["avg_max_consec_limit_up"] = Decimal(
+                    str(sum(consec_counts) / len(consec_counts))
+                ).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
+
+            period_stats.append(stat_entry)
         return period_stats
 
     async def _get_stock_names(self, codes: list[str]) -> dict[str, str]:
@@ -346,22 +371,28 @@ class PerformanceEvalService:
         )
         return [row[0] for row in result.fetchall()]
 
-    def _generate_assessment(self, period_stats: list[dict], periods: list[int]) -> str:
-        """Generate assessment text based on period stats.
+    def _generate_assessment(
+        self,
+        period_stats: list[dict],
+        periods: list[int],
+        tab: Optional[str] = None,
+    ) -> str:
+        primary_period = TAB_PRIMARY_PERIOD.get(tab) if tab else None
 
-        Uses T+5 period for assessment if available, otherwise the longest
-        available period with data.
-        """
-        # Try T+5 first, then fall back to longest period with data
         eval_stats = None
-        if 5 in periods:
+        if primary_period and primary_period in periods:
+            for ps in period_stats:
+                if ps["period"] == primary_period and ps["total"] > 0:
+                    eval_stats = ps
+                    break
+
+        if eval_stats is None and 5 in periods:
             for ps in period_stats:
                 if ps["period"] == 5 and ps["total"] > 0:
                     eval_stats = ps
                     break
 
         if eval_stats is None:
-            # Use longest period with data
             for ps in reversed(period_stats):
                 if ps["total"] > 0:
                     eval_stats = ps
@@ -381,3 +412,39 @@ class PerformanceEvalService:
             return "推荐效果一般 ⚠️"
         else:
             return "推荐效果较差 ❌"
+
+    async def _get_limit_up_stats(
+        self, codes: list[str], eval_dates: list[datetime.date]
+    ) -> dict[str, dict]:
+        result = await self.db.execute(
+            text(
+                "SELECT code, date FROM limit_list_daily "
+                "WHERE code = ANY(:codes) AND date = ANY(:dates) AND limit_type = 'U' "
+                "ORDER BY code, date"
+            ),
+            {"codes": codes, "dates": eval_dates},
+        )
+        rows = result.fetchall()
+
+        date_index = {d: i for i, d in enumerate(eval_dates)}
+        per_code: dict[str, list[int]] = {}
+        for row in rows:
+            per_code.setdefault(row[0], []).append(date_index[row[1]])
+
+        stats: dict[str, dict] = {}
+        for code in codes:
+            indices = per_code.get(code, [])
+            count = len(indices)
+            max_consec = 0
+            if count > 0:
+                indices.sort()
+                consec = 1
+                for i in range(1, len(indices)):
+                    if indices[i] == indices[i - 1] + 1:
+                        consec += 1
+                    else:
+                        max_consec = max(max_consec, consec)
+                        consec = 1
+                max_consec = max(max_consec, consec)
+            stats[code] = {"limit_up_count": count, "max_consec_limit_up": max_consec}
+        return stats
