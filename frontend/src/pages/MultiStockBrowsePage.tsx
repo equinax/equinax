@@ -6,7 +6,7 @@ import { Button } from '@/components/ui/button'
 import { Skeleton } from '@/components/ui/skeleton'
 import { ArrowLeft, FileDown, Loader2 } from 'lucide-react'
 import { StockChart } from '@/components/stock/StockChart'
-import type { PriceLine, VerticalMarker } from '@/components/stock/StockChart'
+import type { PriceLine, VerticalMarker, HoverData } from '@/components/stock/StockChart'
 import { ChartSyncManager } from '@/lib/dynamic-backtest/chart-sync'
 import { useEvaluatePerformanceApiV1AlphaRadarEvaluatePerformancePost } from '@/api/generated/alpha-radar/alpha-radar'
 import { getKlineApiV1StocksCodeKlineGet, getGetKlineApiV1StocksCodeKlineGetQueryKey, useGetKlineApiV1StocksCodeKlineGet } from '@/api/generated/stocks/stocks'
@@ -551,16 +551,65 @@ function StockChartItem({ code, date, isFirst, stockInfo, evalDone, priceLines, 
     { query: { enabled: !!code, staleTime: 5 * 60 * 1000 } }
   )
 
+  const [hoverData, setHoverData] = useState<HoverData | null>(null)
+
   const displayName = stockInfo?.name ?? klineData?.code_name ?? (evalDone ? '—' : '')
-  const buyPrice = stockInfo?.buy_price ? parseFloat(String(stockInfo.buy_price)).toFixed(2) : null
+  const buyPrice = stockInfo?.buy_price ? parseFloat(String(stockInfo.buy_price)) : null
+
+  const recDayOhlc = useMemo(() => {
+    if (!klineData?.data || !date) return null
+    const dayData = klineData.data.find(d => d.date === date)
+    if (!dayData) return null
+    return {
+      open: Number(dayData.open) || 0,
+      high: Number(dayData.high) || 0,
+      low: Number(dayData.low) || 0,
+      close: Number(dayData.close) || 0,
+      preclose: Number(dayData.preclose) || 0,
+      change_pct: dayData.preclose ? ((Number(dayData.close) - Number(dayData.preclose)) / Number(dayData.preclose)) * 100 : 0,
+    }
+  }, [klineData?.data, date])
+
+  const activeOhlc = hoverData
+    ? { open: hoverData.open, high: hoverData.high, low: hoverData.low, close: hoverData.close, preclose: hoverData.preclose, change_pct: hoverData.change_pct }
+    : recDayOhlc
+
+  const ohlcColor = (val: number) => {
+    if (!activeOhlc) return 'text-muted-foreground'
+    if (val > activeOhlc.preclose) return 'text-red-500'
+    if (val < activeOhlc.preclose) return 'text-green-500'
+    return 'text-muted-foreground'
+  }
+
+  const cumulativeReturn = useMemo(() => {
+    if (!hoverData || buyPrice == null || buyPrice === 0) return null
+    return ((hoverData.close - buyPrice) / buyPrice) * 100
+  }, [hoverData, buyPrice])
+
+  const tradingDaysSinceBuy = useMemo(() => {
+    if (!hoverData || !klineData?.data || !date) return null
+    const dates = klineData.data.map(d => d.date).sort()
+    const buyIdx = dates.indexOf(date)
+    const hoverIdx = dates.indexOf(hoverData.date)
+    if (buyIdx < 0 || hoverIdx < 0) return null
+    return hoverIdx - buyIdx
+  }, [hoverData, klineData?.data, date])
 
   return (
     <div className={cn("relative border-x border-b bg-background", isFirst && "border-t")}>
       <div className="absolute left-0 right-0 top-0 z-10 flex items-center gap-2 bg-[#d1b2ad]/35 px-2 py-1 text-sm backdrop-blur-[2px]">
         <span className="font-mono font-medium">{code}</span>
         <span className="text-muted-foreground">{displayName}</span>
-        {buyPrice && (
-          <span className="font-mono text-xs">¥{buyPrice}</span>
+        {activeOhlc && (
+          <>
+            <span className="text-xs text-muted-foreground">开 <span className={cn("font-mono", ohlcColor(activeOhlc.open))}>{activeOhlc.open.toFixed(2)}</span></span>
+            <span className="text-xs text-muted-foreground">收 <span className={cn("font-mono", ohlcColor(activeOhlc.close))}>{activeOhlc.close.toFixed(2)}</span></span>
+            <span className="text-xs text-muted-foreground">高 <span className={cn("font-mono", ohlcColor(activeOhlc.high))}>{activeOhlc.high.toFixed(2)}</span></span>
+            <span className="text-xs text-muted-foreground">低 <span className={cn("font-mono", ohlcColor(activeOhlc.low))}>{activeOhlc.low.toFixed(2)}</span></span>
+            <span className={cn("font-mono text-xs font-medium", activeOhlc.change_pct > 0 ? 'text-red-500' : activeOhlc.change_pct < 0 ? 'text-green-500' : 'text-muted-foreground')}>
+              {activeOhlc.change_pct > 0 ? '+' : ''}{activeOhlc.change_pct.toFixed(2)}%
+            </span>
+          </>
         )}
         {stockInfo && (stockInfo.total_mv || stockInfo.volume || stockInfo.pe_ttm) && (
           <>
@@ -587,6 +636,11 @@ function StockChartItem({ code, date, isFirst, stockInfo, evalDone, priceLines, 
               {stockInfo.max_consec_limit_up != null && stockInfo.max_consec_limit_up > 1 && ` 连板${stockInfo.max_consec_limit_up}`}
             </span>
           )}
+          {cumulativeReturn != null && tradingDaysSinceBuy != null && (
+            <span className={cn("font-mono text-xs font-medium", cumulativeReturn > 0 ? 'text-red-500' : cumulativeReturn < 0 ? 'text-green-500' : 'text-muted-foreground')}>
+              B{tradingDaysSinceBuy}: {cumulativeReturn > 0 ? '+' : ''}{cumulativeReturn.toFixed(2)}%
+            </span>
+          )}
           {evalPeriods.map(p => {
             const ret = stockInfo?.returns?.[String(p)]
             if (!ret) return null
@@ -609,6 +663,7 @@ function StockChartItem({ code, date, isFirst, stockInfo, evalDone, priceLines, 
           verticalMarkers={verticalMarkers}
           onChartReady={onChartReady}
           onDataLoaded={onDataLoaded}
+          onHoverData={setHoverData}
           minimal={true}
           sharedDates={sharedDates}
         />
