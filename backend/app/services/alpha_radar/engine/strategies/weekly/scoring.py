@@ -16,13 +16,7 @@ class WeeklyScoringEngine(ScoringEngine):
     """
 
     def score(self, df: pl.DataFrame) -> pl.DataFrame:
-        """Calculate weekly_score for all rows in df.
-
-        Conservative T+6 formula:
-        - Emphasizes anti_climax, consistency, consolidation (defensive)
-        - Penalizes recent spikes, resistance, surges
-        - No moneyflow needed
-        """
+        """Calculate weekly_score for all rows in df."""
         if df.is_empty():
             return df
 

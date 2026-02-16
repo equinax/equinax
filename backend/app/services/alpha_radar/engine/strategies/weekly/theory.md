@@ -31,5 +31,23 @@
 - 胜率目标: > 65%
 - 平均收益目标: > 1.5%
 
+## 公式能力边界
+
+### 擅长场景（超卖反弹）
+公式在低位蓄力环境下表现最佳。100% WR 日期的共性: price_position_60d < 0.20, return_5d 为负, ma_alignment 偏低。当前因子组合(anti_climax + consolidation + consistency)天然构成超卖反弹选择器。
+
+### 结构性弱点（均匀热市场）
+当市场全面上涨后(如 02-10), 所有候选的因子值趋同(ma_alignment ~98, price_position_60d 0.35-0.58), 线性加权公式无法产生区分度。这是信息量问题, 非权重问题。
+
+### 已验证无效的因子
+| 因子 | 方向 | 失败原因 | 迭代 |
+|------|------|----------|------|
+| price_position_60d | 惩罚高位 | 均匀热市场下阈值不触发, 其他日期误伤赢家 | Iter 16 |
+| price_position_60d | 奖励低位 | 改善3个日期但伤害3个, 零和博弈 | Iter 16 |
+| moneyflow | 任意 | Regime-dependent, 信号方向不一致 | Iter 16 |
+| ma_alignment | 任意 | Regime-dependent, 与胜负无稳定相关 | Iter 16 |
+| return_5d | 惩罚高位 | 与 price_position_60d 同理 | Iter 16 |
+
 ## 迭代记录
 - v1.0: 初始公式设计，基于全景/聪明钱/深度价值三套公式的共性提炼
+- v1.0 Iter 16: 超卖反弹假设检验。两次尝试(penalty + bonus)均退步, 回滚。确认公式在线性加权框架下已达局部最优。WR=67.6%, AR=1.31%, P/L=3.33。
