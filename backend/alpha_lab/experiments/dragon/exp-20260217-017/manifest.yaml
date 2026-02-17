@@ -1,0 +1,51 @@
+experiment_id: "exp-20260217-017"
+strategy: dragon
+created_at: "2026-02-17T10:45:00+08:00"
+parent_version: "22"
+parent_experiment: "exp-20260217-016"
+
+hypothesis: |
+  Reduce surge_penalty weight from 0.08→0.04. The surge penalty penalizes
+  large same-day price moves (|pct_chg| > 3%), but for dragon (limit-up)
+  candidates, some positive momentum on the scoring day may indicate
+  strength rather than overextension. Halving the penalty reduces the
+  score drag on stocks with healthy price gains. Total penalty: 0.28→0.24.
+
+changes:
+  - path: "scoring.penalties.surge_penalty"
+    action: "modify"
+    field: "weight"
+    old_value: 0.08
+    new_value: 0.04
+
+backtest_params:
+  dates: 25
+  seed: 42
+  tabs: ["dragon"]
+
+results:
+  win_rate: 56.6
+  avg_return: 2.61
+  profit_loss_ratio: 8.39
+  vs_baseline:
+    win_rate_delta: 0.0
+    avg_return_delta: +0.06
+  vs_original:
+    win_rate_delta: +2.7
+    avg_return_delta: +0.29
+
+decision: keep
+decision_reason: |
+  WR unchanged at 56.6%, AR improved to 2.61% (+0.06pp from R16 baseline).
+  P/L improved to 8.39 from 8.23. Small but consistently positive improvement.
+  Per-date: 2025-06-03 and 2025-09-24 improved, others stable.
+
+  Total accumulated improvement from original 53.9% baseline:
+  WR: 53.9% → 56.6% (+2.7pp)
+  AR: 2.32% → 2.61% (+0.29pp)
+  P/L: 3.37 → 8.39 (+5.02)
+
+  Three kept changes so far:
+  1. R7: +up_volume_ratio (w=0.05)
+  2. R16: +positive_day_ratio_20d (w=0.02)
+  3. R17: surge_penalty 0.08→0.04

@@ -1,0 +1,40 @@
+experiment_id: "exp-20260217-007"
+strategy: dragon
+created_at: "2026-02-17T10:25:00+08:00"
+parent_version: "22"
+
+hypothesis: |
+  Add up_volume_ratio (d=0.197) as a new factor at weight 0.05 WITHOUT
+  reducing any existing factor. Total positive: 0.82→0.87 (within bounds).
+  Round 6 showed up_volume_ratio improved P/L dramatically but the
+  anti_climax reduction hurt WR. This round isolates the effect of adding
+  up_volume_ratio alone.
+
+changes:
+  - path: "scoring.positive_factors"
+    action: "add"
+    signal: "up_volume_ratio_component"
+    source: "up_volume_ratio"
+    transform: "col * 100"
+    fill_null: 50.0
+    weight: 0.05
+
+backtest_params:
+  dates: 25
+  seed: 42
+  tabs: ["dragon"]
+
+results:
+  win_rate: 56.6
+  avg_return: 2.36
+  profit_loss_ratio: 7.89
+  vs_baseline:
+    win_rate_delta: +2.7
+    avg_return_delta: +0.04
+
+decision: keep
+decision_reason: |
+  WR=56.6% (+2.7pp), AR=2.36% (+0.04pp), P/L=7.89 (+4.52). First improvement!
+  Adding up_volume_ratio as an additive factor (without reducing existing
+  factors) improved WR and dramatically improved P/L ratio. 5 dates improved,
+  2 regressed (net +3). This is now the new baseline for further iteration.

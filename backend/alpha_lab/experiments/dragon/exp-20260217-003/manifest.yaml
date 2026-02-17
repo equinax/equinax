@@ -42,19 +42,24 @@ backtest_params:
   tabs: ["dragon"]
 
 results:
-  win_rate: 53.9
-  avg_return: 2.32
-  profit_loss_ratio: 3.37
+  win_rate: 39.5
+  avg_return: -1.05
+  profit_loss_ratio: 1.93
   vs_baseline:
-    win_rate_delta: 0.0
-    avg_return_delta: 0.0
+    win_rate_delta: -14.4
+    avg_return_delta: -3.37
+  note: |
+    CRITICAL: Rounds 1-2 had a bug where config_mode was not forwarded to
+    score_tab(). Those results were running hardcoded scoring, not YAML config.
+    Bug fixed in this round. The actual multi-factor reweight result is
+    catastrophic: WR dropped 14.4pp, AR dropped 3.37pp.
 
-decision: iterate
+decision: revert
 decision_reason: |
-  Multi-factor reweight produced ZERO change — every date result identical to
-  baseline. Weight rebalancing among existing 8 factors does not change top-4
-  rankings at all. This means either: (1) very few candidates per date (<=4),
-  so all get selected regardless; or (2) score gaps are large enough that
-  weight changes don't shuffle rankings. Need to investigate scoring mechanics
-  and consider adding NEW factors (up_volume_ratio, vol_ramp_5v20, etc.)
-  rather than reweighting existing ones.
+  Catastrophic regression. Multi-factor reweight (reduce SM/TQ, boost MS/ACC,
+  reduce penalties) completely destroyed performance. WR=39.5% (-14.4pp),
+  AR=-1.05% (-3.37pp). The aggressive shift from low-discrimination factors
+  (SM, TQ) to high-discrimination factors (MS, ACC) doesn't work because
+  the cohort analysis measures population-level discrimination, not scoring
+  efficacy for top-4 selection. Revert all weights to baseline and try
+  smaller, single-factor changes now that config-mode actually works.

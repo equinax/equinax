@@ -1,0 +1,46 @@
+experiment_id: "exp-20260217-009"
+strategy: dragon
+created_at: "2026-02-17T10:00:00+08:00"
+parent_version: "22"
+parent_experiment: "exp-20260217-007"
+
+hypothesis: |
+  Reduce recent_spike_penalty weight from 0.10→0.05. Cohen's d = +0.136
+  indicates treatment group (pre-limit-up stocks) has HIGHER recent_vol_spike_max
+  values than control. This makes the penalty direction-contradictory —
+  penalizing a feature that's actually associated with future limit-ups.
+  Total penalty: 0.28→0.23.
+
+changes:
+  - path: "scoring.penalties.recent_spike_penalty"
+    action: "modify"
+    field: "weight"
+    old_value: 0.10
+    new_value: 0.05
+
+backtest_params:
+  dates: 25
+  seed: 42
+  tabs: ["dragon"]
+
+results:
+  win_rate: 46.1
+  avg_return: 0.18
+  profit_loss_ratio: 2.19
+  vs_baseline:
+    win_rate_delta: -10.5
+    avg_return_delta: -2.18
+
+decision: revert
+decision_reason: |
+  Catastrophic regression: WR=46.1% (-10.5pp), AR=0.18% (-2.18pp).
+  Despite Cohen's d suggesting spike is direction-contradictory at the
+  population level, the penalty clearly serves an important role for
+  top-4 stock selection quality. High spike stocks that make it through
+  the penalty filter are the GOOD ones — weakening the filter lets
+  noisy volatile stocks pollute the selection.
+
+  KEY INSIGHT: Population-level d says "future limit-up stocks have higher
+  spikes" but for SCORING, penalizing spikes acts as a quality filter that
+  separates signal from noise within the candidate pool. Don't confuse
+  cohort-level statistics with scoring utility.

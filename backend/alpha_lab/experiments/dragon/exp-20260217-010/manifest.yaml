@@ -1,0 +1,49 @@
+experiment_id: "exp-20260217-010"
+strategy: dragon
+created_at: "2026-02-17T10:10:00+08:00"
+parent_version: "22"
+parent_experiment: "exp-20260217-007"
+
+hypothesis: |
+  Add price_range_position_20d (d=0.194, second strongest unused factor)
+  as additive positive factor at weight 0.03. This signal measures where
+  the current price sits within its 20-day high-low range (0=bottom, 1=top).
+  Treatment mean=0.5249 vs control=0.4681 suggests pre-limit-up stocks
+  tend to be in the upper half of their 20d range — a breakout setup signal.
+  Total positive: 0.87→0.90 (at bound).
+
+changes:
+  - path: "scoring.positive_factors"
+    action: "add"
+    signal: "price_range_position_component"
+    source: "price_range_position_20d"
+    transform: "col * 100"
+    fill_null: 50.0
+    weight: 0.03
+
+backtest_params:
+  dates: 25
+  seed: 42
+  tabs: ["dragon"]
+
+results:
+  win_rate: 52.6
+  avg_return: 1.68
+  profit_loss_ratio: 3.50
+  vs_baseline:
+    win_rate_delta: -4.0
+    avg_return_delta: -0.68
+
+decision: revert
+decision_reason: |
+  WR=52.6% (-4.0pp), AR=1.68% (-0.68pp). Price range position hurt selection.
+  Despite d=0.194, the signal may overlap with existing ceiling_penalty which
+  already uses price_position_60d — both measure "how close to highs." Adding
+  a positive signal for near-high-position while simultaneously penalizing it
+  creates conflicting scoring signals. The penalty (ceiling_penalty) is clearly
+  more useful for filtering quality.
+
+  INSIGHT: Be careful adding factors that conceptually overlap with existing
+  penalties. price_range_position_20d is structurally similar to price_position_60d
+  (ceiling_penalty source) — just different timeframes. Adding positive weight
+  for "near ceiling" contradicts the penalty for "near ceiling."

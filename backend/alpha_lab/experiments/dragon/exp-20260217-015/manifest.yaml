@@ -1,0 +1,40 @@
+experiment_id: "exp-20260217-015"
+strategy: dragon
+created_at: "2026-02-17T10:35:00+08:00"
+parent_version: "22"
+parent_experiment: "exp-20260217-007"
+
+hypothesis: |
+  Add post_spike_consolidation as a penalty at weight 0.03. Cohen's d = -0.190
+  indicates treatment group has LOWER consolidation (mean=65.1 vs control=69.8).
+  Penalizing high consolidation (>60) should favor stocks that haven't cooled
+  down yet — still "active" and ready for breakout. Transform: threshold at 60,
+  ramp penalty over 40 points. Total penalty: 0.28→0.31.
+
+changes:
+  - path: "scoring.penalties"
+    action: "add"
+    signal: "consolidation_penalty"
+    source: "post_spike_consolidation"
+    transform: "((col - 60.0).clip(0.0, 40.0) / 40.0) * 100"
+    fill_null: 0.0
+    weight: 0.03
+
+backtest_params:
+  dates: 25
+  seed: 42
+  tabs: ["dragon"]
+
+results:
+  win_rate: 52.6
+  avg_return: 2.09
+  profit_loss_ratio: 9.84
+  vs_baseline:
+    win_rate_delta: -4.0
+    avg_return_delta: -0.27
+
+decision: revert
+decision_reason: |
+  WR=52.6% (-4.0pp). P/L improved to 9.84 (from 7.89), suggesting the penalty
+  does help with win SIZE on the wins that remain, but it filters out some
+  winners. The 4pp WR drop is unacceptable for our WR>60% target.

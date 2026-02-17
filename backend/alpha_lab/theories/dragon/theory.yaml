@@ -29,6 +29,11 @@ current_performance:
     avg_return: 2.32
     profit_loss_ratio: 3.37
     note: "数据库更新后的真实基线，后续迭代以此为准"
+  optimized_20260217:
+    win_rate: 56.6
+    avg_return: 2.61
+    profit_loss_ratio: 8.39
+    note: "20轮迭代后最优配置：+up_volume_ratio, +positive_day_ratio, surge_penalty 0.08→0.04"
   targets:
     win_rate: 60.0
     avg_return: 5.0
@@ -89,6 +94,18 @@ validated_findings:
       description: "Top-N从5→4，第5名推荐一贯最弱，移除后提升"
       iteration: 14
       impact: "WR +1.2pp, AR +1.27pp"
+    - id: up_volume_ratio_additive
+      description: "添加up_volume_ratio作为附加正因子(w=0.05)，不修改其他权重"
+      iteration: "22 (exp-007)"
+      impact: "WR +2.7pp (53.9→56.6%), AR +0.04pp"
+    - id: positive_day_ratio_additive
+      description: "添加positive_day_ratio_20d作为最小权重正因子(w=0.02)"
+      iteration: "22 (exp-016)"
+      impact: "AR +0.19pp (2.36→2.55%), WR unchanged"
+    - id: surge_penalty_halve
+      description: "surge_penalty从0.08→0.04，龙头票当日正向动量是强势信号不应过度惩罚"
+      iteration: "22 (exp-017)"
+      impact: "AR +0.06pp (2.55→2.61%), WR unchanged"
 
   ineffective:
     - id: full_formula_redesign
@@ -124,6 +141,42 @@ validated_findings:
       iteration: "22 (exp-20260217-001)"
       never_retry: false
       note: "更大幅度调整 (→0.20) 或组合调整仍可尝试"
+    - id: spike_penalty_reduction
+      description: "spike_penalty 0.10→0.05: WR=46.1% (-10.5pp)，灾难性。虽然d=+0.136(方向矛盾)，但惩罚是必要的质量过滤器"
+      iteration: "22 (exp-009)"
+      never_retry: true
+    - id: ceiling_penalty_below_005
+      description: "ceiling_penalty <0.05: WR=53.9% (-2.7pp)。0.05是最优值，低于此让低质量股进入选择"
+      iteration: "22 (exp-018)"
+      never_retry: true
+    - id: resistance_penalty_reduction
+      description: "resistance_penalty 0.05→0.02: WR=52.6% (-4.0pp)。尽管d=0.050几乎无区分力，但惩罚对选股质量至关重要"
+      iteration: "22 (exp-019)"
+      never_retry: true
+    - id: vol_ramp_additive
+      description: "添加vol_ramp_5v20: WR=47.4% (-9.2pp)。量能加速信号在top-4选股中选出噪音股"
+      iteration: "22 (exp-008)"
+      never_retry: true
+    - id: price_range_position_additive
+      description: "添加price_range_position_20d: WR=52.6%。与ceiling_penalty概念重叠（均衡量接近高位），正负矛盾"
+      iteration: "22 (exp-010)"
+      never_retry: true
+    - id: ma_alignment_additive
+      description: "添加ma_alignment_score: WR=52.6%。与trend_quality_20d重叠（均衡量趋势结构）"
+      iteration: "22 (exp-012)"
+      never_retry: true
+    - id: uvr_overweight
+      description: "up_volume_ratio 0.05→0.08: WR=52.6%。0.05是tie-breaker最优值，增大变成selector则不可靠"
+      iteration: "22 (exp-013)"
+      never_retry: true
+    - id: turnover_change_additive
+      description: "添加turnover_change_20d: WR=52.6%。与已有4个量价信号重叠"
+      iteration: "22 (exp-014)"
+      never_retry: true
+    - id: stability_penalty
+      description: "添加stability_penalty: WR=48.7%。与volume_consistency概念冲突"
+      iteration: "22 (exp-020)"
+      never_retry: true
 
 # 因子区分度 (赢家 vs 输家)
 factor_discrimination:
@@ -177,4 +230,16 @@ iteration_milestones:
   - iteration: "19-21"
     changes: "ceiling/resistance↓"
     metrics: { win_rate: 62.5, avg_return: 5.90 }
-    note: "当前最佳"
+    note: "当前最佳 (旧数据基线)"
+  - iteration: "22-R7"
+    changes: "+up_volume_ratio(w=0.05)"
+    metrics: { win_rate: 56.6, avg_return: 2.36 }
+    note: "新数据基线+UVR因子"
+  - iteration: "22-R16"
+    changes: "+positive_day_ratio(w=0.02)"
+    metrics: { win_rate: 56.6, avg_return: 2.55 }
+    note: "第二个成功附加因子"
+  - iteration: "22-R17"
+    changes: "surge_penalty 0.08→0.04"
+    metrics: { win_rate: 56.6, avg_return: 2.61 }
+    note: "20轮迭代最终配置"

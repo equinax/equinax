@@ -1,0 +1,39 @@
+experiment_id: "exp-20260217-005"
+strategy: dragon
+created_at: "2026-02-17T10:15:00+08:00"
+parent_version: "22"
+
+hypothesis: |
+  Swap weight from trend_quality (d=-0.005, zero discrimination) to
+  accumulation_score (d=0.213, 2nd strongest discriminator).
+  TQ 0.15→0.10, ACC 0.10→0.15. Total positive unchanged at 0.82.
+  Single-factor pair swap — more conservative than Round 3.
+
+changes:
+  - path: "scoring.positive_factors[trend_quality_component].weight"
+    from: 0.15
+    to: 0.10
+  - path: "scoring.positive_factors[accumulation_component].weight"
+    from: 0.10
+    to: 0.15
+
+backtest_params:
+  dates: 25
+  seed: 42
+  tabs: ["dragon"]
+
+results:
+  win_rate: 47.4
+  avg_return: 0.71
+  profit_loss_ratio: 2.15
+  vs_baseline:
+    win_rate_delta: -6.5
+    avg_return_delta: -1.61
+
+decision: revert
+decision_reason: |
+  WR=47.4% (-6.5pp), AR=0.71% (-1.61pp). Boosting accumulation while
+  reducing trend_quality hurts. Despite TQ having d=-0.005, it may
+  serve as a stability filter — stocks with higher trend quality avoid
+  erratic movements, even if the signal doesn't discriminate winners
+  from losers in the cohort analysis.

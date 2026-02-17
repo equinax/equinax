@@ -1,0 +1,41 @@
+experiment_id: "exp-20260217-013"
+strategy: dragon
+created_at: "2026-02-17T10:25:00+08:00"
+parent_version: "22"
+parent_experiment: "exp-20260217-007"
+
+hypothesis: |
+  Increase up_volume_ratio weight from 0.05→0.08. Since this is the only
+  successfully added factor (Round 7), amplifying its influence might
+  further improve results. Total positive: 0.87→0.90.
+
+changes:
+  - path: "scoring.positive_factors.up_volume_ratio_component"
+    action: "modify"
+    field: "weight"
+    old_value: 0.05
+    new_value: 0.08
+
+backtest_params:
+  dates: 25
+  seed: 42
+  tabs: ["dragon"]
+
+results:
+  win_rate: 52.6
+  avg_return: 1.98
+  profit_loss_ratio: 7.86
+  vs_baseline:
+    win_rate_delta: -4.0
+    avg_return_delta: -0.38
+
+decision: revert
+decision_reason: |
+  WR=52.6% (-4.0pp), AR=1.98% (-0.38pp). Overweighting up_volume_ratio
+  hurts. The optimal weight is 0.05 — increasing to 0.08 causes it to
+  dominate too much in score differences, pushing some borderline stocks
+  with high UVR but poor fundamentals into top-4.
+
+  KEY INSIGHT: up_volume_ratio works at 0.05 as a TIE-BREAKER among
+  otherwise similar candidates. At 0.08 it becomes a SELECTOR, which
+  this single signal isn't reliable enough to be.

@@ -1,0 +1,43 @@
+experiment_id: "exp-20260217-018"
+strategy: dragon
+created_at: "2026-02-17T10:50:00+08:00"
+parent_version: "22"
+parent_experiment: "exp-20260217-017"
+
+hypothesis: |
+  Reduce ceiling_penalty weight from 0.05→0.02. Cohen's d = +0.176 for
+  price_position_60d means treatment stocks tend to be at higher 60d price
+  positions — making ceiling penalty direction-contradictory at population
+  level. Earlier iterations (19-21) reduced ceiling from 0.08→0.05 with
+  improvement. Continuing the reduction trend.
+  Total penalty: 0.24→0.21.
+
+changes:
+  - path: "scoring.penalties.ceiling_penalty"
+    action: "modify"
+    field: "weight"
+    old_value: 0.05
+    new_value: 0.02
+
+backtest_params:
+  dates: 25
+  seed: 42
+  tabs: ["dragon"]
+
+results:
+  win_rate: 53.9
+  avg_return: 1.98
+  profit_loss_ratio: 8.56
+  vs_baseline:
+    win_rate_delta: -2.7
+    avg_return_delta: -0.63
+
+decision: revert
+decision_reason: |
+  WR=53.9% (-2.7pp), AR=1.98%. Reducing ceiling penalty further hurts WR.
+  The 0.05 weight appears to be the sweet spot — iter 19-21 already
+  optimized this from 0.08→0.05. Going below 0.05 lets ceiling-adjacent
+  stocks with poor risk profiles into the selection. Same pattern as
+  spike penalty in R9: penalties are essential quality filters.
+
+  ADD TO NEVER_RETRY: ceiling_penalty < 0.05.

@@ -17,12 +17,12 @@ scoring:
       source: sector_momentum_5d
       transform: "((col + 5.0) / 15.0).clip(0.0, 1.0) * 100"
       fill_null: 0.0
-      weight: 0.08
+      weight: 0.17
 
     - signal: trend_quality_component
       source: trend_quality_20d
       fill_null: 50.0
-      weight: 0.07
+      weight: 0.15
 
     - signal: anti_climax_component
       source: climax_score
@@ -33,13 +33,13 @@ scoring:
     - signal: main_strength_component
       source: main_strength_proxy
       fill_null: 50.0
-      weight: 0.18
+      weight: 0.10
 
     - signal: accumulation_component
       source: accumulation_score
       transform: "col * 100"
       fill_null: 0.0
-      weight: 0.16
+      weight: 0.10
 
     - signal: consistency_component
       source: volume_consistency_score
@@ -56,23 +56,35 @@ scoring:
       fill_null: 50.0
       weight: 0.05
 
+    - signal: up_volume_ratio_component
+      source: up_volume_ratio
+      transform: "col * 100"
+      fill_null: 50.0
+      weight: 0.05
+
+    - signal: positive_day_ratio_component
+      source: positive_day_ratio_20d
+      transform: "col * 100"
+      fill_null: 50.0
+      weight: 0.02
+
   penalties:
     - signal: recent_spike_penalty
       source: recent_vol_spike_max
       fill_null: 0.0
-      weight: 0.03
+      weight: 0.10
 
     - signal: surge_penalty
       source: pct_chg
       transform: "((col.abs() - 3.0).clip(0.0, 4.0) / 4.0) * 100"
       fill_null: 0.0
-      weight: 0.08
+      weight: 0.04
 
     - signal: ceiling_penalty
       source: price_position_60d
       transform: "((col - 0.80).clip(0.0, 0.20) / 0.20) * 100"
       fill_null: 0.5
-      weight: 0.02
+      weight: 0.05
 
     - signal: resistance_penalty
       source: resistance_proximity_penalty

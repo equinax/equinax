@@ -1,0 +1,46 @@
+experiment_id: "exp-20260217-016"
+strategy: dragon
+created_at: "2026-02-17T10:40:00+08:00"
+parent_version: "22"
+parent_experiment: "exp-20260217-007"
+
+hypothesis: |
+  Add positive_day_ratio_20d (d=0.167) as additive positive factor at minimum
+  weight 0.02. Measures fraction of up-days in last 20 sessions.
+  Treatment mean=0.5017 vs control=0.4839 — pre-limit-up stocks have slightly
+  more up-days. Captures mild positive momentum distinct from volume signals.
+  Total positive: 0.87→0.89.
+
+changes:
+  - path: "scoring.positive_factors"
+    action: "add"
+    signal: "positive_day_ratio_component"
+    source: "positive_day_ratio_20d"
+    transform: "col * 100"
+    fill_null: 50.0
+    weight: 0.02
+
+backtest_params:
+  dates: 25
+  seed: 42
+  tabs: ["dragon"]
+
+results:
+  win_rate: 56.6
+  avg_return: 2.55
+  profit_loss_ratio: 8.23
+  vs_baseline:
+    win_rate_delta: 0.0
+    avg_return_delta: +0.19
+
+decision: keep
+decision_reason: |
+  WR unchanged at 56.6%, AR improved +0.19pp to 2.55%, P/L improved to 8.23.
+  Per-date analysis shows mixed effects: some dates improved (2025-05-12
+  WR 75→100%, 2025-11-25 AR -2.90→+0.10), some dates worsened (2025-09-12
+  AR 12.17→9.90). Net effect is positive. The factor provides mild momentum
+  context that helps distinguish between similarly-scored candidates.
+
+  This is the SECOND successful additive factor (after up_volume_ratio in R7),
+  confirming that small tie-breaker signals at minimal weight can work when
+  they measure something orthogonal to existing factors.
