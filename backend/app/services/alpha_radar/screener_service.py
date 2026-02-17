@@ -193,6 +193,7 @@ class ScreenerService:
                             pl.col("elg_net_percentile").fill_null(50.0),
                         ]
                     )
+        regime: Dict[str, Any] = {}
         if regime_date:
             regime = await self.polars_engine.load_market_regime(regime_date)
             scoring_engine = ScoringEngine(market_regime_score=regime["market_regime_score"])
@@ -215,6 +216,22 @@ class ScreenerService:
                 "end_date": end_date if mode == "period" else None,
                 "abstain": True,
                 "abstain_reason": "market_hostile",
+            }
+
+        if tab == "rally" and regime_date and regime.get("breadth_5d_avg", 50.0) < 40.0:
+            return {
+                "items": [],
+                "total": 0,
+                "page": page,
+                "page_size": page_size,
+                "pages": 0,
+                "tab": tab,
+                "time_mode": mode,
+                "date": target_date if mode == "snapshot" else None,
+                "start_date": start_date if mode == "period" else None,
+                "end_date": end_date if mode == "period" else None,
+                "abstain": True,
+                "abstain_reason": "narrow_breadth",
             }
 
         # Calculate scores based on tab

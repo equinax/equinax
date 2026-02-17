@@ -28,6 +28,7 @@ from app.services.alpha_radar.polars_engine import PolarsEngine
 from app.services.alpha_radar.scoring import ScoringEngine
 from app.services.alpha_radar.engine import score_tab
 from app.services.alpha_radar.engine.config import STRATEGIES
+from app.services.alpha_radar.engine.strategies.rally.scoring import RALLY_MIN_SCORE
 
 # Silence SQL logs
 logging.getLogger("sqlalchemy.engine").setLevel(logging.WARNING)
@@ -525,6 +526,14 @@ def compute_scores_for_date(
     if should_abstain:
         return []
 
+    # Iter 6 (rally): Abstain when 5-day average breadth is weak (< 40%).
+    # Low avg breadth = narrow market participation over the past week.
+    # Even if today's breadth bounced, sustained narrow breadth means
+    # rally picks face broad headwinds. Catches WR=0% (03-26) and WR=20% (11-24).
+    breadth_5d_avg = regime_details.get("breadth_5d_avg", 50.0)
+    if tab == "rally" and breadth_5d_avg < 40.0:
+        return []
+
     scoring = ScoringEngine(market_regime_score=regime_score)
 
     # Get trading dates up to target_date
@@ -678,11 +687,14 @@ def compute_scores_for_date(
 
     results = []
     for row in df.iter_rows(named=True):
+        score_val = row.get(score_col, 0)
+        if tab == "rally" and score_val < RALLY_MIN_SCORE:
+            continue
         results.append(
             {
                 "code": row.get("code", ""),
                 "name": row.get("name", ""),
-                "score": row.get(score_col, 0),
+                "score": score_val,
                 "close": row.get("close", 0),
                 "pct_chg": row.get("pct_chg", 0),
             }
