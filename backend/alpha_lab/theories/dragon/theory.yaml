@@ -14,6 +14,8 @@ eval_period: 20
 eval_basis: "T+1 开盘买入, T+20 收盘评估"
 
 # 当前性能 (Iter 21, seed 42, 25-date backtest)
+# NOTE: 2026-02-17 fresh backtest shows WR=53.9%, AR=2.32%, P/L=3.37
+# due to database data updates. The recorded 62.5%/5.90% was from earlier data snapshot.
 current_performance:
   iteration: 21
   seed: 42
@@ -22,6 +24,11 @@ current_performance:
     win_rate: 62.5
     avg_return: 5.90
     profit_loss_ratio: 3.82
+  fresh_baseline_20260217:
+    win_rate: 53.9
+    avg_return: 2.32
+    profit_loss_ratio: 3.37
+    note: "数据库更新后的真实基线，后续迭代以此为准"
   targets:
     win_rate: 60.0
     avg_return: 5.0
@@ -112,6 +119,11 @@ validated_findings:
       description: "SM权重超过0.17: 0.18微弱下降，0.20崩溃"
       iteration: "8-9"
       never_retry: true
+    - id: accumulation_minor_upweight
+      description: "accumulation 0.10→0.15: 分数偏移不足以改变 top-4 排名，WR/AR 完全无变化"
+      iteration: "22 (exp-20260217-001)"
+      never_retry: false
+      note: "更大幅度调整 (→0.20) 或组合调整仍可尝试"
 
 # 因子区分度 (赢家 vs 输家)
 factor_discrimination:

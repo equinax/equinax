@@ -1,5 +1,5 @@
 metadata:
-  generated_at: '2026-02-17T03:36:01.590592'
+  generated_at: '2026-02-17T04:03:04.014224'
   strategy: dragon
   date_range:
     start: '2025-11-19'
@@ -11,11 +11,11 @@ metadata:
   control_group_size: 200
   seed: 42
   total_limit_up_stocks: 1667
-  elapsed_seconds: 269.3
+  elapsed_seconds: 558.2
 stratification:
   1板: 1179
-  2板: 269
   3+板: 219
+  2板: 269
 discovery_validation_split:
   discovery_dates: 33
   validation_dates: 23
@@ -26,2260 +26,2260 @@ factor_attribution:
   T_minus_5:
     overall:
       accumulation_score:
-        cohens_d: 0.2116
+        cohens_d: 0.2131
         effect_size: small
         treatment_mean: 0.2835
-        control_mean: 0.2394
+        control_mean: 0.2393
         treatment_n: 1633
         control_n: 11200
       climax_score:
-        cohens_d: 0.1755
+        cohens_d: 0.1863
         effect_size: negligible
         treatment_mean: 0.2774
-        control_mean: 0.2564
+        control_mean: 0.2552
         treatment_n: 1633
         control_n: 11200
       close_strength:
-        cohens_d: 0.0868
+        cohens_d: 0.0799
         effect_size: negligible
         treatment_mean: 0.4911
-        control_mean: 0.4652
+        control_mean: 0.4672
         treatment_n: 1633
         control_n: 11200
       days_since_vol_peak_20d:
-        cohens_d: -0.1127
+        cohens_d: -0.1238
         effect_size: negligible
         treatment_mean: 10.7716
-        control_mean: 11.6217
+        control_mean: 11.7035
         treatment_n: 1633
         control_n: 11200
       elg_net_percentile:
-        cohens_d: -0.0437
+        cohens_d: -0.0471
         effect_size: negligible
         treatment_mean: 48.7807
-        control_mean: 50.0446
+        control_mean: 50.1425
         treatment_n: 1633
         control_n: 11200
       exhaustion_at_ceiling:
-        cohens_d: 0.0591
+        cohens_d: 0.0409
         effect_size: negligible
         treatment_mean: 1.0274
-        control_mean: 0.7513
+        control_mean: 0.8286
         treatment_n: 1633
         control_n: 11200
       ma_alignment_score:
-        cohens_d: 0.1669
+        cohens_d: 0.1686
         effect_size: negligible
         treatment_mean: 60.7307
-        control_mean: 54.9246
+        control_mean: 54.8704
         treatment_n: 1633
         control_n: 11200
       main_strength_proxy:
-        cohens_d: 0.2216
+        cohens_d: 0.2275
         effect_size: small
         treatment_mean: 58.9781
-        control_mean: 55.6361
+        control_mean: 55.5509
         treatment_n: 1633
         control_n: 11200
       mf_net_percentile:
-        cohens_d: 0.1019
+        cohens_d: 0.0944
         effect_size: negligible
         treatment_mean: 53.0017
-        control_mean: 50.0386
+        control_mean: 50.2647
         treatment_n: 1633
         control_n: 11200
       momentum_quality_ratio:
-        cohens_d: 0.06
+        cohens_d: 0.0573
         effect_size: negligible
         treatment_mean: 51.5063
-        control_mean: 50.4504
+        control_mean: 50.4873
         treatment_n: 1633
         control_n: 11200
       pct_chg:
-        cohens_d: 0.0998
+        cohens_d: 0.0886
         effect_size: negligible
         treatment_mean: 0.4737
-        control_mean: 0.1142
+        control_mean: 0.1589
         treatment_n: 1621
-        control_n: 11184
+        control_n: 11181
       positive_day_ratio_20d:
-        cohens_d: 0.1531
+        cohens_d: 0.1665
         effect_size: negligible
         treatment_mean: 0.5017
-        control_mean: 0.4855
+        control_mean: 0.4839
         treatment_n: 1633
         control_n: 11200
       post_spike_consolidation:
-        cohens_d: -0.181
+        cohens_d: -0.1897
         effect_size: negligible
         treatment_mean: 65.1394
-        control_mean: 69.5477
+        control_mean: 69.7554
         treatment_n: 1633
         control_n: 11200
       price_position_60d:
-        cohens_d: 0.167
+        cohens_d: 0.1761
         effect_size: negligible
         treatment_mean: 0.469
-        control_mean: 0.424
+        control_mean: 0.421
         treatment_n: 1633
         control_n: 11200
       price_range_position_20d:
-        cohens_d: 0.1839
+        cohens_d: 0.1939
         effect_size: negligible
         treatment_mean: 0.5249
-        control_mean: 0.4712
+        control_mean: 0.4681
         treatment_n: 1633
         control_n: 11200
       recent_vol_spike_max:
-        cohens_d: 0.1389
+        cohens_d: 0.1358
         effect_size: negligible
         treatment_mean: 17.815
-        control_mean: 15.0174
+        control_mean: 15.0573
         treatment_n: 1633
         control_n: 11200
       resistance_proximity_penalty:
-        cohens_d: 0.04
+        cohens_d: 0.0499
         effect_size: negligible
         treatment_mean: 3.6214
-        control_mean: 3.1172
+        control_mean: 3.0064
         treatment_n: 1633
         control_n: 11200
       return_5d:
-        cohens_d: 0.1003
+        cohens_d: 0.0913
         effect_size: negligible
         treatment_mean: 1.44
-        control_mean: 0.7398
+        control_mean: 0.802
         treatment_n: 1633
         control_n: 11200
       sector_momentum_5d:
-        cohens_d: 0.0326
+        cohens_d: 0.0292
         effect_size: negligible
         treatment_mean: 0.9273
-        control_mean: 0.8277
+        control_mean: 0.8371
         treatment_n: 1633
         control_n: 11200
       stability_score:
-        cohens_d: -0.0892
+        cohens_d: -0.101
         effect_size: negligible
         treatment_mean: 50.9731
-        control_mean: 53.403
+        control_mean: 53.721
         treatment_n: 1633
         control_n: 11200
       trend_quality_20d:
-        cohens_d: -0.0079
+        cohens_d: -0.0049
         effect_size: negligible
         treatment_mean: 52.5763
-        control_mean: 52.6751
+        control_mean: 52.6378
         treatment_n: 1633
         control_n: 11200
       turn_ramp_5v20:
-        cohens_d: 0.1583
+        cohens_d: 0.159
         effect_size: negligible
         treatment_mean: 0.1
-        control_mean: 0.0398
+        control_mean: 0.039
         treatment_n: 1633
         control_n: 11200
       turnover_change_20d:
-        cohens_d: 0.1779
+        cohens_d: 0.177
         effect_size: negligible
         treatment_mean: 0.1055
-        control_mean: 0.0387
+        control_mean: 0.0385
         treatment_n: 1633
         control_n: 11200
       up_volume_ratio:
-        cohens_d: 0.1913
+        cohens_d: 0.1969
         effect_size: negligible
         treatment_mean: 0.5449
-        control_mean: 0.5225
+        control_mean: 0.5217
         treatment_n: 1633
         control_n: 11200
       upper_shadow_ratio:
-        cohens_d: -0.102
+        cohens_d: -0.0939
         effect_size: negligible
         treatment_mean: 0.5006
-        control_mean: 0.5311
+        control_mean: 0.5287
         treatment_n: 1633
         control_n: 11200
       vol_cv_10d:
-        cohens_d: 0.0548
+        cohens_d: 0.0529
         effect_size: negligible
         treatment_mean: 0.3812
-        control_mean: 0.3718
+        control_mean: 0.372
         treatment_n: 1633
         control_n: 11200
       vol_ramp_5v20:
-        cohens_d: 0.1796
+        cohens_d: 0.1806
         effect_size: negligible
         treatment_mean: 0.1077
-        control_mean: 0.0404
+        control_mean: 0.0396
         treatment_n: 1633
         control_n: 11200
       volume_buildup_quality:
-        cohens_d: 0.1446
+        cohens_d: 0.1432
         effect_size: negligible
         treatment_mean: 49.3275
-        control_mean: 46.0482
+        control_mean: 46.0833
         treatment_n: 1633
         control_n: 11200
       volume_consistency_score:
-        cohens_d: -0.0576
+        cohens_d: -0.0553
         effect_size: negligible
         treatment_mean: 68.9004
-        control_mean: 69.9578
+        control_mean: 69.9273
         treatment_n: 1633
         control_n: 11200
       volume_ratio_5d:
-        cohens_d: 0.088
+        cohens_d: 0.0998
         effect_size: negligible
         treatment_mean: 1.1379
-        control_mean: 1.0803
+        control_mean: 1.0744
         treatment_n: 1633
         control_n: 11200
     by_streak:
       1板:
         accumulation_score:
-          cohens_d: 0.2291
+          cohens_d: 0.2307
           effect_size: small
           treatment_mean: 0.287
           treatment_n: 1156
         climax_score:
-          cohens_d: 0.1711
+          cohens_d: 0.1818
           effect_size: negligible
           treatment_mean: 0.2769
           treatment_n: 1156
         close_strength:
-          cohens_d: 0.0863
+          cohens_d: 0.0794
           effect_size: negligible
           treatment_mean: 0.491
           treatment_n: 1156
         days_since_vol_peak_20d:
-          cohens_d: -0.1338
+          cohens_d: -0.145
           effect_size: negligible
           treatment_mean: 10.6142
           treatment_n: 1156
         elg_net_percentile:
-          cohens_d: -0.0553
+          cohens_d: -0.0586
           effect_size: negligible
           treatment_mean: 48.4503
           treatment_n: 1156
         exhaustion_at_ceiling:
-          cohens_d: 0.0412
+          cohens_d: 0.0234
           effect_size: negligible
           treatment_mean: 0.9417
           treatment_n: 1156
         ma_alignment_score:
-          cohens_d: 0.1833
+          cohens_d: 0.1851
           effect_size: negligible
           treatment_mean: 61.3082
           treatment_n: 1156
         main_strength_proxy:
-          cohens_d: 0.2541
+          cohens_d: 0.26
           effect_size: small
           treatment_mean: 59.4546
           treatment_n: 1156
         mf_net_percentile:
-          cohens_d: 0.0707
+          cohens_d: 0.0631
           effect_size: negligible
           treatment_mean: 52.0883
           treatment_n: 1156
         momentum_quality_ratio:
-          cohens_d: 0.0824
+          cohens_d: 0.0795
           effect_size: negligible
           treatment_mean: 51.9035
           treatment_n: 1156
         pct_chg:
-          cohens_d: 0.1071
+          cohens_d: 0.0961
           effect_size: negligible
           treatment_mean: 0.5016
           treatment_n: 1148
         positive_day_ratio_20d:
-          cohens_d: 0.1178
+          cohens_d: 0.1315
           effect_size: negligible
           treatment_mean: 0.498
           treatment_n: 1156
         post_spike_consolidation:
-          cohens_d: -0.2002
+          cohens_d: -0.2089
           effect_size: small
           treatment_mean: 64.6895
           treatment_n: 1156
         price_position_60d:
-          cohens_d: 0.1611
+          cohens_d: 0.1702
           effect_size: negligible
           treatment_mean: 0.4675
           treatment_n: 1156
         price_range_position_20d:
-          cohens_d: 0.2086
+          cohens_d: 0.2185
           effect_size: small
           treatment_mean: 0.5321
           treatment_n: 1156
         recent_vol_spike_max:
-          cohens_d: 0.1494
+          cohens_d: 0.1462
           effect_size: negligible
           treatment_mean: 18.0195
           treatment_n: 1156
         resistance_proximity_penalty:
-          cohens_d: 0.0323
+          cohens_d: 0.042
           effect_size: negligible
           treatment_mean: 3.5226
           treatment_n: 1156
         return_5d:
-          cohens_d: 0.0801
+          cohens_d: 0.0711
           effect_size: negligible
           treatment_mean: 1.2964
           treatment_n: 1156
         sector_momentum_5d:
-          cohens_d: 0.0798
+          cohens_d: 0.076
           effect_size: negligible
           treatment_mean: 1.0721
           treatment_n: 1156
         stability_score:
-          cohens_d: -0.0597
+          cohens_d: -0.0714
           effect_size: negligible
           treatment_mean: 51.7749
           treatment_n: 1156
         trend_quality_20d:
-          cohens_d: 0.0268
+          cohens_d: 0.0299
           effect_size: negligible
           treatment_mean: 53.0101
           treatment_n: 1156
         turn_ramp_5v20:
-          cohens_d: 0.1925
+          cohens_d: 0.1928
           effect_size: negligible
           treatment_mean: 0.1126
           treatment_n: 1156
         turnover_change_20d:
-          cohens_d: 0.2092
+          cohens_d: 0.208
           effect_size: small
           treatment_mean: 0.117
           treatment_n: 1156
         up_volume_ratio:
-          cohens_d: 0.1743
+          cohens_d: 0.1799
           effect_size: negligible
           treatment_mean: 0.5429
           treatment_n: 1156
         upper_shadow_ratio:
-          cohens_d: -0.0956
+          cohens_d: -0.0875
           effect_size: negligible
           treatment_mean: 0.5026
           treatment_n: 1156
         vol_cv_10d:
-          cohens_d: 0.0259
+          cohens_d: 0.0243
           effect_size: negligible
           treatment_mean: 0.3762
           treatment_n: 1156
         vol_ramp_5v20:
-          cohens_d: 0.212
+          cohens_d: 0.2128
           effect_size: small
           treatment_mean: 0.1195
           treatment_n: 1156
         volume_buildup_quality:
-          cohens_d: 0.1652
+          cohens_d: 0.1638
           effect_size: negligible
           treatment_mean: 49.7906
           treatment_n: 1156
         volume_consistency_score:
-          cohens_d: -0.0283
+          cohens_d: -0.0264
           effect_size: negligible
           treatment_mean: 69.4387
           treatment_n: 1156
         volume_ratio_5d:
-          cohens_d: 0.079
+          cohens_d: 0.0906
           effect_size: negligible
           treatment_mean: 1.1318
           treatment_n: 1156
       2板:
         accumulation_score:
-          cohens_d: 0.2057
+          cohens_d: 0.2073
           effect_size: small
           treatment_mean: 0.2822
           treatment_n: 263
         climax_score:
-          cohens_d: 0.2366
+          cohens_d: 0.2477
           effect_size: small
           treatment_mean: 0.2847
           treatment_n: 263
         close_strength:
-          cohens_d: 0.1234
+          cohens_d: 0.1165
           effect_size: negligible
           treatment_mean: 0.5021
           treatment_n: 263
         days_since_vol_peak_20d:
-          cohens_d: -0.1107
+          cohens_d: -0.1219
           effect_size: negligible
           treatment_mean: 10.7909
           treatment_n: 263
         elg_net_percentile:
-          cohens_d: 0.012
+          cohens_d: 0.0086
           effect_size: negligible
           treatment_mean: 50.3908
           treatment_n: 263
         exhaustion_at_ceiling:
-          cohens_d: 0.0989
+          cohens_d: 0.0784
           effect_size: negligible
           treatment_mean: 1.2087
           treatment_n: 263
         ma_alignment_score:
-          cohens_d: 0.1554
+          cohens_d: 0.1571
           effect_size: negligible
           treatment_mean: 60.3385
           treatment_n: 263
         main_strength_proxy:
-          cohens_d: 0.171
+          cohens_d: 0.1769
           effect_size: negligible
           treatment_mean: 58.1991
           treatment_n: 263
         mf_net_percentile:
-          cohens_d: 0.263
+          cohens_d: 0.2562
           effect_size: small
           treatment_mean: 57.6329
           treatment_n: 263
         momentum_quality_ratio:
-          cohens_d: 0.049
+          cohens_d: 0.0464
           effect_size: negligible
           treatment_mean: 51.307
           treatment_n: 263
         pct_chg:
-          cohens_d: 0.1384
+          cohens_d: 0.1261
           effect_size: negligible
           treatment_mean: 0.5272
           treatment_n: 261
         positive_day_ratio_20d:
-          cohens_d: 0.2319
+          cohens_d: 0.2444
           effect_size: small
           treatment_mean: 0.5101
           treatment_n: 263
         post_spike_consolidation:
-          cohens_d: -0.1461
+          cohens_d: -0.1548
           effect_size: negligible
           treatment_mean: 66.0119
           treatment_n: 263
         price_position_60d:
-          cohens_d: 0.2224
+          cohens_d: 0.2307
           effect_size: small
           treatment_mean: 0.4841
           treatment_n: 263
         price_range_position_20d:
-          cohens_d: 0.1696
+          cohens_d: 0.1795
           effect_size: negligible
           treatment_mean: 0.5208
           treatment_n: 263
         recent_vol_spike_max:
-          cohens_d: 0.1397
+          cohens_d: 0.1364
           effect_size: negligible
           treatment_mean: 17.8264
           treatment_n: 263
         resistance_proximity_penalty:
-          cohens_d: 0.0981
+          cohens_d: 0.1096
           effect_size: negligible
           treatment_mean: 4.3602
           treatment_n: 263
         return_5d:
-          cohens_d: 0.1576
+          cohens_d: 0.1486
           effect_size: negligible
           treatment_mean: 1.8424
           treatment_n: 263
         sector_momentum_5d:
-          cohens_d: -0.0924
+          cohens_d: -0.0946
           effect_size: negligible
           treatment_mean: 0.545
           treatment_n: 263
         stability_score:
-          cohens_d: -0.2088
+          cohens_d: -0.2208
           effect_size: small
           treatment_mean: 47.6792
           treatment_n: 263
         trend_quality_20d:
-          cohens_d: -0.0999
+          cohens_d: -0.0971
           effect_size: negligible
           treatment_mean: 51.4249
           treatment_n: 263
         turn_ramp_5v20:
-          cohens_d: 0.0889
+          cohens_d: 0.09
           effect_size: negligible
           treatment_mean: 0.0735
           treatment_n: 263
         turnover_change_20d:
-          cohens_d: 0.1266
+          cohens_d: 0.126
           effect_size: negligible
           treatment_mean: 0.0862
           treatment_n: 263
         up_volume_ratio:
-          cohens_d: 0.2743
+          cohens_d: 0.2797
           effect_size: small
           treatment_mean: 0.5546
           treatment_n: 263
         upper_shadow_ratio:
-          cohens_d: -0.149
+          cohens_d: -0.1409
           effect_size: negligible
           treatment_mean: 0.4865
           treatment_n: 263
         vol_cv_10d:
-          cohens_d: 0.1399
+          cohens_d: 0.1371
           effect_size: negligible
           treatment_mean: 0.3959
           treatment_n: 263
         vol_ramp_5v20:
-          cohens_d: 0.1261
+          cohens_d: 0.1274
           effect_size: negligible
           treatment_mean: 0.0876
           treatment_n: 263
         volume_buildup_quality:
-          cohens_d: 0.0403
+          cohens_d: 0.0388
           effect_size: negligible
           treatment_mean: 46.9618
           treatment_n: 263
         volume_consistency_score:
-          cohens_d: -0.1409
+          cohens_d: -0.1376
           effect_size: negligible
           treatment_mean: 67.3636
           treatment_n: 263
         volume_ratio_5d:
-          cohens_d: 0.1271
+          cohens_d: 0.1402
           effect_size: negligible
           treatment_mean: 1.1637
           treatment_n: 263
       3+板:
         accumulation_score:
-          cohens_d: 0.1273
+          cohens_d: 0.1285
           effect_size: negligible
           treatment_mean: 0.2658
           treatment_n: 214
         climax_score:
-          cohens_d: 0.1262
+          cohens_d: 0.1369
           effect_size: negligible
           treatment_mean: 0.2715
           treatment_n: 214
         close_strength:
-          cohens_d: 0.044
+          cohens_d: 0.0371
           effect_size: negligible
           treatment_mean: 0.4783
           treatment_n: 214
         days_since_vol_peak_20d:
-          cohens_d: -0.0031
+          cohens_d: -0.014
           effect_size: negligible
           treatment_mean: 11.5981
           treatment_n: 214
         elg_net_percentile:
-          cohens_d: -0.0507
+          cohens_d: -0.0541
           effect_size: negligible
           treatment_mean: 48.5871
           treatment_n: 214
         exhaustion_at_ceiling:
-          cohens_d: 0.1116
+          cohens_d: 0.0905
           effect_size: negligible
           treatment_mean: 1.2674
           treatment_n: 214
         ma_alignment_score:
-          cohens_d: 0.091
+          cohens_d: 0.0926
           effect_size: negligible
           treatment_mean: 58.093
           treatment_n: 214
         main_strength_proxy:
-          cohens_d: 0.1149
+          cohens_d: 0.1207
           effect_size: negligible
           treatment_mean: 57.3616
           treatment_n: 214
         mf_net_percentile:
-          cohens_d: 0.0763
+          cohens_d: 0.0688
           effect_size: negligible
           treatment_mean: 52.2441
           treatment_n: 214
         momentum_quality_ratio:
-          cohens_d: -0.0483
+          cohens_d: -0.0498
           effect_size: negligible
           treatment_mean: 49.6058
           treatment_n: 214
         pct_chg:
-          cohens_d: 0.0478
+          cohens_d: 0.0336
           effect_size: negligible
           treatment_mean: 0.2566
           treatment_n: 212
         positive_day_ratio_20d:
-          cohens_d: 0.247
+          cohens_d: 0.2593
           effect_size: small
           treatment_mean: 0.5117
           treatment_n: 214
         post_spike_consolidation:
-          cohens_d: -0.1261
+          cohens_d: -0.1348
           effect_size: negligible
           treatment_mean: 66.4969
           treatment_n: 214
         price_position_60d:
-          cohens_d: 0.1294
+          cohens_d: 0.1388
           effect_size: negligible
           treatment_mean: 0.459
           treatment_n: 214
         price_range_position_20d:
-          cohens_d: 0.067
+          cohens_d: 0.0773
           effect_size: negligible
           treatment_mean: 0.4908
           treatment_n: 214
         recent_vol_spike_max:
-          cohens_d: 0.0836
+          cohens_d: 0.0809
           effect_size: negligible
           treatment_mean: 16.6963
           treatment_n: 214
         resistance_proximity_penalty:
-          cohens_d: 0.0103
+          cohens_d: 0.0195
           effect_size: negligible
           treatment_mean: 3.247
           treatment_n: 214
         return_5d:
-          cohens_d: 0.1403
+          cohens_d: 0.1313
           effect_size: negligible
           treatment_mean: 1.7208
           treatment_n: 214
         sector_momentum_5d:
-          cohens_d: -0.0694
+          cohens_d: -0.0717
           effect_size: negligible
           treatment_mean: 0.6149
           treatment_n: 214
         stability_score:
-          cohens_d: -0.0991
+          cohens_d: -0.1109
           effect_size: negligible
           treatment_mean: 50.6902
           treatment_n: 214
         trend_quality_20d:
-          cohens_d: -0.0821
+          cohens_d: -0.0793
           effect_size: negligible
           treatment_mean: 51.6476
           treatment_n: 214
         turn_ramp_5v20:
-          cohens_d: 0.0643
+          cohens_d: 0.0657
           effect_size: negligible
           treatment_mean: 0.0641
           treatment_n: 214
         turnover_change_20d:
-          cohens_d: 0.0769
+          cohens_d: 0.0768
           effect_size: negligible
           treatment_mean: 0.0675
           treatment_n: 214
         up_volume_ratio:
-          cohens_d: 0.1802
+          cohens_d: 0.1858
           effect_size: negligible
           treatment_mean: 0.5436
           treatment_n: 214
         upper_shadow_ratio:
-          cohens_d: -0.0785
+          cohens_d: -0.0704
           effect_size: negligible
           treatment_mean: 0.5076
           treatment_n: 214
         vol_cv_10d:
-          cohens_d: 0.106
+          cohens_d: 0.1035
           effect_size: negligible
           treatment_mean: 0.39
           treatment_n: 214
         vol_ramp_5v20:
-          cohens_d: 0.0752
+          cohens_d: 0.0768
           effect_size: negligible
           treatment_mean: 0.0685
           treatment_n: 214
         volume_buildup_quality:
-          cohens_d: 0.1628
+          cohens_d: 0.1614
           effect_size: negligible
           treatment_mean: 49.7334
           treatment_n: 214
         volume_consistency_score:
-          cohens_d: -0.113
+          cohens_d: -0.11
           effect_size: negligible
           treatment_mean: 67.8812
           treatment_n: 214
         volume_ratio_5d:
-          cohens_d: 0.0895
+          cohens_d: 0.1016
           effect_size: negligible
           treatment_mean: 1.1388
           treatment_n: 214
   T_minus_10:
     overall:
       accumulation_score:
-        cohens_d: 0.0815
+        cohens_d: 0.0939
         effect_size: negligible
         treatment_mean: 0.2594
-        control_mean: 0.2426
+        control_mean: 0.24
         treatment_n: 1635
         control_n: 11200
       climax_score:
-        cohens_d: 0.1337
+        cohens_d: 0.1344
         effect_size: negligible
         treatment_mean: 0.2677
-        control_mean: 0.2522
+        control_mean: 0.2519
         treatment_n: 1635
         control_n: 11200
       close_strength:
-        cohens_d: 0.058
+        cohens_d: 0.0708
         effect_size: negligible
         treatment_mean: 0.4923
-        control_mean: 0.475
+        control_mean: 0.4712
         treatment_n: 1635
         control_n: 11200
       days_since_vol_peak_20d:
-        cohens_d: -0.015
+        cohens_d: -0.0187
         effect_size: negligible
         treatment_mean: 11.7144
-        control_mean: 11.8277
+        control_mean: 11.8557
         treatment_n: 1635
         control_n: 11200
       elg_net_percentile:
-        cohens_d: 0.0527
+        cohens_d: 0.0539
         effect_size: negligible
         treatment_mean: 51.22
-        control_mean: 49.7073
+        control_mean: 49.66
         treatment_n: 1635
         control_n: 11200
       exhaustion_at_ceiling:
-        cohens_d: 0.0106
+        cohens_d: 0.0036
         effect_size: negligible
         treatment_mean: 0.9584
-        control_mean: 0.9034
+        control_mean: 0.9394
         treatment_n: 1635
         control_n: 11200
       ma_alignment_score:
-        cohens_d: 0.1224
+        cohens_d: 0.1412
         effect_size: negligible
         treatment_mean: 60.03
-        control_mean: 55.7727
+        control_mean: 55.1238
         treatment_n: 1635
         control_n: 11200
       main_strength_proxy:
-        cohens_d: 0.1105
+        cohens_d: 0.1162
         effect_size: negligible
         treatment_mean: 57.2159
-        control_mean: 55.5515
+        control_mean: 55.4608
         treatment_n: 1635
         control_n: 11200
       mf_net_percentile:
-        cohens_d: 0.0526
+        cohens_d: 0.0608
         effect_size: negligible
         treatment_mean: 51.5795
-        control_mean: 50.0632
+        control_mean: 49.8168
         treatment_n: 1635
         control_n: 11200
       momentum_quality_ratio:
-        cohens_d: 0.0216
+        cohens_d: 0.0147
         effect_size: negligible
         treatment_mean: 50.6002
-        control_mean: 50.2146
+        control_mean: 50.3382
         treatment_n: 1635
         control_n: 11200
       pct_chg:
-        cohens_d: 0.1328
+        cohens_d: 0.1276
         effect_size: negligible
         treatment_mean: 0.5327
-        control_mean: 0.1493
+        control_mean: 0.1649
         treatment_n: 1623
-        control_n: 11175
+        control_n: 11181
       positive_day_ratio_20d:
-        cohens_d: 0.0989
+        cohens_d: 0.1056
         effect_size: negligible
         treatment_mean: 0.4947
-        control_mean: 0.4842
+        control_mean: 0.4834
         treatment_n: 1635
         control_n: 11200
       post_spike_consolidation:
-        cohens_d: -0.0573
+        cohens_d: -0.0661
         effect_size: negligible
         treatment_mean: 68.2944
-        control_mean: 69.6714
+        control_mean: 69.8793
         treatment_n: 1635
         control_n: 11200
       price_position_60d:
-        cohens_d: 0.1288
+        cohens_d: 0.1381
         effect_size: negligible
         treatment_mean: 0.4525
-        control_mean: 0.4178
+        control_mean: 0.415
         treatment_n: 1635
         control_n: 11200
       price_range_position_20d:
-        cohens_d: 0.1293
+        cohens_d: 0.1373
         effect_size: negligible
         treatment_mean: 0.512
-        control_mean: 0.4742
+        control_mean: 0.4716
         treatment_n: 1635
         control_n: 11200
       recent_vol_spike_max:
-        cohens_d: 0.0343
+        cohens_d: 0.0466
         effect_size: negligible
         treatment_mean: 15.8241
-        control_mean: 15.136
+        control_mean: 14.8893
         treatment_n: 1635
         control_n: 11200
       resistance_proximity_penalty:
-        cohens_d: 0.0443
+        cohens_d: 0.0295
         effect_size: negligible
         treatment_mean: 3.5728
-        control_mean: 3.0336
+        control_mean: 3.1964
         treatment_n: 1635
         control_n: 11200
       return_5d:
-        cohens_d: 0.1324
+        cohens_d: 0.1225
         effect_size: negligible
         treatment_mean: 1.7692
-        control_mean: 0.8506
+        control_mean: 0.8994
         treatment_n: 1635
         control_n: 11200
       sector_momentum_5d:
-        cohens_d: -0.0217
+        cohens_d: -0.0106
         effect_size: negligible
         treatment_mean: 0.7681
-        control_mean: 0.8334
+        control_mean: 0.7997
         treatment_n: 1635
         control_n: 11200
       stability_score:
-        cohens_d: -0.0777
+        cohens_d: -0.078
         effect_size: negligible
         treatment_mean: 52.0771
-        control_mean: 54.1567
+        control_mean: 54.1873
         treatment_n: 1635
         control_n: 11200
       trend_quality_20d:
-        cohens_d: -0.0042
+        cohens_d: 0.0029
         effect_size: negligible
         treatment_mean: 52.5943
-        control_mean: 52.6466
+        control_mean: 52.5575
         treatment_n: 1635
         control_n: 11200
       turn_ramp_5v20:
-        cohens_d: 0.0369
+        cohens_d: 0.0489
         effect_size: negligible
         treatment_mean: 0.0601
-        control_mean: 0.0459
+        control_mean: 0.0414
         treatment_n: 1635
         control_n: 11200
       turnover_change_20d:
-        cohens_d: 0.0423
+        cohens_d: 0.0515
         effect_size: negligible
         treatment_mean: 0.0599
-        control_mean: 0.0439
+        control_mean: 0.0404
         treatment_n: 1635
         control_n: 11200
       up_volume_ratio:
-        cohens_d: 0.1301
+        cohens_d: 0.1304
         effect_size: negligible
         treatment_mean: 0.5351
         control_mean: 0.5197
         treatment_n: 1635
         control_n: 11200
       upper_shadow_ratio:
-        cohens_d: -0.0715
+        cohens_d: -0.0851
         effect_size: negligible
         treatment_mean: 0.4994
-        control_mean: 0.5208
+        control_mean: 0.5248
         treatment_n: 1635
         control_n: 11200
       vol_cv_10d:
-        cohens_d: -0.0398
+        cohens_d: -0.0317
         effect_size: negligible
         treatment_mean: 0.3674
-        control_mean: 0.3743
+        control_mean: 0.3729
         treatment_n: 1635
         control_n: 11200
       vol_ramp_5v20:
-        cohens_d: 0.0431
+        cohens_d: 0.0524
         effect_size: negligible
         treatment_mean: 0.0619
-        control_mean: 0.0456
+        control_mean: 0.042
         treatment_n: 1635
         control_n: 11200
       volume_buildup_quality:
-        cohens_d: 0.056
+        cohens_d: 0.0759
         effect_size: negligible
         treatment_mean: 47.4973
-        control_mean: 46.2314
+        control_mean: 45.7805
         treatment_n: 1635
         control_n: 11200
       volume_consistency_score:
-        cohens_d: 0.0377
+        cohens_d: 0.0289
         effect_size: negligible
         treatment_mean: 70.3635
-        control_mean: 69.6714
+        control_mean: 69.8317
         treatment_n: 1635
         control_n: 11200
       volume_ratio_5d:
-        cohens_d: 0.0861
+        cohens_d: 0.0911
         effect_size: negligible
         treatment_mean: 1.1171
-        control_mean: 1.0624
+        control_mean: 1.0597
         treatment_n: 1635
         control_n: 11200
     by_streak:
       1板:
         accumulation_score:
-          cohens_d: 0.0798
+          cohens_d: 0.0921
           effect_size: negligible
           treatment_mean: 0.259
           treatment_n: 1157
         climax_score:
-          cohens_d: 0.1301
+          cohens_d: 0.1307
           effect_size: negligible
           treatment_mean: 0.2672
           treatment_n: 1157
         close_strength:
-          cohens_d: 0.0562
+          cohens_d: 0.069
           effect_size: negligible
           treatment_mean: 0.4918
           treatment_n: 1157
         days_since_vol_peak_20d:
-          cohens_d: -0.0226
+          cohens_d: -0.0263
           effect_size: negligible
           treatment_mean: 11.6569
           treatment_n: 1157
         elg_net_percentile:
-          cohens_d: 0.0743
+          cohens_d: 0.0753
           effect_size: negligible
           treatment_mean: 51.8394
           treatment_n: 1157
         exhaustion_at_ceiling:
-          cohens_d: 0.0274
+          cohens_d: 0.0201
           effect_size: negligible
           treatment_mean: 1.0469
           treatment_n: 1157
         ma_alignment_score:
-          cohens_d: 0.1355
+          cohens_d: 0.1543
           effect_size: negligible
           treatment_mean: 60.4845
           treatment_n: 1157
         main_strength_proxy:
-          cohens_d: 0.1233
+          cohens_d: 0.1289
           effect_size: negligible
           treatment_mean: 57.4027
           treatment_n: 1157
         mf_net_percentile:
-          cohens_d: 0.0496
+          cohens_d: 0.0579
           effect_size: negligible
           treatment_mean: 51.4928
           treatment_n: 1157
         momentum_quality_ratio:
-          cohens_d: -0.0053
+          cohens_d: -0.0123
           effect_size: negligible
           treatment_mean: 50.1197
           treatment_n: 1157
         pct_chg:
-          cohens_d: 0.151
+          cohens_d: 0.1458
           effect_size: negligible
           treatment_mean: 0.5838
           treatment_n: 1148
         positive_day_ratio_20d:
-          cohens_d: 0.0729
+          cohens_d: 0.0797
           effect_size: negligible
           treatment_mean: 0.4919
           treatment_n: 1157
         post_spike_consolidation:
-          cohens_d: -0.067
+          cohens_d: -0.0759
           effect_size: negligible
           treatment_mean: 68.065
           treatment_n: 1157
         price_position_60d:
-          cohens_d: 0.1183
+          cohens_d: 0.1277
           effect_size: negligible
           treatment_mean: 0.4496
           treatment_n: 1157
         price_range_position_20d:
-          cohens_d: 0.1638
+          cohens_d: 0.1716
           effect_size: negligible
           treatment_mean: 0.5221
           treatment_n: 1157
         recent_vol_spike_max:
-          cohens_d: 0.0183
+          cohens_d: 0.0306
           effect_size: negligible
           treatment_mean: 15.5012
           treatment_n: 1157
         resistance_proximity_penalty:
-          cohens_d: 0.0558
+          cohens_d: 0.0404
           effect_size: negligible
           treatment_mean: 3.7114
           treatment_n: 1157
         return_5d:
-          cohens_d: 0.1569
+          cohens_d: 0.1463
           effect_size: negligible
           treatment_mean: 1.9345
           treatment_n: 1157
         sector_momentum_5d:
-          cohens_d: 0.0321
+          cohens_d: 0.0439
           effect_size: negligible
           treatment_mean: 0.9297
           treatment_n: 1157
         stability_score:
-          cohens_d: -0.0383
+          cohens_d: -0.039
           effect_size: negligible
           treatment_mean: 53.13
           treatment_n: 1157
         trend_quality_20d:
-          cohens_d: 0.0368
+          cohens_d: 0.0438
           effect_size: negligible
           treatment_mean: 53.1063
           treatment_n: 1157
         turn_ramp_5v20:
-          cohens_d: 0.0479
+          cohens_d: 0.06
           effect_size: negligible
           treatment_mean: 0.0643
           treatment_n: 1157
         turnover_change_20d:
-          cohens_d: 0.0532
+          cohens_d: 0.0624
           effect_size: negligible
           treatment_mean: 0.064
           treatment_n: 1157
         up_volume_ratio:
-          cohens_d: 0.1226
+          cohens_d: 0.1228
           effect_size: negligible
           treatment_mean: 0.5342
           treatment_n: 1157
         upper_shadow_ratio:
-          cohens_d: -0.0738
+          cohens_d: -0.0875
           effect_size: negligible
           treatment_mean: 0.4987
           treatment_n: 1157
         vol_cv_10d:
-          cohens_d: -0.0641
+          cohens_d: -0.0558
           effect_size: negligible
           treatment_mean: 0.3633
           treatment_n: 1157
         vol_ramp_5v20:
-          cohens_d: 0.0536
+          cohens_d: 0.063
           effect_size: negligible
           treatment_mean: 0.0658
           treatment_n: 1157
         volume_buildup_quality:
-          cohens_d: 0.078
+          cohens_d: 0.0979
           effect_size: negligible
           treatment_mean: 47.9961
           treatment_n: 1157
         volume_consistency_score:
-          cohens_d: 0.0613
+          cohens_d: 0.0525
           effect_size: negligible
           treatment_mean: 70.7953
           treatment_n: 1157
         volume_ratio_5d:
-          cohens_d: 0.0883
+          cohens_d: 0.0933
           effect_size: negligible
           treatment_mean: 1.1181
           treatment_n: 1157
       2板:
         accumulation_score:
-          cohens_d: 0.1286
+          cohens_d: 0.1408
           effect_size: negligible
           treatment_mean: 0.2691
           treatment_n: 263
         climax_score:
-          cohens_d: 0.2105
+          cohens_d: 0.2092
           effect_size: small
           treatment_mean: 0.2764
           treatment_n: 263
         close_strength:
-          cohens_d: 0.0137
+          cohens_d: 0.0264
           effect_size: negligible
           treatment_mean: 0.4791
           treatment_n: 263
         days_since_vol_peak_20d:
-          cohens_d: -0.0844
+          cohens_d: -0.0881
           effect_size: negligible
           treatment_mean: 11.1901
           treatment_n: 263
         elg_net_percentile:
-          cohens_d: 0.0578
+          cohens_d: 0.059
           effect_size: negligible
           treatment_mean: 51.3624
           treatment_n: 263
         exhaustion_at_ceiling:
-          cohens_d: -0.0165
+          cohens_d: -0.0229
           effect_size: negligible
           treatment_mean: 0.8182
           treatment_n: 263
         ma_alignment_score:
-          cohens_d: 0.1475
+          cohens_d: 0.1663
           effect_size: negligible
           treatment_mean: 60.9024
           treatment_n: 263
         main_strength_proxy:
-          cohens_d: 0.111
+          cohens_d: 0.1166
           effect_size: negligible
           treatment_mean: 57.2192
           treatment_n: 263
         mf_net_percentile:
-          cohens_d: 0.0538
+          cohens_d: 0.0621
           effect_size: negligible
           treatment_mean: 51.6106
           treatment_n: 263
         momentum_quality_ratio:
-          cohens_d: 0.1222
+          cohens_d: 0.1157
           effect_size: negligible
           treatment_mean: 52.3861
           treatment_n: 263
         pct_chg:
-          cohens_d: 0.1123
+          cohens_d: 0.107
           effect_size: negligible
           treatment_mean: 0.4726
           treatment_n: 261
         positive_day_ratio_20d:
-          cohens_d: 0.158
+          cohens_d: 0.1643
           effect_size: negligible
           treatment_mean: 0.501
           treatment_n: 263
         post_spike_consolidation:
-          cohens_d: -0.1027
+          cohens_d: -0.1118
           effect_size: negligible
           treatment_mean: 67.2007
           treatment_n: 263
         price_position_60d:
-          cohens_d: 0.1935
-          effect_size: negligible
+          cohens_d: 0.202
+          effect_size: small
           treatment_mean: 0.4698
           treatment_n: 263
         price_range_position_20d:
-          cohens_d: 0.0911
+          cohens_d: 0.0994
           effect_size: negligible
           treatment_mean: 0.5009
           treatment_n: 263
         recent_vol_spike_max:
-          cohens_d: 0.1462
+          cohens_d: 0.1582
           effect_size: negligible
           treatment_mean: 18.0919
           treatment_n: 263
         resistance_proximity_penalty:
-          cohens_d: 0.0005
+          cohens_d: -0.0123
           effect_size: negligible
           treatment_mean: 3.0396
           treatment_n: 263
         return_5d:
-          cohens_d: 0.1245
+          cohens_d: 0.1143
           effect_size: negligible
           treatment_mean: 1.6994
           treatment_n: 263
         sector_momentum_5d:
-          cohens_d: -0.0896
+          cohens_d: -0.0796
           effect_size: negligible
           treatment_mean: 0.5629
           treatment_n: 263
         stability_score:
-          cohens_d: -0.2132
+          cohens_d: -0.2118
           effect_size: small
           treatment_mean: 48.4157
           treatment_n: 263
         trend_quality_20d:
-          cohens_d: -0.1231
+          cohens_d: -0.1156
           effect_size: negligible
           treatment_mean: 51.1038
           treatment_n: 263
         turn_ramp_5v20:
-          cohens_d: 0.075
+          cohens_d: 0.0872
           effect_size: negligible
           treatment_mean: 0.0749
           treatment_n: 263
         turnover_change_20d:
-          cohens_d: 0.0874
+          cohens_d: 0.0965
           effect_size: negligible
           treatment_mean: 0.0771
           treatment_n: 263
         up_volume_ratio:
-          cohens_d: 0.1527
+          cohens_d: 0.1529
           effect_size: negligible
           treatment_mean: 0.5378
           treatment_n: 263
         upper_shadow_ratio:
-          cohens_d: -0.025
+          cohens_d: -0.0384
           effect_size: negligible
           treatment_mean: 0.5133
           treatment_n: 263
         vol_cv_10d:
-          cohens_d: 0.0897
+          cohens_d: 0.097
           effect_size: negligible
           treatment_mean: 0.3898
           treatment_n: 263
         vol_ramp_5v20:
-          cohens_d: 0.0924
+          cohens_d: 0.1015
           effect_size: negligible
           treatment_mean: 0.0806
           treatment_n: 263
         volume_buildup_quality:
-          cohens_d: -0.0023
+          cohens_d: 0.0176
           effect_size: negligible
           treatment_mean: 46.179
           treatment_n: 263
         volume_consistency_score:
-          cohens_d: -0.0909
+          cohens_d: -0.0995
           effect_size: negligible
           treatment_mean: 67.9863
           treatment_n: 263
         volume_ratio_5d:
-          cohens_d: 0.1054
+          cohens_d: 0.1106
           effect_size: negligible
           treatment_mean: 1.1296
           treatment_n: 263
       3+板:
         accumulation_score:
-          cohens_d: 0.0342
+          cohens_d: 0.0467
           effect_size: negligible
           treatment_mean: 0.2496
           treatment_n: 215
         climax_score:
-          cohens_d: 0.0653
+          cohens_d: 0.0671
           effect_size: negligible
           treatment_mean: 0.2597
           treatment_n: 215
         close_strength:
-          cohens_d: 0.121
+          cohens_d: 0.134
           effect_size: negligible
           treatment_mean: 0.5113
           treatment_n: 215
         days_since_vol_peak_20d:
-          cohens_d: 0.1109
+          cohens_d: 0.1071
           effect_size: negligible
           treatment_mean: 12.6651
           treatment_n: 215
         elg_net_percentile:
-          cohens_d: -0.0697
+          cohens_d: -0.0674
           effect_size: negligible
           treatment_mean: 47.712
           treatment_n: 215
         exhaustion_at_ceiling:
-          cohens_d: -0.0486
+          cohens_d: -0.0541
           effect_size: negligible
           treatment_mean: 0.6538
           treatment_n: 215
         ma_alignment_score:
-          cohens_d: 0.0214
+          cohens_d: 0.0401
           effect_size: negligible
           treatment_mean: 56.5167
           treatment_n: 215
         main_strength_proxy:
-          cohens_d: 0.0436
+          cohens_d: 0.0495
           effect_size: negligible
           treatment_mean: 56.2065
           treatment_n: 215
         mf_net_percentile:
-          cohens_d: 0.0676
+          cohens_d: 0.0758
           effect_size: negligible
           treatment_mean: 52.0084
           treatment_n: 215
         momentum_quality_ratio:
-          cohens_d: 0.0444
+          cohens_d: 0.0376
           effect_size: negligible
           treatment_mean: 51.0009
           treatment_n: 215
         pct_chg:
-          cohens_d: 0.0635
+          cohens_d: 0.0581
           effect_size: negligible
           treatment_mean: 0.3315
           treatment_n: 214
         positive_day_ratio_20d:
-          cohens_d: 0.1667
+          cohens_d: 0.173
           effect_size: negligible
           treatment_mean: 0.5019
           treatment_n: 215
         post_spike_consolidation:
-          cohens_d: 0.0498
+          cohens_d: 0.0413
           effect_size: negligible
           treatment_mean: 70.8672
           treatment_n: 215
         price_position_60d:
-          cohens_d: 0.107
+          cohens_d: 0.1164
           effect_size: negligible
           treatment_mean: 0.4466
           treatment_n: 215
         price_range_position_20d:
-          cohens_d: -0.0095
+          cohens_d: -0.0005
           effect_size: negligible
           treatment_mean: 0.4714
           treatment_n: 215
         recent_vol_spike_max:
-          cohens_d: -0.0173
+          cohens_d: -0.0051
           effect_size: negligible
           treatment_mean: 14.7872
           treatment_n: 215
         resistance_proximity_penalty:
-          cohens_d: 0.0369
+          cohens_d: 0.0222
           effect_size: negligible
           treatment_mean: 3.4792
           treatment_n: 215
         return_5d:
-          cohens_d: 0.0167
+          cohens_d: 0.0093
           effect_size: negligible
           treatment_mean: 0.9645
           treatment_n: 215
         sector_momentum_5d:
-          cohens_d: -0.2258
+          cohens_d: -0.2179
           effect_size: small
           treatment_mean: 0.1499
           treatment_n: 215
         stability_score:
-          cohens_d: -0.1214
+          cohens_d: -0.1211
           effect_size: negligible
           treatment_mean: 50.8895
           treatment_n: 215
         trend_quality_20d:
-          cohens_d: -0.0786
+          cohens_d: -0.0713
           effect_size: negligible
           treatment_mean: 51.6624
           treatment_n: 215
         turn_ramp_5v20:
-          cohens_d: -0.0677
+          cohens_d: -0.0565
           effect_size: negligible
           treatment_mean: 0.0197
           treatment_n: 215
         turnover_change_20d:
-          cohens_d: -0.0707
+          cohens_d: -0.0612
           effect_size: negligible
           treatment_mean: 0.0171
           treatment_n: 215
         up_volume_ratio:
-          cohens_d: 0.1427
+          cohens_d: 0.143
           effect_size: negligible
           treatment_mean: 0.5366
           treatment_n: 215
         upper_shadow_ratio:
-          cohens_d: -0.1146
+          cohens_d: -0.1283
           effect_size: negligible
           treatment_mean: 0.4864
           treatment_n: 215
         vol_cv_10d:
-          cohens_d: -0.0693
+          cohens_d: -0.061
           effect_size: negligible
           treatment_mean: 0.3623
           treatment_n: 215
         vol_ramp_5v20:
-          cohens_d: -0.0732
+          cohens_d: -0.0635
           effect_size: negligible
           treatment_mean: 0.0179
           treatment_n: 215
         volume_buildup_quality:
-          cohens_d: 0.0086
+          cohens_d: 0.0286
           effect_size: negligible
           treatment_mean: 46.4262
           treatment_n: 215
         volume_consistency_score:
-          cohens_d: 0.0691
+          cohens_d: 0.0604
           effect_size: negligible
           treatment_mean: 70.9475
           treatment_n: 215
         volume_ratio_5d:
-          cohens_d: 0.0544
+          cohens_d: 0.0591
           effect_size: negligible
           treatment_mean: 1.0967
           treatment_n: 215
   T_minus_20:
     overall:
       accumulation_score:
-        cohens_d: 0.0274
+        cohens_d: 0.0286
         effect_size: negligible
         treatment_mean: 0.2197
-        control_mean: 0.2144
+        control_mean: 0.2142
         treatment_n: 1638
         control_n: 11200
       climax_score:
-        cohens_d: 0.0415
+        cohens_d: 0.04
         effect_size: negligible
         treatment_mean: 0.2498
-        control_mean: 0.2449
+        control_mean: 0.2452
         treatment_n: 1638
         control_n: 11200
       close_strength:
-        cohens_d: 0.0117
+        cohens_d: 0.0129
         effect_size: negligible
         treatment_mean: 0.4768
-        control_mean: 0.4733
+        control_mean: 0.4729
         treatment_n: 1638
         control_n: 11200
       days_since_vol_peak_20d:
-        cohens_d: 0.022
+        cohens_d: 0.0195
         effect_size: negligible
         treatment_mean: 12.8095
-        control_mean: 12.6454
+        control_mean: 12.6639
         treatment_n: 1638
         control_n: 11200
       elg_net_percentile:
-        cohens_d: -0.0113
+        cohens_d: -0.0191
         effect_size: negligible
         treatment_mean: 49.333
-        control_mean: 49.6595
+        control_mean: 49.8866
         treatment_n: 1638
         control_n: 11200
       exhaustion_at_ceiling:
-        cohens_d: -0.0256
+        cohens_d: -0.0083
         effect_size: negligible
         treatment_mean: 0.7436
-        control_mean: 0.8782
+        control_mean: 0.7822
         treatment_n: 1638
         control_n: 11200
       ma_alignment_score:
-        cohens_d: 0.0145
+        cohens_d: 0.0212
         effect_size: negligible
         treatment_mean: 52.7971
-        control_mean: 52.3064
+        control_mean: 52.0771
         treatment_n: 1638
         control_n: 11200
       main_strength_proxy:
-        cohens_d: 0.0143
+        cohens_d: 0.0158
         effect_size: negligible
         treatment_mean: 53.4237
-        control_mean: 53.228
+        control_mean: 53.2062
         treatment_n: 1638
         control_n: 11200
       mf_net_percentile:
-        cohens_d: -0.0344
+        cohens_d: -0.0249
         effect_size: negligible
         treatment_mean: 49.293
-        control_mean: 50.2871
+        control_mean: 50.0165
         treatment_n: 1638
         control_n: 11200
       momentum_quality_ratio:
-        cohens_d: 0.0367
+        cohens_d: 0.0315
         effect_size: negligible
         treatment_mean: 49.8724
-        control_mean: 49.2228
+        control_mean: 49.3138
         treatment_n: 1638
         control_n: 11200
       pct_chg:
-        cohens_d: -0.0125
+        cohens_d: -0.0127
         effect_size: negligible
         treatment_mean: 0.1324
-        control_mean: 0.1673
+        control_mean: 0.1877
         treatment_n: 1635
-        control_n: 11177
+        control_n: 11183
       positive_day_ratio_20d:
-        cohens_d: 0.0093
+        cohens_d: 0.0033
         effect_size: negligible
         treatment_mean: 0.477
-        control_mean: 0.4761
+        control_mean: 0.4767
         treatment_n: 1638
         control_n: 11200
       post_spike_consolidation:
-        cohens_d: -0.002
+        cohens_d: -0.0025
         effect_size: negligible
         treatment_mean: 72.1266
-        control_mean: 72.1727
+        control_mean: 72.1851
         treatment_n: 1638
         control_n: 11200
       price_position_60d:
-        cohens_d: 0.0297
+        cohens_d: 0.0223
         effect_size: negligible
         treatment_mean: 0.4042
-        control_mean: 0.3963
+        control_mean: 0.3983
         treatment_n: 1638
         control_n: 11200
       price_range_position_20d:
-        cohens_d: -0.0023
+        cohens_d: -0.0007
         effect_size: negligible
         treatment_mean: 0.4499
-        control_mean: 0.4506
+        control_mean: 0.4501
         treatment_n: 1638
         control_n: 11200
       recent_vol_spike_max:
-        cohens_d: 0.0241
+        cohens_d: 0.0311
         effect_size: negligible
         treatment_mean: 13.6544
-        control_mean: 13.1863
+        control_mean: 13.0595
         treatment_n: 1638
         control_n: 11200
       resistance_proximity_penalty:
-        cohens_d: 0.0129
+        cohens_d: 0.0243
         effect_size: negligible
         treatment_mean: 2.8816
-        control_mean: 2.7268
+        control_mean: 2.6024
         treatment_n: 1638
         control_n: 11200
       return_5d:
-        cohens_d: 0.0045
+        cohens_d: 0.0297
         effect_size: negligible
         treatment_mean: 0.8179
-        control_mean: 0.7882
+        control_mean: 0.6244
         treatment_n: 1638
         control_n: 11200
       sector_momentum_5d:
-        cohens_d: 0.0008
+        cohens_d: -0.015
         effect_size: negligible
         treatment_mean: 0.6316
-        control_mean: 0.6293
+        control_mean: 0.6731
         treatment_n: 1638
         control_n: 11200
       stability_score:
-        cohens_d: -0.1215
+        cohens_d: -0.1124
         effect_size: negligible
         treatment_mean: 50.6926
-        control_mean: 53.9316
+        control_mean: 53.6781
         treatment_n: 1638
         control_n: 11200
       trend_quality_20d:
-        cohens_d: -0.0938
+        cohens_d: -0.0797
         effect_size: negligible
         treatment_mean: 50.6058
-        control_mean: 51.752
+        control_mean: 51.5899
         treatment_n: 1638
         control_n: 11200
       turn_ramp_5v20:
-        cohens_d: 0.0046
+        cohens_d: 0.0122
         effect_size: negligible
         treatment_mean: -0.0034
-        control_mean: -0.005
+        control_mean: -0.0078
         treatment_n: 1638
         control_n: 11200
       turnover_change_20d:
-        cohens_d: -0.0008
+        cohens_d: 0.007
         effect_size: negligible
         treatment_mean: -0.0073
-        control_mean: -0.007
+        control_mean: -0.0098
         treatment_n: 1638
         control_n: 11200
       up_volume_ratio:
-        cohens_d: 0.0548
+        cohens_d: 0.0419
         effect_size: negligible
         treatment_mean: 0.5149
-        control_mean: 0.5088
+        control_mean: 0.5102
         treatment_n: 1638
         control_n: 11200
       upper_shadow_ratio:
-        cohens_d: -0.0079
+        cohens_d: -0.0132
         effect_size: negligible
         treatment_mean: 0.5208
-        control_mean: 0.5231
+        control_mean: 0.5247
         treatment_n: 1638
         control_n: 11200
       vol_cv_10d:
-        cohens_d: 0.023
+        cohens_d: 0.0195
         effect_size: negligible
         treatment_mean: 0.3734
-        control_mean: 0.3693
+        control_mean: 0.3699
         treatment_n: 1638
         control_n: 11200
       vol_ramp_5v20:
-        cohens_d: 0.0002
+        cohens_d: 0.0078
         effect_size: negligible
         treatment_mean: -0.0049
-        control_mean: -0.0049
+        control_mean: -0.0076
         treatment_n: 1638
         control_n: 11200
       volume_buildup_quality:
-        cohens_d: -0.0341
+        cohens_d: -0.0206
         effect_size: negligible
         treatment_mean: 44.6331
-        control_mean: 45.4033
+        control_mean: 45.0963
         treatment_n: 1638
         control_n: 11200
       volume_consistency_score:
-        cohens_d: -0.025
+        cohens_d: -0.0203
         effect_size: negligible
         treatment_mean: 69.8048
-        control_mean: 70.2762
+        control_mean: 70.1819
         treatment_n: 1638
         control_n: 11200
       volume_ratio_5d:
-        cohens_d: 0.0193
+        cohens_d: 0.0225
         effect_size: negligible
         treatment_mean: 1.0934
-        control_mean: 1.0803
+        control_mean: 1.0783
         treatment_n: 1638
         control_n: 11200
     by_streak:
       1板:
         accumulation_score:
-          cohens_d: -0.0098
+          cohens_d: -0.0087
           effect_size: negligible
           treatment_mean: 0.2125
           treatment_n: 1157
         climax_score:
-          cohens_d: 0.0389
+          cohens_d: 0.0374
           effect_size: negligible
           treatment_mean: 0.2495
           treatment_n: 1157
         close_strength:
-          cohens_d: 0.0022
+          cohens_d: 0.0035
           effect_size: negligible
           treatment_mean: 0.474
           treatment_n: 1157
         days_since_vol_peak_20d:
-          cohens_d: 0.0601
+          cohens_d: 0.0575
           effect_size: negligible
           treatment_mean: 13.0942
           treatment_n: 1157
         elg_net_percentile:
-          cohens_d: 0.0093
+          cohens_d: 0.0014
           effect_size: negligible
           treatment_mean: 49.9268
           treatment_n: 1157
         exhaustion_at_ceiling:
-          cohens_d: -0.0427
+          cohens_d: -0.0276
           effect_size: negligible
           treatment_mean: 0.6546
           treatment_n: 1157
         ma_alignment_score:
-          cohens_d: 0.0011
+          cohens_d: 0.0079
           effect_size: negligible
           treatment_mean: 52.3448
           treatment_n: 1157
         main_strength_proxy:
-          cohens_d: -0.0105
+          cohens_d: -0.0089
           effect_size: negligible
           treatment_mean: 53.0851
           treatment_n: 1157
         mf_net_percentile:
-          cohens_d: -0.0108
+          cohens_d: -0.0015
           effect_size: negligible
           treatment_mean: 49.9744
           treatment_n: 1157
         momentum_quality_ratio:
-          cohens_d: 0.0179
+          cohens_d: 0.0127
           effect_size: negligible
           treatment_mean: 49.5385
           treatment_n: 1157
         pct_chg:
-          cohens_d: 0.0064
+          cohens_d: -0.0006
           effect_size: negligible
           treatment_mean: 0.1851
           treatment_n: 1154
         positive_day_ratio_20d:
-          cohens_d: -0.0402
+          cohens_d: -0.0463
           effect_size: negligible
           treatment_mean: 0.472
           treatment_n: 1157
         post_spike_consolidation:
-          cohens_d: 0.0263
+          cohens_d: 0.0259
           effect_size: negligible
           treatment_mean: 72.784
           treatment_n: 1157
         price_position_60d:
-          cohens_d: 0.0063
+          cohens_d: -0.0013
           effect_size: negligible
           treatment_mean: 0.398
           treatment_n: 1157
         price_range_position_20d:
-          cohens_d: -0.0181
+          cohens_d: -0.0165
           effect_size: negligible
           treatment_mean: 0.4454
           treatment_n: 1157
         recent_vol_spike_max:
-          cohens_d: -0.0062
+          cohens_d: 0.0004
           effect_size: negligible
           treatment_mean: 13.0663
           treatment_n: 1157
         resistance_proximity_penalty:
-          cohens_d: -0.0122
+          cohens_d: -0.0018
           effect_size: negligible
           treatment_mean: 2.5822
           treatment_n: 1157
         return_5d:
-          cohens_d: -0.004
+          cohens_d: 0.0213
           effect_size: negligible
           treatment_mean: 0.7619
           treatment_n: 1157
         sector_momentum_5d:
-          cohens_d: -0.0192
+          cohens_d: -0.0348
           effect_size: negligible
           treatment_mean: 0.5771
           treatment_n: 1157
         stability_score:
-          cohens_d: -0.1033
+          cohens_d: -0.0941
           effect_size: negligible
           treatment_mean: 51.1771
           treatment_n: 1157
         trend_quality_20d:
-          cohens_d: -0.1013
+          cohens_d: -0.087
           effect_size: negligible
           treatment_mean: 50.5173
           treatment_n: 1157
         turn_ramp_5v20:
-          cohens_d: -0.0256
+          cohens_d: -0.0183
           effect_size: negligible
           treatment_mean: -0.0143
           treatment_n: 1157
         turnover_change_20d:
-          cohens_d: -0.028
+          cohens_d: -0.0204
           effect_size: negligible
           treatment_mean: -0.0169
           treatment_n: 1157
         up_volume_ratio:
-          cohens_d: 0.0151
+          cohens_d: 0.0021
           effect_size: negligible
           treatment_mean: 0.5105
           treatment_n: 1157
         upper_shadow_ratio:
-          cohens_d: 0.0011
+          cohens_d: -0.0042
           effect_size: negligible
           treatment_mean: 0.5234
           treatment_n: 1157
         vol_cv_10d:
-          cohens_d: -0.0094
+          cohens_d: -0.0134
           effect_size: negligible
           treatment_mean: 0.3676
           treatment_n: 1157
         vol_ramp_5v20:
-          cohens_d: -0.0281
+          cohens_d: -0.0207
           effect_size: negligible
           treatment_mean: -0.0149
           treatment_n: 1157
         volume_buildup_quality:
-          cohens_d: -0.0443
+          cohens_d: -0.0308
           effect_size: negligible
           treatment_mean: 44.402
           treatment_n: 1157
         volume_consistency_score:
-          cohens_d: 0.0069
+          cohens_d: 0.0121
           effect_size: negligible
           treatment_mean: 70.4067
           treatment_n: 1157
         volume_ratio_5d:
-          cohens_d: 0.031
+          cohens_d: 0.0342
           effect_size: negligible
           treatment_mean: 1.1013
           treatment_n: 1157
       2板:
         accumulation_score:
-          cohens_d: 0.1134
+          cohens_d: 0.1151
           effect_size: negligible
           treatment_mean: 0.2364
           treatment_n: 263
         climax_score:
-          cohens_d: 0.0543
+          cohens_d: 0.0532
           effect_size: negligible
           treatment_mean: 0.2513
           treatment_n: 263
         close_strength:
-          cohens_d: 0.0423
+          cohens_d: 0.0433
           effect_size: negligible
           treatment_mean: 0.4859
           treatment_n: 263
         days_since_vol_peak_20d:
-          cohens_d: -0.1088
+          cohens_d: -0.111
           effect_size: negligible
           treatment_mean: 11.8327
           treatment_n: 263
         elg_net_percentile:
-          cohens_d: 0.0419
+          cohens_d: 0.0338
           effect_size: negligible
           treatment_mean: 50.8629
           treatment_n: 263
         exhaustion_at_ceiling:
-          cohens_d: -0.0196
+          cohens_d: -0.002
           effect_size: negligible
           treatment_mean: 0.7729
           treatment_n: 263
         ma_alignment_score:
-          cohens_d: -0.0284
+          cohens_d: -0.0216
           effect_size: negligible
           treatment_mean: 51.3432
           treatment_n: 263
         main_strength_proxy:
-          cohens_d: 0.1069
+          cohens_d: 0.1084
           effect_size: negligible
           treatment_mean: 54.6911
           treatment_n: 263
         mf_net_percentile:
-          cohens_d: -0.1013
+          cohens_d: -0.0915
           effect_size: negligible
           treatment_mean: 47.3675
           treatment_n: 263
         momentum_quality_ratio:
-          cohens_d: 0.0583
+          cohens_d: 0.0531
           effect_size: negligible
           treatment_mean: 50.2542
           treatment_n: 263
         pct_chg:
-          cohens_d: -0.0763
+          cohens_d: -0.052
           effect_size: negligible
           treatment_mean: -0.0456
           treatment_n: 263
         positive_day_ratio_20d:
-          cohens_d: 0.1396
+          cohens_d: 0.134
           effect_size: negligible
           treatment_mean: 0.4901
           treatment_n: 263
         post_spike_consolidation:
-          cohens_d: -0.1011
+          cohens_d: -0.1024
           effect_size: negligible
           treatment_mean: 69.8144
           treatment_n: 263
         price_position_60d:
-          cohens_d: 0.046
+          cohens_d: 0.0388
           effect_size: negligible
           treatment_mean: 0.4085
           treatment_n: 263
         price_range_position_20d:
-          cohens_d: -0.0135
+          cohens_d: -0.0119
           effect_size: negligible
           treatment_mean: 0.4467
           treatment_n: 263
         recent_vol_spike_max:
-          cohens_d: 0.1055
+          cohens_d: 0.1138
           effect_size: negligible
           treatment_mean: 15.2344
           treatment_n: 263
         resistance_proximity_penalty:
-          cohens_d: 0.1487
+          cohens_d: 0.1666
           effect_size: negligible
           treatment_mean: 4.524
           treatment_n: 263
         return_5d:
-          cohens_d: 0.0736
+          cohens_d: 0.1001
           effect_size: negligible
           treatment_mean: 1.2785
           treatment_n: 263
         sector_momentum_5d:
-          cohens_d: 0.0542
+          cohens_d: 0.0376
           effect_size: negligible
           treatment_mean: 0.7769
           treatment_n: 263
         stability_score:
-          cohens_d: -0.2257
+          cohens_d: -0.217
           effect_size: small
           treatment_mean: 47.8975
           treatment_n: 263
         trend_quality_20d:
-          cohens_d: -0.1347
+          cohens_d: -0.1201
           effect_size: negligible
           treatment_mean: 50.102
           treatment_n: 263
         turn_ramp_5v20:
-          cohens_d: 0.0362
+          cohens_d: 0.0443
           effect_size: negligible
           treatment_mean: 0.0081
           treatment_n: 263
         turnover_change_20d:
-          cohens_d: 0.0313
+          cohens_d: 0.0394
           effect_size: negligible
           treatment_mean: 0.0041
           treatment_n: 263
         up_volume_ratio:
-          cohens_d: 0.1713
+          cohens_d: 0.1592
           effect_size: negligible
           treatment_mean: 0.528
           treatment_n: 263
         upper_shadow_ratio:
-          cohens_d: -0.043
+          cohens_d: -0.048
           effect_size: negligible
           treatment_mean: 0.5103
           treatment_n: 263
         vol_cv_10d:
-          cohens_d: 0.0791
+          cohens_d: 0.0764
           effect_size: negligible
           treatment_mean: 0.3834
           treatment_n: 263
         vol_ramp_5v20:
-          cohens_d: 0.036
+          cohens_d: 0.044
           effect_size: negligible
           treatment_mean: 0.0078
           treatment_n: 263
         volume_buildup_quality:
-          cohens_d: -0.0026
+          cohens_d: 0.011
           effect_size: negligible
           treatment_mean: 45.3447
           treatment_n: 263
         volume_consistency_score:
-          cohens_d: -0.0773
+          cohens_d: -0.0733
           effect_size: negligible
           treatment_mean: 68.8189
           treatment_n: 263
         volume_ratio_5d:
-          cohens_d: 0.0361
+          cohens_d: 0.0393
           effect_size: negligible
           treatment_mean: 1.1049
           treatment_n: 263
       3+板:
         accumulation_score:
-          cohens_d: 0.1211
+          cohens_d: 0.1229
           effect_size: negligible
           treatment_mean: 0.2379
           treatment_n: 218
         climax_score:
-          cohens_d: 0.0396
+          cohens_d: 0.0381
           effect_size: negligible
           treatment_mean: 0.2495
           treatment_n: 218
         close_strength:
-          cohens_d: 0.0254
+          cohens_d: 0.0266
           effect_size: negligible
           treatment_mean: 0.4809
           treatment_n: 218
         days_since_vol_peak_20d:
-          cohens_d: -0.0226
+          cohens_d: -0.025
           effect_size: negligible
           treatment_mean: 12.4771
           treatment_n: 218
         elg_net_percentile:
-          cohens_d: -0.1853
+          cohens_d: -0.1918
           effect_size: negligible
           treatment_mean: 44.336
           treatment_n: 218
         exhaustion_at_ceiling:
-          cohens_d: 0.056
+          cohens_d: 0.0839
           effect_size: negligible
           treatment_mean: 1.1803
           treatment_n: 218
         ma_alignment_score:
-          cohens_d: 0.1368
+          cohens_d: 0.1435
           effect_size: negligible
           treatment_mean: 56.9519
           treatment_n: 218
         main_strength_proxy:
-          cohens_d: 0.034
+          cohens_d: 0.0356
           effect_size: negligible
           treatment_mean: 53.6922
           treatment_n: 218
         mf_net_percentile:
-          cohens_d: -0.0793
+          cohens_d: -0.0696
           effect_size: negligible
           treatment_mean: 47.9997
           treatment_n: 218
         momentum_quality_ratio:
-          cohens_d: 0.1108
+          cohens_d: 0.1054
           effect_size: negligible
           treatment_mean: 51.1838
           treatment_n: 218
         pct_chg:
-          cohens_d: -0.0357
+          cohens_d: -0.0267
           effect_size: negligible
           treatment_mean: 0.0679
           treatment_n: 218
         positive_day_ratio_20d:
-          cohens_d: 0.115
+          cohens_d: 0.1092
           effect_size: negligible
           treatment_mean: 0.4876
           treatment_n: 218
         post_spike_consolidation:
-          cohens_d: -0.0321
+          cohens_d: -0.0329
           effect_size: negligible
           treatment_mean: 71.4269
           treatment_n: 218
         price_position_60d:
-          cohens_d: 0.1343
+          cohens_d: 0.1282
           effect_size: negligible
           treatment_mean: 0.4321
           treatment_n: 218
         price_range_position_20d:
-          cohens_d: 0.0952
+          cohens_d: 0.097
           effect_size: negligible
           treatment_mean: 0.4781
           treatment_n: 218
         recent_vol_spike_max:
-          cohens_d: 0.0868
+          cohens_d: 0.0948
           effect_size: negligible
           treatment_mean: 14.8694
           treatment_n: 218
         resistance_proximity_penalty:
-          cohens_d: -0.0199
+          cohens_d: -0.01
           effect_size: negligible
           treatment_mean: 2.4893
           treatment_n: 218
         return_5d:
-          cohens_d: -0.0348
+          cohens_d: -0.0101
           effect_size: negligible
           treatment_mean: 0.5595
           treatment_n: 218
         sector_momentum_5d:
-          cohens_d: 0.0425
+          cohens_d: 0.0261
           effect_size: negligible
           treatment_mean: 0.7452
           treatment_n: 218
         stability_score:
-          cohens_d: -0.0913
+          cohens_d: -0.0822
           effect_size: negligible
           treatment_mean: 51.4931
           treatment_n: 218
         trend_quality_20d:
-          cohens_d: -0.0056
+          cohens_d: 0.0076
           effect_size: negligible
           treatment_mean: 51.6834
           treatment_n: 218
         turn_ramp_5v20:
-          cohens_d: 0.1262
+          cohens_d: 0.1357
           effect_size: negligible
           treatment_mean: 0.0408
           treatment_n: 218
         turnover_change_20d:
-          cohens_d: 0.1043
+          cohens_d: 0.1132
           effect_size: negligible
           treatment_mean: 0.0299
           treatment_n: 218
         up_volume_ratio:
-          cohens_d: 0.1247
+          cohens_d: 0.1123
           effect_size: negligible
           treatment_mean: 0.5227
           treatment_n: 218
         upper_shadow_ratio:
-          cohens_d: -0.0134
+          cohens_d: -0.0186
           effect_size: negligible
           treatment_mean: 0.5191
           treatment_n: 218
         vol_cv_10d:
-          cohens_d: 0.1271
+          cohens_d: 0.1252
           effect_size: negligible
           treatment_mean: 0.3919
           treatment_n: 218
         vol_ramp_5v20:
-          cohens_d: 0.1069
+          cohens_d: 0.1155
           effect_size: negligible
           treatment_mean: 0.0329
           treatment_n: 218
         volume_buildup_quality:
-          cohens_d: -0.0178
+          cohens_d: -0.0042
           effect_size: negligible
           treatment_mean: 45.0013
           treatment_n: 218
         volume_consistency_score:
-          cohens_d: -0.1315
+          cohens_d: -0.1282
           effect_size: negligible
           treatment_mean: 67.7993
           treatment_n: 218
         volume_ratio_5d:
-          cohens_d: -0.0631
+          cohens_d: -0.0605
           effect_size: negligible
           treatment_mean: 1.0376
           treatment_n: 218
 discovery_vs_validation:
   discovery:
     accumulation_score:
-      cohens_d: 0.2404
+      cohens_d: 0.2499
       effect_size: small
       treatment_n: 1034
     climax_score:
-      cohens_d: 0.248
+      cohens_d: 0.2838
       effect_size: small
       treatment_n: 1034
     close_strength:
-      cohens_d: 0.052
+      cohens_d: 0.0553
       effect_size: negligible
       treatment_n: 1034
     days_since_vol_peak_20d:
-      cohens_d: -0.185
+      cohens_d: -0.1716
       effect_size: negligible
       treatment_n: 1034
     elg_net_percentile:
-      cohens_d: -0.0621
+      cohens_d: -0.0504
       effect_size: negligible
       treatment_n: 1034
     exhaustion_at_ceiling:
-      cohens_d: -0.0081
+      cohens_d: -0.0039
       effect_size: negligible
       treatment_n: 1034
     ma_alignment_score:
-      cohens_d: 0.2619
+      cohens_d: 0.259
       effect_size: small
       treatment_n: 1034
     main_strength_proxy:
-      cohens_d: 0.2571
+      cohens_d: 0.2673
       effect_size: small
       treatment_n: 1034
     mf_net_percentile:
-      cohens_d: 0.0833
+      cohens_d: 0.0924
       effect_size: negligible
       treatment_n: 1034
     momentum_quality_ratio:
-      cohens_d: 0.1128
+      cohens_d: 0.117
       effect_size: negligible
       treatment_n: 1034
     pct_chg:
-      cohens_d: 0.0652
+      cohens_d: 0.0833
       effect_size: negligible
       treatment_n: 1023
     positive_day_ratio_20d:
-      cohens_d: 0.2443
+      cohens_d: 0.2394
       effect_size: small
       treatment_n: 1034
     post_spike_consolidation:
-      cohens_d: -0.2127
+      cohens_d: -0.2172
       effect_size: small
       treatment_n: 1034
     price_position_60d:
-      cohens_d: 0.3096
+      cohens_d: 0.3163
       effect_size: small
       treatment_n: 1034
     price_range_position_20d:
-      cohens_d: 0.2647
+      cohens_d: 0.2708
       effect_size: small
       treatment_n: 1034
     recent_vol_spike_max:
-      cohens_d: 0.1666
+      cohens_d: 0.1852
       effect_size: negligible
       treatment_n: 1034
     resistance_proximity_penalty:
-      cohens_d: 0.017
+      cohens_d: 0.0258
       effect_size: negligible
       treatment_n: 1034
     return_5d:
-      cohens_d: 0.0704
+      cohens_d: 0.0948
       effect_size: negligible
       treatment_n: 1034
     sector_momentum_5d:
-      cohens_d: 0.0888
+      cohens_d: 0.0831
       effect_size: negligible
       treatment_n: 1034
     stability_score:
-      cohens_d: -0.2438
+      cohens_d: -0.2626
       effect_size: small
       treatment_n: 1034
     trend_quality_20d:
-      cohens_d: -0.0597
+      cohens_d: -0.0691
       effect_size: negligible
       treatment_n: 1034
     turn_ramp_5v20:
-      cohens_d: 0.1618
+      cohens_d: 0.1784
       effect_size: negligible
       treatment_n: 1034
     turnover_change_20d:
-      cohens_d: 0.1976
-      effect_size: negligible
+      cohens_d: 0.2089
+      effect_size: small
       treatment_n: 1034
     up_volume_ratio:
-      cohens_d: 0.2836
+      cohens_d: 0.2692
       effect_size: small
       treatment_n: 1034
     upper_shadow_ratio:
-      cohens_d: -0.0799
+      cohens_d: -0.0798
       effect_size: negligible
       treatment_n: 1034
     vol_cv_10d:
-      cohens_d: 0.1072
+      cohens_d: 0.1098
       effect_size: negligible
       treatment_n: 1034
     vol_ramp_5v20:
-      cohens_d: 0.1982
-      effect_size: negligible
+      cohens_d: 0.2095
+      effect_size: small
       treatment_n: 1034
     volume_buildup_quality:
-      cohens_d: 0.1195
+      cohens_d: 0.1282
       effect_size: negligible
       treatment_n: 1034
     volume_consistency_score:
-      cohens_d: -0.1119
+      cohens_d: -0.1083
       effect_size: negligible
       treatment_n: 1034
     volume_ratio_5d:
-      cohens_d: 0.08
+      cohens_d: 0.1016
       effect_size: negligible
       treatment_n: 1034
   validation:
     accumulation_score:
-      cohens_d: 0.2261
+      cohens_d: 0.2201
       effect_size: small
       treatment_n: 599
     climax_score:
-      cohens_d: 0.1572
+      cohens_d: 0.1392
       effect_size: negligible
       treatment_n: 599
     close_strength:
-      cohens_d: 0.1366
+      cohens_d: 0.1397
       effect_size: negligible
       treatment_n: 599
     days_since_vol_peak_20d:
-      cohens_d: -0.0988
+      cohens_d: -0.0979
       effect_size: negligible
       treatment_n: 599
     elg_net_percentile:
-      cohens_d: -0.036
+      cohens_d: -0.0361
       effect_size: negligible
       treatment_n: 599
     exhaustion_at_ceiling:
-      cohens_d: 0.0803
+      cohens_d: 0.0798
       effect_size: negligible
       treatment_n: 599
     ma_alignment_score:
-      cohens_d: 0.1371
+      cohens_d: 0.1388
       effect_size: negligible
       treatment_n: 599
     main_strength_proxy:
-      cohens_d: 0.2537
+      cohens_d: 0.239
       effect_size: small
       treatment_n: 599
     mf_net_percentile:
-      cohens_d: 0.1201
+      cohens_d: 0.1251
       effect_size: negligible
       treatment_n: 599
     momentum_quality_ratio:
-      cohens_d: 0.0307
+      cohens_d: 0.0279
       effect_size: negligible
       treatment_n: 599
     pct_chg:
-      cohens_d: 0.1647
+      cohens_d: 0.1534
       effect_size: negligible
       treatment_n: 598
     positive_day_ratio_20d:
-      cohens_d: 0.0826
+      cohens_d: 0.0755
       effect_size: negligible
       treatment_n: 599
     post_spike_consolidation:
-      cohens_d: -0.2121
+      cohens_d: -0.2037
       effect_size: small
       treatment_n: 599
     price_position_60d:
-      cohens_d: 0.0381
+      cohens_d: 0.02
       effect_size: negligible
       treatment_n: 599
     price_range_position_20d:
-      cohens_d: 0.1875
+      cohens_d: 0.1789
       effect_size: negligible
       treatment_n: 599
     recent_vol_spike_max:
-      cohens_d: 0.1249
+      cohens_d: 0.1239
       effect_size: negligible
       treatment_n: 599
     resistance_proximity_penalty:
-      cohens_d: 0.1095
+      cohens_d: 0.0988
       effect_size: negligible
       treatment_n: 599
     return_5d:
-      cohens_d: 0.1374
+      cohens_d: 0.1263
       effect_size: negligible
       treatment_n: 599
     sector_momentum_5d:
-      cohens_d: 0.0484
+      cohens_d: 0.0368
       effect_size: negligible
       treatment_n: 599
     stability_score:
-      cohens_d: 0.1492
+      cohens_d: 0.1506
       effect_size: negligible
       treatment_n: 599
     trend_quality_20d:
-      cohens_d: 0.1542
+      cohens_d: 0.1459
       effect_size: negligible
       treatment_n: 599
     turn_ramp_5v20:
-      cohens_d: 0.1819
+      cohens_d: 0.1764
       effect_size: negligible
       treatment_n: 599
     turnover_change_20d:
-      cohens_d: 0.1839
+      cohens_d: 0.1784
       effect_size: negligible
       treatment_n: 599
     up_volume_ratio:
-      cohens_d: 0.1314
+      cohens_d: 0.1322
       effect_size: negligible
       treatment_n: 599
     upper_shadow_ratio:
-      cohens_d: -0.1295
+      cohens_d: -0.1258
       effect_size: negligible
       treatment_n: 599
     vol_cv_10d:
-      cohens_d: -0.0201
+      cohens_d: -0.01
       effect_size: negligible
       treatment_n: 599
     vol_ramp_5v20:
-      cohens_d: 0.1873
+      cohens_d: 0.1811
       effect_size: negligible
       treatment_n: 599
     volume_buildup_quality:
-      cohens_d: 0.2246
-      effect_size: small
+      cohens_d: 0.1944
+      effect_size: negligible
       treatment_n: 599
     volume_consistency_score:
-      cohens_d: 0.0176
+      cohens_d: 0.0059
       effect_size: negligible
       treatment_n: 599
     volume_ratio_5d:
-      cohens_d: 0.17
+      cohens_d: 0.166
       effect_size: negligible
       treatment_n: 599
 stable_signals:
 - factor: main_strength_proxy
-  discovery_d: 0.2571
-  validation_d: 0.2537
+  discovery_d: 0.2673
+  validation_d: 0.239
   direction: positive
-  avg_effect: 0.2554
-  stability_ratio: 0.9868
+  avg_effect: 0.2531
+  stability_ratio: 0.8941
 - factor: accumulation_score
-  discovery_d: 0.2404
-  validation_d: 0.2261
+  discovery_d: 0.2499
+  validation_d: 0.2201
   direction: positive
-  avg_effect: 0.2333
-  stability_ratio: 0.9405
+  avg_effect: 0.235
+  stability_ratio: 0.8808
 - factor: post_spike_consolidation
-  discovery_d: -0.2127
-  validation_d: -0.2121
+  discovery_d: -0.2172
+  validation_d: -0.2037
   direction: negative
-  avg_effect: 0.2124
-  stability_ratio: 0.9972
+  avg_effect: 0.2104
+  stability_ratio: 0.9378

@@ -66,8 +66,8 @@ promotion_rules:
     - win_rate_delta < -2.0  # WR 下降超过 2pp
     - avg_return_delta < -1.0  # AR 下降超过 1%
 
-  otherwise: iterate  # 最多 5 轮
-  max_iterations: 5
+  otherwise: iterate  # 最多 20 轮
+  max_iterations: 20
   max_iterations_action: reject_and_document
 ```
 

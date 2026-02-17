@@ -1,0 +1,33 @@
+experiment_id: "exp-20260217-001"
+strategy: dragon
+created_at: "2026-02-17"
+parent_version: "22"
+
+hypothesis: |
+  accumulation_score 在最新 cohort_analysis 中从零区分跃升为第二大区分因子
+  (Cohen's d=+0.213, stability=0.88)。涨停组均值=0.284 vs 对照组均值=0.239。
+  提升权重应能改善选股精度，因为更高的吸筹信号与涨停前蓄力形态正相关。
+
+changes:
+  - path: "scoring.positive_factors[accumulation_component].weight"
+    from: 0.10
+    to: 0.15
+
+backtest_params:
+  dates: 25
+  seed: 42
+  tabs: ["dragon"]
+
+results:
+  win_rate: 53.9
+  avg_return: 2.32
+  profit_loss_ratio: 3.37
+  vs_baseline:
+    win_rate_delta: 0.0
+    avg_return_delta: 0.0
+
+decision: iterate
+decision_reason: |
+  权重变更 (0.10→0.15) 产生了分数偏移 (高吸筹股 +4 分)，但偏移量不足以
+  改变任何日期的 top-4 排名。WR/AR 完全无变化。需要更大幅度的调整，
+  或转向其他区分度更高的信号方向。

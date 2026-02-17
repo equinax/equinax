@@ -491,6 +491,7 @@ def compute_scores_for_date(
     lookback_days: int = 60,
     moneyflow_df: "pl.DataFrame | None" = None,
     limit_df: "pl.DataFrame | None" = None,
+    config_mode: bool = False,
 ) -> list[dict]:
     """Compute scores for a single date using pre-loaded data. Pure Polars, no DB calls."""
 
@@ -534,7 +535,7 @@ def compute_scores_for_date(
     if tab == "rally" and breadth_5d_avg < 40.0:
         return []
 
-    scoring = ScoringEngine(market_regime_score=regime_score)
+    scoring = ScoringEngine(market_regime_score=regime_score, config_mode=config_mode)
 
     # Get trading dates up to target_date
     all_dates = market_df.select("date").unique().sort("date")
@@ -663,7 +664,9 @@ def compute_scores_for_date(
 
     # Calculate scores
     if tab in STRATEGIES:
-        df, score_col = score_tab(tab, df, market_regime_score=regime_score)  # type: ignore[arg-type]
+        df, score_col = score_tab(
+            tab, df, market_regime_score=regime_score, config_mode=config_mode
+        )  # type: ignore[arg-type]
     else:
         return []
 
@@ -848,6 +851,7 @@ async def run_backtest(
     top_n: int | None = None,
     period: int = 5,
     verbose: bool = False,
+    config_mode: bool = False,
 ):
     """Run the full backtest."""
 
@@ -906,6 +910,7 @@ async def run_backtest(
                 tab_top_n,
                 moneyflow_df=moneyflow_df,
                 limit_df=limit_df,
+                config_mode=config_mode,
             )
             if not recs and tab == tabs[0]:
                 breadth_today = regime_details.get("breadth_today", 50.0)
@@ -1053,6 +1058,12 @@ def parse_args():
         default=None,
         help="Random seed for date sampling (default: random each run)",
     )
+    parser.add_argument(
+        "--config-mode",
+        action="store_true",
+        default=False,
+        help="Use YAML config files (alpha_lab/configs/) instead of hardcoded scoring",
+    )
     return parser.parse_args()
 
 
@@ -1065,7 +1076,11 @@ def main():
         test_dates = sample_trading_days(n=25, seed=args.seed)
 
     tabs = [t.strip() for t in args.tabs.split(",")]
-    asyncio.run(run_backtest(test_dates, tabs, args.top_n, args.period, args.verbose))
+    asyncio.run(
+        run_backtest(
+            test_dates, tabs, args.top_n, args.period, args.verbose, config_mode=args.config_mode
+        )
+    )
 
 
 if __name__ == "__main__":

@@ -37,7 +37,7 @@ docker compose exec api python -m scripts.alpha_radar_backtest --seed 42 --tabs 
 |------|------|------|
 | `<STRATEGY>` | 策略名 | dragon, rally, weekly |
 | `<EXP_ID>` | 实验编号 | exp-20260217-001 |
-| `<ITERATION>` | 当前迭代轮次 (1-5) | 1 |
+| `<ITERATION>` | 当前迭代轮次 (1-20) | 1 |
 
 ---
 
@@ -132,20 +132,6 @@ docker compose exec api python -m scripts.alpha_radar_backtest --seed 42 --tabs 
    - `changes`: 具体参数变更路径和值
    - `backtest_params`: seed=42, tabs=[strategy]
 
-### ⚠️ 人类确认点
-
-展示以下信息并**等待用户确认**后才继续：
-```
-假设: [hypothesis 描述]
-变更: [从X改为Y]
-依据: [Cohen's d = ?, stability = ?]
-预期: [WR +?pp, AR +?%]
-风险: [可能的负面影响]
-
-是否继续？
-```
-
-如果用户拒绝 → 回到 Step 2 选择其他方向，或终止流程。
 
 ### 产出
 - `backend/alpha_lab/experiments/<STRATEGY>/<EXP_ID>/manifest.yaml`
@@ -295,10 +281,10 @@ done
 
 ### iterate → 回到 Step 2 或 Step 3
 - 迭代计数器 +1
-- 如果 `<ITERATION> < 5`：
+- 如果 `<ITERATION> < 20`：
   - 如果需要全新方向 → 回到 Step 2 (DIAGNOSE)
   - 如果在同一方向上微调 → 回到 Step 3 (PROPOSE)
-- 如果 `<ITERATION> >= 5`：
+- 如果 `<ITERATION> >= 20`：
   - **强制终止**：`decision = reject_and_document`
   - 回滚配置
   - 进入 Step 8
@@ -307,7 +293,7 @@ done
 ```
 ┌──────────────────────────────────────┐
 │ 实验: <EXP_ID>                       │
-│ 迭代: <ITERATION>/5                  │
+│ 迭代: <ITERATION>/20                  │
 │ 决策: accept / reject / iterate      │
 │ WR: baseline% → new% (Δ+/-pp)       │
 │ AR: baseline% → new% (Δ+/-%)        │
