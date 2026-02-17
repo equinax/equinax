@@ -1,0 +1,19 @@
+signal_id: consistency
+display_name: "成交量一致性"
+description: "volume_consistency_score高 = 成交量稳定可靠，无异常波动。"
+
+source_column: volume_consistency_score
+fill_null: 50.0
+component_name: consistency_component
+
+weight: 0.15
+direction: positive
+
+bounds:
+  weight_min: 0.05
+  weight_max: 0.25
+
+evidence:
+  - "Weekly策略核心因子之一，与anti_climax+consolidation构成超卖反弹选择器"
+
+status: active

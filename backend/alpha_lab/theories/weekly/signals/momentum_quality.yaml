@@ -1,0 +1,19 @@
+signal_id: momentum_quality
+display_name: "动量质量"
+description: "momentum_quality_ratio高 = 动量质量好，非虚涨。"
+
+source_column: momentum_quality_ratio
+fill_null: 50.0
+component_name: momentum_quality_component
+
+weight: 0.05
+direction: positive
+
+bounds:
+  weight_min: 0.02
+  weight_max: 0.10
+
+evidence:
+  - "最低权重正向因子，仅作为辅助"
+
+status: active

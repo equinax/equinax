@@ -1,0 +1,19 @@
+signal_id: trend_quality
+display_name: "趋势质量"
+description: "trend_quality_20d高 = 20日趋势质量好，走势健康。"
+
+source_column: trend_quality_20d
+fill_null: 50.0
+component_name: trend_quality_component
+
+weight: 0.10
+direction: positive
+
+bounds:
+  weight_min: 0.05
+  weight_max: 0.20
+
+evidence:
+  - "辅助因子，确保趋势方向明确"
+
+status: active

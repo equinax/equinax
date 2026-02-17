@@ -1,0 +1,20 @@
+signal_id: surge_penalty
+display_name: "当日涨幅惩罚"
+description: "当日涨跌幅超过3%，已有较大波动。"
+
+source_column: pct_chg
+transform: "((col.abs() - 3.0).clip(0.0, 4.0) / 4.0) * 100"
+fill_null: 0.0
+component_name: surge_penalty
+
+weight: 0.05
+direction: penalty
+
+bounds:
+  weight_min: 0.02
+  weight_max: 0.10
+
+evidence:
+  - "最低权重惩罚因子，仅过滤极端日内波动"
+
+status: active

@@ -60,6 +60,7 @@ services:
       - ./backend/examples:/app/examples:cached
       - ./backend/cmd.py:/app/cmd.py:cached
       - ./backend/data:/app/data:cached
+      - ./backend/alpha_lab:/app/alpha_lab:cached
       - ./.reports:/app/.reports
     ports:
       - "3080:8000"
@@ -85,6 +86,7 @@ services:
       - ./backend/workers:/app/workers:cached
       - ./backend/scripts:/app/scripts:cached
       - ./backend/data:/app/data:cached
+      - ./backend/alpha_lab:/app/alpha_lab:cached
       - worker_logs:/app/logs
     depends_on:
       db:

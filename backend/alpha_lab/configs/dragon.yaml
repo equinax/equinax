@@ -1,0 +1,109 @@
+# Dragon Leader (龙头涨停) — 主力吸筹+突破蓄力+量价一致
+# Extracted from engine/strategies/dragon/scoring.py (Iter 21)
+# DO NOT edit manually during experiments — use experiment configs instead.
+
+strategy: dragon
+version: "22"
+description: "龙头涨停 — 主力吸筹+突破蓄力+量价一致"
+
+score_column: dragon_score
+eval_period: 20
+requires_moneyflow: true
+backtest_top_n: 4
+
+scoring:
+  positive_factors:
+    - signal: sector_momentum_positive
+      source: sector_momentum_5d
+      transform: "((col + 5.0) / 15.0).clip(0.0, 1.0) * 100"
+      fill_null: 0.0
+      weight: 0.17
+
+    - signal: trend_quality_component
+      source: trend_quality_20d
+      fill_null: 50.0
+      weight: 0.15
+
+    - signal: anti_climax_component
+      source: climax_score
+      transform: "(1 - col) * 100"
+      fill_null: 0.0
+      weight: 0.15
+
+    - signal: main_strength_component
+      source: main_strength_proxy
+      fill_null: 50.0
+      weight: 0.10
+
+    - signal: accumulation_component
+      source: accumulation_score
+      transform: "col * 100"
+      fill_null: 0.0
+      weight: 0.10
+
+    - signal: consistency_component
+      source: volume_consistency_score
+      fill_null: 50.0
+      weight: 0.05
+
+    - signal: buildup_component
+      source: volume_buildup_quality
+      fill_null: 40.0
+      weight: 0.05
+
+    - signal: elg_flow_component
+      source: elg_net_percentile
+      fill_null: 50.0
+      weight: 0.05
+
+  penalties:
+    - signal: recent_spike_penalty
+      source: recent_vol_spike_max
+      fill_null: 0.0
+      weight: 0.10
+
+    - signal: surge_penalty
+      source: pct_chg
+      transform: "((col.abs() - 3.0).clip(0.0, 4.0) / 4.0) * 100"
+      fill_null: 0.0
+      weight: 0.08
+
+    - signal: ceiling_penalty
+      source: price_position_60d
+      transform: "((col - 0.80).clip(0.0, 0.20) / 0.20) * 100"
+      fill_null: 0.5
+      weight: 0.05
+
+    - signal: resistance_penalty
+      source: resistance_proximity_penalty
+      fill_null: 0.0
+      weight: 0.05
+
+  filters: []
+  # Dragon does not use pre-score filters in scoring.py;
+  # filters are applied at the screener_service level.
+  # Documented here for reference:
+  # - pct_chg.abs() <= 5.0
+  # - near_limit_up == false
+  # - is_st != 1
+
+  regime_discount:
+    enabled: true
+
+# Parameter bounds — AI must stay within these ranges when tuning
+parameter_bounds:
+  weights:
+    min: 0.02
+    max: 0.30
+    step: 0.01
+  total_positive_weight:
+    target: 0.82
+    min: 0.70
+    max: 0.90
+  total_penalty_weight:
+    target: 0.28
+    min: 0.15
+    max: 0.40
+  backtest_top_n:
+    min: 3
+    max: 8

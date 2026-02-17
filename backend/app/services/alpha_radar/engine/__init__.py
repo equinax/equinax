@@ -47,6 +47,7 @@ def score_tab(
     tab: ScreenerTabKey,
     df: pl.DataFrame,
     market_regime_score: float = 50.0,
+    config_mode: bool = False,
 ) -> Tuple[pl.DataFrame, str]:
     """Score a DataFrame for a given strategy tab.
 
@@ -54,15 +55,15 @@ def score_tab(
         tab: Strategy tab key ("weekly", "rally", "dragon")
         df: DataFrame with technical indicators already computed
         market_regime_score: Current market regime score (0-100)
+        config_mode: If True, use YAML config-driven scoring instead of hardcoded
 
     Returns:
         Tuple of (scored DataFrame, score column name)
     """
     config = STRATEGIES[tab]
     engine_cls = _get_strategy_engine(tab)
-    engine = engine_cls(market_regime_score=market_regime_score)
+    engine = engine_cls(market_regime_score=market_regime_score, config_mode=config_mode)
 
-    # Each strategy engine has a `score()` method that returns the scored df
     scored_df = engine.score(df)
 
     return scored_df, config.score_column

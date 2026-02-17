@@ -1,0 +1,168 @@
+# Dragon Leader (龙头涨停) 理论纲领
+# 结构化版本 — 从 theory.md (Iter 21) 转换
+# 本文件供 AI Agent 读取，用于因子分析和迭代决策
+
+strategy: dragon
+version: "22"
+description: "发掘中线即将起爆涨停的潜力票。以 T+20 收益率和胜率为核心评估指标。"
+
+core_thesis: |
+  关注主力资金吸筹蓄力、突破前的量价配合、板块热度轮动，以及避开分配阶段。
+  核心逻辑是捕捉涨停前 T-20 至 T-5 日窗口中的蓄力信号。
+
+eval_period: 20
+eval_basis: "T+1 开盘买入, T+20 收盘评估"
+
+# 当前性能 (Iter 21, seed 42, 25-date backtest)
+current_performance:
+  iteration: 21
+  seed: 42
+  dates: 25
+  metrics:
+    win_rate: 62.5
+    avg_return: 5.90
+    profit_loss_ratio: 3.82
+  targets:
+    win_rate: 60.0
+    avg_return: 5.0
+    profit_loss_ratio: 3.0
+  baseline:
+    win_rate: 56.0
+    avg_return: 2.80
+    profit_loss_ratio: 2.97
+
+# 因子引用
+positive_factors:
+  - ref: signals/sector_momentum.yaml
+  - ref: signals/trend_quality.yaml
+  - ref: signals/anti_climax.yaml
+  - ref: signals/main_strength.yaml
+  - ref: signals/accumulation.yaml
+  - ref: signals/consistency.yaml
+  - ref: signals/buildup.yaml
+  - ref: signals/elg_flow.yaml
+
+penalties:
+  - ref: signals/recent_spike_penalty.yaml
+  - ref: signals/surge_penalty.yaml
+  - ref: signals/ceiling_penalty.yaml
+  - ref: signals/resistance_penalty.yaml
+
+# 前置过滤 (在 screener_service 层面执行)
+filters:
+  - column: pct_chg
+    op: abs_lte
+    value: 5.0
+  - column: near_limit_up
+    op: eq
+    value: false
+  - column: is_st
+    op: neq
+    value: 1
+
+backtest_top_n: 4
+requires_moneyflow: true
+
+# 知识库：已验证的发现（AI不应重复试错）
+validated_findings:
+  effective:
+    - id: sector_momentum_flip
+      description: "板块动量从负信号翻转为正信号，权重递增至0.17均有提升"
+      iteration: "3-8"
+      impact: "WR +4pp, AR +1pp"
+    - id: reduce_main_strength
+      description: "降低主力强度权重(0.15→0.10)，因为赢家的主力强度反而更低(delta=-3.6)"
+      iteration: 6
+      impact: "WR +2pp"
+    - id: reduce_breakthrough_penalties
+      description: "降低ceiling/resistance惩罚(0.08→0.05)，对龙头候选者来说接近高位/阻力位是看涨突破信号"
+      iteration: "19-21"
+      impact: "WR +1.3pp, AR +0.22pp"
+    - id: top_n_tighten
+      description: "Top-N从5→4，第5名推荐一贯最弱，移除后提升"
+      iteration: 14
+      impact: "WR +1.2pp, AR +1.27pp"
+
+  ineffective:
+    - id: full_formula_redesign
+      description: "全公式重设计灾难性(WR降8-14pp)"
+      iteration: "multiple"
+      never_retry: true
+    - id: nonlinear_transforms
+      description: "反转MS、封顶TQ等非线性变换灾难性(WR降6pp+)"
+      iteration: "11-12"
+      never_retry: true
+    - id: interaction_terms
+      description: "TQ×SM交互项替代ELG灾难性(AR=0.70%)"
+      iteration: 13
+      never_retry: true
+    - id: return_5d_penalty
+      description: "'已经在涨'对龙头是特征而非缺陷，return_5d惩罚一致性地杀死AR"
+      iteration: "5,10"
+      never_retry: true
+    - id: trend_quality_overweight
+      description: "trend_quality权重超过0.15虽是最佳区分指标，提权反而损害AR"
+      iteration: "multiple"
+      never_retry: true
+    - id: conditional_penalty_scaling
+      description: "条件型惩罚缩放无增益"
+      iteration: "multiple"
+      never_retry: true
+    - id: sector_momentum_overweight
+      description: "SM权重超过0.17: 0.18微弱下降，0.20崩溃"
+      iteration: "8-9"
+      never_retry: true
+
+# 因子区分度 (赢家 vs 输家)
+factor_discrimination:
+  - factor: trend_quality_20d
+    winner_mean: 68.6
+    loser_mean: 59.6
+    delta: 8.96
+    verdict: "最佳区分"
+  - factor: return_5d
+    winner_mean: 1.96
+    loser_mean: 4.65
+    delta: -2.69
+    verdict: "已涨=输"
+  - factor: main_strength_proxy
+    winner_mean: 79.4
+    loser_mean: 83.0
+    delta: -3.6
+    verdict: "低=赢"
+  - factor: sector_momentum_5d
+    winner_mean: 1.66
+    loser_mean: 0.32
+    delta: 1.34
+    verdict: "板块热=赢"
+  - factor: volume_consistency
+    delta: 0
+    verdict: "无区分"
+  - factor: accumulation_score
+    delta: 0
+    verdict: "无区分"
+  - factor: elg_net_percentile
+    delta: 0
+    verdict: "无区分"
+
+# 关键里程碑
+iteration_milestones:
+  - iteration: 0
+    metrics: { win_rate: 56.0, avg_return: 2.80 }
+    note: "基线"
+  - iteration: 6
+    changes: "MS↓, SM↑"
+    metrics: { win_rate: 62.0, avg_return: 3.67 }
+    note: "首次突破60%胜率"
+  - iteration: 8
+    changes: "VCS↓, SM↑"
+    metrics: { win_rate: 60.0, avg_return: 4.41 }
+    note: "AR新高"
+  - iteration: 14
+    changes: "top_n 5→4"
+    metrics: { win_rate: 61.2, avg_return: 5.68 }
+    note: "首次突破5%收益目标"
+  - iteration: "19-21"
+    changes: "ceiling/resistance↓"
+    metrics: { win_rate: 62.5, avg_return: 5.90 }
+    note: "当前最佳"

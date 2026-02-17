@@ -1,0 +1,20 @@
+signal_id: trend_quality
+display_name: "趋势质量"
+description: "20日趋势方向明确、波动可控。最佳区分指标（赢家vs输家 delta=+8.96）。"
+
+source_column: trend_quality_20d
+fill_null: 50.0
+component_name: trend_quality_component
+
+weight: 0.15
+direction: positive
+
+bounds:
+  weight_min: 0.10
+  weight_max: 0.15    # 超过0.15反而损害AR
+
+evidence:
+  - "因子区分度: 赢家68.6 vs 输家59.6, delta=+8.96, 最佳区分"
+  - "提权到0.15以上反而损害AR，已标记never_retry"
+
+status: active

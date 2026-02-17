@@ -1,0 +1,99 @@
+strategy: weekly
+version: "1.0"
+description: "做稳定的5个交易日内短线收益。不追高、不追涨停、不赌方向。"
+
+core_thesis: |
+  选择低波动、高一致性、蓄力充分的品种，在 T+1 买入后 T+6 评估收益。
+  公式天然构成超卖反弹选择器(anti_climax + consolidation + consistency)。
+
+eval_period: 5
+eval_basis: "T+1 开盘买入, T+6 收盘评估"
+
+current_performance:
+  iteration: 16
+  seed: 42
+  metrics:
+    win_rate: 67.6
+    avg_return: 1.31
+    profit_loss_ratio: 3.33
+  targets:
+    win_rate: 65.0
+    avg_return: 1.5
+
+positive_factors:
+  - ref: signals/anti_climax.yaml
+  - ref: signals/consistency.yaml
+  - ref: signals/consolidation.yaml
+  - ref: signals/trend_quality.yaml
+  - ref: signals/buildup.yaml
+  - ref: signals/accumulation.yaml
+  - ref: signals/momentum_quality.yaml
+
+penalties:
+  - ref: signals/recent_spike_penalty.yaml
+  - ref: signals/resistance_penalty.yaml
+  - ref: signals/surge_penalty.yaml
+
+filters:
+  - column: pct_chg
+    op: abs_lte
+    value: 5.0
+  - column: near_limit_up
+    op: eq
+    value: false
+  - column: is_st
+    op: neq
+    value: 1
+
+backtest_top_n: 5
+requires_moneyflow: false
+
+capability_envelope:
+  strengths:
+    - id: oversold_rebound
+      description: |
+        公式在低位蓄力环境下表现最佳。100% WR日期的共性:
+        price_position_60d < 0.20, return_5d为负, ma_alignment偏低。
+
+  weaknesses:
+    - id: uniform_hot_market
+      description: |
+        当市场全面上涨后，所有候选的因子值趋同(ma_alignment ~98,
+        price_position_60d 0.35-0.58)，线性加权公式无法产生区分度。
+        这是信息量问题，非权重问题。
+
+validated_findings:
+  effective: []
+
+  ineffective:
+    - id: price_position_60d_penalty
+      description: "惩罚高位: 均匀热市场下阈值不触发，其他日期误伤赢家"
+      iteration: 16
+      never_retry: true
+    - id: price_position_60d_bonus
+      description: "奖励低位: 改善3个日期但伤害3个，零和博弈"
+      iteration: 16
+      never_retry: true
+    - id: moneyflow_any
+      description: "Regime-dependent，信号方向不一致"
+      iteration: 16
+      never_retry: true
+    - id: ma_alignment_any
+      description: "Regime-dependent，与胜负无稳定相关"
+      iteration: 16
+      never_retry: true
+    - id: return_5d_penalty
+      description: "与price_position_60d同理"
+      iteration: 16
+      never_retry: true
+
+  assessment: |
+    在线性加权框架下已达局部最优。
+    进一步提升可能需要非线性方法或额外数据源。
+
+iteration_milestones:
+  - iteration: "v1.0"
+    note: "初始公式设计，基于全景/聪明钱/深度价值三套公式的共性提炼"
+  - iteration: "v1.0 Iter 16"
+    metrics: { win_rate: 67.6, avg_return: 1.31, profit_loss_ratio: 3.33 }
+    note: "超卖反弹假设检验。两次尝试均退步，回滚。确认局部最优。"

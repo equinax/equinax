@@ -1,0 +1,20 @@
+signal_id: recent_spike_penalty
+display_name: "近期冲击惩罚"
+description: "近期异常量价冲击。recent_vol_spike_max越高，风险越大。"
+
+source_column: recent_vol_spike_max
+fill_null: 0.0
+component_name: recent_spike_penalty
+
+weight: 0.10
+direction: penalty
+
+bounds:
+  weight_min: 0.05
+  weight_max: 0.15
+
+evidence:
+  - "近期异常放量冲高后的回调风险显著"
+  - "稳定的惩罚因子，权重0.10未做过调整"
+
+status: active

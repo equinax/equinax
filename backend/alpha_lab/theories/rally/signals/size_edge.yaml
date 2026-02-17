@@ -1,0 +1,22 @@
+signal_id: size_edge
+display_name: "小市值优势"
+description: "偏小市值加分。反事实分析验证: MICRO WR=52.1% vs MEGA WR=43.2%。"
+
+source_column: size_percentile
+transform: "(1.0 - col) * 100.0"
+fill_null: 0.5
+component_name: size_edge_component
+
+weight: 0.05
+direction: positive
+
+bounds:
+  weight_min: 0.02
+  weight_max: 0.10
+
+evidence:
+  - "反事实分析: MICRO WR=52.1%/AR=1.45% vs MEGA WR=43.2%/AR=-0.25%"
+  - "因子区分度: 赢家size_percentile 0.45 vs 输家0.58, delta=-0.13"
+  - "权重保持低位(0.05)，仅作为微弱加分"
+
+status: active

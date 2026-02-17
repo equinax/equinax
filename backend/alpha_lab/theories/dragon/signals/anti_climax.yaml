@@ -1,0 +1,21 @@
+signal_id: anti_climax
+display_name: "反高潮"
+description: "远离高潮分配区。climax_score越低越好，取反后作为正向信号。"
+
+source_column: climax_score
+transform: "(1 - col) * 100"
+fill_null: 0.0
+component_name: anti_climax_component
+
+weight: 0.15
+direction: positive
+
+bounds:
+  weight_min: 0.05
+  weight_max: 0.25
+
+evidence:
+  - "核心防御因子，避免追高买入处于分配阶段的标的"
+  - "与trend_quality配合使用效果最佳"
+
+status: active

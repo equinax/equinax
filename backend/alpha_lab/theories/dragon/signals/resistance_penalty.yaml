@@ -1,0 +1,20 @@
+signal_id: resistance_penalty
+display_name: "阻力位惩罚"
+description: "接近阻力位的惩罚。从0.08降至0.05：阻力位附近对龙头是突破信号而非障碍。"
+
+source_column: resistance_proximity_penalty
+fill_null: 0.0
+component_name: resistance_penalty
+
+weight: 0.05
+direction: penalty
+
+bounds:
+  weight_min: 0.02
+  weight_max: 0.08    # 从0.08降至0.05有提升，不应再升回
+
+evidence:
+  - "Iter 19-21: 从0.08降至0.05，对龙头来说接近阻力位是突破信号"
+  - "与ceiling_penalty同步降低，共同贡献WR+1.3pp"
+
+status: active

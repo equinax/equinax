@@ -1,0 +1,19 @@
+signal_id: trend_quality
+display_name: "趋势质量"
+description: "20日趋势方向明确、波动可控。"
+
+source_column: trend_quality_20d
+fill_null: 50.0
+component_name: trend_quality_component
+
+weight: 0.15
+direction: positive
+
+bounds:
+  weight_min: 0.10
+  weight_max: 0.25
+
+evidence:
+  - "主升浪核心因子之一"
+
+status: active

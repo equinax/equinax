@@ -6,6 +6,7 @@ low volatility, high consistency, and avoiding chasing.
 
 import polars as pl
 
+from app.services.alpha_radar.engine.config_loader import load_strategy_config, score_from_config
 from app.services.alpha_radar.scoring import ScoringEngine
 
 
@@ -21,6 +22,10 @@ class WeeklyScoringEngine(ScoringEngine):
             return df
 
         df = self._ensure_columns(df)
+
+        if self.config_mode:
+            cfg = load_strategy_config("weekly")
+            return score_from_config(cfg, df, self._apply_regime_discount)
 
         df = df.with_columns(
             [

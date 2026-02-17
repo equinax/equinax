@@ -1,0 +1,21 @@
+signal_id: anti_climax
+display_name: "反高潮"
+description: "远离高潮顶部，避免追高。climax_score越低越好。Weekly策略最高权重因子。"
+
+source_column: climax_score
+transform: "(1 - col) * 100"
+fill_null: 0.0
+component_name: anti_climax_component
+
+weight: 0.20
+direction: positive
+
+bounds:
+  weight_min: 0.10
+  weight_max: 0.30
+
+evidence:
+  - "Weekly策略核心因子，权重0.20(最高)"
+  - "与consistency+consolidation共同构成超卖反弹选择器"
+
+status: active

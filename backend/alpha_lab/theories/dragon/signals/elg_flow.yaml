@@ -1,0 +1,21 @@
+signal_id: elg_flow
+display_name: "超大单净流入"
+description: "超大单净流入分位数。零区分度，但保留用于监控异常资金流。"
+
+source_column: elg_net_percentile
+fill_null: 50.0
+component_name: elg_flow_component
+
+weight: 0.05
+direction: positive
+
+bounds:
+  weight_min: 0.02
+  weight_max: 0.10
+
+evidence:
+  - "因子区分度: ~0, 无区分"
+  - "注意: TQ×SM交互项替代ELG的实验灾难性(AR=0.70%), 标记never_retry"
+  - "保留原因: 监控功能，异常大单流入可能是信号前兆"
+
+status: active

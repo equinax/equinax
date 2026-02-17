@@ -1,0 +1,19 @@
+signal_id: consolidation
+display_name: "整理充分度"
+description: "post_spike_consolidation高 = 放量后充分整理，筹码沉淀。"
+
+source_column: post_spike_consolidation
+fill_null: 50.0
+component_name: consolidation_component
+
+weight: 0.15
+direction: positive
+
+bounds:
+  weight_min: 0.05
+  weight_max: 0.25
+
+evidence:
+  - "Weekly策略核心因子之一，与anti_climax+consistency构成超卖反弹选择器"
+
+status: active

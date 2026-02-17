@@ -1,0 +1,186 @@
+strategy: rally
+version: "1.6"
+description: "捕捉正在进入主升浪阶段的个股 — MA多头排列、量能阶梯式放大、趋势质量高、尚未到达高潮顶部。"
+
+core_thesis: |
+  通过板块动量过滤和市场宽度择时提升胜率。
+  当 breadth_5d_avg < 40% 时整个策略弃权（不输出任何选股）。
+
+eval_period: 10
+eval_basis: "T+1 开盘买入, T+10 收盘评估"
+
+current_performance:
+  iteration: 6
+  seed: 42
+  dates: 25
+  metrics:
+    win_rate: 64.0
+    avg_return: 3.31
+  multi_seed:
+    - { seed: 42, win_rate: 64.0, avg_return: 3.31, active_dates: 15, abstain_dates: 9 }
+    - { seed: 123, win_rate: 70.7, avg_return: 5.46, active_dates: 15, abstain_dates: 8 }
+    - { seed: 7, win_rate: 56.2, avg_return: 2.63, active_dates: 16, abstain_dates: 9 }
+    - { seed: 99, win_rate: 69.1, avg_return: 3.51, active_dates: 11, abstain_dates: 12 }
+  multi_seed_average: { win_rate: 65.0, avg_return: 3.73 }
+  targets:
+    win_rate: 60.0
+    avg_return: 2.0
+
+positive_factors:
+  - ref: signals/alignment.yaml
+  - ref: signals/trend_quality.yaml
+  - ref: signals/buildup.yaml
+  - ref: signals/accumulation.yaml
+  - ref: signals/consolidation.yaml
+  - ref: signals/momentum_quality.yaml
+  - ref: signals/anti_climax.yaml
+  - ref: signals/sector_momentum.yaml
+  - ref: signals/size_edge.yaml
+
+penalties:
+  - ref: signals/recent_spike_penalty.yaml
+
+filters:
+  - column: near_limit_up
+    op: eq
+    value: true
+    action: exclude
+  - column: is_st
+    op: eq
+    value: 1
+    action: exclude
+
+pre_filters:
+  - column: sector_momentum_5d
+    op: gte
+    value: -3.0
+    fill_null: 0.0
+    action: zero_score
+
+min_score: 55.0
+backtest_top_n: 5
+requires_moneyflow: false
+sector_max_per_industry: 2
+
+market_timing:
+  breadth_5d_avg_threshold: 40.0
+  action: abstain
+
+validated_findings:
+  effective:
+    - id: sector_pre_filter
+      description: "sector_momentum_5d < -3 → 评分置0，有效过滤弱板块"
+      iteration: 2
+      impact: "WR +2.1pp"
+    - id: size_edge
+      description: "偏小市值加分(1-size_percentile)，反事实分析支持小市值优势"
+      iteration: 2
+      impact: "微弱但方向正确"
+    - id: rally_min_score
+      description: "RALLY_MIN_SCORE=55，过滤低置信度选股"
+      iteration: "3b"
+      impact: "WR +2.0pp"
+    - id: breadth_timing
+      description: "breadth_5d_avg < 40% 时弃权，精准捕获最差交易日"
+      iteration: 6
+      impact: "WR +6.2pp (最大单次提升)"
+
+  ineffective:
+    - id: elg_net_percentile
+      description: "任何形式(硬过滤、软权重、评分组件)均回退"
+      iteration: "3,4a,4b,4c"
+      never_retry: true
+    - id: value_percentile_scoring
+      description: "作为评分组件导致WR回退(57.8%→56.4%)"
+      iteration: "5a"
+      never_retry: true
+    - id: stability_score
+      description: "作为评分组件导致WR回退(57.8%→52.8%)"
+      iteration: "5b"
+      never_retry: true
+    - id: return_5d_scoring
+      description: "与elg_net一起回退"
+      iteration: 3
+      never_retry: true
+    - id: weight_only_tuning
+      description: "仅调整权重效果极小"
+      iteration: 1
+      never_retry: false
+    - id: top_n_reduction
+      description: "top_n缩减(<5)降低WR"
+      iteration: "multiple"
+      never_retry: true
+    - id: pct_chg_filter
+      description: "pct_chg绝对值过滤无WR效果"
+      iteration: "multiple"
+      never_retry: true
+    - id: rally_min_score_increase
+      description: "RALLY_MIN_SCORE > 55 降低WR"
+      iteration: "multiple"
+      never_retry: true
+
+  unexplored:
+    - id: index_return_5d
+      description: "大盘指数5日回报作为额外择时信号"
+    - id: price_range_position_20d
+      description: "股价在20日区间中的位置作为评分因子"
+    - id: larger_sample_backtest
+      description: "50+日期回测提升统计置信度"
+    - id: seed_7_analysis
+      description: "seed 7 WR仅56.2%，可分析哪些日期拖累"
+
+factor_discrimination:
+  - factor: size_percentile
+    winner_mean: 0.45
+    loser_mean: 0.58
+    delta: -0.13
+    verdict: "赢家更小"
+  - factor: value_percentile
+    winner_mean: 0.46
+    loser_mean: 0.58
+    delta: -0.12
+    verdict: "赢家偏成长/便宜"
+  - factor: pe_percentile
+    winner_mean: 0.59
+    loser_mean: 0.49
+    delta: 0.10
+    verdict: "赢家PE更高(成长性)"
+  - factor: elg_net_percentile
+    winner_mean: 45.79
+    loser_mean: 55.28
+    delta: -9.49
+    verdict: "赢家机构净流入更低(逆向) — 但融入评分后回退"
+  - factor: ma_alignment_score
+    delta: 0
+    verdict: "无区分"
+  - factor: volume_buildup_quality
+    delta: 0
+    verdict: "无区分"
+  - factor: accumulation_score
+    delta: 0
+    verdict: "无区分"
+  - factor: momentum_quality_ratio
+    delta: 0
+    verdict: "无区分"
+
+key_insight: |
+  聚合层面的良好判别力不等于评分层面的提升。
+  用于重排序时，这些因子会将 top-N 选择不可预测地打乱，
+  被替换进来的股票不一定更好。
+
+iteration_milestones:
+  - iteration: "v1.0"
+    metrics: { win_rate: 53.7, avg_return: 3.20 }
+    note: "原始迁移, 19日评估, 6日弃权"
+  - iteration: "v1.1 (Iter 1)"
+    metrics: { win_rate: 53.7, avg_return: 2.81 }
+    note: "仅调权重, 无效果"
+  - iteration: "v1.2 (Iter 2)"
+    metrics: { win_rate: 55.8, avg_return: 2.06 }
+    note: "+板块过滤 +size_edge"
+  - iteration: "v1.3 (Iter 3b)"
+    metrics: { win_rate: 57.8, avg_return: 2.34 }
+    note: "+RALLY_MIN_SCORE=55"
+  - iteration: "v1.6 (Iter 6)"
+    metrics: { win_rate: 64.0, avg_return: 3.31 }
+    note: "+breadth<40%弃权, 目标达成"

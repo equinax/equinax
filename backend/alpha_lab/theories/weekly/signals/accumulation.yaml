@@ -1,0 +1,20 @@
+signal_id: accumulation
+display_name: "资金吸筹"
+description: "accumulation_score高 = 有资金持续流入信号。"
+
+source_column: accumulation_score
+transform: "col * 100"
+fill_null: 0.0
+component_name: accumulation_component
+
+weight: 0.10
+direction: positive
+
+bounds:
+  weight_min: 0.05
+  weight_max: 0.20
+
+evidence:
+  - "辅助因子，资金流入信号"
+
+status: active

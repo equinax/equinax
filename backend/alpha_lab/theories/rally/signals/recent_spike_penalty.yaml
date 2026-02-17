@@ -1,0 +1,19 @@
+signal_id: recent_spike_penalty
+display_name: "近期冲击惩罚"
+description: "近期异常量价冲击。recent_vol_spike_max。"
+
+source_column: recent_vol_spike_max
+fill_null: 0.0
+component_name: recent_spike_penalty
+
+weight: 0.10
+direction: penalty
+
+bounds:
+  weight_min: 0.05
+  weight_max: 0.15
+
+evidence:
+  - "唯一的惩罚因子，权重0.10"
+
+status: active

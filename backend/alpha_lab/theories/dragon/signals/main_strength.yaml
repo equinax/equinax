@@ -1,0 +1,21 @@
+signal_id: main_strength
+display_name: "主力强度"
+description: "主力资金参与度。赢家值反而更低(delta=-3.6)，权重已从0.15降至0.10。"
+
+source_column: main_strength_proxy
+fill_null: 50.0
+component_name: main_strength_component
+
+weight: 0.10
+direction: positive    # 注意: 虽然赢家值更低，但仍作为正向因子使用
+
+bounds:
+  weight_min: 0.05
+  weight_max: 0.15
+
+evidence:
+  - "Iter 6: 从0.15降至0.10，因为赢家的主力强度反而更低"
+  - "因子区分度: 赢家79.4 vs 输家83.0, delta=-3.6"
+  - "说明龙头启动前主力可能在隐蔽吸筹，强度指标反而不高"
+
+status: active

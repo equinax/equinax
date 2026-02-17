@@ -1,0 +1,95 @@
+# Rally (主升浪) — MA多头+量能阶梯+趋势质量
+# Extracted from engine/strategies/rally/scoring.py (Iter 3b)
+
+strategy: rally
+version: "3b"
+description: "大盘主升 — MA多头+量能阶梯+趋势质量"
+
+score_column: rally_score
+eval_period: 10
+requires_moneyflow: false
+backtest_top_n: 5
+
+scoring:
+  positive_factors:
+    - signal: alignment_component
+      source: ma_alignment_score
+      fill_null: 50.0
+      weight: 0.10
+
+    - signal: trend_quality_component
+      source: trend_quality_20d
+      fill_null: 50.0
+      weight: 0.15
+
+    - signal: buildup_component
+      source: volume_buildup_quality
+      fill_null: 40.0
+      weight: 0.15
+
+    - signal: accumulation_component
+      source: accumulation_score
+      transform: "col * 100"
+      fill_null: 0.0
+      weight: 0.10
+
+    - signal: consolidation_component
+      source: post_spike_consolidation
+      fill_null: 50.0
+      weight: 0.15
+
+    - signal: momentum_quality_component
+      source: momentum_quality_ratio
+      fill_null: 50.0
+      weight: 0.10
+
+    - signal: anti_climax_component
+      source: climax_score
+      transform: "(1 - col) * 100"
+      fill_null: 0.0
+      weight: 0.05
+
+    - signal: sector_momentum_component
+      source: sector_momentum_5d
+      transform: "col.clip(-10.0, 10.0) * 5.0 + 50.0"
+      fill_null: 0.0
+      weight: 0.10
+
+    - signal: size_edge_component
+      source: size_percentile
+      transform: "(1.0 - col) * 100.0"
+      fill_null: 0.5
+      weight: 0.05
+
+  penalties:
+    - signal: recent_spike_penalty
+      source: recent_vol_spike_max
+      fill_null: 0.0
+      weight: 0.10
+
+  pre_filters:
+    - column: sector_momentum_5d
+      op: gte
+      value: -3.0
+      fill_null: 0.0
+      action: zero_score
+
+  regime_discount:
+    enabled: true
+
+parameter_bounds:
+  weights:
+    min: 0.02
+    max: 0.30
+    step: 0.01
+  total_positive_weight:
+    target: 0.95
+    min: 0.80
+    max: 1.00
+  total_penalty_weight:
+    target: 0.10
+    min: 0.05
+    max: 0.25
+  backtest_top_n:
+    min: 3
+    max: 8

@@ -1,0 +1,20 @@
+signal_id: alignment
+display_name: "MA多头排列"
+description: "MA5/10/20/60多头排列程度。定义主升浪形态的基础组件。"
+
+source_column: ma_alignment_score
+fill_null: 50.0
+component_name: alignment_component
+
+weight: 0.10
+direction: positive
+
+bounds:
+  weight_min: 0.05
+  weight_max: 0.20
+
+evidence:
+  - "因子区分度接近零，但作为主升浪形态定义的基础保留"
+  - "均匀热市场时所有候选值趋同(~98)，无法产生区分度"
+
+status: active

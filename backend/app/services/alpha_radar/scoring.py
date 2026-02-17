@@ -47,9 +47,15 @@ class ScoringEngine:
     All scores are normalized to 0-100 range for easy comparison.
     """
 
-    def __init__(self, weights: Optional[ScoreWeights] = None, market_regime_score: float = 50.0):
+    def __init__(
+        self,
+        weights: Optional[ScoreWeights] = None,
+        market_regime_score: float = 50.0,
+        config_mode: bool = False,
+    ):
         self.weights = weights or DEFAULT_WEIGHTS
         self.market_regime_score = market_regime_score
+        self.config_mode = config_mode
 
     def _apply_regime_discount(self, raw_score_expr, regime_weight: float = 0.20):
         """Apply market regime discount to a raw score expression.

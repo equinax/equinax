@@ -1,0 +1,19 @@
+signal_id: momentum_quality
+display_name: "动量质量"
+description: "动量健康度。momentum_quality_ratio。"
+
+source_column: momentum_quality_ratio
+fill_null: 50.0
+component_name: momentum_quality_component
+
+weight: 0.10
+direction: positive
+
+bounds:
+  weight_min: 0.05
+  weight_max: 0.15
+
+evidence:
+  - "因子区分度接近零，但定义健康动量形态"
+
+status: active

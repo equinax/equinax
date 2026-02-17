@@ -1,0 +1,21 @@
+signal_id: accumulation
+display_name: "资金吸筹"
+description: "持续性资金吸筹信号。accumulation_score×100。"
+
+source_column: accumulation_score
+transform: "col * 100"
+fill_null: 0.0
+component_name: accumulation_component
+
+weight: 0.10
+direction: positive
+
+bounds:
+  weight_min: 0.05
+  weight_max: 0.20
+
+evidence:
+  - "因子区分度接近零，但作为选股基线保留"
+  - "与其他因子配合定义'蓄力形态'"
+
+status: active

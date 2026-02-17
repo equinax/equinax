@@ -1,0 +1,20 @@
+signal_id: sector_momentum
+display_name: "板块动量"
+description: "板块5日动量，线性缩放到0-100范围。"
+
+source_column: sector_momentum_5d
+transform: "col.clip(-10.0, 10.0) * 5.0 + 50.0"
+fill_null: 0.0
+component_name: sector_momentum_component
+
+weight: 0.10
+direction: positive
+
+bounds:
+  weight_min: 0.05
+  weight_max: 0.20
+
+evidence:
+  - "Iter 2引入，配合sector_momentum_5d >= -3前置过滤使用"
+
+status: active

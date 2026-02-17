@@ -1,0 +1,82 @@
+schema_version: "1"
+
+factor:
+  required_fields:
+    - signal
+    - source
+    - weight
+  optional_fields:
+    - transform
+    - fill_null
+
+  signal:
+    type: string
+    pattern: "^[a-z][a-z0-9_]+$"
+
+  source:
+    type: string
+
+  transform:
+    type: string
+    allowed_functions:
+      - "clip"
+      - "abs"
+    allowed_operators:
+      - "+"
+      - "-"
+      - "*"
+      - "/"
+    allowed_constants:
+      - "col"
+    max_length: 120
+
+  fill_null:
+    type: float
+    default: 0.0
+
+  weight:
+    type: float
+    min: 0.0
+    max: 1.0
+
+strategy_config:
+  required_fields:
+    - strategy
+    - version
+    - score_column
+    - scoring
+
+  scoring:
+    positive_factors:
+      min_count: 1
+      max_count: 20
+
+    penalties:
+      min_count: 0
+      max_count: 10
+
+    pre_filters:
+      ops: ["gte", "lte", "gt", "lt", "eq", "neq"]
+      actions: ["zero_score"]
+
+  regime_discount:
+    type: bool
+    default: true
+
+  constraints:
+    total_positive_weight:
+      min: 0.50
+      max: 1.00
+    total_penalty_weight:
+      min: 0.00
+      max: 0.50
+    weight_sum_tolerance: 0.01
+
+parameter_bounds:
+  weights:
+    min: { type: float, min: 0.01, max: 0.10 }
+    max: { type: float, min: 0.10, max: 0.50 }
+    step: { type: float, min: 0.005, max: 0.05 }
+  backtest_top_n:
+    min: { type: int, min: 1, max: 5 }
+    max: { type: int, min: 5, max: 15 }

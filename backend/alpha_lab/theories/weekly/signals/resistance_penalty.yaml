@@ -1,0 +1,19 @@
+signal_id: resistance_penalty
+display_name: "阻力位惩罚"
+description: "接近阻力位，短期上行空间受限。"
+
+source_column: resistance_proximity_penalty
+fill_null: 0.0
+component_name: resistance_penalty
+
+weight: 0.10
+direction: penalty
+
+bounds:
+  weight_min: 0.05
+  weight_max: 0.15
+
+evidence:
+  - "短线策略中阻力位惩罚权重较高(0.10)，因为短期突破概率低"
+
+status: active

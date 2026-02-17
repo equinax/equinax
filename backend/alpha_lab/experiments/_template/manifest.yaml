@@ -1,0 +1,28 @@
+experiment_id: "exp-YYYYMMDD-NNN"
+strategy: dragon
+created_at: null
+parent_version: "22"
+
+hypothesis: |
+  [描述你的假设和预期效果]
+
+changes:
+  - path: "scoring.positive_factors[signal_name].weight"
+    from: null
+    to: null
+
+backtest_params:
+  dates: 25
+  seed: 42
+  tabs: ["dragon"]
+
+results:
+  win_rate: null
+  avg_return: null
+  profit_loss_ratio: null
+  vs_baseline:
+    win_rate_delta: null
+    avg_return_delta: null
+
+decision: null
+decision_reason: null

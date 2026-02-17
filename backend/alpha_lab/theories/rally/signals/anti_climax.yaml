@@ -1,0 +1,20 @@
+signal_id: anti_climax
+display_name: "反高潮"
+description: "远离高潮区域。climax_score取反。"
+
+source_column: climax_score
+transform: "(1 - col) * 100"
+fill_null: 0.0
+component_name: anti_climax_component
+
+weight: 0.05
+direction: positive
+
+bounds:
+  weight_min: 0.02
+  weight_max: 0.10
+
+evidence:
+  - "权重较低(0.05)，作为防御因子"
+
+status: active

@@ -26,7 +26,7 @@ STRATEGIES: dict[ScreenerTabKey, StrategyConfig] = {
     "weekly": StrategyConfig(
         tab="weekly",
         label_cn="周内短线",
-        description="稳定T+6，偏防守",
+        description="稳定T+6, 马上起飞",
         score_column="weekly_score",
         eval_period_trading_days=6,
         requires_moneyflow=False,

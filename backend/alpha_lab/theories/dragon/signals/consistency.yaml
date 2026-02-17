@@ -1,0 +1,20 @@
+signal_id: consistency
+display_name: "成交量一致性"
+description: "成交量稳定性。零区分度，但作为选股形态基线保留。"
+
+source_column: volume_consistency_score
+fill_null: 50.0
+component_name: consistency_component
+
+weight: 0.05
+direction: positive
+
+bounds:
+  weight_min: 0.02
+  weight_max: 0.10
+
+evidence:
+  - "因子区分度: ~0, 无区分"
+  - "保留原因: 定义龙头蓄力形态的组成部分"
+
+status: active

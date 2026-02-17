@@ -28,6 +28,7 @@ CURRENT: Iter 8+14+19+21 (WR=62.5%, AR=5.90%, P/L=3.82)
 
 import polars as pl
 
+from app.services.alpha_radar.engine.config_loader import load_strategy_config, score_from_config
 from app.services.alpha_radar.scoring import ScoringEngine
 
 
@@ -40,6 +41,10 @@ class DragonScoringEngine(ScoringEngine):
             return df
 
         df = self._ensure_columns(df)
+
+        if self.config_mode:
+            cfg = load_strategy_config("dragon")
+            return score_from_config(cfg, df, self._apply_regime_discount)
 
         df = df.with_columns(
             [

@@ -1,0 +1,19 @@
+signal_id: buildup
+display_name: "量能蓄力"
+description: "量能有序堆积，非突发放量。"
+
+source_column: volume_buildup_quality
+fill_null: 40.0
+component_name: buildup_component
+
+weight: 0.15
+direction: positive
+
+bounds:
+  weight_min: 0.05
+  weight_max: 0.25
+
+evidence:
+  - "因子区分度接近零，但定义主升浪量能形态"
+
+status: active

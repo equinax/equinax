@@ -1,0 +1,21 @@
+signal_id: ceiling_penalty
+display_name: "高位惩罚"
+description: "price_position_60d>0.80触发。从0.08降至0.05：接近高位对龙头是突破前兆而非风险。"
+
+source_column: price_position_60d
+transform: "((col - 0.80).clip(0.0, 0.20) / 0.20) * 100"
+fill_null: 0.5
+component_name: ceiling_penalty
+
+weight: 0.05
+direction: penalty
+
+bounds:
+  weight_min: 0.02
+  weight_max: 0.08    # 从0.08降至0.05有提升，不应再升回
+
+evidence:
+  - "Iter 19-21: 从0.08降至0.05，对龙头来说接近高位是突破前兆"
+  - "进一步降到0（完全移除）未验证，可作为探索方向"
+
+status: active

@@ -1,0 +1,21 @@
+signal_id: surge_penalty
+display_name: "当日涨幅惩罚"
+description: "当日涨跌幅>3%部分的惩罚。已有较大波动的票短期风险高。"
+
+source_column: pct_chg
+transform: "((col.abs() - 3.0).clip(0.0, 4.0) / 4.0) * 100"
+fill_null: 0.0
+component_name: surge_penalty
+
+weight: 0.08
+direction: penalty
+
+bounds:
+  weight_min: 0.03
+  weight_max: 0.15
+
+evidence:
+  - "当日涨跌幅超过3%的部分按比例惩罚"
+  - "4%封顶，避免极端涨跌幅过度惩罚"
+
+status: active
