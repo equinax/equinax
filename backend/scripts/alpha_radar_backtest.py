@@ -708,8 +708,14 @@ def evaluate_t_plus_n(
     market_df: pl.DataFrame,
     period: int = 5,
     limit_df: "pl.DataFrame | None" = None,
+    tab: str = "",
 ) -> dict:
-    """Evaluate T+N performance using pre-loaded market data."""
+    """Evaluate T+N performance using pre-loaded market data.
+
+    For most strategies: close-to-close returns (T close → T+period close).
+    For overnight: open-to-open returns (T+1 open → T+2 open), matching the
+    actual execution model of buying at next-day open and selling at T+2 open.
+    """
 
     codes = [r["code"] for r in recommendations]
     if not codes:
@@ -739,18 +745,43 @@ def evaluate_t_plus_n(
 
     eval_date = future_dates["date"][period - 1]
 
-    # Get ref prices (target_date close) and eval prices (eval_date close)
-    ref_prices = (
-        market_df.filter((pl.col("date") == target_date) & (pl.col("code").is_in(codes)))
-        .select(["code", "close"])
-        .rename({"close": "ref_close"})
-    )
+    if tab == "overnight":
+        # Overnight strategy: buy at T+1 open, sell at T+2 open
+        entry_date = future_dates["date"][0]
+        exit_date = future_dates["date"][1] if future_dates.height >= 2 else None
+        if exit_date is None:
+            return {
+                "win_rate": None,
+                "avg_return": None,
+                "avg_win": None,
+                "avg_loss": None,
+                "profit_loss_ratio": None,
+                "stocks": [],
+            }
+        ref_prices = (
+            market_df.filter((pl.col("date") == entry_date) & (pl.col("code").is_in(codes)))
+            .select(["code", "open"])
+            .rename({"open": "ref_close"})
+        )
+        eval_prices = (
+            market_df.filter((pl.col("date") == exit_date) & (pl.col("code").is_in(codes)))
+            .select(["code", "open"])
+            .rename({"open": "eval_close"})
+        )
+    else:
+        # Default: close-to-close returns
+        # Get ref prices (target_date close) and eval prices (eval_date close)
+        ref_prices = (
+            market_df.filter((pl.col("date") == target_date) & (pl.col("code").is_in(codes)))
+            .select(["code", "close"])
+            .rename({"close": "ref_close"})
+        )
 
-    eval_prices = (
-        market_df.filter((pl.col("date") == eval_date) & (pl.col("code").is_in(codes)))
-        .select(["code", "close"])
-        .rename({"close": "eval_close"})
-    )
+        eval_prices = (
+            market_df.filter((pl.col("date") == eval_date) & (pl.col("code").is_in(codes)))
+            .select(["code", "close"])
+            .rename({"close": "eval_close"})
+        )
 
     # Join and compute returns
     perf = ref_prices.join(eval_prices, on="code", how="inner")
@@ -926,7 +957,7 @@ async def run_backtest(
                     elif low_regime and weak_days >= 3:
                         abstained_dates.add(d)
             tab_period = load_strategy_config(tab).eval_period if tab in VALID_TABS else period
-            perf = evaluate_t_plus_n(recs, d, market_df, tab_period, limit_df=limit_df)
+            perf = evaluate_t_plus_n(recs, d, market_df, tab_period, limit_df=limit_df, tab=tab)
             elapsed = time.time() - t0
             all_results[d][tab] = {
                 "recommendations": recs,

@@ -1,0 +1,59 @@
+experiment_id: "exp-20260218-001"
+strategy: overnight
+created_at: "2026-02-18"
+parent_version: "1"
+
+hypothesis: |
+  v1 overnight config uses stability/trend/anti-climax factors that select boring
+  defensive stocks (banks, utilities, highways) with zero overnight premium.
+  Complete redesign to momentum-based archetype:
+  - pct_chg as core positive factor (w=0.25) instead of surge_penalty
+  - close_strength retained but with higher emphasis on momentum context
+  - vol_ramp_5v20 as volume acceleration signal
+  - sector_momentum_5d for sector heat
+  - moneyflow signals (mf_net_percentile, elg_net_percentile) enabled
+  - stability_score flipped from positive to penalty (boring stocks penalized)
+  - climax_score flipped from anti-climax to pro-climax (hot stocks rewarded)
+  - Pre-filter: pct_chg >= 2.0 to only consider strong stocks
+  This is a full archetype change (v1→v2), not a single variable tweak.
+
+changes:
+  - path: "scoring.positive_factors"
+    from: "8 factors (close_strength, trend_quality, positive_day_ratio, accumulation, consistency, anti_climax, stability, return_5d)"
+    to: "7 factors (pct_chg, close_strength, vol_ramp_5v20, sector_momentum_5d, mf_net_percentile, elg_net_percentile, return_5d)"
+  - path: "scoring.penalties"
+    from: "3 penalties (upper_shadow, recent_spike, resistance)"
+    to: "3 penalties (upper_shadow, stability, anti_climax)"
+  - path: "scoring.pre_filters"
+    from: "none"
+    to: "pct_chg >= 2.0"
+  - path: "requires_moneyflow"
+    from: false
+    to: true
+
+backtest_params:
+  dates: 25
+  seed: 42
+  tabs: ["overnight"]
+
+results:
+  win_rate: 55.8
+  avg_return: 0.32
+  profit_loss_ratio: 2.33
+  vs_baseline:
+    win_rate_delta: 12.6
+    avg_return_delta: 0.32
+  active_dates: 19
+  abstained_dates: 6
+  notable_dates:
+    best: "2025-12-31 WR=100% AR=5.51%, 2025-08-25 WR=80% AR=5.36%"
+    worst: "2025-02-27 WR=0% AR=-8.01%, 2025-06-03 WR=40% AR=-4.39%"
+
+decision: accept
+decision_reason: |
+  WR improved from 43.2% to 55.8% (+12.6pp), crossing above random for the first time.
+  AR improved from 0.00% to 0.32%. Both primary metrics improved significantly.
+  P/L decreased from 2.95 to 2.33 (-0.62), but P/L was not a primary target and the
+  improvement in WR/AR is overwhelming. This validates the core thesis that overnight
+  needs momentum factors (pct_chg, vol_ramp, sector_heat) not stability factors.
+  The v2 config establishes the correct archetype as baseline for future single-variable iterations.

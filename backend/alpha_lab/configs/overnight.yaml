@@ -1,60 +1,58 @@
-# Overnight Ultra-Short (隔夜超短) — 确定性隔夜机会·T+1买T+2卖
-# Targets stocks with strong closing momentum likely to gap up or continue next morning.
-
 strategy: overnight
-version: "1"
-description: "隔夜超短 — 确定性隔夜机会·T+1买T+2卖"
+version: "3"
+description: "隔夜超短 — 动量延续·T+1开盘买T+2开盘卖"
 
 label_cn: 隔夜超短
 score_column: overnight_score
 eval_period: 2
-requires_moneyflow: false
+requires_moneyflow: true
 backtest_top_n: 5
 
 scoring:
   positive_factors:
+    - signal: daily_return_component
+      source: pct_chg
+      transform: "((col - 2.0) / 8.0).clip(0.0, 1.0) * 100"
+      fill_null: 0.0
+      weight: 0.25
+
     - signal: close_strength_component
       source: close_strength
       transform: "col * 100"
       fill_null: 50.0
       weight: 0.20
 
-    - signal: trend_quality_component
-      source: trend_quality_20d
+    - signal: volume_ramp_component
+      source: vol_ramp_5v20
+      transform: "((col + 0.5) / 1.5).clip(0.0, 1.0) * 100"
       fill_null: 50.0
       weight: 0.15
 
-    - signal: positive_day_ratio_component
-      source: positive_day_ratio_20d
-      transform: "col * 100"
-      fill_null: 50.0
-      weight: 0.10
-
-    - signal: accumulation_component
-      source: accumulation_score
-      transform: "col * 100"
+    - signal: sector_heat_component
+      source: sector_momentum_5d
+      transform: "((col + 5.0) / 15.0).clip(0.0, 1.0) * 100"
       fill_null: 0.0
-      weight: 0.10
+      weight: 0.12
 
-    - signal: consistency_component
-      source: volume_consistency_score
+    - signal: moneyflow_component
+      source: mf_net_percentile
       fill_null: 50.0
-      weight: 0.10
+      weight: 0.08
 
-    - signal: anti_climax_component
-      source: climax_score
-      transform: "(1 - col) * 100"
-      fill_null: 0.0
-      weight: 0.10
-
-    - signal: stability_component
-      source: stability_score
+    - signal: elg_flow_component
+      source: elg_net_percentile
       fill_null: 50.0
-      weight: 0.10
+      weight: 0.05
 
     - signal: short_momentum_component
       source: return_5d
       transform: "((col + 5.0) / 10.0).clip(0.0, 1.0) * 100"
+      fill_null: 50.0
+      weight: 0.00
+
+    - signal: price_position_component
+      source: price_range_position_20d
+      transform: "col * 100"
       fill_null: 50.0
       weight: 0.05
 
@@ -65,17 +63,21 @@ scoring:
       fill_null: 0.0
       weight: 0.08
 
-    - signal: recent_spike_penalty
-      source: recent_vol_spike_max
+    - signal: stability_penalty
+      source: stability_score
+      fill_null: 50.0
+      weight: 0.06
+
+    - signal: anti_climax_penalty
+      source: climax_score
+      transform: "(1 - col) * 100"
       fill_null: 0.0
       weight: 0.06
 
-    - signal: resistance_penalty
-      source: resistance_proximity_penalty
-      fill_null: 0.0
-      weight: 0.06
-
-  filters: []
+  pre_filters:
+    - column: pct_chg
+      op: gte
+      value: 2.0
 
   regime_discount:
     enabled: true
