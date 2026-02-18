@@ -152,12 +152,16 @@ class PerformanceEvalService:
             else:
                 response_period_dates[period] = None
 
+        use_open_exit = tab == "overnight"
         period_prices: dict[int, dict[str, Decimal]] = {}
         for period in periods:
             idx = period
             if idx < len(period_dates_list):
                 target_date = period_dates_list[idx]
-                period_prices[period] = await self._get_close_prices(codes, target_date)
+                if use_open_exit:
+                    period_prices[period] = await self._get_open_prices(codes, target_date)
+                else:
+                    period_prices[period] = await self._get_close_prices(codes, target_date)
             else:
                 period_prices[period] = {}
 

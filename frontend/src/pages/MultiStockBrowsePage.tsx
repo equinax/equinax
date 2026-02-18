@@ -70,6 +70,12 @@ const PERIOD_LABELS: Record<number, string> = {
   10: 'Buy+10',
   20: 'Buy+20',
 }
+const OVERNIGHT_PERIOD_LABELS: Record<number, string> = {
+  1: '隔夜(B0→B1)',
+  2: '两日(B0→B2)',
+}
+const getPeriodLabel = (p: number, tab?: string) =>
+  (tab === 'overnight' ? OVERNIGHT_PERIOD_LABELS[p] : undefined) ?? PERIOD_LABELS[p]
 const PERIOD_COLORS: Record<number, string> = {
   1: '#f97316',   // orange
   2: '#14b8a6',   // teal
@@ -160,7 +166,7 @@ export default function MultiStockBrowsePage() {
         markers.push({
           date: dateStr,
           color: PERIOD_COLORS[period],
-          label: PERIOD_LABELS[period],
+          label: getPeriodLabel(period, tab),
         })
       }
     }
@@ -383,7 +389,7 @@ export default function MultiStockBrowsePage() {
                   <tr className="border-b">
                     <th className="text-left py-1.5 font-medium text-muted-foreground w-24">指标</th>
                     {periods.map(p => (
-                      <th key={p} className="text-right py-1.5 font-medium text-muted-foreground">{PERIOD_LABELS[p]}</th>
+                      <th key={p} className="text-right py-1.5 font-medium text-muted-foreground">{getPeriodLabel(p, tab)}</th>
                     ))}
                   </tr>
                 </thead>
@@ -671,7 +677,7 @@ function StockChartItem({ code, date, isFirst, stockInfo, evalDone, priceLines, 
             return (
               <span key={p} className={cn("font-mono text-xs flex items-center", getValueColor(ret))}>
                 <span className="inline-block w-1.5 h-1.5 rounded-full mr-1" style={{ backgroundColor: PERIOD_COLORS[p] }} />
-                {PRICE_LINE_LABELS[p] ?? PERIOD_LABELS[p]}: {formatPercent(ret)}
+                {PRICE_LINE_LABELS[p] ?? getPeriodLabel(p, tab)}: {formatPercent(ret)}
               </span>
             )
           })}
