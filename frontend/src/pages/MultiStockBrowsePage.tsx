@@ -58,9 +58,12 @@ const EVAL_PERIODS_BY_TAB: Record<string, readonly number[]> = {
   weekly: [3, 6],
   rally: [3, 5, 10],
   dragon: [3, 5, 10, 20],
+  overnight: [1, 2],
 }
 const DEFAULT_EVAL_PERIODS = [3, 5, 10, 20] as const
 const PERIOD_LABELS: Record<number, string> = {
+  1: 'Buy+1',
+  2: 'Buy+2',
   3: 'Buy+3',
   5: 'Buy+5',
   6: 'Buy+6',
@@ -68,6 +71,8 @@ const PERIOD_LABELS: Record<number, string> = {
   20: 'Buy+20',
 }
 const PERIOD_COLORS: Record<number, string> = {
+  1: '#f97316',   // orange
+  2: '#14b8a6',   // teal
   3: '#f59e0b',   // amber
   5: '#8b5cf6',   // violet
   6: '#10b981',   // emerald
@@ -79,14 +84,16 @@ const PRICE_LINE_PERIODS_BY_TAB: Record<string, readonly number[]> = {
   weekly: [3, 6],
   rally: [3, 5, 10],
   dragon: [3, 5, 10, 20],
+  overnight: [1, 2],
 }
 const DEFAULT_PRICE_LINE_PERIODS = [3, 5, 10] as const
-const PRICE_LINE_LABELS: Record<number, string> = { 3: 'B3', 5: 'B5', 6: 'B6', 10: 'B10', 20: 'B20' }
+const PRICE_LINE_LABELS: Record<number, string> = { 1: 'B1', 2: 'B2', 3: 'B3', 5: 'B5', 6: 'B6', 10: 'B10', 20: 'B20' }
 
 const STOCK_TAB_LABELS: Record<string, string> = {
   weekly: '周内短线',
   rally: '大盘主升',
   dragon: '龙头涨停',
+  overnight: '隔夜超短',
 }
 
 export default function MultiStockBrowsePage() {

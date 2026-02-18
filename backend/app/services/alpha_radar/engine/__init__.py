@@ -38,6 +38,12 @@ def _get_strategy_engine(tab: ScreenerTabKey):
             )
 
             _strategy_engines[tab] = DragonScoringEngine
+        elif tab == "overnight":
+            from app.services.alpha_radar.engine.strategies.overnight.scoring import (
+                OvernightScoringEngine,
+            )
+
+            _strategy_engines[tab] = OvernightScoringEngine
         else:
             raise ValueError(f"Unknown tab: {tab}")
     return _strategy_engines[tab]

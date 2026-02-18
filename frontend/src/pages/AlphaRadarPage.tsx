@@ -26,6 +26,7 @@ type RadarMode = 'stock' | 'etf'
 
 // Tab configuration for stock screener
 const STOCK_TABS = [
+  { value: 'overnight', label: '隔夜超短', description: '确定性隔夜机会·T+1买T+2卖' },
   { value: 'weekly', label: '周内短线', description: '稳定T+6，偏防守' },
   { value: 'rally', label: '主升浪', description: 'MA多头+量能阶梯+趋势质量' },
   { value: 'dragon', label: '龙头先锋', description: '主力吸筹+突破蓄力+量价一致' },

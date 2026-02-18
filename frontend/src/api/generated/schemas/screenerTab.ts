@@ -11,4 +11,5 @@ export const ScreenerTab = {
   weekly: "weekly",
   rally: "rally",
   dragon: "dragon",
+  overnight: "overnight",
 } as const;

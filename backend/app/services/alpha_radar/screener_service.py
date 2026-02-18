@@ -117,13 +117,11 @@ class ScreenerService:
         if "is_st" in df.columns:
             df = df.filter(pl.col("is_st").fill_null(0) != 1)
 
-        if tab in ("weekly", "rally", "dragon"):
+        if tab in ("weekly", "rally", "dragon", "overnight"):
             if "near_limit_up" in df.columns:
                 df = df.filter(pl.col("near_limit_up") == False)  # noqa: E712
 
-        if tab == "weekly" and "pct_chg" in df.columns:
-            df = df.filter(pl.col("pct_chg").fill_null(0.0).abs() <= 5.0)
-        elif tab == "dragon" and "pct_chg" in df.columns:
+        if tab in ("weekly", "dragon", "overnight") and "pct_chg" in df.columns:
             df = df.filter(pl.col("pct_chg").fill_null(0.0).abs() <= 5.0)
 
         # Load and join style factors

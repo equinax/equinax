@@ -37,6 +37,7 @@ class ScreenerTab(str, Enum):
     WEEKLY = "weekly"  # 周内短线
     MAIN_RALLY = "rally"  # 主升浪
     DRAGON_LEADER = "dragon"  # 龙头先锋
+    OVERNIGHT = "overnight"  # 隔夜超短
 
 
 class MarketRegimeType(str, Enum):

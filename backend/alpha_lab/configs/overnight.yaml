@@ -1,0 +1,97 @@
+# Overnight Ultra-Short (隔夜超短) — 确定性隔夜机会·T+1买T+2卖
+# Targets stocks with strong closing momentum likely to gap up or continue next morning.
+
+strategy: overnight
+version: "1"
+description: "隔夜超短 — 确定性隔夜机会·T+1买T+2卖"
+
+score_column: overnight_score
+eval_period: 2
+requires_moneyflow: false
+backtest_top_n: 5
+
+scoring:
+  positive_factors:
+    - signal: close_strength_component
+      source: close_strength
+      transform: "col * 100"
+      fill_null: 50.0
+      weight: 0.20
+
+    - signal: trend_quality_component
+      source: trend_quality_20d
+      fill_null: 50.0
+      weight: 0.15
+
+    - signal: positive_day_ratio_component
+      source: positive_day_ratio_20d
+      transform: "col * 100"
+      fill_null: 50.0
+      weight: 0.10
+
+    - signal: accumulation_component
+      source: accumulation_score
+      transform: "col * 100"
+      fill_null: 0.0
+      weight: 0.10
+
+    - signal: consistency_component
+      source: volume_consistency_score
+      fill_null: 50.0
+      weight: 0.10
+
+    - signal: anti_climax_component
+      source: climax_score
+      transform: "(1 - col) * 100"
+      fill_null: 0.0
+      weight: 0.10
+
+    - signal: stability_component
+      source: stability_score
+      fill_null: 50.0
+      weight: 0.10
+
+    - signal: short_momentum_component
+      source: return_5d
+      transform: "((col + 5.0) / 10.0).clip(0.0, 1.0) * 100"
+      fill_null: 50.0
+      weight: 0.05
+
+  penalties:
+    - signal: upper_shadow_penalty
+      source: upper_shadow_ratio
+      transform: "(col * 5.0).clip(0.0, 1.0) * 100"
+      fill_null: 0.0
+      weight: 0.08
+
+    - signal: recent_spike_penalty
+      source: recent_vol_spike_max
+      fill_null: 0.0
+      weight: 0.06
+
+    - signal: resistance_penalty
+      source: resistance_proximity_penalty
+      fill_null: 0.0
+      weight: 0.06
+
+  filters: []
+
+  regime_discount:
+    enabled: true
+
+parameter_bounds:
+  weights:
+    min: 0.02
+    max: 0.30
+    step: 0.01
+  total_positive_weight:
+    target: 0.90
+    min: 0.80
+    max: 0.95
+  total_penalty_weight:
+    target: 0.20
+    min: 0.10
+    max: 0.30
+  backtest_top_n:
+    min: 3
+    max: 8

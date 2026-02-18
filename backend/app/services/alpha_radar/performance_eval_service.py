@@ -16,6 +16,7 @@ TAB_PRIMARY_PERIOD = {
     "weekly": 6,
     "rally": 10,
     "dragon": 20,
+    "overnight": 2,
 }
 
 

@@ -6,7 +6,7 @@ Central registry of all strategy tabs with their metadata and evaluation paramet
 from dataclasses import dataclass
 from typing import Literal
 
-ScreenerTabKey = Literal["weekly", "rally", "dragon"]
+ScreenerTabKey = Literal["weekly", "rally", "dragon", "overnight"]
 
 
 @dataclass(frozen=True)
@@ -47,5 +47,13 @@ STRATEGIES: dict[ScreenerTabKey, StrategyConfig] = {
         eval_period_trading_days=20,
         requires_moneyflow=True,
         backtest_top_n=4,
+    ),
+    "overnight": StrategyConfig(
+        tab="overnight",
+        label_cn="隔夜超短",
+        description="确定性隔夜机会·T+1买T+2卖",
+        score_column="overnight_score",
+        eval_period_trading_days=2,
+        requires_moneyflow=False,
     ),
 }
