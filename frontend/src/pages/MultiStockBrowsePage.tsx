@@ -532,6 +532,7 @@ interface StockChartItemProps {
     turnover?: string | number | null
     pe_ttm?: string | number | null
     pb_mrq?: string | number | null
+    sw_industry_l1?: string | null
     limit_up_count?: number | null
     max_consec_limit_up?: number | null
   } | undefined
@@ -610,6 +611,9 @@ function StockChartItem({ code, date, isFirst, stockInfo, evalDone, priceLines, 
       <div className="absolute left-0 right-0 top-0 z-10 flex items-center gap-2 bg-[#d1b2ad]/35 px-2 py-1 text-sm backdrop-blur-[2px]">
         <span className="font-mono font-medium">{code}</span>
         <span className="text-muted-foreground">{displayName}</span>
+        {stockInfo?.sw_industry_l1 && (
+          <span className="text-xs text-muted-foreground/70">{stockInfo.sw_industry_l1}</span>
+        )}
         {activeOhlc && (
           <>
             <span className="text-xs text-muted-foreground">开 <span className={cn("font-mono", ohlcColor(activeOhlc.open))}>{activeOhlc.open.toFixed(2)}</span></span>
@@ -619,16 +623,16 @@ function StockChartItem({ code, date, isFirst, stockInfo, evalDone, priceLines, 
             <span className={cn("font-mono text-xs font-medium", activeOhlc.change_pct > 0 ? 'text-red-500' : activeOhlc.change_pct < 0 ? 'text-green-500' : 'text-muted-foreground')}>
               {activeOhlc.change_pct > 0 ? '+' : ''}{activeOhlc.change_pct.toFixed(2)}%
             </span>
+            <span className="text-xs text-muted-foreground">量 {formatVol(hoverData?.volume ?? stockInfo?.volume)}</span>
             {isLimitUp && (
               <span className="text-xs font-bold text-red-600 bg-red-100 dark:bg-red-900/40 dark:text-red-400 px-1 rounded">涨停</span>
             )}
           </>
         )}
-        {stockInfo && (stockInfo.total_mv || stockInfo.volume || stockInfo.pe_ttm) && (
+        {stockInfo && (stockInfo.total_mv || stockInfo.pe_ttm) && (
           <>
             {stockInfo.total_mv != null && <span className="text-xs text-muted-foreground">市值 {formatMv(stockInfo.total_mv)}</span>}
             {stockInfo.circ_mv != null && <span className="text-xs text-muted-foreground">流值 {formatMv(stockInfo.circ_mv)}</span>}
-            {stockInfo.volume != null && <span className="text-xs text-muted-foreground">量 {formatVol(stockInfo.volume)}</span>}
             {stockInfo.turnover != null && <span className="text-xs text-muted-foreground">换手 {parseFloat(String(stockInfo.turnover)).toFixed(1)}%</span>}
             {stockInfo.pe_ttm != null && <span className="text-xs text-muted-foreground">PE {parseFloat(String(stockInfo.pe_ttm)).toFixed(1)}</span>}
             {stockInfo.pb_mrq != null && <span className="text-xs text-muted-foreground">PB {parseFloat(String(stockInfo.pb_mrq)).toFixed(2)}</span>}

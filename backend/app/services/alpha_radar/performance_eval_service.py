@@ -107,10 +107,33 @@ class PerformanceEvalService:
         period_dates_list = await self._get_future_trading_dates(date, max_needed)
 
         if len(period_dates_list) == 0:
+            stock_details = await self._get_stock_details(codes, date)
+            stocks = []
+            for code in codes:
+                detail = stock_details.get(code, {})
+                stocks.append(
+                    {
+                        "code": code,
+                        "name": name_map.get(code, code),
+                        "ref_price": None,
+                        "buy_price": None,
+                        "buy_date": None,
+                        "returns": {p: None for p in periods},
+                        "total_mv": detail.get("total_mv"),
+                        "circ_mv": detail.get("circ_mv"),
+                        "volume": detail.get("volume"),
+                        "turnover": detail.get("turnover"),
+                        "pe_ttm": detail.get("pe_ttm"),
+                        "pb_mrq": detail.get("pb_mrq"),
+                        "sw_industry_l1": detail.get("sw_industry_l1"),
+                        "limit_up_count": None,
+                        "max_consec_limit_up": None,
+                    }
+                )
             return {
                 "date": date,
                 "total_stocks": len(codes),
-                "stocks": [],
+                "stocks": stocks,
                 "period_stats": [],
                 "assessment": "无数据",
                 "period_dates": {p: None for p in periods},
@@ -177,6 +200,7 @@ class PerformanceEvalService:
                     "turnover": detail.get("turnover"),
                     "pe_ttm": detail.get("pe_ttm"),
                     "pb_mrq": detail.get("pb_mrq"),
+                    "sw_industry_l1": detail.get("sw_industry_l1"),
                     "limit_up_count": lu_stats.get("limit_up_count"),
                     "max_consec_limit_up": lu_stats.get("max_consec_limit_up"),
                 }
@@ -322,6 +346,15 @@ class PerformanceEvalService:
             entry = details.setdefault(row[0], {})
             entry["volume"] = Decimal(str(row[1])) if row[1] is not None else None
             entry["turnover"] = Decimal(str(row[2])) if row[2] is not None else None
+
+        # Industry classification from stock_profile
+        ind_result = await self.db.execute(
+            text("SELECT code, sw_industry_l1 FROM stock_profile WHERE code = ANY(:codes)"),
+            {"codes": codes},
+        )
+        for row in ind_result.fetchall():
+            entry = details.setdefault(row[0], {})
+            entry["sw_industry_l1"] = row[1]
 
         return details
 

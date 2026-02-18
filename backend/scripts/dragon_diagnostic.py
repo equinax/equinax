@@ -72,6 +72,7 @@ async def analyze_limit_up_overlap(
             5,
             moneyflow_df=moneyflow_df,
             limit_df=limit_df,
+            config_mode=True,
         )
         if not recs:
             continue
@@ -188,6 +189,7 @@ async def analyze_missed_dragons(
             5,
             moneyflow_df=moneyflow_df,
             limit_df=limit_df,
+            config_mode=True,
         )
         rec_codes = {r["code"] for r in recs} if recs else set()
 
@@ -391,7 +393,7 @@ async def analyze_factor_distribution(
             df = df.filter(pl.col("pct_chg").fill_null(0.0).abs() <= 5.0)
 
         # Score
-        df, score_col = score_tab("dragon", df, market_regime_score=regime_score)
+        df, score_col = score_tab("dragon", df, market_regime_score=regime_score, config_mode=True)  # type: ignore[arg-type]
         df = df.sort(score_col, descending=True)
 
         # Get top 5 (with sector diversification)

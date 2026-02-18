@@ -9,6 +9,7 @@ import type { StockPerformancePbMrq } from "./stockPerformancePbMrq";
 import type { StockPerformancePeTtm } from "./stockPerformancePeTtm";
 import type { StockPerformanceRefPrice } from "./stockPerformanceRefPrice";
 import type { StockPerformanceReturns } from "./stockPerformanceReturns";
+import type { StockPerformanceSwIndustryL1 } from "./stockPerformanceSwIndustryL1";
 import type { StockPerformanceTotalMv } from "./stockPerformanceTotalMv";
 import type { StockPerformanceTurnover } from "./stockPerformanceTurnover";
 import type { StockPerformanceVolume } from "./stockPerformanceVolume";
@@ -37,6 +38,8 @@ export interface StockPerformance {
   ref_price?: StockPerformanceRefPrice;
   /** Period -> return % (None if future date not available) */
   returns: StockPerformanceReturns;
+  /** 申万一级行业 */
+  sw_industry_l1?: StockPerformanceSwIndustryL1;
   /** 总市值 (万元) */
   total_mv?: StockPerformanceTotalMv;
   /** 换手率 (%) */

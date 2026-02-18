@@ -857,6 +857,7 @@ class StockPerformance(BaseModel):
     turnover: Optional[Decimal] = Field(default=None, description="换手率 (%)")
     pe_ttm: Optional[Decimal] = Field(default=None, description="市盈率TTM")
     pb_mrq: Optional[Decimal] = Field(default=None, description="市净率MRQ")
+    sw_industry_l1: Optional[str] = Field(default=None, description="申万一级行业")
     limit_up_count: Optional[int] = Field(
         default=None, description="涨停次数 (dragon tab only, within eval window)"
     )
@@ -2014,6 +2015,7 @@ async def evaluate_performance(
             turnover=s.get("turnover"),
             pe_ttm=s.get("pe_ttm"),
             pb_mrq=s.get("pb_mrq"),
+            sw_industry_l1=s.get("sw_industry_l1"),
             limit_up_count=s.get("limit_up_count"),
             max_consec_limit_up=s.get("max_consec_limit_up"),
         )

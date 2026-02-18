@@ -47,7 +47,7 @@ def score_tab(
     tab: ScreenerTabKey,
     df: pl.DataFrame,
     market_regime_score: float = 50.0,
-    config_mode: bool = False,
+    config_mode: bool = True,
 ) -> Tuple[pl.DataFrame, str]:
     """Score a DataFrame for a given strategy tab.
 
