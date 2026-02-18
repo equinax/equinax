@@ -1168,7 +1168,7 @@ async def get_screener(
             asset_type=item["asset_type"],
             price=item.get("price"),
             change_pct=item.get("change_pct"),
-            composite_score=item["composite_score"] or Decimal("50"),
+            composite_score=item["composite_score"] or Decimal("0"),
             quant_labels=item.get("quant_labels", []),
             main_strength_proxy=item.get("main_strength_proxy"),
             valuation_level=item.get("valuation_level"),

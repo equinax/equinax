@@ -78,11 +78,12 @@ class ScreenerService:
                 # Default to 20 trading days
                 start_date = end_date  # Simplified - would need proper calculation
 
-        # Load data
+        # Load data — all strategies need 120+ days for long-term trend factors
         market_data_full = await self.polars_engine.load_market_data(
             target_date=target_date if mode == "snapshot" else None,
             start_date=start_date if mode == "period" else None,
             end_date=end_date if mode == "period" else None,
+            lookback_days=120,
         )
 
         if market_data_full.is_empty():
@@ -231,6 +232,25 @@ class ScreenerService:
                 "abstain": True,
                 "abstain_reason": "narrow_breadth",
             }
+
+        if tab == "overnight" and regime_date:
+            cfg = load_strategy_config("overnight")
+            regime_max = cfg.market_gate.get("regime_max")
+            if regime_max is not None and regime.get("market_regime_score", 50.0) > regime_max:
+                return {
+                    "items": [],
+                    "total": 0,
+                    "page": page,
+                    "page_size": page_size,
+                    "pages": 0,
+                    "tab": tab,
+                    "time_mode": mode,
+                    "date": target_date if mode == "snapshot" else None,
+                    "start_date": start_date if mode == "period" else None,
+                    "end_date": end_date if mode == "period" else None,
+                    "abstain": True,
+                    "abstain_reason": "regime_too_hot",
+                }
 
         if tab not in VALID_TABS:
             tab = "overnight"  # Default to overnight if unknown tab is provided
@@ -401,7 +421,7 @@ class ScreenerService:
                 "asset_type": row.get("asset_type", "stock").lower(),
                 "price": self._to_decimal(row.get("close")),
                 "change_pct": self._to_decimal(row.get("pct_chg")) if mode == "snapshot" else None,
-                "composite_score": self._to_decimal(row.get(score_col, 50)),
+                "composite_score": self._to_decimal(row.get(score_col) or 0),
                 "quant_labels": quant_labels,
                 "main_strength_proxy": self._to_decimal(row.get("main_strength_proxy")),
                 "valuation_level": val_level,

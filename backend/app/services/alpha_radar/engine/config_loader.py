@@ -42,6 +42,7 @@ class StrategyConfigYAML:
         "pre_filters",
         "regime_discount_enabled",
         "parameter_bounds",
+        "market_gate",
     )
 
     def __init__(self, data: dict[str, Any]):
@@ -60,6 +61,7 @@ class StrategyConfigYAML:
         self.pre_filters: list[dict] = scoring.get("pre_filters", [])
         self.regime_discount_enabled: bool = scoring.get("regime_discount", {}).get("enabled", True)
         self.parameter_bounds: dict = data.get("parameter_bounds", {})
+        self.market_gate: dict = data.get("market_gate", {})
 
 
 @functools.lru_cache(maxsize=8)
