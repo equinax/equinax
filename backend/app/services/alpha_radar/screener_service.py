@@ -201,56 +201,23 @@ class ScreenerService:
             scoring_engine = ScoringEngine()
             should_abstain = False
 
+        abstain_flag = False
+        abstain_reason = None
+
         if should_abstain:
-            return {
-                "items": [],
-                "total": 0,
-                "page": page,
-                "page_size": page_size,
-                "pages": 0,
-                "tab": tab,
-                "time_mode": mode,
-                "date": target_date if mode == "snapshot" else None,
-                "start_date": start_date if mode == "period" else None,
-                "end_date": end_date if mode == "period" else None,
-                "abstain": True,
-                "abstain_reason": "market_hostile",
-            }
+            abstain_flag = True
+            abstain_reason = "market_hostile"
 
         if tab == "rally" and regime_date and regime.get("breadth_5d_avg", 50.0) < 40.0:
-            return {
-                "items": [],
-                "total": 0,
-                "page": page,
-                "page_size": page_size,
-                "pages": 0,
-                "tab": tab,
-                "time_mode": mode,
-                "date": target_date if mode == "snapshot" else None,
-                "start_date": start_date if mode == "period" else None,
-                "end_date": end_date if mode == "period" else None,
-                "abstain": True,
-                "abstain_reason": "narrow_breadth",
-            }
+            abstain_flag = True
+            abstain_reason = "narrow_breadth"
 
         if tab == "overnight" and regime_date:
             cfg = load_strategy_config("overnight")
             regime_max = cfg.market_gate.get("regime_max")
             if regime_max is not None and regime.get("market_regime_score", 50.0) > regime_max:
-                return {
-                    "items": [],
-                    "total": 0,
-                    "page": page,
-                    "page_size": page_size,
-                    "pages": 0,
-                    "tab": tab,
-                    "time_mode": mode,
-                    "date": target_date if mode == "snapshot" else None,
-                    "start_date": start_date if mode == "period" else None,
-                    "end_date": end_date if mode == "period" else None,
-                    "abstain": True,
-                    "abstain_reason": "regime_too_hot",
-                }
+                abstain_flag = True
+                abstain_reason = "regime_too_hot"
 
         if tab not in VALID_TABS:
             tab = "overnight"  # Default to overnight if unknown tab is provided
@@ -300,7 +267,7 @@ class ScreenerService:
         # Convert to response items
         items = self._convert_to_items(df_page, score_col, mode)
 
-        return {
+        result = {
             "items": items,
             "total": total,
             "page": page,
@@ -312,6 +279,12 @@ class ScreenerService:
             "start_date": start_date if mode == "period" else None,
             "end_date": end_date if mode == "period" else None,
         }
+
+        if abstain_flag:
+            result["abstain"] = True
+            result["abstain_reason"] = abstain_reason
+
+        return result
 
     def _apply_filters(
         self,
