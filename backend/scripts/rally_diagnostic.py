@@ -73,7 +73,6 @@ async def analyze_market_cap_distribution(
             TOP_N,
             moneyflow_df=moneyflow_df,
             limit_df=limit_df,
-            config_mode=True,
         )
         if not recs:
             continue
@@ -353,7 +352,7 @@ async def analyze_factor_discrimination(
             df = df.filter(pl.col("near_limit_up") == False)  # noqa: E712
 
         # Score
-        df, score_col = score_tab(TAB, df, market_regime_score=regime_score, config_mode=True)  # type: ignore[arg-type]
+        df, score_col = score_tab(TAB, df, market_regime_score=regime_score)  # type: ignore[arg-type]
         df = df.sort(score_col, descending=True)
 
         # Sector diversification (same as backtest)
@@ -647,7 +646,7 @@ async def analyze_size_return_correlation(
             df = df.filter(pl.col("near_limit_up") == False)  # noqa: E712
 
         # Score all stocks
-        df, score_col = score_tab(TAB, df, market_regime_score=regime_score, config_mode=True)  # type: ignore[arg-type]
+        df, score_col = score_tab(TAB, df, market_regime_score=regime_score)  # type: ignore[arg-type]
         df = df.sort(score_col, descending=True)
 
         # Get T+10 returns for ALL scored stocks (not just top 5)

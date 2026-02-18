@@ -91,6 +91,20 @@ validated_findings:
     在线性加权框架下已达局部最优。
     进一步提升可能需要非线性方法或额外数据源。
 
+scoring_weights_reference:
+  positive:
+    - { signal: anti_climax, source: climax_score, weight: 0.20, note: "远离高潮顶部" }
+    - { signal: consistency, source: volume_consistency_score, weight: 0.15, note: "成交量稳定可靠" }
+    - { signal: consolidation, source: post_spike_consolidation, weight: 0.15, note: "放量后整理充分" }
+    - { signal: trend_quality, source: trend_quality_20d, weight: 0.10, note: "20日趋势质量" }
+    - { signal: buildup, source: volume_buildup_quality, weight: 0.10, note: "量能逐步堆积" }
+    - { signal: accumulation, source: accumulation_score, weight: 0.10, note: "持续性资金流入" }
+    - { signal: momentum_quality, source: momentum_quality_ratio, weight: 0.05, note: "动量质量" }
+  penalties:
+    - { signal: recent_spike_penalty, source: recent_vol_spike_max, weight: 0.10, note: "异常放量冲高" }
+    - { signal: resistance_penalty, source: resistance_proximity_penalty, weight: 0.10, note: "接近阻力位" }
+    - { signal: surge_penalty, source: pct_chg, weight: 0.05, note: "当日涨跌幅>3%" }
+
 iteration_milestones:
   - iteration: "v1.0"
     note: "初始公式设计，基于全景/聪明钱/深度价值三套公式的共性提炼"

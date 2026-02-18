@@ -232,12 +232,12 @@ class ScreenerService:
                 "abstain_reason": "narrow_breadth",
             }
 
+        if tab not in STRATEGIES:
+            tab = "overnight"  # Default to overnight if unknown tab is provided
         # Calculate scores based on tab
-        if tab in STRATEGIES:
-            df, score_col = score_tab(tab, df, market_regime_score=regime["market_regime_score"])  # type: ignore[arg-type]
-        else:
-            df = scoring_engine.calculate_panorama_score(df)
-            score_col = "panorama_score"
+
+        
+        df, score_col = score_tab(tab, df, market_regime_score=regime["market_regime_score"])  # type: ignore[arg-type]
 
         # Generate quant labels
         df = scoring_engine.generate_quant_labels(df)

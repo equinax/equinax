@@ -1,6 +1,7 @@
 """Sector Heatmap service for Alpha Radar.
 
 Provides industry-level aggregation for treemap visualization.
+Includes panorama scoring logic used exclusively by this service.
 """
 
 from datetime import date
@@ -11,6 +12,98 @@ import polars as pl
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.services.alpha_radar.polars_engine import PolarsEngine
+
+
+# --- Panorama scoring (self-contained, used only by heatmap) ---
+
+# Columns that panorama scoring needs, with their defaults
+_PANORAMA_REQUIRED_COLUMNS = {
+    "accumulation_score": 0.0,
+    "ma_alignment_score": 50.0,
+    "momentum_percentile": 0.5,
+    "trend_quality_20d": 50.0,
+    "volume_buildup_quality": 40.0,
+    "climax_score": 0.0,
+    "post_spike_consolidation": 50.0,
+    "recent_vol_spike_max": 0.0,
+}
+
+
+def _calculate_panorama_score(df: pl.DataFrame, market_regime_score: float = 50.0) -> pl.DataFrame:
+    """Calculate panorama (全景) composite score for heatmap visualization.
+
+    Iter 11: Low-VBQ penalty from cross-date failure analysis (12-01, 12-22).
+
+    Observation: On mixed-result dates, losers have significantly lower VBQ
+    than winners.  12-01: loser group avg VBQ=67.3 vs winner group avg VBQ=78.3
+    (delta +11.6).  11-10: delta +14.8.  Low VBQ indicates sloppy/inconsistent
+    volume buildup — distribution rather than accumulation.
+
+    Implementation: penalty fires only when VBQ < 65.
+    Formula: ((65 - VBQ).clip(0, 25) / 25) * 100.  Weight: 0.05.
+
+    Result: Panorama WR 80.0% → 82.9% (+2.9pp).  Other tabs unchanged.
+
+    Note: Quadratic spike penalty was also tested (Attempt A) but REJECTED —
+    it reduced penalty on low-spike losers (荣昌生物 spike=5.5, T+5=-8.64%),
+    promoting them into top 5 and causing panorama regression to 74.3%.
+    Linear spike * 0.15 retained.
+    """
+    if df.is_empty():
+        return df
+
+    # Ensure required columns exist with defaults
+    for col, default in _PANORAMA_REQUIRED_COLUMNS.items():
+        if col not in df.columns:
+            df = df.with_columns(pl.lit(default).alias(col))
+
+    df = df.with_columns(
+        [
+            (pl.col("accumulation_score").fill_null(0.0) * 100).alias("accumulation_component"),
+            (pl.col("ma_alignment_score").fill_null(50.0)).alias("alignment_component"),
+            (pl.col("momentum_percentile").fill_null(0.5) * 100).alias("momentum_component"),
+            (pl.col("trend_quality_20d").fill_null(50.0)).alias("trend_quality_component"),
+            (pl.col("volume_buildup_quality").fill_null(40.0)).alias("buildup_component"),
+            ((1 - pl.col("climax_score").fill_null(0.0)) * 100).alias("anti_climax_component"),
+            (pl.col("post_spike_consolidation").fill_null(50.0)).alias("consolidation_component"),
+            (pl.col("recent_vol_spike_max").fill_null(0.0)).alias("recent_spike_penalty"),
+            # Iter 11: low-VBQ penalty — fires only when VBQ < 65
+            (
+                (65.0 - pl.col("volume_buildup_quality").fill_null(40.0)).clip(0.0, 25.0)
+                / 25.0
+                * 100
+            ).alias("low_vbq_penalty"),
+        ]
+    )
+
+    raw_score = (
+        pl.col("accumulation_component") * 0.15
+        + pl.col("alignment_component") * 0.10
+        + pl.col("momentum_component") * 0.05
+        + pl.col("trend_quality_component") * 0.10
+        + pl.col("buildup_component") * 0.10
+        + pl.col("anti_climax_component") * 0.20
+        + pl.col("consolidation_component") * 0.15
+        - pl.col("recent_spike_penalty") * 0.15
+        - pl.col("low_vbq_penalty") * 0.05
+    )
+
+    # Apply market regime discount
+    rs = market_regime_score
+    if rs >= 60:
+        discount = min(1.25, 1.0 + (rs - 60.0) / 40.0 * 0.25)
+    elif rs >= 40:
+        discount = max(0.85, min(1.0, 1.0 + (rs - 50.0) / 50.0 * 0.15))
+    elif rs >= 30:
+        discount = 0.85 - (40.0 - rs) / 10.0 * 0.10
+    else:
+        discount = max(0.60, 0.75 - (30.0 - rs) / 30.0 * 0.15)
+
+    df = df.with_columns(
+        [(raw_score.clip(0.0, 100.0) * discount).clip(0.0, 100.0).alias("panorama_score")]
+    )
+
+    return df
 
 
 class SectorHeatmapService:
@@ -95,17 +188,16 @@ class SectorHeatmapService:
 
         # Calculate panorama score for score metric
         if metric == "score":
-            from app.services.alpha_radar.scoring import ScoringEngine
-            scoring_engine = ScoringEngine()
-
             # Load valuation data
             valuation_df = await self.polars_engine.load_valuation_data(
                 target_date if mode == "snapshot" else end_date
             )
             if not valuation_df.is_empty():
-                valuation_df = valuation_df.with_columns([
-                    (pl.col("pe_ttm").rank() / pl.len()).alias("pe_percentile"),
-                ])
+                valuation_df = valuation_df.with_columns(
+                    [
+                        (pl.col("pe_ttm").rank() / pl.len()).alias("pe_percentile"),
+                    ]
+                )
                 df = df.join(valuation_df, on="code", how="left")
 
             # Load style factors
@@ -117,10 +209,10 @@ class SectorHeatmapService:
                     style_df.select(["code", "size_category", "momentum_20d", "momentum_60d"]),
                     on="code",
                     how="left",
-                    suffix="_style"
+                    suffix="_style",
                 )
 
-            df = scoring_engine.calculate_panorama_score(df)
+            df = _calculate_panorama_score(df)
 
         # Aggregate by L2 first, then by L1
         sectors = self._aggregate_sectors(df, metric)
@@ -174,16 +266,22 @@ class SectorHeatmapService:
         ]
         """
         # First aggregate by L2
-        l2_agg = df.group_by(["sw_industry_l1", "sw_industry_l2"]).agg([
-            pl.len().alias("stock_count"),
-            pl.col("pct_chg").mean().alias("avg_change_pct"),
-            pl.col("amount").sum().alias("total_amount"),
-            pl.col("main_strength_proxy").mean().alias("avg_main_strength"),
-            (pl.col("panorama_score").mean() if "panorama_score" in df.columns else pl.lit(50.0)).alias("avg_score"),
-            (pl.col("pct_chg") > 0).sum().alias("up_count"),
-            (pl.col("pct_chg") < 0).sum().alias("down_count"),
-            (pl.col("pct_chg") == 0).sum().alias("flat_count"),
-        ])
+        l2_agg = df.group_by(["sw_industry_l1", "sw_industry_l2"]).agg(
+            [
+                pl.len().alias("stock_count"),
+                pl.col("pct_chg").mean().alias("avg_change_pct"),
+                pl.col("amount").sum().alias("total_amount"),
+                pl.col("main_strength_proxy").mean().alias("avg_main_strength"),
+                (
+                    pl.col("panorama_score").mean()
+                    if "panorama_score" in df.columns
+                    else pl.lit(50.0)
+                ).alias("avg_score"),
+                (pl.col("pct_chg") > 0).sum().alias("up_count"),
+                (pl.col("pct_chg") < 0).sum().alias("down_count"),
+                (pl.col("pct_chg") == 0).sum().alias("flat_count"),
+            ]
+        )
 
         # Determine value column based on metric
         value_col = {
@@ -247,7 +345,9 @@ class SectorHeatmapService:
             sector["flat_count"] += row.get("flat_count") or 0
             sector["_child_count"] += 1
             sector["_sum_change"] += (row.get("avg_change_pct") or 0) * (row["stock_count"] or 1)
-            sector["_sum_strength"] += (row.get("avg_main_strength") or 0) * (row["stock_count"] or 1)
+            sector["_sum_strength"] += (row.get("avg_main_strength") or 0) * (
+                row["stock_count"] or 1
+            )
             sector["_sum_score"] += (row.get("avg_score") or 0) * (row["stock_count"] or 1)
 
         # Finalize L1 aggregations
@@ -260,9 +360,7 @@ class SectorHeatmapService:
                 sector["avg_main_strength"] = self._to_decimal(
                     sector["_sum_strength"] / sector["stock_count"]
                 )
-                sector["avg_score"] = self._to_decimal(
-                    sector["_sum_score"] / sector["stock_count"]
-                )
+                sector["avg_score"] = self._to_decimal(sector["_sum_score"] / sector["stock_count"])
 
             # Set value based on metric
             if metric == "change":
@@ -286,10 +384,7 @@ class SectorHeatmapService:
             del sector["_sum_score"]
 
             # Sort children by size_value (amount) descending
-            sector["children"].sort(
-                key=lambda x: float(x.get("size_value") or 0),
-                reverse=True
-            )
+            sector["children"].sort(key=lambda x: float(x.get("size_value") or 0), reverse=True)
 
             sectors.append(sector)
 
@@ -305,6 +400,7 @@ class SectorHeatmapService:
         try:
             if isinstance(value, float):
                 import math
+
                 if math.isnan(value) or math.isinf(value):
                     return None
             return Decimal(str(round(float(value), 4)))

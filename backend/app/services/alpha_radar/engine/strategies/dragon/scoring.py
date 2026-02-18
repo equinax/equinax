@@ -42,52 +42,5 @@ class DragonScoringEngine(ScoringEngine):
 
         df = self._ensure_columns(df)
 
-        if self.config_mode:
-            cfg = load_strategy_config("dragon")
-            return score_from_config(cfg, df, self._apply_regime_discount)
-
-        df = df.with_columns(
-            [
-                (pl.col("main_strength_proxy").fill_null(50.0)).alias("main_strength_component"),
-                (pl.col("accumulation_score").fill_null(0.0) * 100).alias("accumulation_component"),
-                (pl.col("volume_consistency_score").fill_null(50.0)).alias("consistency_component"),
-                (pl.col("trend_quality_20d").fill_null(50.0)).alias("trend_quality_component"),
-                (pl.col("volume_buildup_quality").fill_null(40.0)).alias("buildup_component"),
-                ((1 - pl.col("climax_score").fill_null(0.0)) * 100).alias("anti_climax_component"),
-                (pl.col("elg_net_percentile").fill_null(50.0)).alias("elg_flow_component"),
-                (pl.col("recent_vol_spike_max").fill_null(0.0)).alias("recent_spike_penalty"),
-                (((pl.col("pct_chg").fill_null(0.0).abs() - 3.0).clip(0.0, 4.0) / 4.0) * 100).alias(
-                    "surge_penalty"
-                ),
-                (
-                    ((pl.col("price_position_60d").fill_null(0.5) - 0.80).clip(0.0, 0.20) / 0.20)
-                    * 100
-                ).alias("ceiling_penalty"),
-                (
-                    ((pl.col("sector_momentum_5d").fill_null(0.0) + 5.0) / 15.0).clip(0.0, 1.0)
-                    * 100
-                ).alias("sector_momentum_positive"),
-                (pl.col("resistance_proximity_penalty").fill_null(0.0)).alias("resistance_penalty"),
-            ]
-        )
-
-        raw_score = (
-            pl.col("main_strength_component") * 0.10
-            + pl.col("accumulation_component") * 0.10
-            + pl.col("consistency_component") * 0.05
-            + pl.col("trend_quality_component") * 0.15
-            + pl.col("buildup_component") * 0.05
-            + pl.col("anti_climax_component") * 0.15
-            + pl.col("elg_flow_component") * 0.05
-            + pl.col("sector_momentum_positive") * 0.17
-            - pl.col("recent_spike_penalty") * 0.10
-            - pl.col("surge_penalty") * 0.08
-            - pl.col("ceiling_penalty") * 0.05
-            - pl.col("resistance_penalty") * 0.05
-        )
-
-        df = df.with_columns(
-            [self._apply_regime_discount(raw_score.clip(0.0, 100.0)).alias("dragon_score")]
-        )
-
-        return df
+        cfg = load_strategy_config("dragon")
+        return score_from_config(cfg, df, self._apply_regime_discount)

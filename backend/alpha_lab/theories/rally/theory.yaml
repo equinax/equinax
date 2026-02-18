@@ -65,6 +65,11 @@ sector_max_per_industry: 2
 market_timing:
   breadth_5d_avg_threshold: 40.0
   action: abstain
+  evidence:
+    - { date: "2025-03-26", win_rate: 0.0, breadth_5d_avg: 38.6, note: "窄市场，全输" }
+    - { date: "2025-11-24", win_rate: 20.0, breadth_5d_avg: 31.5, note: "最低宽度" }
+    - { date: "2025-09-24", win_rate: 40.0, breadth_5d_avg: 39.6, note: "边界" }
+  conclusion: "breadth_5d_avg >= 40%的日期胜率显著更高。此过滤精准捕获了最差的2个交易日。"
 
 validated_findings:
   effective:
@@ -167,6 +172,9 @@ key_insight: |
   聚合层面的良好判别力不等于评分层面的提升。
   用于重排序时，这些因子会将 top-N 选择不可预测地打乱，
   被替换进来的股票不一定更好。
+  具体证伪: elg_net_percentile(Iter3,4a-4c), value_percentile(Iter5a),
+  stability_score(Iter5b), return_5d(Iter3) — 各种形式均回退。
+  根因: 截面因子作为评分组件时，一致性导致回退。
 
 iteration_milestones:
   - iteration: "v1.0"

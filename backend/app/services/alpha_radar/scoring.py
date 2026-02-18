@@ -4,40 +4,9 @@ This module contains configurable scoring formulas for different screener tabs.
 Scores are designed to be easily adjustable during the exploration phase.
 """
 
-from dataclasses import dataclass
-from typing import List, Optional
+from typing import List
 
 import polars as pl
-
-
-@dataclass
-class ScoreWeights:
-    """Weight configuration for composite scores."""
-
-    panorama_momentum: float = 0.20
-    panorama_value: float = 0.20
-    panorama_quality: float = 0.20
-    panorama_smart_money: float = 0.20
-    panorama_technical: float = 0.20
-
-    smart_main_strength: float = 0.30
-    smart_volume_pattern: float = 0.25
-    smart_price_position: float = 0.20
-    smart_institutional: float = 0.25
-
-    value_valuation_rank: float = 0.35
-    value_quality: float = 0.25
-    value_stability: float = 0.25
-    value_dividend: float = 0.15
-
-    trend_momentum: float = 0.25
-    trend_breakout: float = 0.20
-    trend_volume_confirm: float = 0.25
-    trend_strength: float = 0.30
-
-
-# Default weights - can be modified without database migration
-DEFAULT_WEIGHTS = ScoreWeights()
 
 
 class ScoringEngine:
@@ -49,13 +18,9 @@ class ScoringEngine:
 
     def __init__(
         self,
-        weights: Optional[ScoreWeights] = None,
         market_regime_score: float = 50.0,
-        config_mode: bool = False,
     ):
-        self.weights = weights or DEFAULT_WEIGHTS
         self.market_regime_score = market_regime_score
-        self.config_mode = config_mode
 
     def _apply_regime_discount(self, raw_score_expr, regime_weight: float = 0.20):
         """Apply market regime discount to a raw score expression.
@@ -87,70 +52,6 @@ class ScoringEngine:
             discount = 0.75 - (30.0 - rs) / 30.0 * 0.15
             discount = max(0.60, discount)
         return (raw_score_expr * discount).clip(0.0, 100.0)
-
-    def calculate_panorama_score(self, df: pl.DataFrame) -> pl.DataFrame:
-        """Calculate panorama (全景) composite score.
-
-        Iter 11: Low-VBQ penalty from cross-date failure analysis (12-01, 12-22).
-
-        Observation: On mixed-result dates, losers have significantly lower VBQ
-        than winners.  12-01: loser group avg VBQ=67.3 vs winner group avg VBQ=78.3
-        (delta +11.6).  11-10: delta +14.8.  Low VBQ indicates sloppy/inconsistent
-        volume buildup — distribution rather than accumulation.
-
-        Implementation: penalty fires only when VBQ < 65.
-        Formula: ((65 - VBQ).clip(0, 25) / 25) * 100.  Weight: 0.05.
-
-        Result: Panorama WR 80.0% → 82.9% (+2.9pp).  Other tabs unchanged.
-
-        Note: Quadratic spike penalty was also tested (Attempt A) but REJECTED —
-        it reduced penalty on low-spike losers (荣昌生物 spike=5.5, T+5=-8.64%),
-        promoting them into top 5 and causing panorama regression to 74.3%.
-        Linear spike * 0.15 retained.
-        """
-        if df.is_empty():
-            return df
-
-        df = self._ensure_columns(df)
-
-        df = df.with_columns(
-            [
-                (pl.col("accumulation_score").fill_null(0.0) * 100).alias("accumulation_component"),
-                (pl.col("ma_alignment_score").fill_null(50.0)).alias("alignment_component"),
-                (pl.col("momentum_percentile").fill_null(0.5) * 100).alias("momentum_component"),
-                (pl.col("trend_quality_20d").fill_null(50.0)).alias("trend_quality_component"),
-                (pl.col("volume_buildup_quality").fill_null(40.0)).alias("buildup_component"),
-                ((1 - pl.col("climax_score").fill_null(0.0)) * 100).alias("anti_climax_component"),
-                (pl.col("post_spike_consolidation").fill_null(50.0)).alias(
-                    "consolidation_component"
-                ),
-                (pl.col("recent_vol_spike_max").fill_null(0.0)).alias("recent_spike_penalty"),
-                # Iter 11: low-VBQ penalty — fires only when VBQ < 65
-                (
-                    (65.0 - pl.col("volume_buildup_quality").fill_null(40.0)).clip(0.0, 25.0)
-                    / 25.0
-                    * 100
-                ).alias("low_vbq_penalty"),
-            ]
-        )
-
-        raw_score = (
-            pl.col("accumulation_component") * 0.15
-            + pl.col("alignment_component") * 0.10
-            + pl.col("momentum_component") * 0.05
-            + pl.col("trend_quality_component") * 0.10
-            + pl.col("buildup_component") * 0.10
-            + pl.col("anti_climax_component") * 0.20
-            + pl.col("consolidation_component") * 0.15
-            - pl.col("recent_spike_penalty") * 0.15
-            - pl.col("low_vbq_penalty") * 0.05
-        )
-
-        df = df.with_columns(
-            [self._apply_regime_discount(raw_score.clip(0.0, 100.0)).alias("panorama_score")]
-        )
-
-        return df
 
     def generate_quant_labels(self, df: pl.DataFrame) -> pl.DataFrame:
         """Generate quantitative labels for stocks."""

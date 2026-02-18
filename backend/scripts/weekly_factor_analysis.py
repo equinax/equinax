@@ -148,7 +148,7 @@ def build_scored_df(
         df = df.filter(pl.col("pct_chg").fill_null(0.0).abs() <= 5.0)
 
     # Score using the engine
-    df, score_col = score_tab("weekly", df, market_regime_score=regime_score, config_mode=True)  # type: ignore[arg-type]
+    df, score_col = score_tab("weekly", df, market_regime_score=regime_score)  # type: ignore[arg-type]
 
     # Sort by score
     df = df.sort([score_col, "code"], descending=[True, False], nulls_last=True)

@@ -1,5 +1,5 @@
 # Dragon Leader (龙头涨停) 理论纲领
-# 结构化版本 — 从 theory.md (Iter 21) 转换
+# 单一信息源 (Single Source of Truth)
 # 本文件供 AI Agent 读取，用于因子分析和迭代决策
 
 strategy: dragon
@@ -243,3 +243,496 @@ iteration_milestones:
     changes: "surge_penalty 0.08→0.04"
     metrics: { win_rate: 56.6, avg_return: 2.61 }
     note: "20轮迭代最终配置"
+
+# ============================================================
+# 涨停行为微观结构 (从 theory.md 合并)
+# ============================================================
+
+behavioral_model:
+  lifecycle:
+    description: "每一次涨停事件都遵循一个可识别的行为生命周期"
+    sequence: "吸筹 → 拉升 → 回踩 → 确认 → 主升 → 分歧 → 退潮"
+    target_window: "在吸筹→确认阶段介入，在主升阶段获利。避开分歧→退潮阶段。"
+    stages:
+      - name: 吸筹
+        behavior: "主力低位建仓，压制股价在窄幅震荡"
+        volume_price: "缩量横盘，换手率低但稳定递增"
+        signals: "accumulation_score↑, vol_cv_10d↓, turnover_change_20d缓升"
+      - name: 拉升
+        behavior: "试探性拉升，测试抛压和跟风意愿"
+        volume_price: "放量上涨，上影线较长"
+        signals: "vol_ramp_5v20↑, upper_shadow_ratio↑, main_strength_proxy↑"
+      - name: 回踩
+        behavior: "洗盘，清洗浮筹，测试支撑位"
+        volume_price: "缩量回落，但不破关键均线"
+        signals: "post_spike_consolidation↓, price_range_position_20d回中"
+      - name: 确认
+        behavior: "回踩后企稳，量能再次温和放大"
+        volume_price: "低位缩量止跌 + 反弹放量"
+        signals: "ma_alignment_score↑, stability_score↓, volume_buildup_quality↑"
+      - name: 主升
+        behavior: "涨停爆发，连板或大阳线"
+        volume_price: "巨量封板，换手率飙升"
+        signals: "涨停触发（事件本身）"
+      - name: 分歧
+        behavior: "多空博弈加剧，市场对后续走势存疑"
+        volume_price: "高位放量震荡，涨停后次日大幅高开低走"
+        signals: "climax_score↑, exhaustion_at_ceiling↑"
+      - name: 退潮
+        behavior: "资金撤退，获利盘出逃"
+        volume_price: "放量下跌或连续阴线"
+        signals: "recent_vol_spike_max↑ + 价格下行"
+
+  operator_types:
+    - type: 游资短线操盘
+      duration: "1-3日"
+      behavior: "快速建仓→猛烈拉升→次日出货。通常选择小市值、题材热点股。"
+      volume_price_signature:
+        - "突然放巨量(vol_ramp_5v20 > 0.5)，之前无明显吸筹期"
+        - "换手率骤升(turn_ramp_5v20极端值)"
+        - "封板时间晚（尾盘封板）或反复开板"
+        - "上龙虎榜频繁"
+      exploitability: "低。爆发性强但持续期短，T+20评估期内大概率已回落。"
+      identification: "vol_ramp_5v20极端 + accumulation_score低 + turnover_change_20d无前期爬升"
+    - type: 机构主导运作
+      duration: "1-4周"
+      behavior: "缓慢吸筹→逐步拉升→阶梯式上涨→分批出货。偏好基本面支撑的标的。"
+      volume_price_signature:
+        - "吸筹期成交量温和放大(accumulation_score持续走高)"
+        - "拉升期量价齐升，但上影线短(upper_shadow_ratio低)"
+        - "主力资金净流入持续正值(main_strength_proxy↑, mf_net_percentile↑)"
+        - "价格沿MA5/MA10稳步推进(ma_alignment_score高)"
+      exploitability: "高。持续期匹配T+20评估窗口，胜率和收益均较优。"
+      identification: "accumulation_score↑ + main_strength_proxy↑ + ma_alignment_score↑ + vol_cv_10d适中"
+    - type: 板块轮动共振
+      duration: "1-2周板块级别"
+      behavior: "政策/事件驱动，板块内个股依次启动，龙头先涨停带动跟风。"
+      volume_price_signature:
+        - "板块指数先行走强(sector_momentum_5d↑)"
+        - "同板块多只股票同日涨停或近日连续涨停"
+        - "个股可能无明显吸筹期，受板块情绪带动"
+        - "龙头与跟风的分化：龙头连板，跟风只有首板"
+      exploitability: "中等。龙头股持续性好，但跟风股容易次日回落。"
+      identification: "sector_momentum_5d显著正值 + 同板块涨停数量 > 2"
+
+  motivation_model:
+    flow: "吸引关注 → 上榜(龙虎榜/涨幅榜) → 引入跟风资金 → 手中持仓变现退出"
+    implications:
+      - "涨停是手段，不是目的 — 操盘方的真正目标是在高位出货"
+      - "涨停前必有蓄力 — 除非是纯游资闪电战，否则拉涨停之前必须建仓"
+      - "涨停后必有分歧 — 拉涨停本身会暴露意图，引发多空博弈"
+      - "持续性取决于筹码结构 — 吸筹充分 + 浮筹清洗到位 = 后续涨停持续性强"
+    strategy_implication: |
+      我们要找的是吸筹充分但尚未拉升的标的（生命周期的"确认"阶段），
+      而不是已经开始拉升的标的（追涨停 = 帮人抬轿）。
+
+emotion_analysis:
+  market_emotion_cycle:
+    - stage: 冰点
+      characteristics: "连板高度降低(max 2-3板)，跌停数 > 涨停数，成交量萎缩"
+      impact: "涨停持续性差，但超跌反弹型涨停的T+20收益反而较好"
+    - stage: 修复
+      characteristics: "首板数量回升，但连板成功率仍低"
+      impact: "开始出现机会，但需精选"
+    - stage: 升温
+      characteristics: "连板高度提升(5板+)，板块轮动加速"
+      impact: "最佳窗口期，涨停持续性好"
+    - stage: 高潮
+      characteristics: "全市场普涨，涨停数量爆发(100+)，情绪极度亢奋"
+      impact: "胜率高但选择困难，需防范高潮退潮"
+    - stage: 退潮
+      characteristics: "龙头股断板，跟风股暴跌，情绪急剧转冷"
+      impact: "高危期，避免操作"
+
+  emotion_data_mapping:
+    - dimension: 市场活跃度
+      factor: sector_momentum_5d
+      interpretation: "板块普遍上涨 = 情绪偏暖"
+    - dimension: 筹码松动度
+      factor: turnover_change_20d
+      interpretation: "换手率上升 = 市场参与度提高"
+    - dimension: 主力态度
+      factors: ["main_strength_proxy", "mf_net_percentile"]
+      interpretation: "机构资金流入 = 聪明钱看多"
+    - dimension: 趋势确认
+      factor: positive_day_ratio_20d
+      interpretation: "阳线占比高 = 上涨趋势确立"
+    - dimension: 过热预警
+      factors: ["climax_score", "recent_vol_spike_max"]
+      interpretation: "量价极端 = 情绪过热"
+
+  behavioral_biases:
+    - name: 锚定效应
+      description: "投资者倾向锚定前高，导致阻力位附近卖压增大。但对龙头股，突破阻力位反而是强势信号。"
+      strategy_link: "这是降低ceiling_penalty和resistance_penalty的理论依据"
+    - name: 追涨杀跌
+      description: "涨停后次日高开低走(分歧)，本质是短线客追涨后获利出逃。"
+      strategy_link: "post_spike_consolidation度量了这种行为消退的程度"
+    - name: 从众效应
+      description: "板块轮动中的跟风效应。"
+      strategy_link: "sector_momentum_5d反映了板块级别的情绪共振"
+    - name: 损失厌恶
+      description: "被套投资者在解套位附近倾向卖出，造成60日高位附近的抛压。但这对龙头股是伪信号——真正的龙头会突破解套盘。"
+
+cohens_d_analysis:
+  data_date: "2026-02-17"
+  window: "T-5 Overall"
+  ranking:
+    - rank: 1
+      factor: main_strength_proxy
+      cohens_d: 0.228
+      status: "正向 w=0.10"
+      assessment: "有效但权重偏低"
+    - rank: 2
+      factor: accumulation_score
+      cohens_d: 0.213
+      status: "正向 w=0.10"
+      assessment: "有效但权重偏低"
+    - rank: 3
+      factor: up_volume_ratio
+      cohens_d: 0.197
+      status: "未使用"
+      assessment: "强信号，应加入"
+    - rank: 4
+      factor: price_range_position_20d
+      cohens_d: 0.194
+      status: "未使用"
+      assessment: "强信号，应加入"
+    - rank: 5
+      factor: post_spike_consolidation
+      cohens_d: -0.190
+      status: "未使用"
+      assessment: "负向信号(低=赢)，可作惩罚或反转"
+    - rank: 6
+      factor: climax_score
+      cohens_d: 0.186
+      status: "反转为anti_climax w=0.15"
+      assessment: "d为正但我们取反"
+    - rank: 7
+      factor: vol_ramp_5v20
+      cohens_d: 0.181
+      status: "未使用"
+      assessment: "强信号，应加入"
+    - rank: 8
+      factor: turnover_change_20d
+      cohens_d: 0.177
+      status: "未使用"
+      assessment: "强信号，应加入"
+    - rank: 9
+      factor: price_position_60d
+      cohens_d: 0.176
+      status: "惩罚 w=0.05"
+      assessment: "d为正但作惩罚(方向矛盾)"
+    - rank: 10
+      factor: ma_alignment_score
+      cohens_d: 0.169
+      status: "未使用"
+      assessment: "均线排列信号"
+    - rank: 11
+      factor: positive_day_ratio_20d
+      cohens_d: 0.167
+      status: "未使用"
+      assessment: "阳线占比"
+    - rank: 12
+      factor: turn_ramp_5v20
+      cohens_d: 0.159
+      status: "未使用"
+      assessment: "换手率加速"
+    - rank: 13
+      factor: volume_buildup_quality
+      cohens_d: 0.143
+      status: "正向 w=0.05"
+      assessment: "权重可提"
+    - rank: 14
+      factor: recent_vol_spike_max
+      cohens_d: 0.136
+      status: "惩罚 w=0.10"
+      assessment: "d为正但作惩罚(方向矛盾)"
+    - rank: 15
+      factor: days_since_vol_peak_20d
+      cohens_d: -0.124
+      status: "未使用"
+      assessment: "负向信号"
+    - rank: 16
+      factor: stability_score
+      cohens_d: -0.101
+      status: "未使用"
+      assessment: "负向信号(低=赢)"
+    - rank: 17
+      factor: volume_ratio_5d
+      cohens_d: 0.100
+      status: "未使用"
+      assessment: "弱信号"
+    - rank: 18
+      factor: upper_shadow_ratio
+      cohens_d: -0.094
+      status: "未使用"
+      assessment: "弱负向信号"
+    - rank: 19
+      factor: mf_net_percentile
+      cohens_d: 0.094
+      status: "未使用"
+      assessment: "弱信号"
+    - rank: 20
+      factor: return_5d
+      cohens_d: 0.091
+      status: "未使用"
+      assessment: "已涨=后续涨停，但惩罚已证伪"
+    - rank: 21
+      factor: pct_chg
+      cohens_d: 0.089
+      status: "surge_penalty w=0.08"
+      assessment: "弱信号"
+    - rank: 22
+      factor: close_strength
+      cohens_d: 0.080
+      status: "未使用"
+      assessment: "弱信号"
+    - rank: 23
+      factor: momentum_quality_ratio
+      cohens_d: 0.057
+      status: "未使用"
+      assessment: "极弱"
+    - rank: 24
+      factor: vol_cv_10d
+      cohens_d: 0.053
+      status: "未使用"
+      assessment: "极弱"
+    - rank: 25
+      factor: resistance_proximity_penalty
+      cohens_d: 0.050
+      status: "惩罚 w=0.05"
+      assessment: "极弱"
+    - rank: 26
+      factor: volume_consistency_score
+      cohens_d: -0.055
+      status: "正向 w=0.05"
+      assessment: "d为负但作正向(矛盾)"
+    - rank: 27
+      factor: elg_net_percentile
+      cohens_d: -0.047
+      status: "正向 w=0.05"
+      assessment: "d为负但作正向(矛盾)"
+    - rank: 28
+      factor: exhaustion_at_ceiling
+      cohens_d: 0.041
+      status: "未使用"
+      assessment: "极弱"
+    - rank: 29
+      factor: sector_momentum_5d
+      cohens_d: 0.029
+      status: "正向 w=0.17"
+      assessment: "极弱但权重最高(严重错配)"
+    - rank: 30
+      factor: trend_quality_20d
+      cohens_d: -0.005
+      status: "正向 w=0.15"
+      assessment: "零区分度但权重第2高(严重错配)"
+
+cohens_d_by_board_count:
+  data_date: "2026-02-17"
+  window: "T-5"
+  data:
+    - factor: main_strength_proxy
+      board_1: { n: 1156, d: 0.260 }
+      board_2: { n: 263, d: 0.177 }
+      board_3_plus: { n: 214, d: 0.121 }
+      pattern: "首板最强"
+    - factor: accumulation_score
+      board_1: { d: 0.231 }
+      board_2: { d: 0.207 }
+      board_3_plus: { d: 0.129 }
+      pattern: "首板最强"
+    - factor: vol_ramp_5v20
+      board_1: { d: 0.213 }
+      board_2: { d: 0.127 }
+      board_3_plus: { d: 0.077 }
+      pattern: "首板独有"
+    - factor: turnover_change_20d
+      board_1: { d: 0.208 }
+      board_2: { d: 0.126 }
+      board_3_plus: { d: 0.077 }
+      pattern: "首板独有"
+    - factor: price_range_position_20d
+      board_1: { d: 0.219 }
+      board_2: { d: 0.180 }
+      board_3_plus: { d: 0.077 }
+      pattern: "首板+2板"
+    - factor: up_volume_ratio
+      board_1: { d: 0.180 }
+      board_2: { d: 0.280 }
+      board_3_plus: { d: 0.186 }
+      pattern: "2板最强"
+    - factor: mf_net_percentile
+      board_1: { d: 0.063 }
+      board_2: { d: 0.256 }
+      board_3_plus: { d: 0.069 }
+      pattern: "2板独有"
+    - factor: climax_score
+      board_1: { d: 0.182 }
+      board_2: { d: 0.248 }
+      board_3_plus: { d: 0.137 }
+      pattern: "2板最强"
+    - factor: positive_day_ratio_20d
+      board_1: { d: 0.132 }
+      board_2: { d: 0.244 }
+      board_3_plus: { d: 0.259 }
+      pattern: "3+板最强"
+    - factor: post_spike_consolidation
+      board_1: { d: -0.209 }
+      board_2: { d: -0.155 }
+      board_3_plus: { d: -0.135 }
+      pattern: "首板最强(负=好)"
+  key_insights:
+    - "首板(1板)信号最丰富，也是数据量最大的群组(n=1156)"
+    - "不同连板数有不同的有效因子 — 未来可考虑分层评分"
+    - "main_strength_proxy和accumulation_score是跨所有连板数最稳定的信号"
+
+factor_weight_mismatch:
+  data_date: "2026-02-17"
+  critical_findings:
+    - factor: sector_momentum_5d
+      weight: 0.17
+      cohens_d: 0.029
+      issue: "权重最高但d=0.029几乎无区分度"
+    - factor: trend_quality_20d
+      weight: 0.15
+      cohens_d: -0.005
+      issue: "权重第二高但d=-0.005完全无区分度"
+    - factor: price_position_60d
+      weight: 0.05
+      role: penalty
+      cohens_d: 0.176
+      issue: "正信号却被惩罚(方向错误)"
+    - factor: recent_vol_spike_max
+      weight: 0.10
+      role: penalty
+      cohens_d: 0.136
+      issue: "正信号却被惩罚(方向错误)"
+    - factor: volume_consistency_score
+      weight: 0.05
+      role: positive
+      cohens_d: -0.055
+      issue: "负信号却作正向(方向错误)"
+    - factor: elg_net_percentile
+      weight: 0.05
+      role: positive
+      cohens_d: -0.047
+      issue: "负信号却作正向(方向错误)"
+  summary: "多个d > 0.15的强信号(up_volume_ratio, price_range_position_20d, vol_ramp_5v20, turnover_change_20d)完全未被使用"
+
+unused_signals:
+  data_date: "2026-02-17"
+  signals:
+    - factor: up_volume_ratio
+      cohens_d: 0.197
+      potential_use: "正向：上涨成交量占比"
+    - factor: price_range_position_20d
+      cohens_d: 0.194
+      potential_use: "正向：20日价格位置"
+    - factor: vol_ramp_5v20
+      cohens_d: 0.181
+      potential_use: "正向：5日vs20日量比加速"
+    - factor: turnover_change_20d
+      cohens_d: 0.177
+      potential_use: "正向：换手率变化"
+    - factor: ma_alignment_score
+      cohens_d: 0.169
+      potential_use: "正向：均线多头排列"
+    - factor: positive_day_ratio_20d
+      cohens_d: 0.167
+      potential_use: "正向：阳线占比"
+    - factor: turn_ramp_5v20
+      cohens_d: 0.159
+      potential_use: "正向：换手率加速比"
+    - factor: post_spike_consolidation
+      cohens_d: -0.190
+      potential_use: "反向/惩罚：冲高后回落程度"
+    - factor: days_since_vol_peak_20d
+      cohens_d: -0.124
+      potential_use: "反向：距量峰天数"
+    - factor: stability_score
+      cohens_d: -0.101
+      potential_use: "反向：价格稳定度(低=好)"
+
+iteration_strategy:
+  priority_order:
+    - priority: 1
+      label: "最高优先 — 修正方向矛盾的惩罚因子"
+      items:
+        - factor: price_position_60d
+          cohens_d: 0.176
+          action: "正信号却被惩罚，考虑反转为正向或移除惩罚"
+        - factor: recent_vol_spike_max
+          cohens_d: 0.136
+          action: "正信号却被惩罚，同上"
+    - priority: 2
+      label: "高优先 — 加入未使用的强信号"
+      items:
+        - { factor: up_volume_ratio, cohens_d: 0.197 }
+        - { factor: vol_ramp_5v20, cohens_d: 0.181 }
+        - { factor: turnover_change_20d, cohens_d: 0.177 }
+    - priority: 3
+      label: "中优先 — 降低零区分度因子权重"
+      items:
+        - factor: sector_momentum_5d
+          cohens_d: 0.029
+          weight: 0.17
+          issue: "权重与区分度严重不匹配"
+        - factor: trend_quality_20d
+          cohens_d: -0.005
+          weight: 0.15
+          issue: "零区分度"
+    - priority: 4
+      label: "低优先 — 微调已有有效因子"
+      items:
+        - factor: main_strength_proxy
+          cohens_d: 0.228
+          weight: 0.10
+          action: "可提权"
+        - factor: accumulation_score
+          cohens_d: 0.213
+          weight: 0.10
+          action: "可提权(但小幅调整已证无效)"
+  principle: "每次迭代只做一个变更。优先选择预期收益最大、风险最小的变更。避免never_retry清单中的所有方向。"
+
+roadmap:
+  phases:
+    - phase: 1
+      name: "因子权重校准（当前阶段）"
+      actions:
+        - "基于新数据Cohen's d重新分配权重"
+        - "引入被忽略的强信号因子"
+        - "修正方向矛盾的惩罚因子"
+      target: "WR > 55%, AR > 3%"
+    - phase: 2
+      name: "多因子组合评分"
+      actions:
+        - "同时调整2-3个因子权重"
+        - "加入新的正向因子(up_volume_ratio, vol_ramp_5v20等)"
+        - "重新审视惩罚因子方向"
+      target: "WR > 58%, AR > 4%"
+    - phase: 3
+      name: "时序结构评分（未来）"
+      actions:
+        - "需要引擎层面支持多时间窗口因子"
+        - "构建结构得分独立模块"
+        - "将时序模式识别结果作为加分项叠加到现有评分"
+      target: "WR > 60%, AR > 5%"
+  candidate_patterns:
+    - name: 机构吸筹型
+      stage: "吸筹→确认"
+      sequence: "accumulation↑(T-20) → vol_cv_10d↓(T-10) → vol_ramp_5v20↑(T-5)"
+      description: "先缩量吸筹，再温和放量"
+    - name: 板块共振型
+      stage: "升温→共振"
+      sequence: "sector_momentum↑(T-10) → positive_day_ratio↑(T-5) → ma_alignment↑(T-3)"
+      description: "板块先行，个股跟随"
+    - name: 超跌反弹型
+      stage: "退潮→修复"
+      sequence: "price_position_60d↓(T-15) → post_spike_consolidation↓(T-10) → up_volume_ratio↑(T-3)"
+      description: "超跌后资金抄底"
+    - name: 主力蓄势型
+      stage: "吸筹→蓄力"
+      sequence: "main_strength↑(T-15) → turnover_change↑(T-10) → volume_buildup↑(T-5)"
+      description: "主力持续加仓"

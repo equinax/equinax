@@ -1,0 +1,85 @@
+strategy: overnight
+version: "1.0"
+description: "隔夜超短 — 捕捉尾盘强势收盘、次日大概率高开或延续的确定性隔夜机会。T+1买T+2卖。"
+
+core_thesis: |
+  选择尾盘收盘强势(close_strength高)、趋势健康、量价稳定的品种，
+  利用隔夜信息差和尾盘资金动向预判次日开盘走势。
+  核心逻辑：强势收盘 + 趋势支撑 + 远离高潮 = 隔夜正收益概率高。
+
+eval_period: 2
+eval_basis: "T+1 开盘买入, T+2 收盘评估"
+
+current_performance:
+  iteration: 0
+  status: "pending first backtest"
+  metrics: null
+  targets:
+    win_rate: 60.0
+    avg_return: 1.0
+
+positive_factors:
+  - signal: close_strength_component
+    source: close_strength
+    weight: 0.20
+    description: "尾盘收盘强度(close vs high-low range)，隔夜策略的核心信号"
+  - signal: trend_quality_component
+    source: trend_quality_20d
+    weight: 0.15
+    description: "20日趋势质量，确保趋势方向明确"
+  - signal: positive_day_ratio_component
+    source: positive_day_ratio_20d
+    weight: 0.10
+    description: "近20日阳线占比，验证上涨持续性"
+  - signal: accumulation_component
+    source: accumulation_score
+    weight: 0.10
+    description: "持续性资金流入信号"
+  - signal: consistency_component
+    source: volume_consistency_score
+    weight: 0.10
+    description: "成交量稳定性，避免异常波动品种"
+  - signal: anti_climax_component
+    source: climax_score
+    transform: "(1 - col) * 100"
+    weight: 0.10
+    description: "远离高潮区域，避免追高"
+  - signal: stability_component
+    source: stability_score
+    weight: 0.10
+    description: "价格稳定度，隔夜持仓需要低波动"
+  - signal: short_momentum_component
+    source: return_5d
+    transform: "((col + 5.0) / 10.0).clip(0.0, 1.0) * 100"
+    weight: 0.05
+    description: "近5日短期动量，归一化至0-100"
+
+penalties:
+  - signal: upper_shadow_penalty
+    source: upper_shadow_ratio
+    transform: "(col * 5.0).clip(0.0, 1.0) * 100"
+    weight: 0.08
+    description: "上影线比例惩罚，上影线长=抛压大，隔夜不利"
+  - signal: recent_spike_penalty
+    source: recent_vol_spike_max
+    weight: 0.06
+    description: "近期异常放量冲高惩罚"
+  - signal: resistance_penalty
+    source: resistance_proximity_penalty
+    weight: 0.06
+    description: "接近阻力位惩罚"
+
+filters: []
+
+backtest_top_n: 5
+requires_moneyflow: false
+
+regime_discount:
+  enabled: true
+
+validated_findings:
+  effective: []
+  ineffective: []
+  unexplored: []
+
+iteration_milestones: []
