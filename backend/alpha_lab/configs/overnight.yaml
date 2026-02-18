@@ -5,6 +5,7 @@ strategy: overnight
 version: "1"
 description: "隔夜超短 — 确定性隔夜机会·T+1买T+2卖"
 
+label_cn: 隔夜超短
 score_column: overnight_score
 eval_period: 2
 requires_moneyflow: false

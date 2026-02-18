@@ -5,6 +5,7 @@ strategy: rally
 version: "3b"
 description: "大盘主升 — MA多头+量能阶梯+趋势质量"
 
+label_cn: 大盘主升
 score_column: rally_score
 eval_period: 10
 requires_moneyflow: false

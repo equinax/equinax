@@ -448,10 +448,10 @@ def main():
     tabs = [t.strip() for t in args.tabs.split(",")]
 
     from scripts.alpha_radar_backtest import run_backtest
-    from app.services.alpha_radar.engine.config import STRATEGIES
+    from app.services.alpha_radar.engine.config_loader import VALID_TABS, load_strategy_config
 
-    tab_labels = {k: v.label_cn for k, v in STRATEGIES.items()}
-    tab_periods = {k: v.eval_period_trading_days for k, v in STRATEGIES.items()}
+    tab_labels = {k: load_strategy_config(k).label_cn for k in VALID_TABS}
+    tab_periods = {k: load_strategy_config(k).eval_period for k in VALID_TABS}
 
     output_dir = args.output_dir
     if not output_dir:

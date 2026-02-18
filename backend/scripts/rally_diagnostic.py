@@ -23,7 +23,7 @@ from app.db.session import async_session_maker
 from app.services.alpha_radar.polars_engine import PolarsEngine
 from app.services.alpha_radar.scoring import ScoringEngine
 from app.services.alpha_radar.engine import score_tab
-from app.services.alpha_radar.engine.config import STRATEGIES
+from app.services.alpha_radar.engine.config_loader import load_strategy_config
 from scripts.alpha_radar_backtest import (
     load_all_data,
     compute_regime_score,
@@ -37,8 +37,9 @@ logging.basicConfig(level=logging.INFO, format="%(message)s")
 log = logging.getLogger(__name__)
 
 TAB = "rally"
-EVAL_PERIOD = STRATEGIES[TAB].eval_period_trading_days
-TOP_N = STRATEGIES[TAB].backtest_top_n
+_rally_config = load_strategy_config(TAB)
+EVAL_PERIOD = _rally_config.eval_period
+TOP_N = _rally_config.backtest_top_n
 
 
 async def analyze_market_cap_distribution(

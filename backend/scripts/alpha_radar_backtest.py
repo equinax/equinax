@@ -27,7 +27,7 @@ from app.db.session import async_session_maker
 from app.services.alpha_radar.polars_engine import PolarsEngine
 from app.services.alpha_radar.scoring import ScoringEngine
 from app.services.alpha_radar.engine import score_tab
-from app.services.alpha_radar.engine.config import STRATEGIES
+from app.services.alpha_radar.engine.config_loader import VALID_TABS, load_strategy_config
 from app.services.alpha_radar.engine.strategies.rally.scoring import RALLY_MIN_SCORE
 
 # Silence SQL logs
@@ -662,7 +662,7 @@ def compute_scores_for_date(
         df = df.filter(pl.col("pct_chg").fill_null(0.0).abs() <= 5.0)
 
     # Calculate scores
-    if tab in STRATEGIES:
+    if tab in VALID_TABS:
         df, score_col = score_tab(tab, df, market_regime_score=regime_score)  # type: ignore[arg-type]
     else:
         return []
@@ -894,7 +894,7 @@ async def run_backtest(
         }
         for tab in tabs:
             t0 = time.time()
-            tab_top_n = top_n or STRATEGIES.get(tab, STRATEGIES["weekly"]).backtest_top_n  # type: ignore[literal-required]
+            tab_top_n = top_n or load_strategy_config(tab).backtest_top_n
             recs = compute_scores_for_date(
                 d,
                 market_df,
@@ -925,7 +925,7 @@ async def run_backtest(
                         abstained_dates.add(d)
                     elif low_regime and weak_days >= 3:
                         abstained_dates.add(d)
-            tab_period = STRATEGIES[tab].eval_period_trading_days if tab in STRATEGIES else period  # type: ignore[literal-required]
+            tab_period = load_strategy_config(tab).eval_period if tab in VALID_TABS else period
             perf = evaluate_t_plus_n(recs, d, market_df, tab_period, limit_df=limit_df)
             elapsed = time.time() - t0
             all_results[d][tab] = {
@@ -966,7 +966,7 @@ async def run_backtest(
     col_width = 26
     header_parts = [f"{'Date':<14}"]
     for tab in tabs:
-        tp = STRATEGIES[tab].eval_period_trading_days if tab in STRATEGIES else period  # type: ignore[literal-required]
+        tp = load_strategy_config(tab).eval_period if tab in VALID_TABS else period
         header_parts.append(f"{tab.upper()}(T+{tp})"[:col_width].ljust(col_width))
     separator_width = 14 + col_width * len(tabs)
     log.info(f"\n{'=' * separator_width}")

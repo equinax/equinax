@@ -89,7 +89,7 @@ export default function AlphaRadarPage() {
   const [activeTab, setActiveTab] = useState<ScreenerTab>(() => {
     const tabParam = searchParams.get('tab')
     const validTabs = STOCK_TABS.map(t => t.value) as readonly string[]
-    return validTabs.includes(tabParam || '') ? (tabParam as ScreenerTab) : 'weekly'
+    return validTabs.includes(tabParam || '') ? (tabParam as ScreenerTab) : 'overnight'
   })
 
   // Initialize ETF category from URL params (default: all)

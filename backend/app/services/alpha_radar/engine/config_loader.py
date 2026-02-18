@@ -1,14 +1,18 @@
 from __future__ import annotations
 
 import ast
+import functools
 import operator
 from pathlib import Path
-from typing import Any
+from typing import Any, Literal
 
 import polars as pl
 import yaml
 
 CONFIGS_DIR = Path(__file__).resolve().parent.parent.parent.parent.parent / "alpha_lab" / "configs"
+
+ScreenerTabKey = Literal["weekly", "rally", "dragon", "overnight"]
+VALID_TABS: frozenset[str] = frozenset(("weekly", "rally", "dragon", "overnight"))
 
 _SAFE_OPERATORS = {
     ast.Add: operator.add,
@@ -27,6 +31,7 @@ class StrategyConfigYAML:
     __slots__ = (
         "strategy",
         "version",
+        "label_cn",
         "description",
         "score_column",
         "eval_period",
@@ -42,6 +47,7 @@ class StrategyConfigYAML:
     def __init__(self, data: dict[str, Any]):
         self.strategy: str = data["strategy"]
         self.version: str = str(data["version"])
+        self.label_cn: str = data.get("label_cn", "")
         self.description: str = data.get("description", "")
         self.score_column: str = data["score_column"]
         self.eval_period: int = data.get("eval_period", 20)
@@ -56,6 +62,7 @@ class StrategyConfigYAML:
         self.parameter_bounds: dict = data.get("parameter_bounds", {})
 
 
+@functools.lru_cache(maxsize=8)
 def load_strategy_config(strategy: str, config_dir: Path | None = None) -> StrategyConfigYAML:
     config_dir = config_dir or CONFIGS_DIR
     path = config_dir / f"{strategy}.yaml"

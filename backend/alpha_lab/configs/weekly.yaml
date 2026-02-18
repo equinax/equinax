@@ -5,6 +5,7 @@ strategy: weekly
 version: "1"
 description: "周内短线 — 低波+高一致性+稳定5日收益"
 
+label_cn: 周内短线
 score_column: weekly_score
 eval_period: 5
 requires_moneyflow: false

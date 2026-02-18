@@ -7,11 +7,14 @@ Layered architecture:
 Entry point: score_tab(tab, df, market_regime_score) -> (df, score_col)
 """
 
-from typing import Literal, Tuple
+from typing import Tuple
 
 import polars as pl
 
-from app.services.alpha_radar.engine.config import STRATEGIES, ScreenerTabKey
+from app.services.alpha_radar.engine.config_loader import (
+    ScreenerTabKey,
+    load_strategy_config,
+)
 
 # Lazy imports to avoid circular dependencies
 _strategy_engines = {}
@@ -64,7 +67,7 @@ def score_tab(
     Returns:
         Tuple of (scored DataFrame, score column name)
     """
-    config = STRATEGIES[tab]
+    config = load_strategy_config(tab)
     engine_cls = _get_strategy_engine(tab)
     engine = engine_cls(market_regime_score=market_regime_score)
 

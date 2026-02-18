@@ -22,7 +22,6 @@ from app.db.session import async_session_maker
 from app.services.alpha_radar.polars_engine import PolarsEngine
 from app.services.alpha_radar.scoring import ScoringEngine
 from app.services.alpha_radar.engine import score_tab
-from app.services.alpha_radar.engine.config import STRATEGIES
 from scripts.alpha_radar_backtest import (
     load_all_data,
     compute_regime_score,

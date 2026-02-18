@@ -13,7 +13,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.services.alpha_radar.polars_engine import PolarsEngine
 from app.services.alpha_radar.scoring import ScoringEngine
 from app.services.alpha_radar.engine import score_tab
-from app.services.alpha_radar.engine.config import STRATEGIES
+from app.services.alpha_radar.engine.config_loader import VALID_TABS, load_strategy_config
 
 
 class ScreenerService:
@@ -179,7 +179,7 @@ class ScreenerService:
                 )
                 df = df.with_columns(pl.col("sector_momentum_5d").fill_null(0.0))
         # Iter 14/15: Load and join per-stock moneyflow for dragon scoring
-        if tab in STRATEGIES and STRATEGIES[tab].requires_moneyflow:  # type: ignore[literal-required]
+        if tab in VALID_TABS and load_strategy_config(tab).requires_moneyflow:
             mf_date = target_date if mode == "snapshot" else end_date
             if mf_date:
                 moneyflow_df = await self.polars_engine.load_moneyflow_data(mf_date)
@@ -232,11 +232,10 @@ class ScreenerService:
                 "abstain_reason": "narrow_breadth",
             }
 
-        if tab not in STRATEGIES:
+        if tab not in VALID_TABS:
             tab = "overnight"  # Default to overnight if unknown tab is provided
         # Calculate scores based on tab
 
-        
         df, score_col = score_tab(tab, df, market_regime_score=regime["market_regime_score"])  # type: ignore[arg-type]
 
         # Generate quant labels

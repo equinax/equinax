@@ -6,6 +6,7 @@ strategy: dragon
 version: "22"
 description: "龙头涨停 — 主力吸筹+突破蓄力+量价一致"
 
+label_cn: 龙头涨停
 score_column: dragon_score
 eval_period: 20
 requires_moneyflow: true
