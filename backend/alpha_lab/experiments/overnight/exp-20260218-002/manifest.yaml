@@ -1,0 +1,46 @@
+experiment_id: "exp-20260218-002"
+strategy: overnight
+created_at: "2026-02-18"
+parent_version: "7.2"
+
+hypothesis: |
+  Tighten pct_chg pre-filter from >= -7.0 to >= -5.0.
+  
+  Diagnosis: losers have mean pct_chg=-2.33 vs winners=-1.77 (Δ=+0.56).
+  Stocks dropping >5% on signal day are likely in panic sell, not healthy pullback.
+  Example: 鼎胜新材 pct_chg=-5.74 → ret=-1.31% (would be filtered).
+  
+  Pre-filters have been validated as highest-leverage variable.
+  This is a conservative single-variable change to one pre-filter threshold.
+
+changes:
+  - path: "scoring.pre_filters[pct_chg].value"
+    from: -7.0
+    to: -5.0
+
+backtest_params:
+  dates: 25
+  seed: 42
+  tabs: ["overnight"]
+
+results:
+  cross_seed:
+    seed_42: { win_rate: 83.3, avg_return: 2.00, profit_loss_ratio: 1.13, dates: 6 }
+    seed_123: { win_rate: 54.3, avg_return: 0.84, profit_loss_ratio: 2.50, dates: 7 }
+    seed_55: { win_rate: 56.0, avg_return: 1.61, profit_loss_ratio: 19.17, dates: 5 }
+    seed_99: { win_rate: 53.3, avg_return: 0.71, profit_loss_ratio: 1.50, dates: 6 }
+  averages:
+    win_rate: 61.7
+    avg_return: 1.29
+    dates: 6.0
+  vs_baseline:
+    win_rate_delta: +1.5
+    avg_return_delta: -0.10
+
+decision: accept
+decision_reason: |
+  WR improved +1.5pp (60.2→61.7), AR slightly down -0.10% (1.39→1.29) but within -1% tolerance.
+  Primary metric (WR) improved. No seed shows WR regression > 1pp.
+  Seed 42 best improvement: +3.3pp WR, +0.05% AR.
+  Seed 99 AR regression (-0.36%) is within tolerance.
+  pct_chg >= -5.0 successfully filters out harder-dropping losers.

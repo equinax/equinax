@@ -1,0 +1,43 @@
+experiment_id: "exp-20260218-005"
+strategy: overnight
+created_at: "2026-02-18"
+parent_version: "7.5"
+
+hypothesis: |
+  Reduce backtest_top_n from 5 to 3.
+  
+  By selecting only the top 3 highest-scored stocks instead of 5, we concentrate
+  on the highest-confidence picks. Lower-ranked stocks (positions 4-5) likely
+  have weaker signals and dilute overall WR. This is a pure concentration play
+  that doesn't change the scoring model at all.
+
+changes:
+  - path: "backtest_top_n"
+    from: 5
+    to: 3
+
+backtest_params:
+  dates: 25
+  seeds: [42, 123, 55, 99]
+  tabs: ["overnight"]
+
+results:
+  cross_seed:
+    seed_42: { win_rate: 77.8, avg_return: 1.86, profit_loss_ratio: 1.10, dates: 6 }
+    seed_123: { win_rate: 52.4, avg_return: 0.12, profit_loss_ratio: 1.47, dates: 7 }
+    seed_55: { win_rate: 66.7, avg_return: 2.21, profit_loss_ratio: 19.04, dates: 5 }
+    seed_99: { win_rate: 55.6, avg_return: 1.63, profit_loss_ratio: 2.33, dates: 6 }
+  averages:
+    win_rate: 63.1
+    avg_return: 1.46
+    dates: 6.0
+  vs_baseline:
+    win_rate_delta: -1.1
+    avg_return_delta: -0.06
+
+decision: reject
+decision_reason: |
+  High cross-seed variance: 2 seeds improved (55: +6.7pp, 99: +2.3pp),
+  2 seeds degraded (42: -5.5pp, 123: -7.6pp). Average WR -1.1pp.
+  Concentration on top 3 is unreliable — some dates have better stock at
+  positions 4-5 than 1-3. Keep top_n=5 for diversification.

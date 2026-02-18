@@ -1,0 +1,46 @@
+experiment_id: "exp-20260218-004"
+strategy: overnight
+created_at: "2026-02-18"
+parent_version: "7.5"
+
+hypothesis: |
+  Increase volume_interest_signal (volume_ratio_5d) weight from 0.05 to 0.10,
+  decrease rally_dominance_signal (rally_dominance_20d) weight from 0.15 to 0.10.
+  
+  Diagnosis: volume_ratio_5d shows winner-loser discrimination (W=1.64 vs L=1.23,
+  Δ=+0.41). Higher volume on pullback day suggests buying interest, confirming
+  reversal potential. rally_dominance_20d (Δ=+0.45) is roughly neutral and less
+  actionable as a ranking factor.
+
+changes:
+  - path: "scoring.positive_factors[volume_interest_signal].weight"
+    from: 0.05
+    to: 0.10
+  - path: "scoring.positive_factors[rally_dominance_signal].weight"
+    from: 0.15
+    to: 0.10
+
+backtest_params:
+  dates: 25
+  seeds: [42, 123, 55, 99]
+  tabs: ["overnight"]
+
+results:
+  cross_seed:
+    seed_42: { win_rate: 76.7, avg_return: 1.61, profit_loss_ratio: 2.77, dates: 6 }
+    seed_123: { win_rate: 51.4, avg_return: 0.33, profit_loss_ratio: 1.77, dates: 7 }
+    seed_55: { win_rate: 52.0, avg_return: 0.82, profit_loss_ratio: 2.86, dates: 5 }
+    seed_99: { win_rate: 40.0, avg_return: 0.29, profit_loss_ratio: 1.81, dates: 6 }
+  averages:
+    win_rate: 55.0
+    avg_return: 0.76
+    dates: 6.0
+  vs_baseline:
+    win_rate_delta: -9.2
+    avg_return_delta: -0.76
+
+decision: reject
+decision_reason: |
+  WR dropped -9.2pp (64.2→55.0) across ALL seeds. AR also dropped -0.76%.
+  Seed 99 collapsed to 40.0% WR. volume_ratio_5d increase disrupted
+  stock ranking badly. Config rolled back to v7.5.

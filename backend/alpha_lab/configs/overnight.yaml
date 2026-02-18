@@ -15,7 +15,7 @@
 # Buy T+1 open, sell T+2 open. Prioritize win-rate over magnitude.
 
 strategy: overnight
-version: "7.2"
+version: "7.5"
 description: "隔夜超短 — 主升段回踩反转·T+1开盘买T+2开盘卖·弱市回避"
 
 label_cn: 隔夜超短
@@ -52,14 +52,14 @@ scoring:
       source: shadow_range_pct
       transform: "(col.clip(1.0, 5.0) - 1.0) / 4.0 * 100"
       fill_null: 0.0
-      weight: 0.15
+      weight: 0.20
 
     # Controlled moves, not violent swings (anti 反面教材 D)
     - signal: smoothness_signal
       source: cycle_smoothness_20d
       transform: "col.clip(20.0, 80.0) / 80.0 * 100"
       fill_null: 0.0
-      weight: 0.10
+      weight: 0.05
 
     # MA alignment confirms uptrend structure
     - signal: ma_trend_signal
@@ -108,10 +108,10 @@ scoring:
       value: 10.0
       fill_null: 0.0
 
-    # Exclude extreme daily drops
+    # Exclude extreme daily drops (tightened from -7.0 in v7.4: losers drop harder)
     - column: pct_chg
       op: gte
-      value: -7.0
+      value: -5.0
       fill_null: 0.0
 
   regime_discount:

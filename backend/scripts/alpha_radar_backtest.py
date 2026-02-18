@@ -15,9 +15,11 @@ import datetime
 import logging
 import os
 import random
+import shutil
 import sys
 import time
 from decimal import Decimal, ROUND_HALF_UP
+from pathlib import Path
 from typing import Optional
 
 import polars as pl
@@ -28,6 +30,7 @@ from app.services.alpha_radar.polars_engine import PolarsEngine
 from app.services.alpha_radar.scoring import ScoringEngine
 from app.services.alpha_radar.engine import score_tab
 from app.services.alpha_radar.engine.config_loader import VALID_TABS, load_strategy_config
+from app.services.alpha_radar.engine.factors import compute_all_factors
 from app.services.alpha_radar.engine.strategies.rally.scoring import RALLY_MIN_SCORE
 from app.services.alpha_radar.engine.strategies.overnight.scoring import OVERNIGHT_MIN_SCORE
 
@@ -36,6 +39,8 @@ logging.getLogger("sqlalchemy.engine").setLevel(logging.WARNING)
 logging.getLogger("sqlalchemy.engine.Engine").setLevel(logging.WARNING)
 logging.basicConfig(level=logging.INFO, format="%(message)s")
 log = logging.getLogger(__name__)
+
+CACHE_DIR = Path("/app/data/cache/backtest")
 
 # --- Date range for random sampling ---
 SAMPLE_RANGE_START = datetime.date(2025, 1, 6)
@@ -300,6 +305,79 @@ async def load_all_data(
     return market_df, valuation_df, style_df, profile_df, index_df, moneyflow_df, limit_df
 
 
+async def load_all_data_cached(
+    db,
+    start_date: datetime.date,
+    end_date: datetime.date,
+    lookback_days: int = 120,
+    use_cache: bool = True,
+) -> tuple[
+    pl.DataFrame, pl.DataFrame, pl.DataFrame, pl.DataFrame, pl.DataFrame, pl.DataFrame, pl.DataFrame
+]:
+    """Load data with Parquet caching."""
+    if not use_cache:
+        return await load_all_data(db, start_date, end_date, lookback_days)
+
+    # Calculate data_start to generate cache key
+    result = await db.execute(
+        text(
+            "SELECT DISTINCT date FROM market_daily "
+            "WHERE date <= :start_date ORDER BY date DESC LIMIT :lookback"
+        ),
+        {"start_date": start_date, "lookback": lookback_days},
+    )
+    dates = [row[0] for row in result.fetchall()]
+    data_start = dates[-1] if dates else start_date
+
+    cache_key = f"{data_start}_{end_date}"
+    CACHE_DIR.mkdir(parents=True, exist_ok=True)
+
+    files = {
+        "market": CACHE_DIR / f"{cache_key}_market.parquet",
+        "valuation": CACHE_DIR / f"{cache_key}_valuation.parquet",
+        "style": CACHE_DIR / f"{cache_key}_style.parquet",
+        "profile": CACHE_DIR / f"{cache_key}_profile.parquet",
+        "index": CACHE_DIR / f"{cache_key}_index.parquet",
+        "moneyflow": CACHE_DIR / f"{cache_key}_moneyflow.parquet",
+        "limit": CACHE_DIR / f"{cache_key}_limit.parquet",
+    }
+
+    if all(f.exists() for f in files.values()):
+        log.info(f"Loading from cache: {CACHE_DIR}/{cache_key}_*.parquet")
+        t0 = time.time()
+        market_df = pl.read_parquet(files["market"])
+        valuation_df = pl.read_parquet(files["valuation"])
+        style_df = pl.read_parquet(files["style"])
+        profile_df = pl.read_parquet(files["profile"])
+        index_df = pl.read_parquet(files["index"])
+        moneyflow_df = pl.read_parquet(files["moneyflow"])
+        limit_df = pl.read_parquet(files["limit"])
+        log.info(f"  Cache load: {time.time() - t0:.1f}s")
+        return market_df, valuation_df, style_df, profile_df, index_df, moneyflow_df, limit_df
+
+    log.info("Cache miss. Loading from database...")
+    (
+        market_df,
+        valuation_df,
+        style_df,
+        profile_df,
+        index_df,
+        moneyflow_df,
+        limit_df,
+    ) = await load_all_data(db, start_date, end_date, lookback_days)
+
+    log.info(f"Saving to cache: {CACHE_DIR}/{cache_key}_*.parquet")
+    market_df.write_parquet(files["market"])
+    valuation_df.write_parquet(files["valuation"])
+    style_df.write_parquet(files["style"])
+    profile_df.write_parquet(files["profile"])
+    index_df.write_parquet(files["index"])
+    moneyflow_df.write_parquet(files["moneyflow"])
+    limit_df.write_parquet(files["limit"])
+
+    return market_df, valuation_df, style_df, profile_df, index_df, moneyflow_df, limit_df
+
+
 def compute_regime_score(
     target_date: datetime.date,
     index_df: pl.DataFrame,
@@ -492,6 +570,7 @@ def compute_scores_for_date(
     lookback_days: int = 120,
     moneyflow_df: "pl.DataFrame | None" = None,
     limit_df: "pl.DataFrame | None" = None,
+    precomputed_factors: bool = False,
 ) -> list[dict]:
     """Compute scores for a single date using pre-loaded data. Pure Polars, no DB calls."""
 
@@ -562,7 +641,8 @@ def compute_scores_for_date(
         return []
 
     # Calculate technical indicators
-    df = engine.calculate_technical_indicators(df)
+    if not precomputed_factors:
+        df = engine.calculate_technical_indicators(df)
 
     # Filter to target date only
     df = df.filter(pl.col("date") == target_date)
@@ -890,6 +970,7 @@ async def run_backtest(
     top_n: int | None = None,
     period: int = 5,
     verbose: bool = False,
+    use_cache: bool = True,
 ):
     """Run the full backtest."""
 
@@ -905,7 +986,7 @@ async def run_backtest(
     log.info(f"Test dates: {len(test_dates)} dates ({earliest} to {latest})")
     log.info(f"Tabs: {', '.join(tabs)}")
     log.info(f"Top N: {top_n or 'per-strategy'}, Eval period: per-tab (from config)")
-    log.info(f"Loading data...")
+    log.info(f"Loading data (cache={'ON' if use_cache else 'OFF'})...")
 
     async with async_session_maker() as db:
         (
@@ -916,7 +997,15 @@ async def run_backtest(
             index_df,
             moneyflow_df,
             limit_df,
-        ) = await load_all_data(db, earliest, end_date, lookback_days=120)
+        ) = await load_all_data_cached(
+            db, earliest, end_date, lookback_days=120, use_cache=use_cache
+        )
+
+    log.info(f"\nPrecomputing factors on full dataset...")
+    t_factors = time.time()
+    market_df = market_df.sort(["code", "date"])
+    market_df = compute_all_factors(market_df)
+    log.info(f"Factor precomputation: {time.time() - t_factors:.1f}s")
 
     log.info(f"\nRunning backtest...")
 
@@ -948,6 +1037,7 @@ async def run_backtest(
                 tab_top_n,
                 moneyflow_df=moneyflow_df,
                 limit_df=limit_df,
+                precomputed_factors=True,
             )
             if not recs and tab == tabs[0]:
                 breadth_today = regime_details.get("breadth_today", 50.0)
@@ -1095,11 +1185,30 @@ def parse_args():
         default=None,
         help="Random seed for date sampling (default: random each run)",
     )
+    parser.add_argument(
+        "--no-cache",
+        action="store_true",
+        help="Disable Parquet caching (force DB load)",
+    )
+    parser.add_argument(
+        "--clear-cache",
+        action="store_true",
+        help="Clear all cached Parquet files and exit",
+    )
     return parser.parse_args()
 
 
 def main():
     args = parse_args()
+
+    if args.clear_cache:
+        if CACHE_DIR.exists():
+            log.info(f"Clearing cache directory: {CACHE_DIR}")
+            shutil.rmtree(CACHE_DIR)
+            log.info("Cache cleared.")
+        else:
+            log.info(f"Cache directory {CACHE_DIR} does not exist.")
+        sys.exit(0)
 
     if args.dates:
         test_dates = [datetime.date.fromisoformat(d.strip()) for d in args.dates.split(",")]
@@ -1107,7 +1216,16 @@ def main():
         test_dates = sample_trading_days(n=25, seed=args.seed)
 
     tabs = [t.strip() for t in args.tabs.split(",")]
-    asyncio.run(run_backtest(test_dates, tabs, args.top_n, args.period, args.verbose))
+    asyncio.run(
+        run_backtest(
+            test_dates,
+            tabs,
+            args.top_n,
+            args.period,
+            args.verbose,
+            use_cache=not args.no_cache,
+        )
+    )
 
 
 if __name__ == "__main__":

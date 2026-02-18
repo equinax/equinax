@@ -1,0 +1,50 @@
+experiment_id: "exp-20260218-001"
+strategy: overnight
+created_at: "2026-02-18"
+parent_version: "7.2"
+
+hypothesis: |
+  Penalize overextended MA alignment (ma_alignment_score > 90).
+  
+  Diagnosis: losers have mean ma_alignment_score=98.72 vs winners=93.18 (Δ=-5.54).
+  Near-perfect MA alignment signals overextension, not ideal pullback entry.
+  Current config rewards ma_alignment up to 95 — giving max score to stocks that lose.
+  
+  Changes:
+  1. Reduce ma_trend_signal clip ceiling from 95→85 (stop rewarding >85)
+  2. Add ma_overextension_penalty for ma_alignment_score > 90 (weight 0.05)
+  3. Reduce ma_trend_signal weight from 0.10→0.05 (total positive: 1.00→0.95)
+  
+  Expected: WR improves by penalizing overextended stocks. AR neutral or positive.
+
+changes:
+  - path: "scoring.positive_factors[ma_trend_signal].transform"
+    from: "col.clip(40.0, 95.0) / 95.0 * 100"
+    to: "col.clip(40.0, 85.0) / 85.0 * 100"
+  - path: "scoring.positive_factors[ma_trend_signal].weight"
+    from: 0.10
+    to: 0.05
+  - path: "scoring.penalties[ma_overextension_penalty]"
+    from: null
+    to: "new penalty: source=ma_alignment_score, transform=(col - 90.0).clip(0.0, 10.0) / 10.0 * 100, weight=0.05"
+
+backtest_params:
+  dates: 25
+  seed: 42
+  tabs: ["overnight"]
+
+results:
+  win_rate: 53.7
+  avg_return: 1.17
+  profit_loss_ratio: null
+  cross_seed:
+    seed_42: { win_rate: 63.3, avg_return: 1.62, dates: 6 }
+    seed_123: { win_rate: 48.6, avg_return: 0.41, dates: 7 }
+    seed_55: { win_rate: 56.0, avg_return: 1.46, dates: 5 }
+    seed_99: { win_rate: 46.7, avg_return: 1.19, dates: 6 }
+  vs_baseline:
+    win_rate_delta: -6.5
+    avg_return_delta: -0.22
+
+decision: reject
+decision_reason: "WR dropped -6.5pp (60.2→53.7), exceeds -2pp reject threshold. Penalty disrupted stock ranking — many previously-selected winners demoted. MA alignment difference (5.54pt) between winners/losers is noise in 24-vs-6 sample, not a reliable penalty signal."

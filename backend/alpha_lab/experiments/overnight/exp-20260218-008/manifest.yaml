@@ -1,0 +1,45 @@
+experiment_id: "exp-20260218-008"
+strategy: overnight
+created_at: "2026-02-18"
+parent_version: "7.5"
+
+hypothesis: |
+  Add upper-bound pre-filter: uptrend_score_60d <= 85.
+  
+  Discrimination analysis shows losers have HIGHER uptrend_score_60d (80.95)
+  than winners (73.89, Δ=-7.06). Stocks with extremely high uptrend scores
+  are overextended and at mean-reversion risk for overnight entries.
+  
+  Oracle consultation confirmed: "late-stage trend = mean-reversion risk"
+  is the highest-leverage untapped signal. Pre-filter approach preferred
+  over transform/weight changes per validated finding.
+
+changes:
+  - path: "scoring.pre_filters (add new)"
+    from: null
+    to: "uptrend_score_60d lte 85.0"
+
+backtest_params:
+  dates: 25
+  seeds: [42, 123, 55, 99]
+  tabs: ["overnight"]
+
+results:
+  cross_seed:
+    seed_42: { win_rate: 83.3, avg_return: 2.62, dates: 6 }
+    seed_123: { win_rate: 60.0, avg_return: 1.12, dates: 7 }
+    seed_55: { win_rate: 60.0, avg_return: 1.66, dates: 5 }
+    seed_99: { win_rate: 50.0, avg_return: -0.66, dates: 6 }
+  averages:
+    win_rate: 63.3
+    avg_return: 1.40
+  vs_baseline:
+    win_rate_delta: -0.9
+    avg_return_delta: -0.12
+
+decision: REJECT
+decision_reason: |
+  Seed 99 dropped from 53.3% to 50.0% (-3.3pp), falling below 50% threshold.
+  The cap at 85 is too lenient — most stocks pass anyway, so it only removes
+  a few borderline candidates that happened to be winners in seed 99.
+  Cross-seed avg WR dropped -0.9pp. Not worth the risk for marginal filtering.

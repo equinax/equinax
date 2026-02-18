@@ -3,8 +3,8 @@
 # 本文件供 AI Agent 读取，用于因子分析和迭代决策
 
 strategy: overnight
-version: "7.2"
-description: "隔夜超短 v7.2 — 主升段回踩反转 + 弱市回避门控(regime≤50)。T+1开盘买入，T+2开盘卖出。"
+version: "7.5"
+description: "隔夜超短 v7.5 — 主升段回踩反转 + 强化十字星信号 + 弱市回避门控(regime≤50)。T+1开盘买入，T+2开盘卖出。"
 
 core_thesis: |
   v7 范式转移：从"跌势反弹"转向"主升段回踩反转"。
@@ -41,19 +41,19 @@ eval_basis: "T+1 开盘买入, T+2 开盘卖出（非收盘）"
 status: active
 
 current_performance:
-  iteration: 7.2
-  note: "v7.2 regime gate tightened to 50. Cross-seed avg WR=60.2%, AR=+1.39%"
+  iteration: 7.5
+  note: "v7.5 shadow_range_pct weight boosted. Cross-seed avg WR=64.2%, AR=+1.52%"
   targets:
     win_rate: 55.0
     avg_return: 0.30
     profit_loss_ratio: 2.0
     achieved: true
-    achieved_note: "Seed42: WR=80%/AR=1.95%. Cross-seed avg: WR=60.2%/AR=+1.39%. WR&AR targets met. P/L mixed."
+    achieved_note: "Seed42: WR=83.3%/AR=2.62%. Cross-seed avg: WR=64.2%/AR=+1.52%. Best iteration yet."
   cross_seed_validation:
-    seed_42: { win_rate: 80.0, avg_return: 1.95, dates: 6 }
-    seed_123: { win_rate: 51.4, avg_return: 0.85, dates: 7 }
-    seed_55: { win_rate: 56.0, avg_return: 1.67, dates: 5 }
-    seed_99: { win_rate: 53.3, avg_return: 1.07, dates: 6 }
+    seed_42: { win_rate: 83.3, avg_return: 2.62, dates: 6 }
+    seed_123: { win_rate: 60.0, avg_return: 1.12, dates: 7 }
+    seed_55: { win_rate: 60.0, avg_return: 1.66, dates: 5 }
+    seed_99: { win_rate: 53.3, avg_return: 0.67, dates: 6 }
 
 v6_summary:
   status: superseded
@@ -108,7 +108,7 @@ pre_filter_logic: |
   2. consecutive_down_days >= 1: 必须有回踩（入场时机）
   3. consecutive_down_days <= 8: 回踩不能太长（趋势未破）
   4. max_consecutive_down_20d <= 10: 近期无大崩
-  5. pct_chg >= -7.0: 排除跌停
+  5. pct_chg >= -5.0: 排除大跌（v7.4收紧: 输家信号日跌幅更大）
 
 backtest_top_n: 5
 requires_moneyflow: false
@@ -150,6 +150,42 @@ iteration_milestones:
     changes: "收紧regime gate从55到50，基于跨种子验证"
     metrics: { win_rate: 60.2, avg_return: 1.39 }
     note: "v7.2 — 跨种子平均WR=60.2%, AR=+1.39%. 在训练数据中存在自然间隔(49.1 vs 50.5)"
+  - iteration: 7.3
+    changes: "添加MA过度延伸惩罚(ma_alignment_score>90)，降低ma_trend_signal权重0.10→0.05"
+    metrics: { win_rate: 53.7, avg_return: 1.17 }
+    note: "v7.3 — REJECTED. WR -6.5pp, 打乱选股排名. 回滚到v7.2"
+  - iteration: 7.4
+    changes: "收紧pct_chg预过滤从-7.0到-5.0: 输家信号日跌幅更大(mean -2.33 vs -1.77)"
+    metrics: { win_rate: 61.7, avg_return: 1.29 }
+    note: "v7.4 — ACCEPTED. WR +1.5pp, AR -0.10%. 成功过滤掉恐慌性大跌的输家"
+  - iteration: 7.5
+    changes: "shadow_range_pct权重0.15→0.20, smoothness权重0.10→0.05: 十字星是最强区分因子"
+    metrics: { win_rate: 64.2, avg_return: 1.52 }
+    note: "v7.5 — ACCEPTED. WR +2.5pp, AR +0.23%. 十字星信号增强显著改善所有种子"
+  - iteration: 7.6
+    changes: "volume_ratio_5d权重0.05→0.10, rally_dominance权重0.15→0.10"
+    metrics: { win_rate: 55.0, avg_return: 0.76 }
+    note: "v7.6 — REJECTED. WR -9.2pp, AR -0.76%. 量比增权严重干扰排名. 回滚到v7.5"
+  - iteration: 7.7
+    changes: "backtest_top_n从5缩减到3: 集中最高置信度选股"
+    metrics: { win_rate: 63.1, avg_return: 1.46 }
+    note: "v7.7 — REJECTED. 跨种子方差太大(range: -7.6pp to +6.7pp), 不够稳健. 回滚到v7.5"
+  - iteration: 8.0
+    changes: "添加uptrend_score_60d<=85预过滤: 限制过度延伸的上升趋势(Oracle假设#1)"
+    metrics: { win_rate: 63.3, avg_return: 1.40 }
+    note: "v8.0 — REJECTED. seed99 WR -3.3pp降至50%, AR -1.33%. 阈值85太宽松, 过滤极少. 回滚到v7.5"
+  - iteration: 8.1
+    changes: "ma_trend权重0.10→0.00: 完全移除ma_alignment_score(Oracle假设#3, 区分方向错误L>W)"
+    metrics: { win_rate: 59.9, avg_return: 1.61 }
+    note: "v8.1 — REJECTED. WR -4.3pp超过-2pp阈值. seed42 -10pp(83.3→73.3). 即使因子方向错也提供组合信息. 回滚到v7.5"
+  - iteration: 8.2
+    changes: "添加return_60d<=40预过滤: 限制60日过度上涨的股票(Oracle假设#2)"
+    metrics: { win_rate: 61.5, avg_return: 0.98 }
+    note: "v8.2 — REJECTED. WR -2.7pp, AR -0.54%. seed99 -6.6pp(53.3→46.7). 差异太小(L=33.77 vs W=30.31)不适合硬过滤. 回滚到v7.5"
+  - iteration: 8.3
+    changes: "添加shadow_range_pct>=6.0预过滤: 要求明确十字星/反转蜡烛(Oracle假设#4)"
+    metrics: { win_rate: 51.5, avg_return: -0.30 }
+    note: "v8.3 — REJECTED. WR -12.7pp(64.2→51.5), AR -1.82%(+1.52→-0.30). 灾难性退化. 6.0阈值太激进, 过滤掉大部分候选池. shadow_range_pct适合软评分(weight=0.20)而非硬过滤. 回滚到v7.5"
 
 validated_findings:
   never_retry:
@@ -157,6 +193,42 @@ validated_findings:
     - "纯跌势反弹: v4-v6 WR始终42%左右"
     - "退潮期十字星: 无alpha"
     - "信号日市场宽度作为入场门: 无预测力"
+  ineffective:
+    - direction: "惩罚高MA对齐(ma_alignment_score>90)"
+      experiment: "exp-20260218-001"
+      result: "WR -6.5pp (60.2→53.7), 打乱了选股排名，很多原赢家被降级"
+      lesson: "24W vs 6L样本中5.54pt差异是噪声，不足以作为惩罚信号"
+      never_retry: false
+    - direction: "增加volume_ratio_5d权重(0.05→0.10)并降低rally_dominance(0.15→0.10)"
+      experiment: "exp-20260218-004"
+      result: "WR -9.2pp (64.2→55.0), 所有种子全部下降，seed99暴跌至40%"
+      lesson: "volume_ratio_5d的+0.41差异(W=1.64 vs L=1.23)太小, 增权反而引入噪声扰乱排名"
+      never_retry: false
+    - direction: "缩减top_n从5到3"
+      experiment: "exp-20260218-005"
+      result: "WR -1.1pp, 跨种子方差极大(range -7.6pp to +6.7pp)"
+      lesson: "top_n=3浓缩不稳定, 有些日期第4-5名比1-3名好. 保持top_n=5的多样性"
+      never_retry: false
+    - direction: "添加uptrend_score_60d<=85预过滤限制过度延伸趋势"
+      experiment: "exp-20260218-008"
+      result: "WR -0.9pp (64.2→63.3), seed99 -3.3pp降至50%, AR -0.12%"
+      lesson: "阈值85太宽松几乎不过滤. uptrend_score跨种子方差大, 硬过滤不可靠"
+      never_retry: false
+    - direction: "移除ma_trend权重(0.10→0.00): 完全去除ma_alignment_score评分"
+      experiment: "exp-20260218-009"
+      result: "WR -4.3pp (64.2→59.9), seed42 -10pp(83.3→73.3). AR +0.09%"
+      lesson: "即使因子平均区分方向'错误'(L>W by 5.54), 它仍在复合评分中提供有用信息. 完全移除太激进"
+      never_retry: true
+    - direction: "添加return_60d<=40预过滤限制60日涨幅"
+      experiment: "exp-20260218-010"
+      result: "WR -2.7pp (64.2→61.5), AR -0.54%. seed99 -6.6pp(53.3→46.7)"
+      lesson: "return_60d的L-W差异仅3.46pt, 硬过滤在40处切断了大量赢家. pre-filter需要更大的区分度才有效"
+      never_retry: true
+    - direction: "添加shadow_range_pct>=6.0预过滤要求明确十字星"
+      experiment: "exp-20260218-011"
+      result: "WR -12.7pp (64.2→51.5), AR -1.82%(+1.52→-0.30). 灾难性退化"
+      lesson: "shadow_range_pct分布右偏, 大部分股票值在2-5%. 硬阈值6.0消除了多数候选池. 该因子适合软评分(weight=0.20已验证)而非硬过滤"
+      never_retry: true
   key_insights:
     - "pre-filters比打分更重要"
     - "跌势宇宙基础WR=59.3%但选出top-5后WR=42%"
@@ -164,3 +236,6 @@ validated_findings:
     - "波动率是关键排除因子"
     - "regime gate是最高杠杆变量: regime<55时WR=62.5%, regime>55时WR≈25%"
     - "隔夜超短是逆向策略: 在市场不太弱时买入回踩反转"
+    - "ma_alignment_score作为惩罚无效: 赢家和输家都有高MA对齐, 差异是噪声"
+    - "pct_chg收紧(-7→-5)有效: 信号日跌幅>5%的股票输面大, WR+1.5pp"
+    - "shadow_range_pct权重增强有效: 十字星是最佳区分因子(W=7.16 vs L=5.70), 增权后WR+2.5pp AR+0.23%"

@@ -1,0 +1,56 @@
+experiment_id: "exp-20260218-009"
+strategy: overnight
+created_at: "2026-02-18"
+parent_version: "7.5"
+
+hypothesis: |
+  Set ma_trend weight to 0.00 (effectively remove it from scoring).
+  
+  Discrimination analysis shows ma_alignment_score favors LOSERS (L=98.72 vs W=93.18,
+  Δ=-5.54). This factor actively hurts ranking — stocks with perfect MA alignment are
+  overextended and more likely to fail on overnight pullback-reversal entries.
+  
+  Oracle hypothesis #3: removing the factor entirely is cleaner than penalizing it
+  (v7.3 penalty approach already rejected). Total positive weight drops 1.00→0.90,
+  within parameter_bounds.min=0.80.
+  
+  Single variable: only remove ma_trend weight, no redistribution.
+
+changes:
+  - path: "scoring.positive_factors[ma_trend_signal].weight"
+    from: 0.10
+    to: 0.00
+
+backtest_params:
+  dates: 25
+  seeds: [42, 123, 55, 99]
+  tabs: ["overnight"]
+
+results:
+  cross_seed:
+    seed_42: { win_rate: 73.3, avg_return: 2.69, dates: 6 }
+    seed_123: { win_rate: 57.1, avg_return: 0.83, dates: 7 }
+    seed_55: { win_rate: 56.0, avg_return: 1.62, dates: 5 }
+    seed_99: { win_rate: 53.3, avg_return: 1.31, dates: 6 }
+  averages:
+    win_rate: 59.9
+    avg_return: 1.61
+  vs_baseline:
+    win_rate_delta: -4.3
+    avg_return_delta: +0.09
+
+decision: REJECT
+decision_reason: |
+  WR regression -4.3pp exceeds -2pp rejection threshold.
+  Seed 42 dropped from 83.3%→73.3% (-10pp), seed 55 from 60%→56% (-4pp).
+  AR marginally improved (+0.09%), but win-rate certainty is the primary metric.
+  
+  Analysis: Removing ma_trend entirely removes a signal that, despite discriminating
+  "wrong" on average (L>W by 5.54), still contributes useful ranking information for
+  a subset of stocks. The ma_alignment_score's range [40-95] provides separation that
+  other factors don't fully capture. Setting weight=0.00 loses this nuance.
+  
+  Lesson: Even factors that discriminate L>W on average may contribute to composite
+  scoring if they interact positively with other factors. Full removal is too aggressive.
+  Consider reducing weight (0.10→0.03-0.05) rather than zeroing, or adding a cap-based
+  pre-filter instead.
