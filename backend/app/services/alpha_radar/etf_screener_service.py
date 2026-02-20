@@ -149,14 +149,13 @@ class ETFScreenerService:
                 md.amount,
                 NULL AS turn,
                 md.volume,
-                ie.discount_rate,
-                ie.unit_total,
-                ie.tracking_error,
-                ie.iopv
+                NULL AS discount_rate,
+                NULL AS unit_total,
+                NULL AS tracking_error,
+                NULL AS iopv
             FROM asset_meta am
             JOIN etf_profile ep ON am.code = ep.code
             LEFT JOIN market_daily md ON am.code = md.code AND md.date = :target_date
-            LEFT JOIN indicator_etf ie ON am.code = ie.code AND ie.date = :target_date
             WHERE am.asset_type = 'ETF'
               AND am.status = 1
               AND md.amount > 0

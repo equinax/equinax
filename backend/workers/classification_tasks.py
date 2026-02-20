@@ -24,7 +24,6 @@ from app.db.models.asset import AssetMeta, MarketDaily, IndicatorValuation, Asse
 from app.db.models.classification import (
     StockStructuralInfo,
     StockStyleExposure,
-    StockMicrostructure,
     MarketRegime,
     StockClassificationSnapshot,
     BoardType,

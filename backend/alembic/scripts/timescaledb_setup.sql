@@ -11,10 +11,8 @@
 -- The following tables are configured as hypertables in the migration:
 -- - market_daily (chunk_time_interval: 1 month)
 -- - indicator_valuation (chunk_time_interval: 1 month)
--- - indicator_etf (chunk_time_interval: 1 month)
 -- - adjust_factor (chunk_time_interval: 3 months)
 -- - stock_style_exposure (chunk_time_interval: 1 month)
--- - stock_microstructure (chunk_time_interval: 1 month)
 -- - market_regime (chunk_time_interval: 1 month)
 -- - stock_classification_snapshot (chunk_time_interval: 1 month)
 -- - backtest_equity (chunk_time_interval: 1 month)
@@ -90,20 +88,6 @@ FROM indicator_valuation
 GROUP BY code, time_bucket('1 week', date)
 WITH NO DATA;
 
--- ETF indicator aggregation (weekly)
-CREATE MATERIALIZED VIEW IF NOT EXISTS etf_indicators_weekly
-WITH (timescaledb.continuous) AS
-SELECT
-    code,
-    time_bucket('1 week', date) AS week,
-    last(iopv, date) AS iopv,
-    avg(discount_rate) AS avg_discount_rate,
-    last(unit_total, date) AS unit_total,
-    avg(tracking_error) AS avg_tracking_error
-FROM indicator_etf
-GROUP BY code, time_bucket('1 week', date)
-WITH NO DATA;
-
 -- ============================================
 -- 3. Add Auto-refresh Policies
 -- ============================================
@@ -130,13 +114,6 @@ SELECT add_continuous_aggregate_policy('market_stats_daily',
 );
 
 SELECT add_continuous_aggregate_policy('valuation_weekly',
-    start_offset => INTERVAL '1 month',
-    end_offset => INTERVAL '1 day',
-    schedule_interval => INTERVAL '1 day',
-    if_not_exists => TRUE
-);
-
-SELECT add_continuous_aggregate_policy('etf_indicators_weekly',
     start_offset => INTERVAL '1 month',
     end_offset => INTERVAL '1 day',
     schedule_interval => INTERVAL '1 day',
@@ -178,7 +155,6 @@ SELECT add_compression_policy('stock_style_exposure', INTERVAL '6 months', if_no
 -- Index for efficient time-range queries with code filter
 CREATE INDEX IF NOT EXISTS idx_market_daily_code_date ON market_daily (code, date DESC);
 CREATE INDEX IF NOT EXISTS idx_indicator_valuation_code_date ON indicator_valuation (code, date DESC);
-CREATE INDEX IF NOT EXISTS idx_indicator_etf_code_date ON indicator_etf (code, date DESC);
 
 -- Done
 SELECT 'TimescaleDB continuous aggregates and policies configured!' AS status;

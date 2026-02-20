@@ -1384,28 +1384,12 @@ async def targeted_backfill(
                 total_records = await _backfill_adjust_factor(session)
 
             elif table_name in (
-                "technical_indicators",
                 "stock_style_exposure",
-                "stock_microstructure",
                 "market_regime",
             ):
                 total_records = await _backfill_computed(
                     ctx, table_name, start_date_val, end_date_val
                 )
-
-            elif table_name == "indicator_etf":
-                # ETF indicators are not from TuShare — skip with message
-                sync_record.status = "success"
-                sync_record.completed_at = datetime.now()
-                sync_record.duration_seconds = 0
-                sync_record.details["message"] = "ETF指标暂不支持单独补全"
-                flag_modified(sync_record, "details")
-                await session.commit()
-                return {
-                    "status": "success",
-                    "message": "ETF indicators not backfillable separately",
-                    "records": 0,
-                }
 
             else:
                 raise ValueError(f"Unsupported table for backfill: {table_name}")
@@ -1669,11 +1653,8 @@ async def _backfill_computed(
         return total
 
     elif table_name in ("technical_indicators", "stock_microstructure"):
-        # technical_indicators and stock_microstructure require per-stock calculation
-        # which is too slow for bulk backfill — return a message instead
-        logger.warning(
-            f"Bulk backfill for {table_name} not supported — requires per-stock calculation"
-        )
+        # These tables have been dropped — no-op
+        logger.info(f"Table {table_name} has been dropped, skipping backfill")
         return 0
 
     return 0

@@ -1,4 +1,4 @@
-"""Technical and fundamental indicator models."""
+"""Fundamental, moneyflow, and limit list indicator models."""
 
 from datetime import date as DateType, datetime
 from decimal import Decimal
@@ -10,7 +10,6 @@ from sqlalchemy import (
     Date,
     DateTime,
     Numeric,
-    BigInteger,
     Index,
     func,
     PrimaryKeyConstraint,
@@ -18,74 +17,6 @@ from sqlalchemy import (
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.db.base import Base
-
-
-class TechnicalIndicator(Base):
-    """Pre-computed technical indicators.
-
-    This table is a TimescaleDB hypertable partitioned by date.
-    Primary key is (code, date) for optimal time-series queries.
-    """
-
-    __tablename__ = "technical_indicators"
-
-    # Composite primary key for TimescaleDB hypertable
-    code: Mapped[str] = mapped_column(String(20), nullable=False)
-    date: Mapped[DateType] = mapped_column(Date, nullable=False)
-
-    # Moving Averages
-    ma_5: Mapped[Optional[Decimal]] = mapped_column(Numeric(12, 4), nullable=True)
-    ma_10: Mapped[Optional[Decimal]] = mapped_column(Numeric(12, 4), nullable=True)
-    ma_20: Mapped[Optional[Decimal]] = mapped_column(Numeric(12, 4), nullable=True)
-    ma_60: Mapped[Optional[Decimal]] = mapped_column(Numeric(12, 4), nullable=True)
-    ma_120: Mapped[Optional[Decimal]] = mapped_column(Numeric(12, 4), nullable=True)
-    ma_250: Mapped[Optional[Decimal]] = mapped_column(Numeric(12, 4), nullable=True)
-
-    # EMA
-    ema_12: Mapped[Optional[Decimal]] = mapped_column(Numeric(12, 4), nullable=True)
-    ema_26: Mapped[Optional[Decimal]] = mapped_column(Numeric(12, 4), nullable=True)
-
-    # MACD
-    macd_dif: Mapped[Optional[Decimal]] = mapped_column(Numeric(12, 6), nullable=True)
-    macd_dea: Mapped[Optional[Decimal]] = mapped_column(Numeric(12, 6), nullable=True)
-    macd_hist: Mapped[Optional[Decimal]] = mapped_column(Numeric(12, 6), nullable=True)
-
-    # RSI
-    rsi_6: Mapped[Optional[Decimal]] = mapped_column(Numeric(8, 4), nullable=True)
-    rsi_12: Mapped[Optional[Decimal]] = mapped_column(Numeric(8, 4), nullable=True)
-    rsi_24: Mapped[Optional[Decimal]] = mapped_column(Numeric(8, 4), nullable=True)
-
-    # KDJ
-    kdj_k: Mapped[Optional[Decimal]] = mapped_column(Numeric(8, 4), nullable=True)
-    kdj_d: Mapped[Optional[Decimal]] = mapped_column(Numeric(8, 4), nullable=True)
-    kdj_j: Mapped[Optional[Decimal]] = mapped_column(Numeric(8, 4), nullable=True)
-
-    # Bollinger Bands
-    boll_upper: Mapped[Optional[Decimal]] = mapped_column(Numeric(12, 4), nullable=True)
-    boll_middle: Mapped[Optional[Decimal]] = mapped_column(Numeric(12, 4), nullable=True)
-    boll_lower: Mapped[Optional[Decimal]] = mapped_column(Numeric(12, 4), nullable=True)
-
-    # Volume indicators
-    vol_ma_5: Mapped[Optional[int]] = mapped_column(BigInteger, nullable=True)
-    vol_ma_10: Mapped[Optional[int]] = mapped_column(BigInteger, nullable=True)
-
-    # Additional
-    atr_14: Mapped[Optional[Decimal]] = mapped_column(Numeric(12, 4), nullable=True)
-    obv: Mapped[Optional[int]] = mapped_column(BigInteger, nullable=True)
-
-    created_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True),
-        server_default=func.now(),
-    )
-
-    __table_args__ = (
-        PrimaryKeyConstraint("code", "date"),
-        Index("idx_tech_ind_date", "date"),
-        Index("idx_tech_ind_code", "code"),
-    )
-
-    def __repr__(self) -> str:
-        return f"<TechnicalIndicator(code={self.code}, date={self.date})>"
 
 
 class FundamentalIndicator(Base):

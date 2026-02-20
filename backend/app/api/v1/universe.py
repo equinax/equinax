@@ -21,7 +21,6 @@ from app.db.models.profile import StockProfile, ETFProfile
 from app.db.models.classification import (
     StockClassificationSnapshot,
     StockStyleExposure,
-    StockMicrostructure,
     MarketRegime,
     StockStructuralInfo,
     BoardType,
@@ -362,17 +361,6 @@ async def get_universe_snapshot(
         .subquery()
     )
 
-    # Microstructure subquery (for retail/main-controlled flags)
-    micro_subq = (
-        select(
-            StockMicrostructure.code,
-            StockMicrostructure.is_retail_hot,
-            StockMicrostructure.is_main_controlled,
-        )
-        .where(StockMicrostructure.date == latest_date)
-        .subquery()
-    )
-
     # Main query with all classification data
     query = (
         select(
@@ -400,15 +388,14 @@ async def get_universe_snapshot(
             style_subq.c.vol_category,
             style_subq.c.value_category,
             style_subq.c.turnover_category,
-            micro_subq.c.is_retail_hot,
-            micro_subq.c.is_main_controlled,
+            literal(False).label("is_retail_hot"),
+            literal(False).label("is_main_controlled"),
         )
         .outerjoin(market_subq, AssetMeta.code == market_subq.c.code)
         .outerjoin(valuation_subq, AssetMeta.code == valuation_subq.c.code)
         .outerjoin(StockProfile, AssetMeta.code == StockProfile.code)
         .outerjoin(StockStructuralInfo, AssetMeta.code == StockStructuralInfo.code)
         .outerjoin(style_subq, AssetMeta.code == style_subq.c.code)
-        .outerjoin(micro_subq, AssetMeta.code == micro_subq.c.code)
     )
 
     # Apply asset type filter
@@ -873,15 +860,6 @@ async def get_asset_detail(
     )
     style = style_result.scalar_one_or_none()
 
-    # Get microstructure
-    micro_result = await db.execute(
-        select(StockMicrostructure)
-        .where(StockMicrostructure.code == code)
-        .order_by(desc(StockMicrostructure.date))
-        .limit(1)
-    )
-    micro = micro_result.scalar_one_or_none()
-
     # Get structural info
     structural_result = await db.execute(
         select(StockStructuralInfo).where(StockStructuralInfo.code == code)
@@ -975,11 +953,11 @@ async def get_asset_detail(
         momentum_20d=style.momentum_20d if style else None,
         momentum_60d=style.momentum_60d if style else None,
         # Microstructure (with defensive None checks)
-        fund_holding_ratio=micro.fund_holding_ratio if micro else None,
-        northbound_holding_ratio=micro.northbound_holding_ratio if micro else None,
-        is_institutional=bool(micro.is_institutional) if micro else False,
-        is_northbound_heavy=bool(micro.is_northbound_heavy) if micro else False,
-        is_retail_hot=bool(micro.is_retail_hot) if micro else False,
+        fund_holding_ratio=None,
+        northbound_holding_ratio=None,
+        is_institutional=False,
+        is_northbound_heavy=False,
+        is_retail_hot=False,
         # Flags (with defensive None checks)
         is_st=bool(structural.is_st) if structural else False,
         is_new=bool(structural.is_new) if structural else False,

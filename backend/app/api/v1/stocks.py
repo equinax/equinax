@@ -19,11 +19,9 @@ from app.db.models.asset import (
     AssetType,
     MarketDaily,
     IndicatorValuation,
-    IndicatorETF,
     AdjustFactor,
 )
 from app.db.models.profile import StockProfile, ETFProfile
-from app.db.models.indicator import TechnicalIndicator
 
 router = APIRouter()
 
@@ -134,33 +132,6 @@ class KLineResponse(BaseModel):
     total: int
 
 
-class TechnicalIndicatorResponse(BaseModel):
-    """Schema for technical indicator response."""
-
-    date: date
-    ma_5: Optional[Decimal]
-    ma_10: Optional[Decimal]
-    ma_20: Optional[Decimal]
-    ma_60: Optional[Decimal]
-    ema_12: Optional[Decimal]
-    ema_26: Optional[Decimal]
-    macd_dif: Optional[Decimal]
-    macd_dea: Optional[Decimal]
-    macd_hist: Optional[Decimal]
-    rsi_6: Optional[Decimal]
-    rsi_12: Optional[Decimal]
-    rsi_24: Optional[Decimal]
-    kdj_k: Optional[Decimal]
-    kdj_d: Optional[Decimal]
-    kdj_j: Optional[Decimal]
-    boll_upper: Optional[Decimal]
-    boll_middle: Optional[Decimal]
-    boll_lower: Optional[Decimal]
-
-    class Config:
-        from_attributes = True
-
-
 class AssetSearchResult(BaseModel):
     """Schema for asset search result."""
 
@@ -198,7 +169,6 @@ class ValuationResponse(BaseModel):
     pe_ttm: Optional[Decimal]
     pb_mrq: Optional[Decimal]
     ps_ttm: Optional[Decimal]
-    pcf_ncf_ttm: Optional[Decimal]
     total_mv: Optional[Decimal]
     circ_mv: Optional[Decimal]
     is_st: Optional[int]
@@ -603,42 +573,6 @@ async def fetch_missing_kline(
     )
 
 
-@router.get("/{code}/indicators", response_model=List[TechnicalIndicatorResponse])
-async def get_indicators(
-    code: str,
-    start_date: Optional[date] = Query(default=None),
-    end_date: Optional[date] = Query(default=None),
-    limit: int = Query(default=250, ge=1, le=1000),
-    db: AsyncSession = Depends(get_db),
-):
-    """Get technical indicators for an asset."""
-    # Check asset exists
-    asset_result = await db.execute(select(AssetMeta).where(AssetMeta.code == code))
-    if not asset_result.scalar_one_or_none():
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Asset not found",
-        )
-
-    # Build query
-    query = select(TechnicalIndicator).where(TechnicalIndicator.code == code)
-
-    if start_date:
-        query = query.where(TechnicalIndicator.date >= start_date)
-    if end_date:
-        query = query.where(TechnicalIndicator.date <= end_date)
-
-    query = query.order_by(TechnicalIndicator.date.desc()).limit(limit)
-
-    result = await db.execute(query)
-    indicators = result.scalars().all()
-
-    # Reverse to get chronological order
-    indicators = list(reversed(indicators))
-
-    return [TechnicalIndicatorResponse.model_validate(i) for i in indicators]
-
-
 @router.get("/{code}/fundamentals")
 async def get_fundamentals(
     code: str,
@@ -678,44 +612,22 @@ async def get_fundamentals(
             "pe_ttm": latest.pe_ttm,
             "pb_mrq": latest.pb_mrq,
             "ps_ttm": latest.ps_ttm,
-            "pcf_ncf_ttm": latest.pcf_ncf_ttm,
             "total_mv": latest.total_mv,
             "circ_mv": latest.circ_mv,
             "is_st": latest.is_st,
         }
 
-    # For ETFs, get ETF-specific indicators
+    # For ETFs, return empty indicator data (indicator_etf table has been dropped)
     elif asset.asset_type == AssetType.ETF or asset.asset_type == "ETF":
-        result = await db.execute(
-            select(IndicatorETF)
-            .where(IndicatorETF.code == code)
-            .order_by(IndicatorETF.date.desc())
-            .limit(1)
-        )
-        latest = result.scalar_one_or_none()
-
-        # ETFs may not have indicator data
-        if latest:
-            return {
-                "code": code,
-                "asset_type": "ETF",
-                "date": latest.date,
-                "iopv": latest.iopv,
-                "discount_rate": latest.discount_rate,
-                "unit_total": latest.unit_total,
-                "tracking_error": latest.tracking_error,
-            }
-        else:
-            # Return empty response for ETF without indicator data
-            return {
-                "code": code,
-                "asset_type": "ETF",
-                "date": None,
-                "iopv": None,
-                "discount_rate": None,
-                "unit_total": None,
-                "tracking_error": None,
-            }
+        return {
+            "code": code,
+            "asset_type": "ETF",
+            "date": None,
+            "iopv": None,
+            "discount_rate": None,
+            "unit_total": None,
+            "tracking_error": None,
+        }
 
     else:
         raise HTTPException(

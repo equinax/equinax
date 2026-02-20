@@ -9,14 +9,12 @@ from app.db.models.asset import (
     ETFType,
     MarketDaily,
     IndicatorValuation,
-    IndicatorETF,
     AdjustFactor,
 )
 from app.db.models.profile import StockProfile, ETFProfile, IndexProfile
 from app.db.models.sync import SyncHistory
 
 from app.db.models.indicator import (
-    TechnicalIndicator,
     FundamentalIndicator,
     MoneyflowDaily,
     LimitListDaily,
@@ -36,7 +34,6 @@ from app.db.models.classification import (
     IndustryClassification,
     StockIndustryMapping,
     StockStyleExposure,
-    StockMicrostructure,
     MarketRegime,
     StockClassificationSnapshot,
     BoardType,
@@ -56,14 +53,12 @@ __all__ = [
     "ETFType",
     "MarketDaily",
     "IndicatorValuation",
-    "IndicatorETF",
     "AdjustFactor",
     "StockProfile",
     "ETFProfile",
     "IndexProfile",
     "SyncHistory",
     # Other models
-    "TechnicalIndicator",
     "FundamentalIndicator",
     "MoneyflowDaily",
     "LimitListDaily",
@@ -82,7 +77,6 @@ __all__ = [
     "IndustryClassification",
     "StockIndustryMapping",
     "StockStyleExposure",
-    "StockMicrostructure",
     "MarketRegime",
     "StockClassificationSnapshot",
     "BoardType",

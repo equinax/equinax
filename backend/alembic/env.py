@@ -16,7 +16,6 @@ from app.db.models import (
     AssetMeta,
     MarketDaily,
     IndicatorValuation,
-    IndicatorETF,
     AdjustFactor,
     StockProfile,
     ETFProfile,
@@ -33,11 +32,9 @@ from app.db.models import (
     IndustryClassification,
     StockIndustryMapping,
     StockStyleExposure,
-    StockMicrostructure,
     MarketRegime,
     StockClassificationSnapshot,
     IndexConstituent,
-    TechnicalIndicator,
     FundamentalIndicator,
 )
 from app.config import settings

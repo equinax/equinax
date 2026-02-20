@@ -200,47 +200,6 @@ class IndicatorValuation(Base):
         return f"<IndicatorValuation(code={self.code}, date={self.date})>"
 
 
-class IndicatorETF(Base):
-    """
-    ETF特有指标表
-
-    This table is a TimescaleDB hypertable partitioned by date.
-    存储ETF的净值、折溢价、规模等特有数据
-    """
-
-    __tablename__ = "indicator_etf"
-
-    # Composite primary key for TimescaleDB hypertable
-    code: Mapped[str] = mapped_column(String(20), nullable=False)
-    date: Mapped[date] = mapped_column(Date, nullable=False)
-
-    # ETF specific metrics
-    iopv: Mapped[Optional[Decimal]] = mapped_column(Numeric(12, 6), nullable=True)  # 基金净值参考
-    discount_rate: Mapped[Optional[Decimal]] = mapped_column(
-        Numeric(8, 4), nullable=True
-    )  # 折溢价率
-    unit_total: Mapped[Optional[Decimal]] = mapped_column(
-        Numeric(18, 2), nullable=True
-    )  # 份额规模(万份)
-    tracking_error: Mapped[Optional[Decimal]] = mapped_column(
-        Numeric(8, 4), nullable=True
-    )  # 跟踪误差
-
-    created_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True),
-        server_default=func.now(),
-    )
-
-    __table_args__ = (
-        PrimaryKeyConstraint("code", "date"),
-        Index("idx_indicator_etf_date", "date"),
-        Index("idx_indicator_etf_code", "code"),
-    )
-
-    def __repr__(self) -> str:
-        return f"<IndicatorETF(code={self.code}, date={self.date})>"
-
-
 class AdjustFactor(Base):
     """
     复权因子表 - 所有资产通用
