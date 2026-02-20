@@ -1,23 +1,19 @@
 #!/usr/bin/env python3
 """
-ETF 日线数据下载脚本
-使用 AkShare 获取 ETF 列表和日线数据（baostock 不支持 ETF K线数据）
-存入独立的 SQLite 数据库: etf_{year}.db
-支持增量下载、断点续传、失败重试
+DEPRECATED: This script used akshare which has been removed from the project.
+ETF data is now synced directly from TuShare via workers/source_sync.py.
+The cron job uses api_triggered_sync_v2 instead of the old daily_data_update pipeline.
 """
 
-import sqlite3
-import akshare as ak
-from tqdm import tqdm
-from datetime import datetime, date
-import time
-import argparse
-import json
-import os
+raise ImportError(
+    "download_etf_data.py is deprecated. "
+    "ETF data is now synced via TuShare (workers/source_sync.py). "
+    "Use api_triggered_sync_v2 or the Data Sync UI instead."
+)
 
 # 限流配置
-REQUEST_DELAY = 0.3   # 每次请求后等待时间（秒），AkShare 需要更大间隔
-BATCH_DELAY = 2.0     # 每批次后额外等待时间
+REQUEST_DELAY = 0.3  # 每次请求后等待时间（秒），AkShare 需要更大间隔
+BATCH_DELAY = 2.0  # 每批次后额外等待时间
 
 # 缓存目录
 CACHE_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "cache")
@@ -56,17 +52,17 @@ def get_etf_codes():
             df = ak.fund_etf_spot_em()
             codes = []
             for _, row in df.iterrows():
-                code = str(row['代码'])
-                name = str(row['名称'])
-                if code.startswith('5'):
-                    codes.append({'code': f'sh.{code}', 'code_name': name, 'tradeStatus': '1'})
-                elif code.startswith('1'):
-                    codes.append({'code': f'sz.{code}', 'code_name': name, 'tradeStatus': '1'})
+                code = str(row["代码"])
+                name = str(row["名称"])
+                if code.startswith("5"):
+                    codes.append({"code": f"sh.{code}", "code_name": name, "tradeStatus": "1"})
+                elif code.startswith("1"):
+                    codes.append({"code": f"sz.{code}", "code_name": name, "tradeStatus": "1"})
             if codes:
                 print(f"获取 ETF 共 {len(codes)} 只 (方案1)")
                 return codes
         except Exception as e:
-            print(f"方案1 第{attempt+1}次尝试失败: {e}")
+            print(f"方案1 第{attempt + 1}次尝试失败: {e}")
             time.sleep(5)
 
     # 方案2: fund_etf_category_sina
@@ -76,12 +72,12 @@ def get_etf_codes():
         df = ak.fund_etf_category_sina(symbol="ETF基金")
         codes = []
         for _, row in df.iterrows():
-            code = str(row['代码'])
-            name = str(row['名称']) if '名称' in df.columns else ''
-            if code.startswith('5'):
-                codes.append({'code': f'sh.{code}', 'code_name': name, 'tradeStatus': '1'})
-            elif code.startswith('1'):
-                codes.append({'code': f'sz.{code}', 'code_name': name, 'tradeStatus': '1'})
+            code = str(row["代码"])
+            name = str(row["名称"]) if "名称" in df.columns else ""
+            if code.startswith("5"):
+                codes.append({"code": f"sh.{code}", "code_name": name, "tradeStatus": "1"})
+            elif code.startswith("1"):
+                codes.append({"code": f"sz.{code}", "code_name": name, "tradeStatus": "1"})
         if codes:
             print(f"获取 ETF 共 {len(codes)} 只 (方案2)")
             return codes
@@ -93,10 +89,10 @@ def get_etf_codes():
     codes = []
     # 上交所 ETF: 510000-519999
     for i in range(510000, 520000):
-        codes.append({'code': f'sh.{i}', 'code_name': '', 'tradeStatus': '1'})
+        codes.append({"code": f"sh.{i}", "code_name": "", "tradeStatus": "1"})
     # 深交所 ETF: 159000-159999
     for i in range(159000, 160000):
-        codes.append({'code': f'sz.{i}', 'code_name': '', 'tradeStatus': '1'})
+        codes.append({"code": f"sz.{i}", "code_name": "", "tradeStatus": "1"})
     print(f"生成 ETF 代码范围共 {len(codes)} 个 (方案3，将过滤无效代码)")
     return codes
 
@@ -159,15 +155,15 @@ def create_database(conn: sqlite3.Connection):
     print("数据库表结构创建完成")
 
 
-def get_etf_basic(code: str, code_name: str = '') -> dict:
+def get_etf_basic(code: str, code_name: str = "") -> dict:
     """获取单只 ETF 的基本信息（从 AkShare 列表中已获取）"""
     return {
-        'code': code,
-        'code_name': code_name,
-        'ipo_date': None,
-        'out_date': None,
-        'type': 5,  # ETF 类型
-        'status': 1  # 正常交易
+        "code": code,
+        "code_name": code_name,
+        "ipo_date": None,
+        "out_date": None,
+        "type": 5,  # ETF 类型
+        "status": 1,  # 正常交易
     }
 
 
@@ -197,12 +193,15 @@ def get_outdated_daily_codes(conn: sqlite3.Connection, target_date: str) -> set:
     """
     cursor = conn.cursor()
     # 获取每只 ETF 的最新日期，筛选出落后于目标日期的
-    cursor.execute("""
+    cursor.execute(
+        """
         SELECT code, MAX(date) as max_date
         FROM daily_k_data
         GROUP BY code
         HAVING max_date < ?
-    """, (target_date,))
+    """,
+        (target_date,),
+    )
     return {row[0] for row in cursor.fetchall()}
 
 
@@ -217,7 +216,7 @@ def load_failed_etfs(year: int) -> dict:
     """加载失败记录"""
     failed_log = get_failed_log_path(year)
     if os.path.exists(failed_log):
-        with open(failed_log, 'r') as f:
+        with open(failed_log, "r") as f:
             return json.load(f)
     return {"basic": [], "daily": [], "adjust": []}
 
@@ -225,7 +224,7 @@ def load_failed_etfs(year: int) -> dict:
 def save_failed_etfs(year: int, failed: dict):
     """保存失败记录"""
     failed_log = get_failed_log_path(year)
-    with open(failed_log, 'w') as f:
+    with open(failed_log, "w") as f:
         json.dump(failed, f, indent=2)
 
 
@@ -234,7 +233,7 @@ def download_etf_basic(conn: sqlite3.Connection, etfs: list, skip_existing: bool
     cursor = conn.cursor()
 
     existing_codes = get_downloaded_basic_codes(conn) if skip_existing else set()
-    to_download = [e for e in etfs if e['code'] not in existing_codes]
+    to_download = [e for e in etfs if e["code"] not in existing_codes]
 
     if not to_download:
         print(f"\nETF 基本信息已全部下载完成 ({len(existing_codes)} 条)")
@@ -247,19 +246,30 @@ def download_etf_basic(conn: sqlite3.Connection, etfs: list, skip_existing: bool
 
     for etf in tqdm(to_download, desc="保存基本信息"):
         try:
-            info = get_etf_basic(etf['code'], etf.get('code_name', ''))
-            cursor.execute("""
+            info = get_etf_basic(etf["code"], etf.get("code_name", ""))
+            cursor.execute(
+                """
                 INSERT OR REPLACE INTO etf_basic
                 (code, code_name, ipo_date, out_date, type, status)
                 VALUES (?, ?, ?, ?, ?, ?)
-            """, (info['code'], info['code_name'], info['ipo_date'],
-                  info['out_date'], info['type'], info['status']))
+            """,
+                (
+                    info["code"],
+                    info["code_name"],
+                    info["ipo_date"],
+                    info["out_date"],
+                    info["type"],
+                    info["status"],
+                ),
+            )
             success_count += 1
         except Exception as e:
-            failed_etfs.append(etf['code'])
+            failed_etfs.append(etf["code"])
 
     conn.commit()
-    print(f"ETF 基本信息保存完成: 本次 {success_count} 条, 累计 {len(existing_codes) + success_count} 条")
+    print(
+        f"ETF 基本信息保存完成: 本次 {success_count} 条, 累计 {len(existing_codes) + success_count} 条"
+    )
     if failed_etfs:
         print(f"失败: {len(failed_etfs)} 只")
 
@@ -268,7 +278,7 @@ def download_etf_basic(conn: sqlite3.Connection, etfs: list, skip_existing: bool
 
 def safe_float(value):
     """安全转换为浮点数"""
-    if value is None or value == '':
+    if value is None or value == "":
         return None
     try:
         return float(value)
@@ -278,7 +288,7 @@ def safe_float(value):
 
 def safe_int(value):
     """安全转换为整数"""
-    if value is None or value == '':
+    if value is None or value == "":
         return None
     try:
         return int(float(value))
@@ -286,7 +296,9 @@ def safe_int(value):
         return None
 
 
-def download_daily_data(conn: sqlite3.Connection, etfs: list, start_date: str, end_date: str, skip_existing: bool = True):
+def download_daily_data(
+    conn: sqlite3.Connection, etfs: list, start_date: str, end_date: str, skip_existing: bool = True
+):
     """下载日线数据（使用 AkShare fund_etf_hist_em）"""
     cursor = conn.cursor()
 
@@ -297,15 +309,17 @@ def download_daily_data(conn: sqlite3.Connection, etfs: list, start_date: str, e
         outdated_codes = get_outdated_daily_codes(conn, end_date)
 
         # 需要下载的：1) 完全没有的  2) 数据落后的
-        new_codes = {e['code'] for e in etfs} - existing_codes
-        to_download = [e for e in etfs if e['code'] in new_codes or e['code'] in outdated_codes]
+        new_codes = {e["code"] for e in etfs} - existing_codes
+        to_download = [e for e in etfs if e["code"] in new_codes or e["code"] in outdated_codes]
 
         if not to_download:
             print(f"\n日线数据已全部更新完成 ({len(existing_codes)} 只 ETF，数据已到 {end_date})")
             return []
 
         print(f"\n正在下载 {start_date} 至 {end_date} 日线数据...")
-        print(f"已有 {len(existing_codes)} 只, 新增 {len(new_codes)} 只, 待更新 {len(outdated_codes)} 只")
+        print(
+            f"已有 {len(existing_codes)} 只, 新增 {len(new_codes)} 只, 待更新 {len(outdated_codes)} 只"
+        )
         print("使用 AkShare fund_etf_hist_em API (baostock 不支持 ETF K线)")
     else:
         to_download = etfs
@@ -314,16 +328,16 @@ def download_daily_data(conn: sqlite3.Connection, etfs: list, start_date: str, e
         print("使用 AkShare fund_etf_hist_em API (baostock 不支持 ETF K线)")
 
     # 将日期格式从 YYYY-MM-DD 转换为 YYYYMMDD
-    start_date_fmt = start_date.replace('-', '')
-    end_date_fmt = end_date.replace('-', '')
+    start_date_fmt = start_date.replace("-", "")
+    end_date_fmt = end_date.replace("-", "")
 
     total_records = 0
     failed_etfs = []
 
     for i, etf in enumerate(tqdm(to_download, desc="下载日线数据")):
-        code = etf['code']
+        code = etf["code"]
         # 提取纯数字代码 (sh.510050 -> 510050)
-        symbol = code.split('.')[1] if '.' in code else code
+        symbol = code.split(".")[1] if "." in code else code
 
         try:
             # 使用 AkShare 获取 ETF 历史数据
@@ -332,7 +346,7 @@ def download_daily_data(conn: sqlite3.Connection, etfs: list, start_date: str, e
                 period="daily",
                 start_date=start_date_fmt,
                 end_date=end_date_fmt,
-                adjust=""  # 不复权
+                adjust="",  # 不复权
             )
 
             if df is None or df.empty:
@@ -342,29 +356,34 @@ def download_daily_data(conn: sqlite3.Connection, etfs: list, start_date: str, e
             batch = []
             for _, row in df.iterrows():
                 # AkShare 返回字段: 日期, 开盘, 收盘, 最高, 最低, 成交量, 成交额, 振幅, 涨跌幅, 涨跌额, 换手率
-                date_str = str(row['日期'])
-                batch.append((
-                    date_str,                    # date
-                    code,                        # code (保留 sh./sz. 前缀)
-                    safe_float(row['开盘']),      # open
-                    safe_float(row['最高']),      # high
-                    safe_float(row['最低']),      # low
-                    safe_float(row['收盘']),      # close
-                    None,                        # preclose (AkShare 不直接提供)
-                    safe_float(row['成交量']),    # volume
-                    safe_float(row['成交额']),    # amount
-                    safe_float(row.get('换手率')), # turn
-                    1,                           # tradestatus (默认正常交易)
-                    safe_float(row['涨跌幅'])     # pctChg
-                ))
+                date_str = str(row["日期"])
+                batch.append(
+                    (
+                        date_str,  # date
+                        code,  # code (保留 sh./sz. 前缀)
+                        safe_float(row["开盘"]),  # open
+                        safe_float(row["最高"]),  # high
+                        safe_float(row["最低"]),  # low
+                        safe_float(row["收盘"]),  # close
+                        None,  # preclose (AkShare 不直接提供)
+                        safe_float(row["成交量"]),  # volume
+                        safe_float(row["成交额"]),  # amount
+                        safe_float(row.get("换手率")),  # turn
+                        1,  # tradestatus (默认正常交易)
+                        safe_float(row["涨跌幅"]),  # pctChg
+                    )
+                )
 
             if batch:
-                cursor.executemany("""
+                cursor.executemany(
+                    """
                     INSERT OR IGNORE INTO daily_k_data
                     (date, code, open, high, low, close, preclose, volume, amount,
                      turn, tradestatus, pctChg)
                     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                """, batch)
+                """,
+                    batch,
+                )
                 total_records += len(batch)
 
             time.sleep(REQUEST_DELAY)
@@ -385,11 +404,13 @@ def download_daily_data(conn: sqlite3.Connection, etfs: list, start_date: str, e
     return failed_etfs
 
 
-def download_adjust_factors(conn: sqlite3.Connection, etfs: list, start_date: str, end_date: str, skip_existing: bool = True):
+def download_adjust_factors(
+    conn: sqlite3.Connection, etfs: list, start_date: str, end_date: str, skip_existing: bool = True
+):
     """下载复权因子（通过比较不复权和前复权数据计算）"""
     cursor = conn.cursor()
 
-    etf_codes = [e['code'] for e in etfs]
+    etf_codes = [e["code"] for e in etfs]
     existing_codes = get_downloaded_adjust_codes(conn) if skip_existing else set()
     to_download = [c for c in etf_codes if c not in existing_codes]
 
@@ -402,14 +423,14 @@ def download_adjust_factors(conn: sqlite3.Connection, etfs: list, start_date: st
     print("通过比较不复权和前复权数据计算复权因子")
 
     # 将日期格式从 YYYY-MM-DD 转换为 YYYYMMDD
-    start_date_fmt = start_date.replace('-', '')
-    end_date_fmt = end_date.replace('-', '')
+    start_date_fmt = start_date.replace("-", "")
+    end_date_fmt = end_date.replace("-", "")
 
     total_records = 0
     failed_etfs = []
 
     for i, code in enumerate(tqdm(to_download, desc="计算复权因子")):
-        symbol = code.split('.')[1] if '.' in code else code
+        symbol = code.split(".")[1] if "." in code else code
 
         try:
             # 获取不复权数据
@@ -418,7 +439,7 @@ def download_adjust_factors(conn: sqlite3.Connection, etfs: list, start_date: st
                 period="daily",
                 start_date=start_date_fmt,
                 end_date=end_date_fmt,
-                adjust=""
+                adjust="",
             )
 
             time.sleep(REQUEST_DELAY / 3)
@@ -429,7 +450,7 @@ def download_adjust_factors(conn: sqlite3.Connection, etfs: list, start_date: st
                 period="daily",
                 start_date=start_date_fmt,
                 end_date=end_date_fmt,
-                adjust="qfq"
+                adjust="qfq",
             )
 
             time.sleep(REQUEST_DELAY / 3)
@@ -440,10 +461,17 @@ def download_adjust_factors(conn: sqlite3.Connection, etfs: list, start_date: st
                 period="daily",
                 start_date=start_date_fmt,
                 end_date=end_date_fmt,
-                adjust="hfq"
+                adjust="hfq",
             )
 
-            if df_raw is None or df_qfq is None or df_hfq is None or df_raw.empty or df_qfq.empty or df_hfq.empty:
+            if (
+                df_raw is None
+                or df_qfq is None
+                or df_hfq is None
+                or df_raw.empty
+                or df_qfq.empty
+                or df_hfq.empty
+            ):
                 time.sleep(REQUEST_DELAY)
                 continue
 
@@ -452,37 +480,46 @@ def download_adjust_factors(conn: sqlite3.Connection, etfs: list, start_date: st
             # 后复权因子: 后复权价格 / 不复权价格
             batch = []
             for idx, row_raw in df_raw.iterrows():
-                date_str = str(row_raw['日期'])
-                close_raw = safe_float(row_raw['收盘'])
+                date_str = str(row_raw["日期"])
+                close_raw = safe_float(row_raw["收盘"])
 
                 # 找到对应日期的前复权和后复权收盘价
-                qfq_row = df_qfq[df_qfq['日期'] == row_raw['日期']]
-                hfq_row = df_hfq[df_hfq['日期'] == row_raw['日期']]
+                qfq_row = df_qfq[df_qfq["日期"] == row_raw["日期"]]
+                hfq_row = df_hfq[df_hfq["日期"] == row_raw["日期"]]
 
                 if not qfq_row.empty and not hfq_row.empty and close_raw and close_raw > 0:
-                    close_qfq = safe_float(qfq_row.iloc[0]['收盘'])
-                    close_hfq = safe_float(hfq_row.iloc[0]['收盘'])
+                    close_qfq = safe_float(qfq_row.iloc[0]["收盘"])
+                    close_hfq = safe_float(hfq_row.iloc[0]["收盘"])
 
                     if close_qfq and close_hfq:
                         fore_factor = close_qfq / close_raw
                         back_factor = close_hfq / close_raw
 
                         # 只保存复权因子有变化的日期（或首日）
-                        if len(batch) == 0 or abs(fore_factor - batch[-1][2]) > 0.0001 or abs(back_factor - batch[-1][3]) > 0.0001:
-                            batch.append((
-                                code,           # code
-                                date_str,       # dividOperateDate
-                                fore_factor,    # foreAdjustFactor
-                                back_factor,    # backAdjustFactor
-                                fore_factor     # adjustFactor (使用前复权)
-                            ))
+                        if (
+                            len(batch) == 0
+                            or abs(fore_factor - batch[-1][2]) > 0.0001
+                            or abs(back_factor - batch[-1][3]) > 0.0001
+                        ):
+                            batch.append(
+                                (
+                                    code,  # code
+                                    date_str,  # dividOperateDate
+                                    fore_factor,  # foreAdjustFactor
+                                    back_factor,  # backAdjustFactor
+                                    fore_factor,  # adjustFactor (使用前复权)
+                                )
+                            )
 
             if batch:
-                cursor.executemany("""
+                cursor.executemany(
+                    """
                     INSERT OR IGNORE INTO adjust_factor
                     (code, dividOperateDate, foreAdjustFactor, backAdjustFactor, adjustFactor)
                     VALUES (?, ?, ?, ?, ?)
-                """, batch)
+                """,
+                    batch,
+                )
                 total_records += len(batch)
 
             time.sleep(REQUEST_DELAY)
@@ -534,7 +571,7 @@ def print_statistics(conn: sqlite3.Connection):
     print("=" * 50)
 
 
-def download_year(year: int, mode: str = 'all', force: bool = False, delay: float = 0.05):
+def download_year(year: int, mode: str = "all", force: bool = False, delay: float = 0.05):
     """下载指定年份的数据"""
     global REQUEST_DELAY
     REQUEST_DELAY = delay
@@ -551,7 +588,7 @@ def download_year(year: int, mode: str = 'all', force: bool = False, delay: floa
     print("=" * 60)
 
     # 仅查看状态
-    if mode == 'status':
+    if mode == "status":
         if os.path.exists(db_path):
             conn = sqlite3.connect(db_path)
             print_statistics(conn)
@@ -574,37 +611,41 @@ def download_year(year: int, mode: str = 'all', force: bool = False, delay: floa
             return
 
         # 根据模式下载
-        if mode == 'retry':
+        if mode == "retry":
             print("\n=== 重试失败的 ETF ===")
-            if failed_record['basic']:
+            if failed_record["basic"]:
                 print(f"重试基本信息: {len(failed_record['basic'])} 只")
-                retry_etfs = [{'code': c, 'code_name': ''} for c in failed_record['basic']]
+                retry_etfs = [{"code": c, "code_name": ""} for c in failed_record["basic"]]
                 new_failed = download_etf_basic(conn, retry_etfs, skip_existing=False)
-                failed_record['basic'] = new_failed
+                failed_record["basic"] = new_failed
 
-            if failed_record['daily']:
+            if failed_record["daily"]:
                 print(f"重试日线数据: {len(failed_record['daily'])} 只")
-                retry_etfs = [{'code': c, 'code_name': ''} for c in failed_record['daily']]
-                new_failed = download_daily_data(conn, retry_etfs, start_date, end_date, skip_existing=False)
-                failed_record['daily'] = new_failed
+                retry_etfs = [{"code": c, "code_name": ""} for c in failed_record["daily"]]
+                new_failed = download_daily_data(
+                    conn, retry_etfs, start_date, end_date, skip_existing=False
+                )
+                failed_record["daily"] = new_failed
 
-            if failed_record['adjust']:
+            if failed_record["adjust"]:
                 print(f"重试复权因子: {len(failed_record['adjust'])} 只")
-                retry_etfs = [{'code': c} for c in failed_record['adjust']]
-                new_failed = download_adjust_factors(conn, retry_etfs, start_date, end_date, skip_existing=False)
-                failed_record['adjust'] = new_failed
+                retry_etfs = [{"code": c} for c in failed_record["adjust"]]
+                new_failed = download_adjust_factors(
+                    conn, retry_etfs, start_date, end_date, skip_existing=False
+                )
+                failed_record["adjust"] = new_failed
 
-        elif mode in ['all', 'basic']:
+        elif mode in ["all", "basic"]:
             failed = download_etf_basic(conn, etfs, skip_existing)
-            failed_record['basic'] = failed
+            failed_record["basic"] = failed
 
-        if mode in ['all', 'daily']:
+        if mode in ["all", "daily"]:
             failed = download_daily_data(conn, etfs, start_date, end_date, skip_existing)
-            failed_record['daily'] = failed
+            failed_record["daily"] = failed
 
-        if mode in ['all', 'adjust']:
+        if mode in ["all", "adjust"]:
             failed = download_adjust_factors(conn, etfs, start_date, end_date, skip_existing)
-            failed_record['adjust'] = failed
+            failed_record["adjust"] = failed
 
         save_failed_etfs(year, failed_record)
         print_statistics(conn)
@@ -614,25 +655,33 @@ def download_year(year: int, mode: str = 'all', force: bool = False, delay: floa
         print(f"下载出错: {e}")
 
     elapsed = time.time() - start_time
-    print(f"\n{year}年 ETF 数据下载耗时: {elapsed/60:.1f} 分钟")
+    print(f"\n{year}年 ETF 数据下载耗时: {elapsed / 60:.1f} 分钟")
     print(f"数据库已保存至: {db_path}")
 
-    total_failed = len(failed_record['basic']) + len(failed_record['daily']) + len(failed_record['adjust'])
+    total_failed = (
+        len(failed_record["basic"]) + len(failed_record["daily"]) + len(failed_record["adjust"])
+    )
     if total_failed > 0:
-        print(f"\n失败统计: 基本信息 {len(failed_record['basic'])}, 日线 {len(failed_record['daily'])}, 复权因子 {len(failed_record['adjust'])}")
+        print(
+            f"\n失败统计: 基本信息 {len(failed_record['basic'])}, 日线 {len(failed_record['daily'])}, 复权因子 {len(failed_record['adjust'])}"
+        )
         print(f"可运行 --year {year} --mode retry 重试失败的 ETF")
 
 
 def parse_args():
     """解析命令行参数"""
-    parser = argparse.ArgumentParser(description='ETF 日线数据下载工具')
-    parser.add_argument('--year', type=int, help='下载指定年份')
-    parser.add_argument('--years', type=str, help='下载多个年份，逗号分隔 (如: 2020,2021,2022)')
-    parser.add_argument('--recent', type=int, help='增量更新模式: 更新最近 N 天内有数据缺失的 ETF')
-    parser.add_argument('--mode', choices=['all', 'basic', 'daily', 'adjust', 'retry', 'status'],
-                        default='all', help='下载模式: all=全部, basic=基本信息, daily=日线, adjust=复权因子, retry=重试失败, status=查看状态')
-    parser.add_argument('--force', action='store_true', help='强制重新下载（忽略已有数据）')
-    parser.add_argument('--delay', type=float, default=0.05, help='请求间隔（秒），默认0.05')
+    parser = argparse.ArgumentParser(description="ETF 日线数据下载工具")
+    parser.add_argument("--year", type=int, help="下载指定年份")
+    parser.add_argument("--years", type=str, help="下载多个年份，逗号分隔 (如: 2020,2021,2022)")
+    parser.add_argument("--recent", type=int, help="增量更新模式: 更新最近 N 天内有数据缺失的 ETF")
+    parser.add_argument(
+        "--mode",
+        choices=["all", "basic", "daily", "adjust", "retry", "status"],
+        default="all",
+        help="下载模式: all=全部, basic=基本信息, daily=日线, adjust=复权因子, retry=重试失败, status=查看状态",
+    )
+    parser.add_argument("--force", action="store_true", help="强制重新下载（忽略已有数据）")
+    parser.add_argument("--delay", type=float, default=0.05, help="请求间隔（秒），默认0.05")
     return parser.parse_args()
 
 
@@ -693,17 +742,17 @@ def download_recent(recent_days: int, delay: float = 0.05):
 
         # 尝试获取一只 ETF 看看有没有新数据
         try:
-            end_date_fmt = end_date.replace('-', '')
-            db_max_date_fmt = db_max_date.replace('-', '')
+            end_date_fmt = end_date.replace("-", "")
+            db_max_date_fmt = db_max_date.replace("-", "")
             df = ak.fund_etf_hist_em(
                 symbol="510050",  # 上证50ETF
                 period="daily",
                 start_date=db_max_date_fmt,
                 end_date=end_date_fmt,
-                adjust=""
+                adjust="",
             )
             if df is not None and not df.empty:
-                new_dates = [str(d)[:10] for d in df['日期'] if str(d)[:10] > db_max_date]
+                new_dates = [str(d)[:10] for d in df["日期"] if str(d)[:10] > db_max_date]
                 if new_dates:
                     print(f"数据源有新数据: {new_dates}")
                     # 重新连接并下载所有 ETF 的新数据
@@ -724,8 +773,8 @@ def download_recent(recent_days: int, delay: float = 0.05):
     print(f"\n发现 {len(outdated_codes)} 只 ETF 数据需要更新")
 
     # 将日期格式转换
-    start_date_fmt = start_date.replace('-', '')
-    end_date_fmt = end_date.replace('-', '')
+    start_date_fmt = start_date.replace("-", "")
+    end_date_fmt = end_date.replace("-", "")
 
     try:
         cursor = conn.cursor()
@@ -733,7 +782,7 @@ def download_recent(recent_days: int, delay: float = 0.05):
         failed_etfs = []
 
         for i, code in enumerate(tqdm(list(outdated_codes), desc="更新 ETF 日线数据")):
-            symbol = code.split('.')[1] if '.' in code else code
+            symbol = code.split(".")[1] if "." in code else code
 
             try:
                 df = ak.fund_etf_hist_em(
@@ -741,7 +790,7 @@ def download_recent(recent_days: int, delay: float = 0.05):
                     period="daily",
                     start_date=start_date_fmt,
                     end_date=end_date_fmt,
-                    adjust=""
+                    adjust="",
                 )
 
                 if df is None or df.empty:
@@ -751,25 +800,34 @@ def download_recent(recent_days: int, delay: float = 0.05):
 
                 batch = []
                 for _, row in df.iterrows():
-                    trade_date = row['日期'].strftime('%Y-%m-%d') if hasattr(row['日期'], 'strftime') else str(row['日期'])
-                    batch.append((
-                        trade_date,
-                        code,
-                        safe_float(row.get('开盘')),
-                        safe_float(row.get('最高')),
-                        safe_float(row.get('最低')),
-                        safe_float(row.get('收盘')),
-                        safe_float(row.get('成交量')),
-                        safe_float(row.get('成交额')),
-                        safe_float(row.get('换手率'))
-                    ))
+                    trade_date = (
+                        row["日期"].strftime("%Y-%m-%d")
+                        if hasattr(row["日期"], "strftime")
+                        else str(row["日期"])
+                    )
+                    batch.append(
+                        (
+                            trade_date,
+                            code,
+                            safe_float(row.get("开盘")),
+                            safe_float(row.get("最高")),
+                            safe_float(row.get("最低")),
+                            safe_float(row.get("收盘")),
+                            safe_float(row.get("成交量")),
+                            safe_float(row.get("成交额")),
+                            safe_float(row.get("换手率")),
+                        )
+                    )
 
                 if batch:
-                    cursor.executemany("""
+                    cursor.executemany(
+                        """
                         INSERT OR REPLACE INTO daily_k_data
                         (date, code, open, high, low, close, volume, amount, turnover)
                         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-                    """, batch)
+                    """,
+                        batch,
+                    )
                     total_records += len(batch)
 
                 time.sleep(REQUEST_DELAY)
@@ -802,7 +860,7 @@ def main():
     years_to_download = []
 
     if args.years:
-        years_to_download = [int(y.strip()) for y in args.years.split(',')]
+        years_to_download = [int(y.strip()) for y in args.years.split(",")]
     elif args.year:
         years_to_download = [args.year]
     else:
@@ -811,7 +869,9 @@ def main():
         print("  python download_etf_data.py --year 2024")
         print("  python download_etf_data.py --years 2019,2020,2021,2022,2023,2024,2025")
         print("  python download_etf_data.py --recent 1  # 增量更新")
-        print("  python download_etf_data.py --mode status --years 2019,2020,2021,2022,2023,2024,2025")
+        print(
+            "  python download_etf_data.py --mode status --years 2019,2020,2021,2022,2023,2024,2025"
+        )
         return
 
     valid_years = []
@@ -825,7 +885,7 @@ def main():
         print("没有有效的年份")
         return
 
-    if args.mode == 'status':
+    if args.mode == "status":
         for year in valid_years:
             download_year(year, args.mode, args.force, args.delay)
         return

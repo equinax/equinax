@@ -81,7 +81,9 @@ class WorkerSettings:
     # Note: Times are in UTC. For CST (UTC+8), 16:00 CST = 08:00 UTC
     cron_jobs = [
         # Daily data update at 16:30 CST (after market close)
-        cron(daily_data_update, hour=8, minute=30),
+        # Uses api_triggered_sync_v2 which syncs directly from TuShare → PG
+        # (replaces old daily_data_update which used akshare SQLite cache pipeline)
+        cron(api_triggered_sync_v2, hour=8, minute=30),
         # Weekly index composition update on Sunday at 22:00 CST (14:00 UTC)
         # Updates industry weights based on current constituent stocks
         cron(daily_index_update, weekday=6, hour=14, minute=0),

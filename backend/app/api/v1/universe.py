@@ -461,7 +461,7 @@ async def get_universe_snapshot(
         SortField.CHANGE: market_subq.c.pct_chg,
         SortField.PE: valuation_subq.c.pe_ttm,
         SortField.PB: valuation_subq.c.pb_mrq,
-        SortField.TURNOVER: market_subq.c.turn,
+        SortField.TURNOVER: valuation_subq.c.turnover_rate,
     }
     sort_col = sort_column_map.get(sort_by, AssetMeta.code)
 

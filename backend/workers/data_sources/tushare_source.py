@@ -430,7 +430,7 @@ class TuShareDataSource(BaseDataSource):
                 if df is not None and not df.empty:
                     for _, row in df.iterrows():
                         trade_date = pd.to_datetime(row["trade_date"]).date()
-                            all_records.append(
+                        all_records.append(
                             {
                                 "code": code,
                                 "trade_date": trade_date,
