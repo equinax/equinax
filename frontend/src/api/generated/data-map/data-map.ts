@@ -28,6 +28,8 @@ import type {
   HTTPValidationError,
   HeatmapResponse,
   MarketDailyBreakdownResponse,
+  SparseBackfillRequest,
+  SparseBackfillResponse,
 } from ".././schemas";
 import { customInstance } from "../../mutator";
 
@@ -1155,6 +1157,101 @@ export const useTriggerDateBackfillApiV1DataMapDateBackfillPost = <
 > => {
   const mutationOptions =
     getTriggerDateBackfillApiV1DataMapDateBackfillPostMutationOptions(options);
+
+  return useMutation(mutationOptions);
+};
+/**
+ * Backfill sparse dates and re-check counts.
+
+For each date, re-runs sync_daily_data_with_source (upsert, safe for
+re-runs). After backfill, re-queries actual count and compares to expected.
+If actual improved but still < 95% expected, marks as ``best_effort``
+(likely due to suspended stocks on that day).
+ * @summary Trigger Sparse Backfill
+ */
+export const triggerSparseBackfillApiV1DataMapSparseBackfillPost = (
+  sparseBackfillRequest: SparseBackfillRequest,
+) => {
+  return customInstance<SparseBackfillResponse>({
+    url: `/api/v1/data-map/sparse-backfill`,
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    data: sparseBackfillRequest,
+  });
+};
+
+export const getTriggerSparseBackfillApiV1DataMapSparseBackfillPostMutationOptions =
+  <TError = HTTPValidationError, TContext = unknown>(options?: {
+    mutation?: UseMutationOptions<
+      Awaited<
+        ReturnType<typeof triggerSparseBackfillApiV1DataMapSparseBackfillPost>
+      >,
+      TError,
+      { data: SparseBackfillRequest },
+      TContext
+    >;
+  }): UseMutationOptions<
+    Awaited<
+      ReturnType<typeof triggerSparseBackfillApiV1DataMapSparseBackfillPost>
+    >,
+    TError,
+    { data: SparseBackfillRequest },
+    TContext
+  > => {
+    const { mutation: mutationOptions } = options ?? {};
+
+    const mutationFn: MutationFunction<
+      Awaited<
+        ReturnType<typeof triggerSparseBackfillApiV1DataMapSparseBackfillPost>
+      >,
+      { data: SparseBackfillRequest }
+    > = (props) => {
+      const { data } = props ?? {};
+
+      return triggerSparseBackfillApiV1DataMapSparseBackfillPost(data);
+    };
+
+    return { mutationFn, ...mutationOptions };
+  };
+
+export type TriggerSparseBackfillApiV1DataMapSparseBackfillPostMutationResult =
+  NonNullable<
+    Awaited<
+      ReturnType<typeof triggerSparseBackfillApiV1DataMapSparseBackfillPost>
+    >
+  >;
+export type TriggerSparseBackfillApiV1DataMapSparseBackfillPostMutationBody =
+  SparseBackfillRequest;
+export type TriggerSparseBackfillApiV1DataMapSparseBackfillPostMutationError =
+  HTTPValidationError;
+
+/**
+ * @summary Trigger Sparse Backfill
+ */
+export const useTriggerSparseBackfillApiV1DataMapSparseBackfillPost = <
+  TError = HTTPValidationError,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<
+      ReturnType<typeof triggerSparseBackfillApiV1DataMapSparseBackfillPost>
+    >,
+    TError,
+    { data: SparseBackfillRequest },
+    TContext
+  >;
+}): UseMutationResult<
+  Awaited<
+    ReturnType<typeof triggerSparseBackfillApiV1DataMapSparseBackfillPost>
+  >,
+  TError,
+  { data: SparseBackfillRequest },
+  TContext
+> => {
+  const mutationOptions =
+    getTriggerSparseBackfillApiV1DataMapSparseBackfillPostMutationOptions(
+      options,
+    );
 
   return useMutation(mutationOptions);
 };

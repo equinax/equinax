@@ -288,14 +288,19 @@ async def get_data_coverage(
 
             symbol_count = 0
             if code_col:
-                latest_as_date = date.fromisoformat(latest)
-                sym_q = text(f"""
-                    SELECT COUNT(DISTINCT {code_col}) as cnt
-                    FROM {phys_table}
-                    WHERE {date_col} = :latest AND {filter_clause}
-                """)
-                sym_result = await db.execute(sym_q, {"latest": latest_as_date})
-                symbol_count = sym_result.scalar() or 0
+                asset_type = VIRTUAL_TABLE_ASSET_MAP.get(table_key)
+                if asset_type:
+                    latest_as_date = date.fromisoformat(latest)
+                    symbol_count = await _get_expected_asset_count(db, asset_type, latest_as_date)
+                else:
+                    latest_as_date = date.fromisoformat(latest)
+                    sym_q = text(f"""
+                        SELECT COUNT(DISTINCT {code_col}) as cnt
+                        FROM {phys_table}
+                        WHERE {date_col} = :latest AND {filter_clause}
+                    """)
+                    sym_result = await db.execute(sym_q, {"latest": latest_as_date})
+                    symbol_count = sym_result.scalar() or 0
 
             date_count = (
                 int(approx_rows / symbol_count) if symbol_count > 0 and not where_filter else 0
@@ -768,6 +773,27 @@ class DateBackfillResponse(BaseModel):
     errors: List[str] = Field(default_factory=list)
 
 
+class SparseBackfillRequest(BaseModel):
+    table: str = Field(description="Virtual table key, e.g. market_daily_stock")
+    dates: List[str] = Field(description="Sparse dates to backfill (YYYY-MM-DD)")
+
+
+class SparseBackfillDateResult(BaseModel):
+    date: str
+    before: int
+    after: int
+    expected: int
+    status: str = Field(description="improved | best_effort | unchanged | error")
+    message: str = ""
+
+
+class SparseBackfillResponse(BaseModel):
+    table: str
+    results: List[SparseBackfillDateResult]
+    total_improved: int = 0
+    errors: List[str] = Field(default_factory=list)
+
+
 @router.get("/date-detail/{table}", response_model=DateDetailResponse)
 async def get_date_detail(
     table: str,
@@ -860,10 +886,36 @@ async def trigger_date_backfill(
 
     sync_types = [ASSET_TYPE_TO_SYNC[t] for t in requested]
 
-    from workers.source_sync import sync_daily_data_with_source
+    from workers.source_sync import sync_daily_data_with_source, sync_index_backfill
 
     try:
-        result = await sync_daily_data_with_source(db, target_date, asset_types=sync_types)
+        if "INDEX" in requested and len(requested) == 1:
+            result = await sync_index_backfill(db, target_date, target_date)
+            results = {"INDEX": result.get("total_records", 0)}
+            errors = result.get("errors", [])
+        elif "INDEX" in requested:
+            non_index_types = [ASSET_TYPE_TO_SYNC[t] for t in requested if t != "INDEX"]
+            main_result = await sync_daily_data_with_source(
+                db, target_date, asset_types=non_index_types
+            )
+            idx_result = await sync_index_backfill(db, target_date, target_date)
+
+            results = {}
+            if "STOCK" in requested:
+                results["STOCK"] = main_result.get("stock_count", 0)
+            if "ETF" in requested:
+                results["ETF"] = main_result.get("etf_count", 0)
+            results["INDEX"] = idx_result.get("total_records", 0)
+            errors = main_result.get("errors", []) + idx_result.get("errors", [])
+        else:
+            main_result = await sync_daily_data_with_source(db, target_date, asset_types=sync_types)
+            results = {}
+            if "STOCK" in requested:
+                results["STOCK"] = main_result.get("stock_count", 0)
+            if "ETF" in requested:
+                results["ETF"] = main_result.get("etf_count", 0)
+            errors = main_result.get("errors", [])
+
     except Exception as e:
         logger.error(f"Date backfill failed for {request.date}: {e}")
         raise HTTPException(
@@ -871,18 +923,229 @@ async def trigger_date_backfill(
             detail=f"Backfill failed: {str(e)}",
         )
 
-    results = {}
-    if "STOCK" in requested:
-        results["STOCK"] = result.get("stock_count", 0)
-    if "ETF" in requested:
-        results["ETF"] = result.get("etf_count", 0)
-    if "INDEX" in requested:
-        results["INDEX"] = result.get("index_count", 0)
-
     return DateBackfillResponse(
         date=request.date,
         results=results,
-        errors=result.get("errors", []),
+        errors=errors,
+    )
+
+
+@router.post("/sparse-backfill", response_model=SparseBackfillResponse)
+async def trigger_sparse_backfill(
+    request: SparseBackfillRequest,
+    db: AsyncSession = Depends(get_db),
+):
+    """Backfill sparse dates and re-check counts.
+
+    For each date, re-runs sync_daily_data_with_source (upsert, safe for
+    re-runs). After backfill, re-queries actual count and compares to expected.
+    If actual improved but still < 95% expected, marks as ``best_effort``
+    (likely due to suspended stocks on that day).
+    """
+    entry = _find_table(request.table)
+    if entry is None:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Unknown table: {request.table}",
+        )
+
+    table_key, phys_table, date_col, code_col, _, scope, where_filter = entry
+    if phys_table != "market_daily":
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Sparse backfill currently only supports market_daily variants",
+        )
+
+    asset_type = VIRTUAL_TABLE_ASSET_MAP.get(table_key)
+    if not asset_type:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Table {table_key} is not a virtual market_daily table",
+        )
+
+    sync_type = ASSET_TYPE_TO_SYNC[asset_type]
+
+    if len(request.dates) > 60:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Maximum 60 dates per request",
+        )
+
+    from workers.source_sync import sync_daily_data_with_source, sync_index_backfill
+
+    results: List[SparseBackfillDateResult] = []
+    all_errors: List[str] = []
+    total_improved = 0
+
+    parsed_dates: List[date] = []
+    for ds in request.dates:
+        try:
+            parsed_dates.append(date.fromisoformat(ds))
+        except ValueError:
+            results.append(
+                SparseBackfillDateResult(
+                    date=ds,
+                    before=0,
+                    after=0,
+                    expected=0,
+                    status="error",
+                    message=f"Invalid date: {ds}",
+                )
+            )
+
+    if not parsed_dates:
+        return SparseBackfillResponse(
+            table=request.table,
+            results=results,
+            total_improved=0,
+            errors=all_errors,
+        )
+
+    if asset_type == "INDEX":
+        filter_clause = _build_where(date_col, where_filter, f"{date_col} = :d")
+        count_q = text(f"SELECT COUNT(*) FROM {phys_table} WHERE {filter_clause}")
+
+        before_counts = {}
+        for d in parsed_dates:
+            before_counts[d] = (await db.execute(count_q, {"d": d})).scalar() or 0
+
+        try:
+            idx_result = await sync_index_backfill(db, min(parsed_dates), max(parsed_dates))
+            backfill_errors = idx_result.get("errors", [])
+            all_errors.extend(backfill_errors)
+        except Exception as e:
+            logger.error(f"Index sparse backfill failed: {e}")
+            for d in parsed_dates:
+                results.append(
+                    SparseBackfillDateResult(
+                        date=d.isoformat(),
+                        before=before_counts[d],
+                        after=before_counts[d],
+                        expected=0,
+                        status="error",
+                        message=str(e)[:200],
+                    )
+                )
+            return SparseBackfillResponse(
+                table=request.table,
+                results=results,
+                total_improved=0,
+                errors=[str(e)[:200]],
+            )
+
+        for d in parsed_dates:
+            after_count = (await db.execute(count_q, {"d": d})).scalar() or 0
+            expected = await _get_expected_asset_count(db, asset_type, d)
+            before_count = before_counts[d]
+
+            ratio = after_count / expected if expected > 0 else 1.0
+            if ratio >= 0.95:
+                s = "improved"
+                total_improved += 1
+            elif after_count > before_count:
+                s = "best_effort"
+                total_improved += 1
+            else:
+                s = "unchanged"
+
+            msg = ""
+            if s == "best_effort":
+                gap = expected - after_count
+                msg = f"已补全(部分停牌, 缺{gap}条)"
+            elif s == "improved":
+                msg = f"已补全 {after_count}/{expected}"
+
+            results.append(
+                SparseBackfillDateResult(
+                    date=d.isoformat(),
+                    before=before_count,
+                    after=after_count,
+                    expected=expected,
+                    status=s,
+                    message=msg,
+                )
+            )
+
+        return SparseBackfillResponse(
+            table=request.table,
+            results=results,
+            total_improved=total_improved,
+            errors=all_errors,
+        )
+
+    for date_str in request.dates:
+        try:
+            target_date = date.fromisoformat(date_str)
+        except ValueError:
+            results.append(
+                SparseBackfillDateResult(
+                    date=date_str,
+                    before=0,
+                    after=0,
+                    expected=0,
+                    status="error",
+                    message=f"Invalid date: {date_str}",
+                )
+            )
+            continue
+
+        filter_clause = _build_where(date_col, where_filter, f"{date_col} = :d")
+        before_q = text(f"SELECT COUNT(*) FROM {phys_table} WHERE {filter_clause}")
+        before_count = (await db.execute(before_q, {"d": target_date})).scalar() or 0
+
+        try:
+            await sync_daily_data_with_source(db, target_date, asset_types=[sync_type])
+        except Exception as e:
+            logger.error(f"Sparse backfill failed for {date_str}: {e}")
+            results.append(
+                SparseBackfillDateResult(
+                    date=date_str,
+                    before=before_count,
+                    after=before_count,
+                    expected=0,
+                    status="error",
+                    message=str(e)[:200],
+                )
+            )
+            all_errors.append(f"{date_str}: {str(e)[:100]}")
+            continue
+
+        after_count = (await db.execute(before_q, {"d": target_date})).scalar() or 0
+        expected = await _get_expected_asset_count(db, asset_type, target_date)
+
+        ratio = after_count / expected if expected > 0 else 1.0
+        if ratio >= 0.95:
+            s = "improved"
+            total_improved += 1
+        elif after_count > before_count:
+            s = "best_effort"
+            total_improved += 1
+        else:
+            s = "unchanged"
+
+        msg = ""
+        if s == "best_effort":
+            gap = expected - after_count
+            msg = f"已补全(部分停牌, 缺{gap}条)"
+        elif s == "improved":
+            msg = f"已补全 {after_count}/{expected}"
+
+        results.append(
+            SparseBackfillDateResult(
+                date=date_str,
+                before=before_count,
+                after=after_count,
+                expected=expected,
+                status=s,
+                message=msg,
+            )
+        )
+
+    return SparseBackfillResponse(
+        table=request.table,
+        results=results,
+        total_improved=total_improved,
+        errors=all_errors,
     )
 
 

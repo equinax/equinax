@@ -537,6 +537,77 @@ async def backfill_missing_dates(
     return total_results
 
 
+async def sync_index_backfill(
+    session: AsyncSession,
+    start_date: date,
+    end_date: date,
+) -> Dict[str, Any]:
+    """
+    按指数代码纵向补全 index 行情数据。
+
+    TuShare index_daily 接口必须传 ts_code，不支持按日期批量拉取。
+    因此对每个指数代码调用一次 API，传入完整日期范围，一次拿回所有日期数据。
+
+    Args:
+        session: 数据库会话
+        start_date: 开始日期（包含）
+        end_date: 结束日期（包含）
+
+    Returns:
+        {"status", "total_codes", "total_records", "errors": [...]}
+    """
+    from .data_sources.base import convert_standard_code_to_tushare
+
+    source = get_data_source()
+    logger.info(f"[IndexBackfill] Starting vertical index backfill {start_date} ~ {end_date}")
+
+    rows = (
+        await session.execute(
+            text("SELECT code FROM asset_meta WHERE asset_type = 'INDEX' AND status = 1")
+        )
+    ).fetchall()
+
+    index_codes = [r[0] for r in rows]
+    logger.info(f"[IndexBackfill] Found {len(index_codes)} active index codes")
+
+    total_records = 0
+    errors: List[str] = []
+
+    for i, std_code in enumerate(index_codes):
+        ts_code = convert_standard_code_to_tushare(std_code)
+        try:
+            df = source.fetch_index_daily_by_code(ts_code, start_date, end_date)
+            if not df.empty:
+                count = await _insert_market_daily(session, df)
+                total_records += count
+        except Exception as e:
+            err = f"{std_code}: {str(e)[:100]}"
+            logger.warning(f"[IndexBackfill] Failed {err}")
+            errors.append(err)
+
+        if (i + 1) % 50 == 0:
+            await session.commit()
+            logger.info(
+                f"[IndexBackfill] Progress {i + 1}/{len(index_codes)}, records={total_records}"
+            )
+
+        await asyncio.sleep(0.2)
+
+    await session.commit()
+
+    status_str = "success" if not errors else "partial"
+    logger.info(
+        f"[IndexBackfill] Complete: {len(index_codes)} codes, {total_records} records, {len(errors)} errors"
+    )
+
+    return {
+        "status": status_str,
+        "total_codes": len(index_codes),
+        "total_records": total_records,
+        "errors": errors,
+    }
+
+
 async def _insert_market_daily(session: AsyncSession, df: pd.DataFrame) -> int:
     """
     批量插入 market_daily 表

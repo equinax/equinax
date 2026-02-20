@@ -229,6 +229,46 @@ class TuShareDataSource(BaseDataSource):
         logger.info(f"[TuShare] Fetched {len(records)} core indices for {date_str}")
         return pd.DataFrame(records) if records else pd.DataFrame()
 
+    def fetch_index_daily_by_code(
+        self, ts_code: str, start_date: date, end_date: date
+    ) -> pd.DataFrame:
+        start_str = self._date_to_str(start_date)
+        end_str = self._date_to_str(end_date)
+
+        try:
+            df = self._pro.index_daily(ts_code=ts_code, start_date=start_str, end_date=end_str)
+            if df is None or df.empty:
+                return pd.DataFrame()
+
+            records = []
+            for _, row in df.iterrows():
+                code = convert_tushare_code_to_standard(row["ts_code"])
+                records.append(
+                    {
+                        "code": code,
+                        "trade_date": pd.to_datetime(str(row["trade_date"])).date(),
+                        "open": self._safe_decimal(row.get("open")),
+                        "high": self._safe_decimal(row.get("high")),
+                        "low": self._safe_decimal(row.get("low")),
+                        "close": self._safe_decimal(row.get("close")),
+                        "pre_close": self._safe_decimal(row.get("pre_close")),
+                        "volume": self._safe_int(row.get("vol", 0)) * 100
+                        if self._safe_int(row.get("vol"))
+                        else None,
+                        "amount": self._safe_decimal(row.get("amount", 0)) * 1000
+                        if self._safe_decimal(row.get("amount"))
+                        else None,
+                        "pct_chg": self._safe_decimal(row.get("pct_chg")),
+                        "change": self._safe_decimal(row.get("change")),
+                    }
+                )
+            return pd.DataFrame(records) if records else pd.DataFrame()
+        except Exception as e:
+            logger.warning(
+                f"[TuShare] Failed to fetch index {ts_code} range {start_str}-{end_str}: {e}"
+            )
+            return pd.DataFrame()
+
     def fetch_stock_adj_factor_by_date(self, trade_date: date) -> pd.DataFrame:
         """
         获取指定日期的股票复权因子

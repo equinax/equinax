@@ -30,6 +30,7 @@ import { cn } from '@/lib/utils'
   Loader2,
   RefreshCw
 } from 'lucide-react'
+import customInstance from '@/api/mutator'
 
 // --- Helper Functions ---
 
@@ -117,7 +118,96 @@ const GapDetailPanel = ({
   backfillingRanges: Map<string, { jobId: string, status: string, records?: number }>,
   onStartBackfill: (start: string, end: string) => void
 }) => {
-  const { data: gapData, isLoading } = useGetTableGapsApiV1DataMapGapsTableGet(tableId, { days, start_date: startDate, end_date: endDate })
+  const queryClient = useQueryClient()
+  const { data: gapData, isLoading, refetch: refetchGaps } = useGetTableGapsApiV1DataMapGapsTableGet(tableId, { days, start_date: startDate, end_date: endDate })
+
+  const [sparseBackfillStatus, setSparseBackfillStatus] = useState<Map<string, { status: string, before: number, after: number, expected: number, message: string }>>(new Map())
+  const [isSparseBackfilling, setIsSparseBackfilling] = useState(false)
+
+  const handleSparseBackfillAll = useCallback(async () => {
+    if (!gapData?.sparse_dates?.length) return
+    setIsSparseBackfilling(true)
+    
+    const dates = gapData.sparse_dates
+      .filter(s => {
+        const existing = sparseBackfillStatus.get(s.date)
+        return !existing || existing.status === 'error'
+      })
+      .map(s => s.date)
+    
+    if (dates.length === 0) { setIsSparseBackfilling(false); return }
+
+    try {
+      const resp = await customInstance<{
+        table: string
+        results: Array<{ date: string, before: number, after: number, expected: number, status: string, message: string }>
+        total_improved: number
+        errors: string[]
+      }>({
+        url: '/api/v1/data-map/sparse-backfill',
+        method: 'POST',
+        data: { table: tableId, dates },
+      })
+
+      setSparseBackfillStatus(prev => {
+        const next = new Map(prev)
+        for (const r of resp.results) {
+          next.set(r.date, { status: r.status, before: r.before, after: r.after, expected: r.expected, message: r.message })
+        }
+        return next
+      })
+      refetchGaps()
+      queryClient.invalidateQueries({ queryKey: [`/api/v1/data-map/heatmap`] })
+    } catch {
+      for (const d of dates) {
+        setSparseBackfillStatus(prev => {
+          const next = new Map(prev)
+          next.set(d, { status: 'error', before: 0, after: 0, expected: 0, message: '请求失败' })
+          return next
+        })
+      }
+    } finally {
+      setIsSparseBackfilling(false)
+    }
+  }, [gapData, tableId, sparseBackfillStatus, refetchGaps, queryClient])
+
+  const handleSparseBackfillOne = useCallback(async (dateStr: string) => {
+    setSparseBackfillStatus(prev => {
+      const next = new Map(prev)
+      next.set(dateStr, { status: 'running', before: 0, after: 0, expected: 0, message: '' })
+      return next
+    })
+
+    try {
+      const resp = await customInstance<{
+        table: string
+        results: Array<{ date: string, before: number, after: number, expected: number, status: string, message: string }>
+        total_improved: number
+        errors: string[]
+      }>({
+        url: '/api/v1/data-map/sparse-backfill',
+        method: 'POST',
+        data: { table: tableId, dates: [dateStr] },
+      })
+
+      const r = resp.results[0]
+      if (r) {
+        setSparseBackfillStatus(prev => {
+          const next = new Map(prev)
+          next.set(r.date, { status: r.status, before: r.before, after: r.after, expected: r.expected, message: r.message })
+          return next
+        })
+      }
+      refetchGaps()
+      queryClient.invalidateQueries({ queryKey: [`/api/v1/data-map/heatmap`] })
+    } catch {
+      setSparseBackfillStatus(prev => {
+        const next = new Map(prev)
+        next.set(dateStr, { status: 'error', before: 0, after: 0, expected: 0, message: '请求失败' })
+        return next
+      })
+    }
+  }, [tableId, refetchGaps, queryClient])
 
   // Group consecutive dates into ranges
   const gapRanges = useMemo(() => {
@@ -301,20 +391,85 @@ const GapDetailPanel = ({
 
           {(gapData.sparse_dates?.length ?? 0) > 0 && (
             <>
-              <h4 className="text-sm font-medium flex items-center gap-2 mt-4">
-                <AlertTriangle className="w-4 h-4 text-amber-500" />
-                Sparse Dates
-                <Badge variant="secondary" className="text-[10px] h-4 font-mono">&lt;95%</Badge>
-              </h4>
+              <div className="flex items-center justify-between mt-4">
+                <h4 className="text-sm font-medium flex items-center gap-2">
+                  <AlertTriangle className="w-4 h-4 text-amber-500" />
+                  Sparse Dates
+                  <Badge variant="secondary" className="text-[10px] h-4 font-mono">&lt;95%</Badge>
+                </h4>
+                {(() => {
+                  const allDone = gapData.sparse_dates!.every(s => {
+                    const st = sparseBackfillStatus.get(s.date)?.status
+                    return st === 'improved' || st === 'best_effort'
+                  })
+                  return (
+                    <Button
+                      size="sm"
+                      variant="default"
+                      className="h-7 text-xs gap-1.5"
+                      disabled={allDone || isSparseBackfilling}
+                      onClick={handleSparseBackfillAll}
+                    >
+                      {isSparseBackfilling ? (
+                        <Loader2 className="w-3 h-3 animate-spin" />
+                      ) : (
+                        <DownloadCloud className="w-3 h-3" />
+                      )}
+                      {allDone ? '已全部补全' : isSparseBackfilling ? '补全中...' : `补全全部(${gapData.sparse_dates!.length})`}
+                    </Button>
+                  )
+                })()}
+              </div>
               {gapData.sparse_dates!.map((s) => {
                 const pct = s.expected > 0 ? (s.actual / s.expected * 100).toFixed(1) : '0'
+                const backfillResult = sparseBackfillStatus.get(s.date)
+                const isRunning = backfillResult?.status === 'running'
+                const isDone = backfillResult?.status === 'improved' || backfillResult?.status === 'best_effort'
+                const isError = backfillResult?.status === 'error'
+
                 return (
-                  <div key={s.date} className="flex items-center justify-between bg-amber-500/5 border border-amber-500/10 rounded-lg px-3 py-2 text-xs">
-                    <span className="font-mono text-foreground/80">{s.date}</span>
-                    <span className="font-mono text-amber-500">
-                      {s.actual.toLocaleString()}/{s.expected.toLocaleString()}
-                      <span className="ml-1 opacity-70">({pct}%)</span>
-                    </span>
+                  <div key={s.date} className={cn(
+                    "border rounded-lg px-3 py-2 text-xs transition-colors",
+                    isDone ? "bg-emerald-500/5 border-emerald-500/15" :
+                    isError ? "bg-red-500/5 border-red-500/15" :
+                    "bg-amber-500/5 border-amber-500/10"
+                  )}>
+                    <div className="flex items-center justify-between">
+                      <span className="font-mono text-foreground/80">{s.date}</span>
+                      <div className="flex items-center gap-2">
+                        <span className={cn("font-mono", isDone ? "text-emerald-500" : "text-amber-500")}>
+                          {isDone && backfillResult ? `${backfillResult.after.toLocaleString()}/${backfillResult.expected.toLocaleString()}` : `${s.actual.toLocaleString()}/${s.expected.toLocaleString()}`}
+                          <span className="ml-1 opacity-70">({isDone && backfillResult ? (backfillResult.after / backfillResult.expected * 100).toFixed(1) : pct}%)</span>
+                        </span>
+                        {!isDone && !isSparseBackfilling && tableId !== 'market_daily_index' && (
+                          <Button
+                            size="sm"
+                            variant="ghost"
+                            className="h-6 w-6 p-0"
+                            disabled={isRunning}
+                            onClick={() => handleSparseBackfillOne(s.date)}
+                          >
+                            {isRunning ? (
+                              <Loader2 className="w-3 h-3 animate-spin" />
+                            ) : (
+                              <Download className="w-3 h-3 text-muted-foreground hover:text-foreground" />
+                            )}
+                          </Button>
+                        )}
+                      </div>
+                    </div>
+                    {isDone && backfillResult?.message && (
+                      <div className="mt-1 text-[10px] text-emerald-600">
+                        <CheckCircle2 className="w-3 h-3 inline mr-1" />
+                        {backfillResult.message}
+                      </div>
+                    )}
+                    {isError && backfillResult?.message && (
+                      <div className="mt-1 text-[10px] text-red-500">
+                        <AlertTriangle className="w-3 h-3 inline mr-1" />
+                        {backfillResult.message}
+                      </div>
+                    )}
                   </div>
                 )
               })}
