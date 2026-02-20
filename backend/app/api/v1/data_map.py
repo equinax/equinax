@@ -294,7 +294,13 @@ async def get_data_coverage(
 
 @router.get("/heatmap", response_model=HeatmapResponse)
 async def get_data_heatmap(
-    days: int = Query(default=60, ge=7, le=365, description="Number of calendar days to show"),
+    days: int = Query(default=60, ge=7, le=4100, description="Number of calendar days to show"),
+    start_date: Optional[str] = Query(
+        default=None, description="Start date YYYY-MM-DD (overrides days)"
+    ),
+    end_date: Optional[str] = Query(
+        default=None, description="End date YYYY-MM-DD (overrides days)"
+    ),
     db: AsyncSession = Depends(get_db),
 ):
     """
@@ -303,8 +309,12 @@ async def get_data_heatmap(
     For each date in the range, returns the row count per table.
     Used to render the coverage heatmap on the frontend.
     """
-    end_date = date.today()
-    start_date = end_date - timedelta(days=days)
+    if start_date and end_date:
+        q_start = date.fromisoformat(start_date)
+        q_end = date.fromisoformat(end_date)
+    else:
+        q_end = date.today()
+        q_start = q_end - timedelta(days=days)
 
     table_names = []
     table_labels = {}
@@ -323,7 +333,7 @@ async def get_data_heatmap(
                 GROUP BY {date_col}
                 ORDER BY {date_col}
             """)
-            result = await db.execute(q, {"start": start_date, "end": end_date})
+            result = await db.execute(q, {"start": q_start, "end": q_end})
 
             for row in result:
                 d = row.d
@@ -362,7 +372,13 @@ async def get_data_heatmap(
 @router.get("/gaps/{table}", response_model=GapResponse)
 async def get_table_gaps(
     table: str,
-    days: int = Query(default=90, ge=7, le=730, description="Calendar days to check"),
+    days: int = Query(default=90, ge=7, le=4100, description="Calendar days to check"),
+    start_date: Optional[str] = Query(
+        default=None, description="Start date YYYY-MM-DD (overrides days)"
+    ),
+    end_date: Optional[str] = Query(
+        default=None, description="End date YYYY-MM-DD (overrides days)"
+    ),
     db: AsyncSession = Depends(get_db),
 ):
     """
@@ -386,11 +402,15 @@ async def get_table_gaps(
         )
 
     tbl_name, date_col, code_col, display, scope = table_info
-    end_date = date.today()
-    start_date = end_date - timedelta(days=days)
+    if start_date and end_date:
+        q_start = date.fromisoformat(start_date)
+        q_end = date.fromisoformat(end_date)
+    else:
+        q_end = date.today()
+        q_start = q_end - timedelta(days=days)
 
     # Get all trading days in range (between is exclusive start, inclusive end)
-    trading_days = get_trading_days_between(start_date - timedelta(days=1), end_date)
+    trading_days = get_trading_days_between(q_start - timedelta(days=1), q_end)
     trading_day_set = {d.strftime("%Y-%m-%d") for d in trading_days}
 
     # Get dates that exist in the table
@@ -401,7 +421,7 @@ async def get_table_gaps(
     """)
     result = await db.execute(
         q,
-        {"start": start_date, "end": end_date},
+        {"start": q_start, "end": q_end},
     )
     existing_dates = {row.d for row in result}
 

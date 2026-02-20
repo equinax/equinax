@@ -694,10 +694,8 @@ export const useCancelSyncJobApiV1DataSyncCancelJobIdPost = <
   return useMutation(mutationOptions);
 };
 /**
- * Get the current active sync job if one exists.
-
-Returns the most recent queued or running job, or null if no active job.
-Also detects and marks stale tasks (running > 60 minutes) automatically.
+ * Get the current active daily sync job, excluding data-map backfill tasks.
+Marks stale tasks automatically (running > 60min, queued > 10min).
  * @summary Get Active Sync Job
  */
 export const getActiveSyncJobApiV1DataSyncActiveGet = (

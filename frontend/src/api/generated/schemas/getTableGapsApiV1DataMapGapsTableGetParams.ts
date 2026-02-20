@@ -6,4 +6,12 @@ export type GetTableGapsApiV1DataMapGapsTableGetParams = {
    * Calendar days to check
    */
   days?: number;
+  /**
+   * Start date YYYY-MM-DD (overrides days)
+   */
+  start_date?: string | null;
+  /**
+   * End date YYYY-MM-DD (overrides days)
+   */
+  end_date?: string | null;
 };

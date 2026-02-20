@@ -13,6 +13,7 @@ import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { ScrollArea } from '@/components/ui/scroll-area'
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { cn } from '@/lib/utils'
 import { 
   Map as MapIcon, 
@@ -96,17 +97,21 @@ const BackfillPoller = ({
 const GapDetailPanel = ({ 
   tableId, 
   days, 
+  startDate,
+  endDate,
   onClose,
   backfillingRanges,
   onStartBackfill
 }: { 
   tableId: string, 
   days: number, 
+  startDate?: string,
+  endDate?: string,
   onClose: () => void,
   backfillingRanges: Map<string, { jobId: string, status: string, records?: number }>,
   onStartBackfill: (start: string, end: string) => void
 }) => {
-  const { data: gapData, isLoading } = useGetTableGapsApiV1DataMapGapsTableGet(tableId, { days })
+  const { data: gapData, isLoading } = useGetTableGapsApiV1DataMapGapsTableGet(tableId, { days, start_date: startDate, end_date: endDate })
 
   // Group consecutive dates into ranges
   const gapRanges = useMemo(() => {
@@ -267,12 +272,24 @@ const GapDetailPanel = ({
 
 export default function DataMapPage() {
   const [days, setDays] = useState(60)
+  const [selectedYear, setSelectedYear] = useState<string>("")
   const [selectedTable, setSelectedTable] = useState<string | null>(null)
   const [backfillingRanges, setBackfillingRanges] = useState<Map<string, { jobId: string, status: string, records?: number }>>(new Map())
-  
+  // Compute date range for year selection
+  const dateRange = useMemo(() => {
+    if (!selectedYear) return { start_date: undefined, end_date: undefined }
+    const year = Number(selectedYear)
+    const now = new Date()
+    const currentYear = now.getFullYear()
+    return {
+      start_date: `${year}-01-01`,
+      end_date: year >= currentYear ? `${currentYear}-12-31` : `${year}-12-31`,
+    }
+  }, [selectedYear])
+
   const queryClient = useQueryClient()
   const { data: coverageData, refetch: refetchCoverage } = useGetDataCoverageApiV1DataMapCoverageGet()
-  const { data: heatmapData, isLoading: isHeatmapLoading, refetch: refetchHeatmap } = useGetDataHeatmapApiV1DataMapHeatmapGet({ days })
+  const { data: heatmapData, isLoading: isHeatmapLoading, refetch: refetchHeatmap } = useGetDataHeatmapApiV1DataMapHeatmapGet({ days, start_date: dateRange.start_date, end_date: dateRange.end_date })
   
   const { mutate: triggerBackfill } = useTriggerBackfillApiV1DataMapBackfillPost()
 
@@ -365,8 +382,8 @@ export default function DataMapPage() {
           </div>
         </div>
 
-        <div className="flex items-center gap-4">
-          <Tabs value={days.toString()} onValueChange={(v) => setDays(Number(v))} className="h-8">
+        <div className="flex items-center gap-2">
+          <Tabs value={selectedYear ? "" : days.toString()} onValueChange={(v) => { setSelectedYear(""); setDays(Number(v)) }} className="h-8">
             <TabsList className="h-8 bg-muted/50 p-0.5">
               {[30, 60, 90, 180, 365].map(d => (
                 <TabsTrigger 
@@ -379,6 +396,18 @@ export default function DataMapPage() {
               ))}
             </TabsList>
           </Tabs>
+          <Select value={selectedYear} onValueChange={(v) => {
+            setSelectedYear(v)
+          }}>
+            <SelectTrigger className={cn("h-8 w-[100px] text-xs", selectedYear ? "bg-background shadow-sm" : "bg-muted/50")}>
+              <SelectValue placeholder="Select Year" />
+            </SelectTrigger>
+            <SelectContent>
+              {Array.from({ length: new Date().getFullYear() - 2015 + 1 }, (_, i) => 2015 + i).reverse().map(y => (
+                <SelectItem key={y} value={y.toString()} className="text-xs">{y}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
         </div>
       </header>
 
@@ -453,7 +482,7 @@ export default function DataMapPage() {
                               isWknd && "text-muted-foreground/50"
                             )}>
                               <div className="pl-2 flex items-center gap-2">
-                                <span>{format(dateObj, 'MM-dd')}</span>
+                                <span>{format(dateObj, 'yyyy-MM-dd')}</span>
                                 <span className="text-[10px] opacity-60">{format(dateObj, 'EEE', { locale: zhCN })}</span>
                               </div>
                             </td>
@@ -498,7 +527,9 @@ export default function DataMapPage() {
           {selectedTable && (
             <GapDetailPanel 
               tableId={selectedTable} 
-              days={days} 
+              days={days}
+              startDate={dateRange.start_date}
+              endDate={dateRange.end_date}
               onClose={() => setSelectedTable(null)}
               backfillingRanges={backfillingRanges}
               onStartBackfill={handleStartBackfill}
