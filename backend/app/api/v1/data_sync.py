@@ -290,10 +290,12 @@ async def trigger_sync(
     from uuid import uuid4
     from app.core.arq import get_arq_pool
 
-    # Check if there's already a running or queued sync job
     existing_job = await db.execute(
         select(SyncHistory)
-        .where(SyncHistory.status.in_(["running", "queued"]))
+        .where(
+            SyncHistory.status.in_(["running", "queued"]),
+            ~SyncHistory.sync_type.like("backfill:%"),
+        )
         .order_by(desc(SyncHistory.started_at))
         .limit(1)
     )
@@ -453,6 +455,7 @@ async def cancel_sync_job(
 
 # Stale task detection threshold (minutes)
 STALE_THRESHOLD_MINUTES = 60
+STALE_QUEUED_THRESHOLD_MINUTES = 10
 
 
 @router.get("/active", response_model=Optional[SyncHistoryItem])
@@ -460,16 +463,17 @@ async def get_active_sync_job(
     db: AsyncSession = Depends(get_db),
 ):
     """
-    Get the current active sync job if one exists.
-
-    Returns the most recent queued or running job, or null if no active job.
-    Also detects and marks stale tasks (running > 60 minutes) automatically.
+    Get the current active daily sync job, excluding data-map backfill tasks.
+    Marks stale tasks automatically (running > 60min, queued > 10min).
     """
     from datetime import timedelta
 
     result = await db.execute(
         select(SyncHistory)
-        .where(SyncHistory.status.in_(["queued", "running"]))
+        .where(
+            SyncHistory.status.in_(["queued", "running"]),
+            ~SyncHistory.sync_type.like("backfill:%"),
+        )
         .order_by(desc(SyncHistory.started_at))
         .limit(1)
     )
@@ -478,21 +482,25 @@ async def get_active_sync_job(
     if not row:
         return None
 
-    # Check for stale task
-    if row.status == "running" and row.started_at:
-        # Handle timezone-aware datetime
-        now = datetime.now()
+    now = datetime.now()
+    if row.started_at:
         started = row.started_at.replace(tzinfo=None) if row.started_at.tzinfo else row.started_at
-        running_time = now - started
+        elapsed = now - started
 
-        if running_time > timedelta(minutes=STALE_THRESHOLD_MINUTES):
-            # Mark as stale
-            row.status = "stale"
-            row.completed_at = datetime.now()
-            row.error_message = (
-                f"Task exceeded {STALE_THRESHOLD_MINUTES} minutes timeout - marked as stale"
+        stale_reason: str | None = None
+        if row.status == "running" and elapsed > timedelta(minutes=STALE_THRESHOLD_MINUTES):
+            stale_reason = f"Running for over {STALE_THRESHOLD_MINUTES} minutes"
+        elif row.status == "queued" and elapsed > timedelta(minutes=STALE_QUEUED_THRESHOLD_MINUTES):
+            stale_reason = (
+                f"Queued for over {STALE_QUEUED_THRESHOLD_MINUTES} minutes without being picked up"
             )
+
+        if stale_reason:
+            row.status = "stale"
+            row.completed_at = now
+            row.error_message = f"{stale_reason} - marked as stale"
             await db.commit()
+            return None
 
     return SyncHistoryItem(
         id=row.id,

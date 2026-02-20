@@ -1313,6 +1313,372 @@ async def api_triggered_sync_v2(ctx: Dict[str, Any], sync_record_id: str) -> Dic
             }
 
 
+# =============================================================================
+# Targeted Backfill Task (Data Map)
+# =============================================================================
+
+
+async def targeted_backfill(
+    ctx: Dict[str, Any],
+    job_id: str,
+    table_name: str,
+    start_date_str: str,
+    end_date_str: str,
+) -> Dict[str, Any]:
+    """ARQ worker: backfill a specific table for a date range. Updates SyncHistory(job_id)."""
+    from app.db.models.sync import SyncHistory
+    from sqlalchemy.orm.attributes import flag_modified
+
+    start_date_val = date.fromisoformat(start_date_str)
+    end_date_val = date.fromisoformat(end_date_str)
+
+    logger.info(
+        f"targeted_backfill: table={table_name}, "
+        f"range={start_date_val} to {end_date_val}, job_id={job_id}"
+    )
+
+    async def _publish(event_type: str, **data):
+        try:
+            from app.core.redis_pubsub import publish_data_sync_event
+
+            await publish_data_sync_event(event_type, job_id, data)
+        except Exception:
+            pass
+
+    async with worker_session_maker() as session:
+        result = await session.execute(select(SyncHistory).where(SyncHistory.id == job_id))
+        sync_record = result.scalar_one_or_none()
+
+        if not sync_record:
+            logger.error(f"SyncHistory record not found: {job_id}")
+            return {"status": "error", "message": "Record not found"}
+
+        sync_record.status = "running"
+        sync_record.started_at = datetime.now()
+        sync_record.details = {
+            "table": table_name,
+            "start_date": start_date_str,
+            "end_date": end_date_str,
+        }
+        await session.commit()
+        await _publish(
+            "backfill_start", table=table_name, start_date=start_date_str, end_date=end_date_str
+        )
+
+        try:
+            total_records = 0
+
+            if table_name == "market_daily":
+                total_records = await _backfill_market_daily(session, start_date_val, end_date_val)
+
+            elif table_name == "indicator_valuation":
+                total_records = await _backfill_valuation(session, start_date_val, end_date_val)
+
+            elif table_name == "moneyflow_daily":
+                total_records = await _backfill_moneyflow(session, start_date_val, end_date_val)
+
+            elif table_name == "limit_list_daily":
+                total_records = await _backfill_limit_list(session, start_date_val, end_date_val)
+
+            elif table_name == "adjust_factor":
+                total_records = await _backfill_adjust_factor(session)
+
+            elif table_name in (
+                "technical_indicators",
+                "stock_style_exposure",
+                "stock_microstructure",
+                "market_regime",
+            ):
+                total_records = await _backfill_computed(
+                    ctx, table_name, start_date_val, end_date_val
+                )
+
+            elif table_name == "indicator_etf":
+                # ETF indicators are not from TuShare — skip with message
+                sync_record.status = "success"
+                sync_record.completed_at = datetime.now()
+                sync_record.duration_seconds = 0
+                sync_record.details["message"] = "ETF指标暂不支持单独补全"
+                flag_modified(sync_record, "details")
+                await session.commit()
+                return {
+                    "status": "success",
+                    "message": "ETF indicators not backfillable separately",
+                    "records": 0,
+                }
+
+            else:
+                raise ValueError(f"Unsupported table for backfill: {table_name}")
+
+            # Mark success
+            duration = (datetime.now() - sync_record.started_at).total_seconds()
+            sync_record.status = "success"
+            sync_record.completed_at = datetime.now()
+            sync_record.duration_seconds = duration
+            sync_record.records_imported = total_records
+            sync_record.details["records"] = total_records
+            sync_record.details["duration_seconds"] = round(duration, 1)
+            flag_modified(sync_record, "details")
+            await session.commit()
+
+            logger.info(
+                f"targeted_backfill complete: {table_name}, "
+                f"{total_records} records in {duration:.1f}s"
+            )
+            await _publish(
+                "backfill_complete",
+                table=table_name,
+                status="success",
+                records=total_records,
+                duration_seconds=round(duration, 1),
+            )
+            return {
+                "status": "success",
+                "table": table_name,
+                "records": total_records,
+                "duration_seconds": round(duration, 1),
+            }
+
+        except Exception as e:
+            logger.exception(f"targeted_backfill failed: {table_name}")
+            await _publish(
+                "backfill_complete", table=table_name, status="failed", error=str(e)[:200]
+            )
+            try:
+                await session.rollback()
+                sync_record = await session.get(SyncHistory, job_id)
+                if sync_record:
+                    duration = (
+                        datetime.now() - (sync_record.started_at or datetime.now())
+                    ).total_seconds()
+                    sync_record.status = "failed"
+                    sync_record.completed_at = datetime.now()
+                    sync_record.duration_seconds = duration
+                    sync_record.error_message = str(e)[:500]
+                    await session.commit()
+            except Exception:
+                pass
+            return {"status": "error", "table": table_name, "message": str(e)}
+
+
+async def _backfill_market_daily(
+    session: AsyncSession, start_date_val: date, end_date_val: date
+) -> int:
+    from workers.source_sync import backfill_missing_dates
+
+    result = await backfill_missing_dates(
+        session,
+        start_date_val,
+        end_date_val,
+        asset_types=["stock", "etf", "index"],
+    )
+    return result.get("stock_count", 0) + result.get("etf_count", 0) + result.get("index_count", 0)
+
+
+async def _backfill_valuation(
+    session: AsyncSession, start_date_val: date, end_date_val: date
+) -> int:
+    from workers.source_sync import sync_daily_data_with_source
+    from workers.data_sources import get_data_source
+
+    source = get_data_source()
+    trading_days = source.get_trading_days(start_date_val, end_date_val)
+
+    total = 0
+    for trade_date in trading_days:
+        result = await sync_daily_data_with_source(session, trade_date, asset_types=["stock"])
+        total += result.get("valuation_count", 0)
+        await asyncio.sleep(0.3)  # TuShare rate limit
+
+    return total
+
+
+async def _backfill_moneyflow(
+    session: AsyncSession, start_date_val: date, end_date_val: date
+) -> int:
+    from workers.data_sources import get_data_source
+
+    source = get_data_source()
+    trading_days = source.get_trading_days(start_date_val, end_date_val)
+
+    total = 0
+    for trade_date in trading_days:
+        try:
+            df = source.fetch_moneyflow_by_date(trade_date)
+            if df is not None and not df.empty:
+                records = df.to_dict("records")
+                count = await _upsert_moneyflow(session, records)
+                total += count
+                logger.info(f"Backfilled {count} moneyflow records for {trade_date}")
+        except Exception as e:
+            logger.warning(f"Failed to backfill moneyflow for {trade_date}: {e}")
+
+        await asyncio.sleep(0.5)  # TuShare rate limit
+
+    await session.commit()
+    return total
+
+
+async def _upsert_moneyflow(session: AsyncSession, records: list) -> int:
+    if not records:
+        return 0
+
+    sql = text("""
+        INSERT INTO moneyflow_daily (
+            code, date,
+            buy_sm_amount, buy_md_amount, buy_lg_amount, buy_elg_amount,
+            sell_sm_amount, sell_md_amount, sell_lg_amount, sell_elg_amount,
+            net_mf_amount
+        ) VALUES (
+            :code, :date,
+            :buy_sm_amount, :buy_md_amount, :buy_lg_amount, :buy_elg_amount,
+            :sell_sm_amount, :sell_md_amount, :sell_lg_amount, :sell_elg_amount,
+            :net_mf_amount
+        )
+        ON CONFLICT (code, date) DO UPDATE SET
+            buy_sm_amount = EXCLUDED.buy_sm_amount,
+            buy_md_amount = EXCLUDED.buy_md_amount,
+            buy_lg_amount = EXCLUDED.buy_lg_amount,
+            buy_elg_amount = EXCLUDED.buy_elg_amount,
+            sell_sm_amount = EXCLUDED.sell_sm_amount,
+            sell_md_amount = EXCLUDED.sell_md_amount,
+            sell_lg_amount = EXCLUDED.sell_lg_amount,
+            sell_elg_amount = EXCLUDED.sell_elg_amount,
+            net_mf_amount = EXCLUDED.net_mf_amount
+    """)
+
+    batch_size = 1000
+    for i in range(0, len(records), batch_size):
+        batch = records[i : i + batch_size]
+        await session.execute(sql, batch)
+
+    return len(records)
+
+
+async def _backfill_limit_list(
+    session: AsyncSession, start_date_val: date, end_date_val: date
+) -> int:
+    from workers.data_sources import get_data_source
+
+    source = get_data_source()
+    trading_days = source.get_trading_days(start_date_val, end_date_val)
+
+    total = 0
+    for trade_date in trading_days:
+        try:
+            df = source.fetch_limit_list_by_date(trade_date)
+            if df is not None and not df.empty:
+                import numpy as np
+
+                df = df.replace({np.nan: None})
+                records = df.to_dict("records")
+                count = await _upsert_limit_list(session, records)
+                total += count
+                logger.info(f"Backfilled {count} limit_list records for {trade_date}")
+        except Exception as e:
+            logger.warning(f"Failed to backfill limit_list for {trade_date}: {e}")
+
+        await asyncio.sleep(0.5)  # TuShare rate limit
+
+    await session.commit()
+    return total
+
+
+async def _upsert_limit_list(session: AsyncSession, records: list) -> int:
+    """Upsert limit_list records into limit_list_daily table."""
+    if not records:
+        return 0
+
+    import math
+
+    def _clean(val):
+        if val is None:
+            return None
+        if isinstance(val, float) and math.isnan(val):
+            return None
+        return val
+
+    cleaned = [{k: _clean(v) for k, v in r.items()} for r in records]
+
+    sql = text("""
+        INSERT INTO limit_list_daily (
+            code, date, name, close, pct_chg, fd_amount,
+            first_time, last_time, open_times, up_stat, limit_times, limit_type
+        ) VALUES (
+            :code, :date, :name, :close, :pct_chg, :fd_amount,
+            :first_time, :last_time, :open_times, :up_stat, :limit_times, :limit_type
+        )
+        ON CONFLICT (code, date) DO UPDATE SET
+            name = EXCLUDED.name,
+            close = EXCLUDED.close,
+            pct_chg = EXCLUDED.pct_chg,
+            fd_amount = EXCLUDED.fd_amount,
+            first_time = EXCLUDED.first_time,
+            last_time = EXCLUDED.last_time,
+            open_times = EXCLUDED.open_times,
+            up_stat = EXCLUDED.up_stat,
+            limit_times = EXCLUDED.limit_times,
+            limit_type = EXCLUDED.limit_type
+    """)
+
+    batch_size = 1000
+    for i in range(0, len(cleaned), batch_size):
+        batch = cleaned[i : i + batch_size]
+        await session.execute(sql, batch)
+
+    return len(cleaned)
+
+    return len(records)
+
+
+async def _backfill_adjust_factor(session: AsyncSession) -> int:
+    """Backfill adjust_factor using baostock."""
+    from workers.source_sync import sync_adjust_factors
+
+    result = await sync_adjust_factors(session)
+    return result.get("records", 0)
+
+
+async def _backfill_computed(
+    ctx: Dict[str, Any],
+    table_name: str,
+    start_date_val: date,
+    end_date_val: date,
+) -> int:
+    from workers.classification_tasks import (
+        calculate_style_factors,
+        calculate_market_regime,
+    )
+    from workers.data_sources import get_data_source
+
+    source = get_data_source()
+    trading_days = source.get_trading_days(start_date_val, end_date_val)
+
+    if table_name == "stock_style_exposure":
+        total = 0
+        for td in trading_days:
+            result = await calculate_style_factors(ctx, calc_date=td.isoformat())
+            total += result.get("records_count", result.get("count", 0))
+        return total
+
+    elif table_name == "market_regime":
+        total = 0
+        for td in trading_days:
+            result = await calculate_market_regime(ctx, calc_date=td.isoformat())
+            total += result.get("records_count", result.get("count", 0))
+        return total
+
+    elif table_name in ("technical_indicators", "stock_microstructure"):
+        # technical_indicators and stock_microstructure require per-stock calculation
+        # which is too slow for bulk backfill — return a message instead
+        logger.warning(
+            f"Bulk backfill for {table_name} not supported — requires per-stock calculation"
+        )
+        return 0
+
+    return 0
+
+
 # Export all tasks for registration
 __all__ = [
     "download_stock_data",
@@ -1326,4 +1692,5 @@ __all__ = [
     "api_triggered_sync_v2",
     "sync_with_data_source",
     "backfill_with_data_source",
+    "targeted_backfill",
 ]

@@ -65,19 +65,20 @@ worker_session_maker = get_session_maker()
 # Helper Functions
 # =============================================================================
 
+
 def determine_board_type(code: str) -> BoardType:
     """Determine board type from stock code."""
     # Extract numeric part: sh.600000 -> 600000
-    if '.' in code:
-        code_num = code.split('.')[1]
+    if "." in code:
+        code_num = code.split(".")[1]
     else:
         code_num = code
 
-    if code_num.startswith('688'):
+    if code_num.startswith("688"):
         return BoardType.STAR  # 科创板
-    elif code_num.startswith('30'):
+    elif code_num.startswith("30"):
         return BoardType.GEM  # 创业板
-    elif code_num.startswith('8') or code_num.startswith('4'):
+    elif code_num.startswith("8") or code_num.startswith("4"):
         return BoardType.BSE  # 北交所
     else:
         return BoardType.MAIN  # 主板 (60, 00)
@@ -86,16 +87,18 @@ def determine_board_type(code: str) -> BoardType:
 def get_price_limit(board: BoardType, is_st: bool) -> tuple[Decimal, Decimal]:
     """Get price limit up/down based on board and ST status."""
     if is_st:
-        return Decimal('5'), Decimal('5')
+        return Decimal("5"), Decimal("5")
     elif board == BoardType.GEM or board == BoardType.STAR:
-        return Decimal('20'), Decimal('20')
+        return Decimal("20"), Decimal("20")
     elif board == BoardType.BSE:
-        return Decimal('30'), Decimal('30')
+        return Decimal("30"), Decimal("30")
     else:
-        return Decimal('10'), Decimal('10')
+        return Decimal("10"), Decimal("10")
 
 
-def categorize_size(market_cap: Optional[float], percentile: Optional[float]) -> Optional[SizeCategory]:
+def categorize_size(
+    market_cap: Optional[float], percentile: Optional[float]
+) -> Optional[SizeCategory]:
     """Categorize stock by market cap.
 
     Note: market_cap is in 亿元 units (from indicator_valuation.total_mv).
@@ -156,7 +159,7 @@ def determine_market_regime(
     avg_pct_chg: float,
     total_amount: float,
     sh_above_ma20: bool,
-    sh_above_ma60: bool
+    sh_above_ma60: bool,
 ) -> tuple[MarketRegimeType, Decimal]:
     """Determine market regime based on multiple signals."""
     score = 0
@@ -198,6 +201,7 @@ def determine_market_regime(
 # =============================================================================
 # Task 1: Structural Classification
 # =============================================================================
+
 
 async def calculate_structural_classification(
     ctx: dict,
@@ -248,26 +252,30 @@ async def calculate_structural_classification(
             price_up, price_down = get_price_limit(board, is_st)
 
             # Upsert
-            stmt = insert(StockStructuralInfo).values(
-                code=stock.code,
-                board=board.value,
-                structural_type=structural_type.value,
-                price_limit_up=price_up,
-                price_limit_down=price_down,
-                is_st=is_st,
-                is_new=is_new,
-                is_suspended=False,
-                list_date=stock.list_date,
-            ).on_conflict_do_update(
-                index_elements=['code'],
-                set_={
-                    'board': board.value,
-                    'structural_type': structural_type.value,
-                    'price_limit_up': price_up,
-                    'price_limit_down': price_down,
-                    'is_st': is_st,
-                    'is_new': is_new,
-                }
+            stmt = (
+                insert(StockStructuralInfo)
+                .values(
+                    code=stock.code,
+                    board=board.value,
+                    structural_type=structural_type.value,
+                    price_limit_up=price_up,
+                    price_limit_down=price_down,
+                    is_st=is_st,
+                    is_new=is_new,
+                    is_suspended=False,
+                    list_date=stock.list_date,
+                )
+                .on_conflict_do_update(
+                    index_elements=["code"],
+                    set_={
+                        "board": board.value,
+                        "structural_type": structural_type.value,
+                        "price_limit_up": price_up,
+                        "price_limit_down": price_down,
+                        "is_st": is_st,
+                        "is_new": is_new,
+                    },
+                )
             )
             await db.execute(stmt)
             records_updated += 1
@@ -285,6 +293,7 @@ async def calculate_structural_classification(
 # Task 2: Style Factors
 # =============================================================================
 
+
 async def calculate_style_factors(
     ctx: dict,
     calc_date: Optional[str] = None,
@@ -297,15 +306,34 @@ async def calculate_style_factors(
     Daily update.
     """
     target_date = date.fromisoformat(calc_date) if calc_date else date.today()
+
+    if target_date.weekday() >= 5:
+        return {
+            "task": "calculate_style_factors",
+            "skipped": True,
+            "reason": f"{target_date} is a weekend",
+        }
+
     lookback_20d = target_date - timedelta(days=30)  # ~20 trading days
     lookback_60d = target_date - timedelta(days=90)  # ~60 trading days
 
     session_maker = get_session_maker(database_url) if database_url else worker_session_maker
     async with session_maker() as db:
-        # Get stocks with data on target date
+        has_market_data = await db.scalar(
+            select(func.count())
+            .select_from(MarketDaily)
+            .where(MarketDaily.date == target_date)
+            .limit(1)
+        )
+        if not has_market_data:
+            return {
+                "task": "calculate_style_factors",
+                "skipped": True,
+                "reason": f"No market data for {target_date} (likely a holiday)",
+            }
+
         stocks_query = select(AssetMeta.code).where(
-            AssetMeta.asset_type == AssetType.STOCK,
-            AssetMeta.status == 1
+            AssetMeta.asset_type == AssetType.STOCK, AssetMeta.status == 1
         )
         stocks_result = await db.execute(stocks_query)
         stock_codes = [row[0] for row in stocks_result]
@@ -314,17 +342,21 @@ async def calculate_style_factors(
             return {"task": "calculate_style_factors", "error": "No stocks found"}
 
         # Load market data for calculation
-        market_query = select(
-            MarketDaily.code,
-            MarketDaily.date,
-            MarketDaily.close,
-            MarketDaily.turn,
-            MarketDaily.pct_chg,
-        ).where(
-            MarketDaily.code.in_(stock_codes),
-            MarketDaily.date >= lookback_60d,
-            MarketDaily.date <= target_date,
-        ).order_by(MarketDaily.code, MarketDaily.date)
+        market_query = (
+            select(
+                MarketDaily.code,
+                MarketDaily.date,
+                MarketDaily.close,
+                MarketDaily.turn,
+                MarketDaily.pct_chg,
+            )
+            .where(
+                MarketDaily.code.in_(stock_codes),
+                MarketDaily.date >= lookback_60d,
+                MarketDaily.date <= target_date,
+            )
+            .order_by(MarketDaily.code, MarketDaily.date)
+        )
 
         market_result = await db.execute(market_query)
         market_records = market_result.fetchall()
@@ -342,24 +374,26 @@ async def calculate_style_factors(
         valuation_result = await db.execute(valuation_query)
         valuation_map = {
             row.code: {
-                'total_mv': float(row.total_mv) if row.total_mv else None,
-                'pe_ttm': float(row.pe_ttm) if row.pe_ttm else None,
-                'pb_mrq': float(row.pb_mrq) if row.pb_mrq else None,
+                "total_mv": float(row.total_mv) if row.total_mv else None,
+                "pe_ttm": float(row.pe_ttm) if row.pe_ttm else None,
+                "pb_mrq": float(row.pb_mrq) if row.pb_mrq else None,
             }
             for row in valuation_result
         }
 
         # Convert to DataFrame for calculation
-        df = pd.DataFrame([
-            {
-                'code': r.code,
-                'date': r.date,
-                'close': float(r.close) if r.close else None,
-                'turn': float(r.turn) if r.turn else None,
-                'pct_chg': float(r.pct_chg) if r.pct_chg else None,
-            }
-            for r in market_records
-        ])
+        df = pd.DataFrame(
+            [
+                {
+                    "code": r.code,
+                    "date": r.date,
+                    "close": float(r.close) if r.close else None,
+                    "turn": float(r.turn) if r.turn else None,
+                    "pct_chg": float(r.pct_chg) if r.pct_chg else None,
+                }
+                for r in market_records
+            ]
+        )
 
         if df.empty:
             return {"task": "calculate_style_factors", "error": "No market data"}
@@ -367,57 +401,59 @@ async def calculate_style_factors(
         # Calculate factors per stock
         style_records = []
         for code in stock_codes:
-            stock_df = df[df['code'] == code].copy()
+            stock_df = df[df["code"] == code].copy()
             if len(stock_df) < 10:
                 continue
 
-            stock_df = stock_df.sort_values('date')
+            stock_df = stock_df.sort_values("date")
             latest = stock_df.iloc[-1]
 
             # Volatility: 20-day std of returns
             if len(stock_df) >= 20:
-                vol_20d = stock_df['pct_chg'].tail(20).std()
+                vol_20d = stock_df["pct_chg"].tail(20).std()
             else:
-                vol_20d = stock_df['pct_chg'].std()
+                vol_20d = stock_df["pct_chg"].std()
 
             # Turnover: 20-day average
             if len(stock_df) >= 20:
-                avg_turn_20d = stock_df['turn'].tail(20).mean()
+                avg_turn_20d = stock_df["turn"].tail(20).mean()
             else:
-                avg_turn_20d = stock_df['turn'].mean()
+                avg_turn_20d = stock_df["turn"].mean()
 
             # Momentum
             if len(stock_df) >= 20:
-                momentum_20d = (stock_df['close'].iloc[-1] / stock_df['close'].iloc[-20] - 1) * 100
+                momentum_20d = (stock_df["close"].iloc[-1] / stock_df["close"].iloc[-20] - 1) * 100
             else:
                 momentum_20d = None
 
             if len(stock_df) >= 60:
-                momentum_60d = (stock_df['close'].iloc[-1] / stock_df['close'].iloc[-60] - 1) * 100
+                momentum_60d = (stock_df["close"].iloc[-1] / stock_df["close"].iloc[-60] - 1) * 100
             else:
                 momentum_60d = None
 
             # Get valuation
             val = valuation_map.get(code, {})
-            market_cap = val.get('total_mv')
-            pe_ttm = val.get('pe_ttm')
-            pb_mrq = val.get('pb_mrq')
+            market_cap = val.get("total_mv")
+            pe_ttm = val.get("pe_ttm")
+            pb_mrq = val.get("pb_mrq")
 
             # EP ratio (inverse of PE)
             ep_ratio = 1 / pe_ttm if pe_ttm and pe_ttm > 0 else None
             bp_ratio = 1 / pb_mrq if pb_mrq and pb_mrq > 0 else None
 
-            style_records.append({
-                'code': code,
-                'date': target_date,
-                'market_cap': market_cap,
-                'volatility_20d': vol_20d,
-                'avg_turnover_20d': avg_turn_20d,
-                'ep_ratio': ep_ratio,
-                'bp_ratio': bp_ratio,
-                'momentum_20d': momentum_20d,
-                'momentum_60d': momentum_60d,
-            })
+            style_records.append(
+                {
+                    "code": code,
+                    "date": target_date,
+                    "market_cap": market_cap,
+                    "volatility_20d": vol_20d,
+                    "avg_turnover_20d": avg_turn_20d,
+                    "ep_ratio": ep_ratio,
+                    "bp_ratio": bp_ratio,
+                    "momentum_20d": momentum_20d,
+                    "momentum_60d": momentum_60d,
+                }
+            )
 
         if not style_records:
             return {"task": "calculate_style_factors", "error": "No style data calculated"}
@@ -427,60 +463,103 @@ async def calculate_style_factors(
 
         # Calculate ranks and percentiles
         for col, rank_col, pct_col in [
-            ('market_cap', 'size_rank', 'size_percentile'),
-            ('volatility_20d', 'vol_rank', 'vol_percentile'),
-            ('avg_turnover_20d', 'turnover_rank', 'turnover_percentile'),
-            ('ep_ratio', 'value_rank', 'value_percentile'),
-            ('momentum_20d', 'momentum_rank', 'momentum_percentile'),
+            ("market_cap", "size_rank", "size_percentile"),
+            ("volatility_20d", "vol_rank", "vol_percentile"),
+            ("avg_turnover_20d", "turnover_rank", "turnover_percentile"),
+            ("ep_ratio", "value_rank", "value_percentile"),
+            ("momentum_20d", "momentum_rank", "momentum_percentile"),
         ]:
             if col in style_df.columns:
-                style_df[rank_col] = style_df[col].rank(ascending=False, method='min')
+                style_df[rank_col] = style_df[col].rank(ascending=False, method="min")
                 style_df[pct_col] = style_df[col].rank(pct=True)
 
         # Add categories
-        style_df['size_category'] = style_df.apply(
-            lambda r: categorize_size(r.get('market_cap'), r.get('size_percentile')),
-            axis=1
+        style_df["size_category"] = style_df.apply(
+            lambda r: categorize_size(r.get("market_cap"), r.get("size_percentile")), axis=1
         )
-        style_df['vol_category'] = style_df['vol_percentile'].apply(categorize_volatility)
-        style_df['turnover_category'] = style_df['turnover_percentile'].apply(categorize_turnover)
-        style_df['value_category'] = style_df['value_percentile'].apply(categorize_value)
+        style_df["vol_category"] = style_df["vol_percentile"].apply(categorize_volatility)
+        style_df["turnover_category"] = style_df["turnover_percentile"].apply(categorize_turnover)
+        style_df["value_category"] = style_df["value_percentile"].apply(categorize_value)
 
         # Insert into database
         records_inserted = 0
         for _, row in style_df.iterrows():
-            stmt = insert(StockStyleExposure).values(
-                code=row['code'],
-                date=row['date'],
-                market_cap=Decimal(str(row['market_cap'])) if pd.notna(row.get('market_cap')) else None,
-                size_rank=int(row['size_rank']) if pd.notna(row.get('size_rank')) else None,
-                size_percentile=Decimal(str(row['size_percentile'])) if pd.notna(row.get('size_percentile')) else None,
-                size_category=row['size_category'].value if row.get('size_category') else None,
-                volatility_20d=Decimal(str(row['volatility_20d'])) if pd.notna(row.get('volatility_20d')) else None,
-                vol_rank=int(row['vol_rank']) if pd.notna(row.get('vol_rank')) else None,
-                vol_percentile=Decimal(str(row['vol_percentile'])) if pd.notna(row.get('vol_percentile')) else None,
-                vol_category=row['vol_category'].value if row.get('vol_category') else None,
-                avg_turnover_20d=Decimal(str(row['avg_turnover_20d'])) if pd.notna(row.get('avg_turnover_20d')) else None,
-                turnover_rank=int(row['turnover_rank']) if pd.notna(row.get('turnover_rank')) else None,
-                turnover_percentile=Decimal(str(row['turnover_percentile'])) if pd.notna(row.get('turnover_percentile')) else None,
-                turnover_category=row['turnover_category'].value if row.get('turnover_category') else None,
-                ep_ratio=Decimal(str(row['ep_ratio'])) if pd.notna(row.get('ep_ratio')) else None,
-                bp_ratio=Decimal(str(row['bp_ratio'])) if pd.notna(row.get('bp_ratio')) else None,
-                value_rank=int(row['value_rank']) if pd.notna(row.get('value_rank')) else None,
-                value_percentile=Decimal(str(row['value_percentile'])) if pd.notna(row.get('value_percentile')) else None,
-                value_category=row['value_category'].value if row.get('value_category') else None,
-                momentum_20d=Decimal(str(row['momentum_20d'])) if pd.notna(row.get('momentum_20d')) else None,
-                momentum_60d=Decimal(str(row['momentum_60d'])) if pd.notna(row.get('momentum_60d')) else None,
-                momentum_rank=int(row['momentum_rank']) if pd.notna(row.get('momentum_rank')) else None,
-                momentum_percentile=Decimal(str(row['momentum_percentile'])) if pd.notna(row.get('momentum_percentile')) else None,
-            ).on_conflict_do_update(
-                index_elements=['code', 'date'],
-                set_={
-                    'market_cap': Decimal(str(row['market_cap'])) if pd.notna(row.get('market_cap')) else None,
-                    'size_category': row['size_category'].value if row.get('size_category') else None,
-                    'volatility_20d': Decimal(str(row['volatility_20d'])) if pd.notna(row.get('volatility_20d')) else None,
-                    'vol_category': row['vol_category'].value if row.get('vol_category') else None,
-                }
+            stmt = (
+                insert(StockStyleExposure)
+                .values(
+                    code=row["code"],
+                    date=row["date"],
+                    market_cap=Decimal(str(row["market_cap"]))
+                    if pd.notna(row.get("market_cap"))
+                    else None,
+                    size_rank=int(row["size_rank"]) if pd.notna(row.get("size_rank")) else None,
+                    size_percentile=Decimal(str(row["size_percentile"]))
+                    if pd.notna(row.get("size_percentile"))
+                    else None,
+                    size_category=row["size_category"].value if row.get("size_category") else None,
+                    volatility_20d=Decimal(str(row["volatility_20d"]))
+                    if pd.notna(row.get("volatility_20d"))
+                    else None,
+                    vol_rank=int(row["vol_rank"]) if pd.notna(row.get("vol_rank")) else None,
+                    vol_percentile=Decimal(str(row["vol_percentile"]))
+                    if pd.notna(row.get("vol_percentile"))
+                    else None,
+                    vol_category=row["vol_category"].value if row.get("vol_category") else None,
+                    avg_turnover_20d=Decimal(str(row["avg_turnover_20d"]))
+                    if pd.notna(row.get("avg_turnover_20d"))
+                    else None,
+                    turnover_rank=int(row["turnover_rank"])
+                    if pd.notna(row.get("turnover_rank"))
+                    else None,
+                    turnover_percentile=Decimal(str(row["turnover_percentile"]))
+                    if pd.notna(row.get("turnover_percentile"))
+                    else None,
+                    turnover_category=row["turnover_category"].value
+                    if row.get("turnover_category")
+                    else None,
+                    ep_ratio=Decimal(str(row["ep_ratio"]))
+                    if pd.notna(row.get("ep_ratio"))
+                    else None,
+                    bp_ratio=Decimal(str(row["bp_ratio"]))
+                    if pd.notna(row.get("bp_ratio"))
+                    else None,
+                    value_rank=int(row["value_rank"]) if pd.notna(row.get("value_rank")) else None,
+                    value_percentile=Decimal(str(row["value_percentile"]))
+                    if pd.notna(row.get("value_percentile"))
+                    else None,
+                    value_category=row["value_category"].value
+                    if row.get("value_category")
+                    else None,
+                    momentum_20d=Decimal(str(row["momentum_20d"]))
+                    if pd.notna(row.get("momentum_20d"))
+                    else None,
+                    momentum_60d=Decimal(str(row["momentum_60d"]))
+                    if pd.notna(row.get("momentum_60d"))
+                    else None,
+                    momentum_rank=int(row["momentum_rank"])
+                    if pd.notna(row.get("momentum_rank"))
+                    else None,
+                    momentum_percentile=Decimal(str(row["momentum_percentile"]))
+                    if pd.notna(row.get("momentum_percentile"))
+                    else None,
+                )
+                .on_conflict_do_update(
+                    index_elements=["code", "date"],
+                    set_={
+                        "market_cap": Decimal(str(row["market_cap"]))
+                        if pd.notna(row.get("market_cap"))
+                        else None,
+                        "size_category": row["size_category"].value
+                        if row.get("size_category")
+                        else None,
+                        "volatility_20d": Decimal(str(row["volatility_20d"]))
+                        if pd.notna(row.get("volatility_20d"))
+                        else None,
+                        "vol_category": row["vol_category"].value
+                        if row.get("vol_category")
+                        else None,
+                    },
+                )
             )
             await db.execute(stmt)
             records_inserted += 1
@@ -497,6 +576,7 @@ async def calculate_style_factors(
 # =============================================================================
 # Task 3: Market Regime
 # =============================================================================
+
 
 async def calculate_market_regime(
     ctx: dict,
@@ -541,7 +621,7 @@ async def calculate_market_regime(
         down_count = stats.down_count or 0
         limit_up_count = stats.limit_up_count or 0
         limit_down_count = stats.limit_down_count or 0
-        total_amount = stats.total_amount or Decimal('0')
+        total_amount = stats.total_amount or Decimal("0")
         avg_turnover = stats.avg_turnover
         avg_pct_chg = float(stats.avg_pct_chg) if stats.avg_pct_chg else 0
 
@@ -550,35 +630,39 @@ async def calculate_market_regime(
         # Get index data (stub - would need actual index data)
         # For now, use simple heuristics
         sh_above_ma20 = avg_pct_chg > 0  # Simplified
-        sh_above_ma60 = up_ratio > 0.5   # Simplified
+        sh_above_ma60 = up_ratio > 0.5  # Simplified
 
         regime, score = determine_market_regime(
             up_ratio, avg_pct_chg, float(total_amount), sh_above_ma20, sh_above_ma60
         )
 
         # Insert into database
-        stmt = insert(MarketRegime).values(
-            date=target_date,
-            regime=regime.value,
-            regime_score=score,
-            total_stocks=total_stocks,
-            up_count=up_count,
-            down_count=down_count,
-            limit_up_count=limit_up_count,
-            limit_down_count=limit_down_count,
-            total_amount=total_amount,
-            avg_turnover=Decimal(str(avg_turnover)) if avg_turnover else None,
-            sh_above_ma20=sh_above_ma20,
-            sh_above_ma60=sh_above_ma60,
-        ).on_conflict_do_update(
-            index_elements=['date'],
-            set_={
-                'regime': regime.value,
-                'regime_score': score,
-                'total_stocks': total_stocks,
-                'up_count': up_count,
-                'down_count': down_count,
-            }
+        stmt = (
+            insert(MarketRegime)
+            .values(
+                date=target_date,
+                regime=regime.value,
+                regime_score=score,
+                total_stocks=total_stocks,
+                up_count=up_count,
+                down_count=down_count,
+                limit_up_count=limit_up_count,
+                limit_down_count=limit_down_count,
+                total_amount=total_amount,
+                avg_turnover=Decimal(str(avg_turnover)) if avg_turnover else None,
+                sh_above_ma20=sh_above_ma20,
+                sh_above_ma60=sh_above_ma60,
+            )
+            .on_conflict_do_update(
+                index_elements=["date"],
+                set_={
+                    "regime": regime.value,
+                    "regime_score": score,
+                    "total_stocks": total_stocks,
+                    "up_count": up_count,
+                    "down_count": down_count,
+                },
+            )
         )
         await db.execute(stmt)
         await db.commit()
@@ -595,6 +679,7 @@ async def calculate_market_regime(
 # =============================================================================
 # Task 4: Classification Snapshot
 # =============================================================================
+
 
 async def generate_classification_snapshot(
     ctx: dict,
@@ -674,8 +759,10 @@ async def generate_classification_snapshot(
         await db.commit()
 
         # Count records
-        count_query = select(func.count()).select_from(StockClassificationSnapshot).where(
-            StockClassificationSnapshot.date == target_date
+        count_query = (
+            select(func.count())
+            .select_from(StockClassificationSnapshot)
+            .where(StockClassificationSnapshot.date == target_date)
         )
         count_result = await db.execute(count_query)
         record_count = count_result.scalar()
@@ -690,6 +777,7 @@ async def generate_classification_snapshot(
 # =============================================================================
 # Main Daily Update Task
 # =============================================================================
+
 
 async def daily_classification_update(
     ctx: dict,
@@ -706,31 +794,31 @@ async def daily_classification_update(
 
     # 1. Structural classification (low frequency, can skip if recent)
     try:
-        results['structural'] = await calculate_structural_classification(ctx, target_date)
+        results["structural"] = await calculate_structural_classification(ctx, target_date)
     except Exception as e:
         logger.error(f"Structural classification failed: {e}")
-        results['structural'] = {"error": str(e)}
+        results["structural"] = {"error": str(e)}
 
     # 2. Style factors (daily)
     try:
-        results['style_factors'] = await calculate_style_factors(ctx, target_date)
+        results["style_factors"] = await calculate_style_factors(ctx, target_date)
     except Exception as e:
         logger.error(f"Style factors calculation failed: {e}")
-        results['style_factors'] = {"error": str(e)}
+        results["style_factors"] = {"error": str(e)}
 
     # 3. Market regime (daily)
     try:
-        results['market_regime'] = await calculate_market_regime(ctx, target_date)
+        results["market_regime"] = await calculate_market_regime(ctx, target_date)
     except Exception as e:
         logger.error(f"Market regime calculation failed: {e}")
-        results['market_regime'] = {"error": str(e)}
+        results["market_regime"] = {"error": str(e)}
 
     # 4. Generate snapshot (daily, after all other calculations)
     try:
-        results['snapshot'] = await generate_classification_snapshot(ctx, target_date)
+        results["snapshot"] = await generate_classification_snapshot(ctx, target_date)
     except Exception as e:
         logger.error(f"Snapshot generation failed: {e}")
-        results['snapshot'] = {"error": str(e)}
+        results["snapshot"] = {"error": str(e)}
 
     return {
         "task": "daily_classification_update",
