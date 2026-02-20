@@ -18,6 +18,7 @@ import AlphaRadarPage from '@/pages/AlphaRadarPage'
 import MultiStockBrowsePage from '@/pages/MultiStockBrowsePage'
 import IndustryRotationPage from '@/pages/IndustryRotationPage'
 import EtfRotationPage from '@/pages/EtfRotationPage'
+import DataMapPage from '@/pages/DataMapPage'
 import DynamicBacktestPage from '@/pages/dynamic-backtest'
 
 function App() {
@@ -40,6 +41,7 @@ function App() {
           <Route path="market/limit-up" element={<LimitUpFocusPage />} />
           <Route path="settings" element={<SettingsPage />} />
           <Route path="data-sync" element={<DataSyncPage />} />
+          <Route path="data-map" element={<DataMapPage />} />
           <Route path="alpha-radar" element={<AlphaRadarPage />} />
           <Route path="alpha-radar/multi-browse" element={<MultiStockBrowsePage />} />
           <Route path="industry-rotation" element={<IndustryRotationPage />} />

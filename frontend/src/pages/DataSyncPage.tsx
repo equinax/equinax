@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react'
+import { useNavigate } from 'react-router-dom'
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Progress } from '@/components/ui/progress'
@@ -15,6 +16,7 @@ import {
   Info,
   XCircle,
   Calendar,
+  Map as MapIcon,
 } from 'lucide-react'
 import {
   useGetSyncStatusApiV1DataSyncStatusGet,
@@ -113,6 +115,7 @@ function StatusBadge({ status }: { status: string }) {
 }
 
 export default function DataSyncPage() {
+  const navigate = useNavigate()
   const [currentJobId, setCurrentJobId] = useState<string | null>(null)
 
   // Check for active job on mount (task recovery) using generated hook
@@ -252,6 +255,10 @@ export default function DataSyncPage() {
           <p className="text-muted-foreground">Monitor and manage data synchronization</p>
         </div>
         <div className="flex items-center gap-2">
+          <Button variant="outline" size="sm" onClick={() => navigate('/data-map')}>
+            <MapIcon className="h-4 w-4 mr-2" />
+            数据地图
+          </Button>
           <Button variant="outline" size="sm" onClick={() => refetch()} disabled={isLoading}>
             <RefreshCw className={`h-4 w-4 mr-2 ${isLoading ? 'animate-spin' : ''}`} />
             Refresh

@@ -13,6 +13,7 @@ from app.api.v1 import (
     universe,
     indices,
     data_sync,
+    data_map,
     alpha_radar,
     limit_up,
 )
@@ -30,5 +31,6 @@ api_router.include_router(analytics.router, prefix="/analytics", tags=["Analytic
 api_router.include_router(universe.router, prefix="/universe", tags=["Universe Cockpit"])
 api_router.include_router(indices.router, prefix="/indices", tags=["Indices"])
 api_router.include_router(data_sync.router, prefix="/data-sync", tags=["Data Sync"])
+api_router.include_router(data_map.router, prefix="/data-map", tags=["Data Map"])
 api_router.include_router(alpha_radar.router, prefix="/alpha-radar", tags=["Alpha Radar"])
 api_router.include_router(limit_up.router, prefix="/market", tags=["Market"])
