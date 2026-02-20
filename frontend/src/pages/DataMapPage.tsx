@@ -6,11 +6,14 @@ import {
   useGetDataHeatmapApiV1DataMapHeatmapGet,
   useGetTableGapsApiV1DataMapGapsTableGet,
   useTriggerBackfillApiV1DataMapBackfillPost,
+  useGetDateDetailApiV1DataMapDateDetailTableGet,
+  useTriggerDateBackfillApiV1DataMapDateBackfillPost,
 } from '@/api/generated/data-map/data-map'
 import { useGetSyncJobApiV1DataSyncJobJobIdGet } from '@/api/generated/data-sync/data-sync'
 import { useQueryClient } from '@tanstack/react-query'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
@@ -268,12 +271,175 @@ const GapDetailPanel = ({
   )
 }
 
+// --- Date Detail Dialog ---
+
+const DateDetailDialog = ({
+  table,
+  date,
+  open,
+  onOpenChange,
+  refetchHeatmap
+}: {
+  table: string,
+  date: string,
+  open: boolean,
+  onOpenChange: (open: boolean) => void,
+  refetchHeatmap: () => void
+}) => {
+  const queryClient = useQueryClient()
+  const { data, isLoading, refetch } = useGetDateDetailApiV1DataMapDateDetailTableGet(table, { date }, {
+    query: { enabled: !!table && !!date && open }
+  })
+
+  const { mutate: triggerBackfill } = useTriggerDateBackfillApiV1DataMapDateBackfillPost()
+  const [backfillingTypes, setBackfillingTypes] = useState<Set<string>>(new Set())
+
+  const isMarketTable = table.startsWith('market_daily_')
+
+  const handleBackfill = (assetTypes: string[]) => {
+    assetTypes.forEach(t => setBackfillingTypes(prev => new Set(prev).add(t)))
+
+    triggerBackfill({
+      data: {
+        table,
+        date,
+        asset_types: assetTypes
+      }
+    }, {
+      onSuccess: () => {
+        refetch()
+        refetchHeatmap()
+        queryClient.invalidateQueries({ queryKey: [`/api/v1/data-map/heatmap`] })
+      },
+      onSettled: () => {
+        assetTypes.forEach(t => setBackfillingTypes(prev => {
+          const next = new Set(prev)
+          next.delete(t)
+          return next
+        }))
+      }
+    })
+  }
+
+  const getAssetTypeName = (type: string) => {
+    switch (type) {
+      case 'STOCK': return '股票'
+      case 'ETF': return 'ETF'
+      case 'INDEX': return '指数'
+      default: return type
+    }
+  }
+
+  const TABLE_LABELS: Record<string, string> = {
+    market_daily_stock: '股票行情',
+    market_daily_etf: 'ETF行情',
+    market_daily_index: '指数行情',
+    indicator_valuation: '估值指标',
+    moneyflow_daily: '资金流向',
+    limit_list_daily: '涨跌停',
+    adjust_factor: '复权因子',
+    stock_style_exposure: '风格因子',
+    market_regime: '市场环境',
+  }
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="sm:max-w-[420px] bg-background/95 backdrop-blur-xl border-border/50">
+        <DialogHeader>
+          <DialogTitle className="flex items-center gap-2 text-base">
+            <span>{date}</span>
+            <Badge variant="outline" className="font-mono font-normal text-xs">{TABLE_LABELS[table] ?? table}</Badge>
+          </DialogTitle>
+        </DialogHeader>
+
+        {isLoading ? (
+          <div className="py-12 flex justify-center">
+            <Loader2 className="w-8 h-8 animate-spin text-muted-foreground/50" />
+          </div>
+        ) : data ? (
+          <div className="space-y-4">
+            <div className="flex items-center justify-between bg-muted/30 p-3 rounded-lg border border-border/50">
+              <div className="text-xs text-muted-foreground">
+                <div className="mb-1">记录数</div>
+                <div className="flex items-baseline gap-1">
+                  <span className="font-mono text-lg font-semibold text-foreground">{formatNumber(data.total_actual)}</span>
+                  {data.total_expected > 0 && (
+                    <>
+                      <span className="text-[10px]">/</span>
+                      <span className="font-mono text-sm">{formatNumber(data.total_expected)}</span>
+                    </>
+                  )}
+                </div>
+              </div>
+              {isMarketTable && data.total_expected > 0 && (() => {
+                const ratio = data.total_actual / data.total_expected
+                const isComplete = ratio >= 0.99
+                return (
+                  <div className="text-right">
+                    <div className={cn("font-mono text-lg font-semibold", isComplete ? "text-emerald-500" : "text-amber-500")}>
+                      {(ratio * 100).toFixed(1)}%
+                    </div>
+                    <div className="h-1.5 w-24 bg-muted mt-1 rounded-full overflow-hidden">
+                      <div 
+                        className={cn("h-full rounded-full transition-all duration-500", isComplete ? "bg-emerald-500" : "bg-amber-500")} 
+                        style={{ width: `${Math.min(ratio * 100, 100)}%` }}
+                      />
+                    </div>
+                  </div>
+                )
+              })()}
+            </div>
+
+            {isMarketTable && data.breakdown.length > 0 && (() => {
+              const item = data.breakdown[0]
+              const ratio = item.expected > 0 ? item.actual / item.expected : 0
+              const isComplete = ratio >= 0.99
+              const isBackfilling = backfillingTypes.has(item.asset_type)
+              const missing = Math.max(0, item.expected - item.actual)
+
+              return isComplete ? (
+                <div className="flex items-center justify-center gap-2 py-3 text-sm text-emerald-500 bg-emerald-500/5 rounded-lg border border-emerald-500/10">
+                  <CheckCircle2 className="w-4 h-4" />
+                  数据完整
+                </div>
+              ) : (
+                <Button
+                  variant="outline"
+                  className="w-full h-9 text-xs gap-2 hover:bg-primary/5 hover:text-primary hover:border-primary/20 transition-colors"
+                  onClick={() => handleBackfill([item.asset_type])}
+                  disabled={isBackfilling}
+                >
+                  {isBackfilling ? (
+                    <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                  ) : (
+                    <Download className="w-3.5 h-3.5" />
+                  )}
+                  补全{getAssetTypeName(item.asset_type)}数据
+                  <span className="text-muted-foreground ml-1">（缺 {formatNumber(missing)} 条）</span>
+                </Button>
+              )
+            })()}
+
+            {!isMarketTable && data.total_actual === 0 && (
+              <div className="flex items-center justify-center gap-2 py-3 text-sm text-muted-foreground bg-muted/20 rounded-lg border border-border/50">
+                <AlertTriangle className="w-4 h-4 text-amber-500" />
+                暂无数据
+              </div>
+            )}
+          </div>
+        ) : null}
+      </DialogContent>
+    </Dialog>
+  )
+}
+
 // --- Main Page Component ---
 
 export default function DataMapPage() {
   const [days, setDays] = useState(60)
   const [selectedYear, setSelectedYear] = useState<string>("")
   const [selectedTable, setSelectedTable] = useState<string | null>(null)
+  const [cellDetail, setCellDetail] = useState<{ table: string, date: string } | null>(null)
   const [backfillingRanges, setBackfillingRanges] = useState<Map<string, { jobId: string, status: string, records?: number }>>(new Map())
   // Compute date range for year selection
   const dateRange = useMemo(() => {
@@ -495,9 +661,10 @@ export default function DataMapPage() {
                                 <td 
                                   key={`${row.date}-${tableKey}`} 
                                   className={cn(
-                                    "border-b border-r border-border/30 p-0 relative transition-colors",
+                                    "border-b border-r border-border/30 p-0 relative transition-colors cursor-pointer hover:brightness-90",
                                     selectedTable === tableKey && "ring-1 ring-inset ring-primary/10"
                                   )}
+                                  onClick={() => setCellDetail({ table: tableKey, date: row.date })}
                                 >
                                   <div 
                                     className="w-full h-10 flex items-center justify-center text-[10px] font-mono cursor-default"
@@ -537,6 +704,14 @@ export default function DataMapPage() {
           )}
         </div>
       </div>
+
+      <DateDetailDialog 
+        table={cellDetail?.table ?? ''} 
+        date={cellDetail?.date ?? ''} 
+        open={!!cellDetail} 
+        onOpenChange={(open) => !open && setCellDetail(null)} 
+        refetchHeatmap={refetchHeatmap}
+      />
     </div>
   )
 }

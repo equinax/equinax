@@ -17,8 +17,12 @@ import type {
   BackfillRequest,
   BackfillResponse,
   CoverageResponse,
+  DateBackfillRequest,
+  DateBackfillResponse,
+  DateDetailResponse,
   GapResponse,
   GetDataHeatmapApiV1DataMapHeatmapGetParams,
+  GetDateDetailApiV1DataMapDateDetailTableGetParams,
   GetTableGapsApiV1DataMapGapsTableGetParams,
   HTTPValidationError,
   HeatmapResponse,
@@ -27,11 +31,6 @@ import type {
 import { customInstance } from "../../mutator";
 
 /**
- * Get coverage summary for all tracked data tables.
-
-Returns per-table: row count, symbol count, date range, gap info, staleness.
-Uses pg_class for fast approximate row counts, exact min/max/distinct queries
-are lightweight since they leverage indexes.
  * @summary Get Data Coverage
  */
 export const getDataCoverageApiV1DataMapCoverageGet = (
@@ -177,10 +176,6 @@ export const useGetDataCoverageApiV1DataMapCoverageGet = <
 };
 
 /**
- * Get date × table heatmap matrix.
-
-For each date in the range, returns the row count per table.
-Used to render the coverage heatmap on the frontend.
  * @summary Get Data Heatmap
  */
 export const getDataHeatmapApiV1DataMapHeatmapGet = (
@@ -364,9 +359,6 @@ export const useGetDataHeatmapApiV1DataMapHeatmapGet = <
 };
 
 /**
- * Get detailed gap analysis for a specific table.
-
-Returns all missing trading dates for the given table in the specified range.
  * @summary Get Table Gaps
  */
 export const getTableGapsApiV1DataMapGapsTableGet = (
@@ -573,9 +565,6 @@ export const useGetTableGapsApiV1DataMapGapsTableGet = <
 };
 
 /**
- * Trigger a targeted backfill for a specific table and date range.
-
-Enqueues a backfill job to the ARQ worker.
  * @summary Trigger Backfill
  */
 export const triggerBackfillApiV1DataMapBackfillPost = (
@@ -868,4 +857,303 @@ export const useGetMarketDailyBreakdownApiV1DataMapMarketDailyBreakdownGet = <
   query.queryKey = queryOptions.queryKey;
 
   return query;
+};
+
+/**
+ * @summary Get Date Detail
+ */
+export const getDateDetailApiV1DataMapDateDetailTableGet = (
+  table: string,
+  params: GetDateDetailApiV1DataMapDateDetailTableGetParams,
+  signal?: AbortSignal,
+) => {
+  return customInstance<DateDetailResponse>({
+    url: `/api/v1/data-map/date-detail/${table}`,
+    method: "GET",
+    params,
+    signal,
+  });
+};
+
+export const getGetDateDetailApiV1DataMapDateDetailTableGetQueryKey = (
+  table: string,
+  params: GetDateDetailApiV1DataMapDateDetailTableGetParams,
+) => {
+  return [
+    `/api/v1/data-map/date-detail/${table}`,
+    ...(params ? [params] : []),
+  ] as const;
+};
+
+export const getGetDateDetailApiV1DataMapDateDetailTableGetInfiniteQueryOptions =
+  <
+    TData = InfiniteData<
+      Awaited<ReturnType<typeof getDateDetailApiV1DataMapDateDetailTableGet>>,
+      GetDateDetailApiV1DataMapDateDetailTableGetParams["page"]
+    >,
+    TError = HTTPValidationError,
+  >(
+    table: string,
+    params: GetDateDetailApiV1DataMapDateDetailTableGetParams,
+    options?: {
+      query?: Partial<
+        UseInfiniteQueryOptions<
+          Awaited<
+            ReturnType<typeof getDateDetailApiV1DataMapDateDetailTableGet>
+          >,
+          TError,
+          TData,
+          Awaited<
+            ReturnType<typeof getDateDetailApiV1DataMapDateDetailTableGet>
+          >,
+          QueryKey,
+          GetDateDetailApiV1DataMapDateDetailTableGetParams["page"]
+        >
+      >;
+    },
+  ) => {
+    const { query: queryOptions } = options ?? {};
+
+    const queryKey =
+      queryOptions?.queryKey ??
+      getGetDateDetailApiV1DataMapDateDetailTableGetQueryKey(table, params);
+
+    const queryFn: QueryFunction<
+      Awaited<ReturnType<typeof getDateDetailApiV1DataMapDateDetailTableGet>>,
+      QueryKey,
+      GetDateDetailApiV1DataMapDateDetailTableGetParams["page"]
+    > = ({ signal, pageParam }) =>
+      getDateDetailApiV1DataMapDateDetailTableGet(
+        table,
+        { ...params, page: pageParam || params?.["page"] },
+        signal,
+      );
+
+    return {
+      queryKey,
+      queryFn,
+      enabled: !!table,
+      ...queryOptions,
+    } as UseInfiniteQueryOptions<
+      Awaited<ReturnType<typeof getDateDetailApiV1DataMapDateDetailTableGet>>,
+      TError,
+      TData,
+      Awaited<ReturnType<typeof getDateDetailApiV1DataMapDateDetailTableGet>>,
+      QueryKey,
+      GetDateDetailApiV1DataMapDateDetailTableGetParams["page"]
+    > & { queryKey: QueryKey };
+  };
+
+export type GetDateDetailApiV1DataMapDateDetailTableGetInfiniteQueryResult =
+  NonNullable<
+    Awaited<ReturnType<typeof getDateDetailApiV1DataMapDateDetailTableGet>>
+  >;
+export type GetDateDetailApiV1DataMapDateDetailTableGetInfiniteQueryError =
+  HTTPValidationError;
+
+/**
+ * @summary Get Date Detail
+ */
+export const useGetDateDetailApiV1DataMapDateDetailTableGetInfinite = <
+  TData = InfiniteData<
+    Awaited<ReturnType<typeof getDateDetailApiV1DataMapDateDetailTableGet>>,
+    GetDateDetailApiV1DataMapDateDetailTableGetParams["page"]
+  >,
+  TError = HTTPValidationError,
+>(
+  table: string,
+  params: GetDateDetailApiV1DataMapDateDetailTableGetParams,
+  options?: {
+    query?: Partial<
+      UseInfiniteQueryOptions<
+        Awaited<ReturnType<typeof getDateDetailApiV1DataMapDateDetailTableGet>>,
+        TError,
+        TData,
+        Awaited<ReturnType<typeof getDateDetailApiV1DataMapDateDetailTableGet>>,
+        QueryKey,
+        GetDateDetailApiV1DataMapDateDetailTableGetParams["page"]
+      >
+    >;
+  },
+): UseInfiniteQueryResult<TData, TError> & { queryKey: QueryKey } => {
+  const queryOptions =
+    getGetDateDetailApiV1DataMapDateDetailTableGetInfiniteQueryOptions(
+      table,
+      params,
+      options,
+    );
+
+  const query = useInfiniteQuery(queryOptions) as UseInfiniteQueryResult<
+    TData,
+    TError
+  > & { queryKey: QueryKey };
+
+  query.queryKey = queryOptions.queryKey;
+
+  return query;
+};
+
+export const getGetDateDetailApiV1DataMapDateDetailTableGetQueryOptions = <
+  TData = Awaited<
+    ReturnType<typeof getDateDetailApiV1DataMapDateDetailTableGet>
+  >,
+  TError = HTTPValidationError,
+>(
+  table: string,
+  params: GetDateDetailApiV1DataMapDateDetailTableGetParams,
+  options?: {
+    query?: Partial<
+      UseQueryOptions<
+        Awaited<ReturnType<typeof getDateDetailApiV1DataMapDateDetailTableGet>>,
+        TError,
+        TData
+      >
+    >;
+  },
+) => {
+  const { query: queryOptions } = options ?? {};
+
+  const queryKey =
+    queryOptions?.queryKey ??
+    getGetDateDetailApiV1DataMapDateDetailTableGetQueryKey(table, params);
+
+  const queryFn: QueryFunction<
+    Awaited<ReturnType<typeof getDateDetailApiV1DataMapDateDetailTableGet>>
+  > = ({ signal }) =>
+    getDateDetailApiV1DataMapDateDetailTableGet(table, params, signal);
+
+  return {
+    queryKey,
+    queryFn,
+    enabled: !!table,
+    ...queryOptions,
+  } as UseQueryOptions<
+    Awaited<ReturnType<typeof getDateDetailApiV1DataMapDateDetailTableGet>>,
+    TError,
+    TData
+  > & { queryKey: QueryKey };
+};
+
+export type GetDateDetailApiV1DataMapDateDetailTableGetQueryResult =
+  NonNullable<
+    Awaited<ReturnType<typeof getDateDetailApiV1DataMapDateDetailTableGet>>
+  >;
+export type GetDateDetailApiV1DataMapDateDetailTableGetQueryError =
+  HTTPValidationError;
+
+/**
+ * @summary Get Date Detail
+ */
+export const useGetDateDetailApiV1DataMapDateDetailTableGet = <
+  TData = Awaited<
+    ReturnType<typeof getDateDetailApiV1DataMapDateDetailTableGet>
+  >,
+  TError = HTTPValidationError,
+>(
+  table: string,
+  params: GetDateDetailApiV1DataMapDateDetailTableGetParams,
+  options?: {
+    query?: Partial<
+      UseQueryOptions<
+        Awaited<ReturnType<typeof getDateDetailApiV1DataMapDateDetailTableGet>>,
+        TError,
+        TData
+      >
+    >;
+  },
+): UseQueryResult<TData, TError> & { queryKey: QueryKey } => {
+  const queryOptions =
+    getGetDateDetailApiV1DataMapDateDetailTableGetQueryOptions(
+      table,
+      params,
+      options,
+    );
+
+  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
+    queryKey: QueryKey;
+  };
+
+  query.queryKey = queryOptions.queryKey;
+
+  return query;
+};
+
+/**
+ * @summary Trigger Date Backfill
+ */
+export const triggerDateBackfillApiV1DataMapDateBackfillPost = (
+  dateBackfillRequest: DateBackfillRequest,
+) => {
+  return customInstance<DateBackfillResponse>({
+    url: `/api/v1/data-map/date-backfill`,
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    data: dateBackfillRequest,
+  });
+};
+
+export const getTriggerDateBackfillApiV1DataMapDateBackfillPostMutationOptions =
+  <TError = HTTPValidationError, TContext = unknown>(options?: {
+    mutation?: UseMutationOptions<
+      Awaited<
+        ReturnType<typeof triggerDateBackfillApiV1DataMapDateBackfillPost>
+      >,
+      TError,
+      { data: DateBackfillRequest },
+      TContext
+    >;
+  }): UseMutationOptions<
+    Awaited<ReturnType<typeof triggerDateBackfillApiV1DataMapDateBackfillPost>>,
+    TError,
+    { data: DateBackfillRequest },
+    TContext
+  > => {
+    const { mutation: mutationOptions } = options ?? {};
+
+    const mutationFn: MutationFunction<
+      Awaited<
+        ReturnType<typeof triggerDateBackfillApiV1DataMapDateBackfillPost>
+      >,
+      { data: DateBackfillRequest }
+    > = (props) => {
+      const { data } = props ?? {};
+
+      return triggerDateBackfillApiV1DataMapDateBackfillPost(data);
+    };
+
+    return { mutationFn, ...mutationOptions };
+  };
+
+export type TriggerDateBackfillApiV1DataMapDateBackfillPostMutationResult =
+  NonNullable<
+    Awaited<ReturnType<typeof triggerDateBackfillApiV1DataMapDateBackfillPost>>
+  >;
+export type TriggerDateBackfillApiV1DataMapDateBackfillPostMutationBody =
+  DateBackfillRequest;
+export type TriggerDateBackfillApiV1DataMapDateBackfillPostMutationError =
+  HTTPValidationError;
+
+/**
+ * @summary Trigger Date Backfill
+ */
+export const useTriggerDateBackfillApiV1DataMapDateBackfillPost = <
+  TError = HTTPValidationError,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof triggerDateBackfillApiV1DataMapDateBackfillPost>>,
+    TError,
+    { data: DateBackfillRequest },
+    TContext
+  >;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof triggerDateBackfillApiV1DataMapDateBackfillPost>>,
+  TError,
+  { data: DateBackfillRequest },
+  TContext
+> => {
+  const mutationOptions =
+    getTriggerDateBackfillApiV1DataMapDateBackfillPostMutationOptions(options);
+
+  return useMutation(mutationOptions);
 };

@@ -25,18 +25,30 @@ router = APIRouter()
 # the data map tracks and how to query them
 # ============================================
 
-# Each entry: (table_name, date_column, code_column_or_None, display_name, asset_scope)
+# Each entry: (table_key, physical_table, date_column, code_column_or_None, display_name, asset_scope, where_filter_or_None)
+# table_key is the unique identifier used in API responses (may differ from physical table for virtual splits)
+# where_filter is an optional SQL WHERE clause fragment to scope rows (e.g. for splitting market_daily by asset type)
+
+_STOCK_FILTER = """
+    (code LIKE 'sh.6%%' OR code LIKE 'sz.0%%' OR code LIKE 'sz.3%%' OR code LIKE 'bj.%%')
+    AND code NOT LIKE 'sh.000%%' AND code NOT LIKE 'sz.399%%'
+"""
+_INDEX_FILTER = "code LIKE 'sh.000%%' OR code LIKE 'sz.399%%'"
+_ETF_FILTER = "code LIKE 'sh.5%%' OR code LIKE 'sz.1%%'"
+
 DATA_TABLES = [
-    ("market_daily", "date", "code", "行情数据", "all"),
-    ("indicator_valuation", "date", "code", "估值指标", "stock"),
-    # ("indicator_etf", "date", "code", "ETF指标", "etf"),  # Hidden: ETF指标暂不展示
-    ("moneyflow_daily", "date", "code", "资金流向", "stock"),
-    ("limit_list_daily", "date", "code", "涨跌停", "stock"),
-    ("adjust_factor", "divid_operate_date", "code", "复权因子", "stock_etf"),
-    ("stock_style_exposure", "date", "code", "风格因子", "stock"),
-    # ("stock_microstructure", "date", "code", "微观结构", "stock"),  # Hidden: 微观结构暂不展示
-    # ("technical_indicators", "date", "code", "技术指标", "all"),  # Hidden: 空表，指标实时计算中
-    ("market_regime", "date", None, "市场环境", "market"),
+    ("market_daily_stock", "market_daily", "date", "code", "股票行情", "stock", _STOCK_FILTER),
+    ("market_daily_etf", "market_daily", "date", "code", "ETF行情", "etf", _ETF_FILTER),
+    ("market_daily_index", "market_daily", "date", "code", "指数行情", "index", _INDEX_FILTER),
+    ("indicator_valuation", "indicator_valuation", "date", "code", "估值指标", "stock", None),
+    # ("indicator_etf", "indicator_etf", "date", "code", "ETF指标", "etf", None),  # Hidden
+    ("moneyflow_daily", "moneyflow_daily", "date", "code", "资金流向", "stock", None),
+    ("limit_list_daily", "limit_list_daily", "date", "code", "涨跌停", "stock", None),
+    ("adjust_factor", "adjust_factor", "divid_operate_date", "code", "复权因子", "stock_etf", None),
+    ("stock_style_exposure", "stock_style_exposure", "date", "code", "风格因子", "stock", None),
+    # ("stock_microstructure", ..., None),  # Hidden
+    # ("technical_indicators", ..., None),  # Hidden
+    ("market_regime", "market_regime", "date", None, "市场环境", "market", None),
 ]
 
 
@@ -134,38 +146,34 @@ class GapResponse(BaseModel):
 # ============================================
 
 
+def _build_where(date_col: str, where_filter: Optional[str] = None, extra: str = "") -> str:
+    """Build WHERE clause combining date filter, asset type filter, and optional extra conditions."""
+    parts = [extra] if extra else []
+    if where_filter:
+        parts.append(f"({where_filter})")
+    return (" AND ".join(parts)) if parts else "TRUE"
+
+
 @router.get("/coverage", response_model=CoverageResponse)
 async def get_data_coverage(
     db: AsyncSession = Depends(get_db),
 ):
-    """
-    Get coverage summary for all tracked data tables.
-
-    Returns per-table: row count, symbol count, date range, gap info, staleness.
-    Uses pg_class for fast approximate row counts, exact min/max/distinct queries
-    are lightweight since they leverage indexes.
-    """
-    import asyncio
     from workers.trading_days import get_latest_trading_day, get_trading_days_between
 
     reference_day = get_latest_trading_day()
     reference_str = reference_day.strftime("%Y-%m-%d")
 
-    # Get approximate row counts using TimescaleDB's approximate_row_count()
-    # for hypertables, and pg_class for regular tables.
-    table_names_list = [t[0] for t in DATA_TABLES]
+    physical_tables = list({t[1] for t in DATA_TABLES})
 
-    # First try TimescaleDB hypertable stats (instant, no table scan)
     hyper_q = text("""
         SELECT hypertable_name, approximate_row_count(format('%I', hypertable_name)::regclass)
         FROM timescaledb_information.hypertables
         WHERE hypertable_name = ANY(:tables)
     """)
-    hyper_result = await db.execute(hyper_q, {"tables": table_names_list})
+    hyper_result = await db.execute(hyper_q, {"tables": physical_tables})
     approx_counts = {row[0]: row[1] for row in hyper_result}
 
-    # For tables not found as hypertables, use pg_class
-    missing_tables = [t for t in table_names_list if t not in approx_counts]
+    missing_tables = [t for t in physical_tables if t not in approx_counts]
     if missing_tables:
         pg_q = text("""
             SELECT relname, GREATEST(reltuples::bigint, 0) as approx_rows
@@ -176,13 +184,13 @@ async def get_data_coverage(
         for row in pg_result:
             approx_counts[row.relname] = row.approx_rows
 
-    async def query_table(tbl_name, date_col, code_col, display, scope):
+    async def query_table(table_key, phys_table, date_col, code_col, display, scope, where_filter):
         try:
-            approx_rows = max(0, approx_counts.get(tbl_name, 0))
+            approx_rows = max(0, approx_counts.get(phys_table, 0))
 
             if approx_rows == 0:
                 return TableCoverage(
-                    table=tbl_name,
+                    table=table_key,
                     display_name=display,
                     asset_scope=scope,
                     row_count=0,
@@ -193,10 +201,11 @@ async def get_data_coverage(
                     staleness_days=0,
                 )
 
-            # MIN/MAX uses index skip-scan — instant even on 100M+ rows
+            filter_clause = _build_where(date_col, where_filter)
             range_q = text(f"""
                 SELECT MIN({date_col})::text as earliest, MAX({date_col})::text as latest
-                FROM {tbl_name}
+                FROM {phys_table}
+                WHERE {filter_clause}
             """)
             result = await db.execute(range_q)
             row = result.first()
@@ -206,10 +215,10 @@ async def get_data_coverage(
 
             if not latest or not earliest:
                 return TableCoverage(
-                    table=tbl_name,
+                    table=table_key,
                     display_name=display,
                     asset_scope=scope,
-                    row_count=approx_rows,
+                    row_count=0,
                     symbol_count=0,
                     total_dates=0,
                     status="Empty",
@@ -217,29 +226,32 @@ async def get_data_coverage(
                     staleness_days=0,
                 )
 
-            # Estimate symbol count from a single date (fast — scans ~5K rows)
             symbol_count = 0
             if code_col:
                 latest_as_date = date.fromisoformat(latest)
                 sym_q = text(f"""
                     SELECT COUNT(DISTINCT {code_col}) as cnt
-                    FROM {tbl_name}
-                    WHERE {date_col} = :latest
+                    FROM {phys_table}
+                    WHERE {date_col} = :latest AND {filter_clause}
                 """)
                 sym_result = await db.execute(sym_q, {"latest": latest_as_date})
                 symbol_count = sym_result.scalar() or 0
 
-            # Estimate date count: approx_rows / symbols_per_day
-            date_count = int(approx_rows / symbol_count) if symbol_count > 0 else approx_rows
+            date_count = (
+                int(approx_rows / symbol_count) if symbol_count > 0 and not where_filter else 0
+            )
+            if where_filter or symbol_count == 0:
+                distinct_q = text(f"""
+                    SELECT COUNT(DISTINCT {date_col}) as cnt
+                    FROM {phys_table}
+                    WHERE {filter_clause}
+                """)
+                date_count = (await db.execute(distinct_q)).scalar() or 0
 
             latest_date = date.fromisoformat(latest)
-            staleness_list = get_trading_days_between(latest_date, reference_day)
-            staleness = len(staleness_list)
+            staleness = len(get_trading_days_between(latest_date, reference_day))
 
-            if staleness > 5:
-                table_status = "Stale"
-            else:
-                table_status = "OK"
+            table_status = "Stale" if staleness > 5 else "OK"
 
             earliest_date = date.fromisoformat(earliest)
             expected_trading_days = get_trading_days_between(
@@ -249,11 +261,15 @@ async def get_data_coverage(
             if gap_days > 10:
                 table_status = "Gap"
 
+            row_count = approx_rows
+            if where_filter:
+                row_count = symbol_count * date_count if symbol_count > 0 else 0
+
             return TableCoverage(
-                table=tbl_name,
+                table=table_key,
                 display_name=display,
                 asset_scope=scope,
-                row_count=approx_rows,
+                row_count=row_count,
                 symbol_count=symbol_count,
                 earliest_date=earliest,
                 latest_date=latest,
@@ -263,10 +279,10 @@ async def get_data_coverage(
                 staleness_days=staleness,
             )
         except Exception as e:
-            logger.warning(f"Coverage query failed for {tbl_name}: {e}")
+            logger.warning(f"Coverage query failed for {table_key}: {e}")
             await db.rollback()
             return TableCoverage(
-                table=tbl_name,
+                table=table_key,
                 display_name=display,
                 asset_scope=scope,
                 row_count=0,
@@ -277,10 +293,11 @@ async def get_data_coverage(
                 staleness_days=0,
             )
 
-    # Query all tables (sequentially since we share a single db session)
     tables: List[TableCoverage] = []
-    for tbl_name, date_col, code_col, display, scope in DATA_TABLES:
-        tc = await query_table(tbl_name, date_col, code_col, display, scope)
+    for table_key, phys_table, date_col, code_col, display, scope, where_filter in DATA_TABLES:
+        tc = await query_table(
+            table_key, phys_table, date_col, code_col, display, scope, where_filter
+        )
         tables.append(tc)
 
     total_gap = sum(t.gap_days for t in tables if t.row_count > 0)
@@ -303,12 +320,6 @@ async def get_data_heatmap(
     ),
     db: AsyncSession = Depends(get_db),
 ):
-    """
-    Get date × table heatmap matrix.
-
-    For each date in the range, returns the row count per table.
-    Used to render the coverage heatmap on the frontend.
-    """
     if start_date and end_date:
         q_start = date.fromisoformat(start_date)
         q_end = date.fromisoformat(end_date)
@@ -316,20 +327,23 @@ async def get_data_heatmap(
         q_end = date.today()
         q_start = q_end - timedelta(days=days)
 
-    table_names = []
+    table_keys = []
     table_labels = {}
 
     date_table_counts: Dict[str, Dict[str, int]] = {}
 
-    for tbl_name, date_col, code_col, display, scope in DATA_TABLES:
-        table_names.append(tbl_name)
-        table_labels[tbl_name] = display
+    for table_key, phys_table, date_col, code_col, display, scope, where_filter in DATA_TABLES:
+        table_keys.append(table_key)
+        table_labels[table_key] = display
 
         try:
+            filter_clause = _build_where(
+                date_col, where_filter, f"{date_col} >= :start AND {date_col} <= :end"
+            )
             q = text(f"""
                 SELECT {date_col}::text as d, COUNT(*) as cnt
-                FROM {tbl_name}
-                WHERE {date_col} >= :start AND {date_col} <= :end
+                FROM {phys_table}
+                WHERE {filter_clause}
                 GROUP BY {date_col}
                 ORDER BY {date_col}
             """)
@@ -339,34 +353,38 @@ async def get_data_heatmap(
                 d = row.d
                 if d not in date_table_counts:
                     date_table_counts[d] = {}
-                date_table_counts[d][tbl_name] = row.cnt
+                date_table_counts[d][table_key] = row.cnt
         except Exception as e:
-            logger.warning(f"Heatmap query failed for {tbl_name}: {e}")
-            pass
+            logger.warning(f"Heatmap query failed for {table_key}: {e}")
 
-    # Build expected counts (approximate) — use the max count seen for each table
     expected_counts: Dict[str, int] = {}
-    for tbl_name in table_names:
+    for tk in table_keys:
         max_cnt = 0
         for d_counts in date_table_counts.values():
-            if tbl_name in d_counts and d_counts[tbl_name] > max_cnt:
-                max_cnt = d_counts[tbl_name]
-        expected_counts[tbl_name] = max_cnt
+            if tk in d_counts and d_counts[tk] > max_cnt:
+                max_cnt = d_counts[tk]
+        expected_counts[tk] = max_cnt
 
-    # Build rows sorted by date descending
     rows = []
     for d in sorted(date_table_counts.keys(), reverse=True):
         cells = {}
-        for tbl_name in table_names:
-            cells[tbl_name] = date_table_counts[d].get(tbl_name, 0)
+        for tk in table_keys:
+            cells[tk] = date_table_counts[d].get(tk, 0)
         rows.append(HeatmapRow(date=d, cells=cells))
 
     return HeatmapResponse(
-        tables=table_names,
+        tables=table_keys,
         table_labels=table_labels,
         rows=rows,
         expected_counts=expected_counts,
     )
+
+
+def _find_table(table_key: str):
+    for entry in DATA_TABLES:
+        if entry[0] == table_key:
+            return entry
+    return None
 
 
 @router.get("/gaps/{table}", response_model=GapResponse)
@@ -381,27 +399,16 @@ async def get_table_gaps(
     ),
     db: AsyncSession = Depends(get_db),
 ):
-    """
-    Get detailed gap analysis for a specific table.
-
-    Returns all missing trading dates for the given table in the specified range.
-    """
     from workers.trading_days import get_trading_days_between
 
-    # Validate table name
-    table_info = None
-    for tbl_name, date_col, code_col, display, scope in DATA_TABLES:
-        if tbl_name == table:
-            table_info = (tbl_name, date_col, code_col, display, scope)
-            break
-
-    if table_info is None:
+    entry = _find_table(table)
+    if entry is None:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=f"Unknown table: {table}. Valid: {[t[0] for t in DATA_TABLES]}",
         )
 
-    tbl_name, date_col, code_col, display, scope = table_info
+    table_key, phys_table, date_col, code_col, display, scope, where_filter = entry
     if start_date and end_date:
         q_start = date.fromisoformat(start_date)
         q_end = date.fromisoformat(end_date)
@@ -409,27 +416,24 @@ async def get_table_gaps(
         q_end = date.today()
         q_start = q_end - timedelta(days=days)
 
-    # Get all trading days in range (between is exclusive start, inclusive end)
     trading_days = get_trading_days_between(q_start - timedelta(days=1), q_end)
     trading_day_set = {d.strftime("%Y-%m-%d") for d in trading_days}
 
-    # Get dates that exist in the table
+    filter_clause = _build_where(
+        date_col, where_filter, f"{date_col} >= :start AND {date_col} <= :end"
+    )
     q = text(f"""
         SELECT DISTINCT {date_col}::text as d
-        FROM {tbl_name}
-        WHERE {date_col} >= :start AND {date_col} <= :end
+        FROM {phys_table}
+        WHERE {filter_clause}
     """)
-    result = await db.execute(
-        q,
-        {"start": q_start, "end": q_end},
-    )
+    result = await db.execute(q, {"start": q_start, "end": q_end})
     existing_dates = {row.d for row in result}
 
-    # Missing = trading days that don't appear in the table
     missing = sorted(trading_day_set - existing_dates, reverse=True)
 
     return GapResponse(
-        table=tbl_name,
+        table=table_key,
         display_name=display,
         reference_dates=len(trading_days),
         covered_dates=len(existing_dates),
@@ -442,24 +446,19 @@ async def trigger_backfill(
     request: BackfillRequest,
     db: AsyncSession = Depends(get_db),
 ):
-    """
-    Trigger a targeted backfill for a specific table and date range.
-
-    Enqueues a backfill job to the ARQ worker.
-    """
     from uuid import uuid4
     from app.core.arq import get_arq_pool
     from app.db.models.sync import SyncHistory
 
-    # Validate table name
-    valid_tables = [t[0] for t in DATA_TABLES]
-    if request.table not in valid_tables:
+    entry = _find_table(request.table)
+    if entry is None:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"Unknown table: {request.table}. Valid: {valid_tables}",
+            detail=f"Unknown table: {request.table}. Valid: {[t[0] for t in DATA_TABLES]}",
         )
 
-    # Validate dates
+    phys_table = entry[1]
+
     try:
         start = date.fromisoformat(request.start_date)
         end = date.fromisoformat(request.end_date)
@@ -483,7 +482,6 @@ async def trigger_backfill(
 
     job_id = str(uuid4())
 
-    # Create sync history record
     sync_record = SyncHistory(
         id=job_id,
         sync_type=f"backfill:{request.table}",
@@ -493,13 +491,12 @@ async def trigger_backfill(
     db.add(sync_record)
     await db.commit()
 
-    # Enqueue to ARQ worker
     try:
         arq_pool = await get_arq_pool()
         await arq_pool.enqueue_job(
             "targeted_backfill",
             job_id,
-            request.table,
+            phys_table,
             request.start_date,
             request.end_date,
         )
@@ -613,3 +610,167 @@ async def get_market_daily_breakdown(
         )
 
     return MarketDailyBreakdownResponse(breakdowns=breakdowns)
+
+
+# ============================================
+# Date Detail & Single-Date Backfill
+# ============================================
+
+VIRTUAL_TABLE_ASSET_MAP = {
+    "market_daily_stock": "STOCK",
+    "market_daily_etf": "ETF",
+    "market_daily_index": "INDEX",
+}
+
+ASSET_TYPE_TO_SYNC = {
+    "STOCK": "stock",
+    "ETF": "etf",
+    "INDEX": "index",
+}
+
+
+class AssetTypeBreakdown(BaseModel):
+    asset_type: str
+    actual: int
+    expected: int
+
+
+class DateDetailResponse(BaseModel):
+    date: str
+    table: str
+    total_actual: int
+    total_expected: int
+    breakdown: List[AssetTypeBreakdown]
+
+
+class DateBackfillRequest(BaseModel):
+    table: str
+    date: str
+    asset_types: List[str]
+
+
+class DateBackfillResponse(BaseModel):
+    date: str
+    results: Dict[str, int]
+    errors: List[str] = Field(default_factory=list)
+
+
+@router.get("/date-detail/{table}", response_model=DateDetailResponse)
+async def get_date_detail(
+    table: str,
+    date_str: str = Query(..., alias="date", description="Date YYYY-MM-DD"),
+    db: AsyncSession = Depends(get_db),
+):
+    entry = _find_table(table)
+    if entry is None:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Unknown table: {table}",
+        )
+
+    table_key, phys_table, date_col, code_col, _, scope, where_filter = entry
+    target_date = date.fromisoformat(date_str)
+
+    asset_type = VIRTUAL_TABLE_ASSET_MAP.get(table_key)
+    if asset_type:
+        filter_clause = _build_where(date_col, where_filter, f"{date_col} = :d")
+        actual_q = text(f"SELECT COUNT(*) FROM {phys_table} WHERE {filter_clause}")
+        actual = (await db.execute(actual_q, {"d": target_date})).scalar() or 0
+
+        expected_q = text(
+            "SELECT COUNT(*) FROM asset_meta WHERE status = 1 AND asset_type = :atype"
+        )
+        expected = (await db.execute(expected_q, {"atype": asset_type})).scalar() or 0
+
+        return DateDetailResponse(
+            date=date_str,
+            table=table_key,
+            total_actual=actual,
+            total_expected=expected,
+            breakdown=[AssetTypeBreakdown(asset_type=asset_type, actual=actual, expected=expected)],
+        )
+
+    if code_col is None:
+        total_q = text(f"SELECT COUNT(*) FROM {phys_table} WHERE {date_col} = :d")
+        total = (await db.execute(total_q, {"d": target_date})).scalar() or 0
+        return DateDetailResponse(
+            date=date_str,
+            table=table_key,
+            total_actual=total,
+            total_expected=0,
+            breakdown=[],
+        )
+
+    total_q = text(f"SELECT COUNT(*) FROM {phys_table} WHERE {date_col} = :d")
+    total = (await db.execute(total_q, {"d": target_date})).scalar() or 0
+    return DateDetailResponse(
+        date=date_str,
+        table=table_key,
+        total_actual=total,
+        total_expected=0,
+        breakdown=[],
+    )
+
+
+@router.post("/date-backfill", response_model=DateBackfillResponse)
+async def trigger_date_backfill(
+    request: DateBackfillRequest,
+    db: AsyncSession = Depends(get_db),
+):
+    entry = _find_table(request.table)
+    if entry is None:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Unknown table: {request.table}",
+        )
+
+    phys_table = entry[1]
+    if phys_table != "market_daily":
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Single-date backfill currently only supports market_daily variants",
+        )
+
+    try:
+        target_date = date.fromisoformat(request.date)
+    except ValueError:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Invalid date format. Use YYYY-MM-DD.",
+        )
+
+    valid_types = {"STOCK", "ETF", "INDEX"}
+    requested = [t.upper() for t in request.asset_types]
+    invalid = set(requested) - valid_types
+    if invalid:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Invalid asset_types: {invalid}. Valid: {valid_types}",
+        )
+
+    sync_types = [ASSET_TYPE_TO_SYNC[t] for t in requested]
+
+    from workers.source_sync import sync_daily_data_with_source
+
+    try:
+        result = await sync_daily_data_with_source(db, target_date, asset_types=sync_types)
+    except Exception as e:
+        logger.error(f"Date backfill failed for {request.date}: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Backfill failed: {str(e)}",
+        )
+
+    results = {}
+    if "STOCK" in requested:
+        results["STOCK"] = result.get("stock_count", 0)
+    if "ETF" in requested:
+        results["ETF"] = result.get("etf_count", 0)
+    if "INDEX" in requested:
+        results["INDEX"] = result.get("index_count", 0)
+
+    return DateBackfillResponse(
+        date=request.date,
+        results=results,
+        errors=result.get("errors", []),
+    )
