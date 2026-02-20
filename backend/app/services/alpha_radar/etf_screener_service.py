@@ -147,7 +147,7 @@ class ETFScreenerService:
                 md.close AS price,
                 md.pct_chg AS change_pct,
                 md.amount,
-                md.turn,
+                NULL AS turn,
                 md.volume,
                 ie.discount_rate,
                 ie.unit_total,
@@ -171,9 +171,7 @@ class ETFScreenerService:
         if not rows:
             return pl.DataFrame()
 
-        return pl.DataFrame(
-            [dict(zip(columns, row)) for row in rows]
-        )
+        return pl.DataFrame([dict(zip(columns, row)) for row in rows])
 
     def _select_representative_etfs(self, df: pl.DataFrame) -> pl.DataFrame:
         """
@@ -190,12 +188,14 @@ class ETFScreenerService:
             return without_index
 
         # Rank by amount within each underlying index, keep rank 1
-        with_index = with_index.with_columns([
-            pl.col("amount")
-            .rank(method="ordinal", descending=True)
-            .over("underlying_index_code")
-            .alias("_rank")
-        ])
+        with_index = with_index.with_columns(
+            [
+                pl.col("amount")
+                .rank(method="ordinal", descending=True)
+                .over("underlying_index_code")
+                .alias("_rank")
+            ]
+        )
 
         representative = with_index.filter(pl.col("_rank") == 1).drop("_rank")
 
@@ -205,67 +205,77 @@ class ETFScreenerService:
     def _calculate_score_and_labels(self, df: pl.DataFrame) -> pl.DataFrame:
         """Calculate composite score and generate labels."""
         # Normalize amount for score calculation (30% weight)
-        df = df.with_columns([
-            (pl.col("amount").rank() / pl.len() * 30).alias("amount_score"),
-        ])
+        df = df.with_columns(
+            [
+                (pl.col("amount").rank() / pl.len() * 30).alias("amount_score"),
+            ]
+        )
 
         # Tracking efficiency score (20% weight) - lower error is better
         if "tracking_error" in df.columns:
-            df = df.with_columns([
-                pl.when(pl.col("tracking_error").is_not_null())
-                .then(20 - (pl.col("tracking_error").rank() / pl.len() * 20))
-                .otherwise(10)
-                .alias("tracking_score")
-            ])
+            df = df.with_columns(
+                [
+                    pl.when(pl.col("tracking_error").is_not_null())
+                    .then(20 - (pl.col("tracking_error").rank() / pl.len() * 20))
+                    .otherwise(10)
+                    .alias("tracking_score")
+                ]
+            )
         else:
             df = df.with_columns([pl.lit(10).alias("tracking_score")])
 
         # Fee score (15% weight) - lower fee is better
         if "management_fee" in df.columns:
-            df = df.with_columns([
-                pl.when(pl.col("management_fee").is_not_null())
-                .then(15 - (pl.col("management_fee").rank() / pl.len() * 15))
-                .otherwise(7.5)
-                .alias("fee_score")
-            ])
+            df = df.with_columns(
+                [
+                    pl.when(pl.col("management_fee").is_not_null())
+                    .then(15 - (pl.col("management_fee").rank() / pl.len() * 15))
+                    .otherwise(7.5)
+                    .alias("fee_score")
+                ]
+            )
         else:
             df = df.with_columns([pl.lit(7.5).alias("fee_score")])
 
         # Scale score (15% weight) - unit_total * price
         if "unit_total" in df.columns and "price" in df.columns:
-            df = df.with_columns([
-                (pl.col("unit_total") * pl.col("price")).alias("_scale")
-            ])
-            df = df.with_columns([
-                pl.when(pl.col("_scale").is_not_null())
-                .then(pl.col("_scale").rank() / pl.len() * 15)
-                .otherwise(7.5)
-                .alias("scale_score")
-            ]).drop("_scale")
+            df = df.with_columns([(pl.col("unit_total") * pl.col("price")).alias("_scale")])
+            df = df.with_columns(
+                [
+                    pl.when(pl.col("_scale").is_not_null())
+                    .then(pl.col("_scale").rank() / pl.len() * 15)
+                    .otherwise(7.5)
+                    .alias("scale_score")
+                ]
+            ).drop("_scale")
         else:
             df = df.with_columns([pl.lit(7.5).alias("scale_score")])
 
         # Momentum score (20% weight) - recent return
         if "change_pct" in df.columns:
-            df = df.with_columns([
-                pl.when(pl.col("change_pct").is_not_null())
-                .then(pl.col("change_pct").rank() / pl.len() * 20)
-                .otherwise(10)
-                .alias("momentum_score")
-            ])
+            df = df.with_columns(
+                [
+                    pl.when(pl.col("change_pct").is_not_null())
+                    .then(pl.col("change_pct").rank() / pl.len() * 20)
+                    .otherwise(10)
+                    .alias("momentum_score")
+                ]
+            )
         else:
             df = df.with_columns([pl.lit(10).alias("momentum_score")])
 
         # Composite score
-        df = df.with_columns([
-            (
-                pl.col("amount_score") +
-                pl.col("tracking_score") +
-                pl.col("fee_score") +
-                pl.col("scale_score") +
-                pl.col("momentum_score")
-            ).alias("score")
-        ])
+        df = df.with_columns(
+            [
+                (
+                    pl.col("amount_score")
+                    + pl.col("tracking_score")
+                    + pl.col("fee_score")
+                    + pl.col("scale_score")
+                    + pl.col("momentum_score")
+                ).alias("score")
+            ]
+        )
 
         # Generate labels
         df = self._generate_labels(df)
@@ -275,39 +285,48 @@ class ETFScreenerService:
     def _generate_labels(self, df: pl.DataFrame) -> pl.DataFrame:
         """Generate ETF labels based on metrics."""
         # Liquidity king - highest amount in category
-        df = df.with_columns([
-            (pl.col("amount") == pl.col("amount").max().over("etf_type"))
-            .alias("is_liquidity_king")
-        ])
+        df = df.with_columns(
+            [
+                (pl.col("amount") == pl.col("amount").max().over("etf_type")).alias(
+                    "is_liquidity_king"
+                )
+            ]
+        )
 
         # High premium warning (> 5%)
-        df = df.with_columns([
-            pl.when(pl.col("discount_rate").is_not_null())
-            .then(pl.col("discount_rate") > 5)
-            .otherwise(False)
-            .alias("is_high_premium")
-        ])
+        df = df.with_columns(
+            [
+                pl.when(pl.col("discount_rate").is_not_null())
+                .then(pl.col("discount_rate") > 5)
+                .otherwise(False)
+                .alias("is_high_premium")
+            ]
+        )
 
         # Medium premium warning (> 3%)
-        df = df.with_columns([
-            pl.when(pl.col("discount_rate").is_not_null())
-            .then((pl.col("discount_rate") > 3) & (pl.col("discount_rate") <= 5))
-            .otherwise(False)
-            .alias("is_medium_premium")
-        ])
+        df = df.with_columns(
+            [
+                pl.when(pl.col("discount_rate").is_not_null())
+                .then((pl.col("discount_rate") > 3) & (pl.col("discount_rate") <= 5))
+                .otherwise(False)
+                .alias("is_medium_premium")
+            ]
+        )
 
         # Discount opportunity (< -3%)
-        df = df.with_columns([
-            pl.when(pl.col("discount_rate").is_not_null())
-            .then(pl.col("discount_rate") < -3)
-            .otherwise(False)
-            .alias("is_discount")
-        ])
+        df = df.with_columns(
+            [
+                pl.when(pl.col("discount_rate").is_not_null())
+                .then(pl.col("discount_rate") < -3)
+                .otherwise(False)
+                .alias("is_discount")
+            ]
+        )
 
         # T+0 ETF
-        df = df.with_columns([
-            pl.col("etf_type").is_in(self.T_PLUS_ZERO_TYPES).alias("is_t_plus_zero")
-        ])
+        df = df.with_columns(
+            [pl.col("etf_type").is_in(self.T_PLUS_ZERO_TYPES).alias("is_t_plus_zero")]
+        )
 
         return df
 
@@ -382,6 +401,7 @@ class ETFScreenerService:
         try:
             if isinstance(value, float):
                 import math
+
                 if math.isnan(value) or math.isinf(value):
                     return None
             return Decimal(str(round(float(value), 4)))

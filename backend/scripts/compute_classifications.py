@@ -135,7 +135,7 @@ async def compute_classifications_for_date(pg_conn: asyncpg.Connection, target_d
         SELECT
             m.code,
             m.date,
-            m.turn,
+            v.turnover_rate AS turn,
             m.pct_chg,
             v.circ_mv,
             v.pe_ttm

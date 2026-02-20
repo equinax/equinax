@@ -5,7 +5,17 @@ from decimal import Decimal
 from typing import Optional
 from enum import Enum
 
-from sqlalchemy import String, Integer, Date, DateTime, Numeric, BigInteger, Index, func, PrimaryKeyConstraint
+from sqlalchemy import (
+    String,
+    Integer,
+    Date,
+    DateTime,
+    Numeric,
+    BigInteger,
+    Index,
+    func,
+    PrimaryKeyConstraint,
+)
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.db.base import Base
@@ -13,6 +23,7 @@ from app.db.base import Base
 
 class AssetType(str, Enum):
     """Asset type enumeration."""
+
     STOCK = "STOCK"
     ETF = "ETF"
     INDEX = "INDEX"
@@ -21,13 +32,14 @@ class AssetType(str, Enum):
 
 class ETFType(str, Enum):
     """ETF type enumeration."""
-    BROAD_BASED = "BROAD_BASED"      # 宽基ETF
-    SECTOR = "SECTOR"                # 行业ETF
-    THEME = "THEME"                  # 主题ETF
-    CROSS_BORDER = "CROSS_BORDER"    # 跨境ETF
-    COMMODITY = "COMMODITY"          # 商品ETF
-    BOND = "BOND"                    # 债券ETF
-    CURRENCY = "CURRENCY"            # 货币ETF
+
+    BROAD_BASED = "BROAD_BASED"  # 宽基ETF
+    SECTOR = "SECTOR"  # 行业ETF
+    THEME = "THEME"  # 主题ETF
+    CROSS_BORDER = "CROSS_BORDER"  # 跨境ETF
+    COMMODITY = "COMMODITY"  # 商品ETF
+    BOND = "BOND"  # 债券ETF
+    CURRENCY = "CURRENCY"  # 货币ETF
 
 
 class AssetMeta(Base):
@@ -46,7 +58,9 @@ class AssetMeta(Base):
     list_date: Mapped[Optional[date]] = mapped_column(Date, nullable=True)
     delist_date: Mapped[Optional[date]] = mapped_column(Date, nullable=True)
     status: Mapped[int] = mapped_column(Integer, default=1)  # 1=上市, 0=退市
-    category: Mapped[Optional[str]] = mapped_column(String(50), nullable=True)  # 主板/创业板/科创板/ETF
+    category: Mapped[Optional[str]] = mapped_column(
+        String(50), nullable=True
+    )  # 主板/创业板/科创板/ETF
 
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
@@ -94,9 +108,8 @@ class MarketDaily(Base):
     amount: Mapped[Optional[Decimal]] = mapped_column(Numeric(18, 2), nullable=True)
 
     # Trading metrics
-    turn: Mapped[Optional[Decimal]] = mapped_column(Numeric(8, 4), nullable=True)  # 换手率
     pct_chg: Mapped[Optional[Decimal]] = mapped_column(Numeric(8, 4), nullable=True)  # 涨跌幅
-    trade_status: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    change: Mapped[Optional[Decimal]] = mapped_column(Numeric(12, 4), nullable=True)  # 涨跌额
 
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
@@ -127,15 +140,47 @@ class IndicatorValuation(Base):
     code: Mapped[str] = mapped_column(String(20), nullable=False)
     date: Mapped[date] = mapped_column(Date, nullable=False)
 
+    # Price reference (from daily_basic, avoids JOIN with market_daily)
+    close: Mapped[Optional[Decimal]] = mapped_column(Numeric(12, 4), nullable=True)
+
+    # Turnover metrics
+    turnover_rate: Mapped[Optional[Decimal]] = mapped_column(
+        Numeric(8, 4), nullable=True
+    )  # 换手率(%)
+    turnover_rate_f: Mapped[Optional[Decimal]] = mapped_column(
+        Numeric(8, 4), nullable=True
+    )  # 自由流通换手率(%)
+    volume_ratio: Mapped[Optional[Decimal]] = mapped_column(Numeric(8, 4), nullable=True)  # 量比
+
     # Valuation metrics
-    pe_ttm: Mapped[Optional[Decimal]] = mapped_column(Numeric(12, 4), nullable=True)
-    pb_mrq: Mapped[Optional[Decimal]] = mapped_column(Numeric(12, 4), nullable=True)
-    ps_ttm: Mapped[Optional[Decimal]] = mapped_column(Numeric(12, 4), nullable=True)
-    pcf_ncf_ttm: Mapped[Optional[Decimal]] = mapped_column(Numeric(12, 4), nullable=True)
+    pe: Mapped[Optional[Decimal]] = mapped_column(Numeric(12, 4), nullable=True)  # 市盈率(静态)
+    pe_ttm: Mapped[Optional[Decimal]] = mapped_column(Numeric(12, 4), nullable=True)  # 市盈率(TTM)
+    pb_mrq: Mapped[Optional[Decimal]] = mapped_column(Numeric(12, 4), nullable=True)  # 市净率(MRQ)
+    ps: Mapped[Optional[Decimal]] = mapped_column(Numeric(12, 4), nullable=True)  # 市销率(静态)
+    ps_ttm: Mapped[Optional[Decimal]] = mapped_column(Numeric(12, 4), nullable=True)  # 市销率(TTM)
+    dv_ratio: Mapped[Optional[Decimal]] = mapped_column(Numeric(8, 4), nullable=True)  # 股息率(%)
+    dv_ttm: Mapped[Optional[Decimal]] = mapped_column(
+        Numeric(8, 4), nullable=True
+    )  # 股息率(TTM)(%)
 
     # Market cap
-    total_mv: Mapped[Optional[Decimal]] = mapped_column(Numeric(18, 2), nullable=True)  # 总市值
-    circ_mv: Mapped[Optional[Decimal]] = mapped_column(Numeric(18, 2), nullable=True)   # 流通市值
+    total_mv: Mapped[Optional[Decimal]] = mapped_column(
+        Numeric(18, 2), nullable=True
+    )  # 总市值(亿元)
+    circ_mv: Mapped[Optional[Decimal]] = mapped_column(
+        Numeric(18, 2), nullable=True
+    )  # 流通市值(亿元)
+
+    # Share structure (万股)
+    total_share: Mapped[Optional[Decimal]] = mapped_column(
+        Numeric(18, 2), nullable=True
+    )  # 总股本(万股)
+    float_share: Mapped[Optional[Decimal]] = mapped_column(
+        Numeric(18, 2), nullable=True
+    )  # 流通股本(万股)
+    free_share: Mapped[Optional[Decimal]] = mapped_column(
+        Numeric(18, 2), nullable=True
+    )  # 自由流通股本(万股)
 
     # ST status
     is_st: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
@@ -171,9 +216,15 @@ class IndicatorETF(Base):
 
     # ETF specific metrics
     iopv: Mapped[Optional[Decimal]] = mapped_column(Numeric(12, 6), nullable=True)  # 基金净值参考
-    discount_rate: Mapped[Optional[Decimal]] = mapped_column(Numeric(8, 4), nullable=True)  # 折溢价率
-    unit_total: Mapped[Optional[Decimal]] = mapped_column(Numeric(18, 2), nullable=True)  # 份额规模(万份)
-    tracking_error: Mapped[Optional[Decimal]] = mapped_column(Numeric(8, 4), nullable=True)  # 跟踪误差
+    discount_rate: Mapped[Optional[Decimal]] = mapped_column(
+        Numeric(8, 4), nullable=True
+    )  # 折溢价率
+    unit_total: Mapped[Optional[Decimal]] = mapped_column(
+        Numeric(18, 2), nullable=True
+    )  # 份额规模(万份)
+    tracking_error: Mapped[Optional[Decimal]] = mapped_column(
+        Numeric(8, 4), nullable=True
+    )  # 跟踪误差
 
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),

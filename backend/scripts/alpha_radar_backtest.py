@@ -131,10 +131,11 @@ async def load_all_data(
     result = await db.execute(
         text("""
             SELECT md.code, md.date, md.open, md.high, md.low, md.close,
-                   md.preclose, md.volume, md.amount, md.turn, md.pct_chg,
+                   md.preclose, md.volume, md.amount, iv.turnover_rate AS turn, md.pct_chg,
                    am.name, am.asset_type, am.exchange
             FROM market_daily md
             JOIN asset_meta am ON md.code = am.code
+            LEFT JOIN indicator_valuation iv ON md.code = iv.code AND md.date = iv.date
             WHERE md.date >= :data_start AND md.date <= :end_date
             AND am.asset_type = 'STOCK'
             ORDER BY md.code, md.date

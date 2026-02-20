@@ -29,13 +29,13 @@ router = APIRouter()
 DATA_TABLES = [
     ("market_daily", "date", "code", "行情数据", "all"),
     ("indicator_valuation", "date", "code", "估值指标", "stock"),
-    ("indicator_etf", "date", "code", "ETF指标", "etf"),
+    # ("indicator_etf", "date", "code", "ETF指标", "etf"),  # Hidden: ETF指标暂不展示
     ("moneyflow_daily", "date", "code", "资金流向", "stock"),
     ("limit_list_daily", "date", "code", "涨跌停", "stock"),
     ("adjust_factor", "divid_operate_date", "code", "复权因子", "stock_etf"),
     ("stock_style_exposure", "date", "code", "风格因子", "stock"),
-    ("stock_microstructure", "date", "code", "微观结构", "stock"),
-    ("technical_indicators", "date", "code", "技术指标", "all"),
+    # ("stock_microstructure", "date", "code", "微观结构", "stock"),  # Hidden: 微观结构暂不展示
+    # ("technical_indicators", "date", "code", "技术指标", "all"),  # Hidden: 空表，指标实时计算中
     ("market_regime", "date", None, "市场环境", "market"),
 ]
 

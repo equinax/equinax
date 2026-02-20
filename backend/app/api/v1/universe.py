@@ -384,7 +384,7 @@ async def get_universe_snapshot(
             market_subq.c.pct_chg.label("change_pct"),
             market_subq.c.volume,
             market_subq.c.amount,
-            market_subq.c.turn.label("turnover"),
+            valuation_subq.c.turnover_rate.label("turnover"),
             valuation_subq.c.total_mv.label("market_cap"),
             valuation_subq.c.circ_mv,
             valuation_subq.c.pe_ttm,
@@ -931,7 +931,7 @@ async def get_asset_detail(
         low=market.low if market else None,
         volume=market.volume if market else None,
         amount=market.amount if market else None,
-        turnover=market.turn if market else None,
+        turnover=valuation.turnover_rate if valuation else None,
         price_date=market.date if market else None,
         # Valuation
         market_cap=valuation.total_mv if valuation else None,
@@ -1107,8 +1107,8 @@ async def get_correlation_analysis(
                 .where(MarketDaily.date == latest_date)
                 .where(IndicatorValuation.total_mv >= 30)
                 .where(IndicatorValuation.total_mv <= 1000)
-                .where(MarketDaily.turn >= 3)
-                .where(MarketDaily.turn <= 25)
+                .where(IndicatorValuation.turnover_rate >= 3)
+                .where(IndicatorValuation.turnover_rate <= 25)
             )
             leader_codes = {row.code for row in leader_query.all()}
             all_assets = {k: v for k, v in all_assets.items() if k in leader_codes}
@@ -1274,7 +1274,7 @@ async def get_correlation_analysis(
                 price=market.close if market else None,
                 change_pct=market.pct_chg if market else None,
                 market_cap=valuation.total_mv if valuation else None,
-                turnover=market.turn if market else None,
+                turnover=valuation.turnover_rate if valuation else None,
             )
         )
 

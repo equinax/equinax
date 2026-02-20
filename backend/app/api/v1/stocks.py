@@ -521,7 +521,7 @@ async def get_kline(
                 volume=k.volume,
                 amount=k.amount,
                 pct_chg=k.pct_chg,
-                turn=k.turn,
+                turn=None,
             )
             adjusted_data.append(adjusted_kline)
 

@@ -124,7 +124,7 @@ class TuShareDataSource(BaseDataSource):
                         if self._safe_decimal(row.get("amount"))
                         else None,
                         "pct_chg": self._safe_decimal(row.get("pct_chg")),
-                        "turn": None,  # daily 接口不返回换手率
+                        "change": self._safe_decimal(row.get("change")),  # 涨跌额
                     }
                 )
 
@@ -172,7 +172,7 @@ class TuShareDataSource(BaseDataSource):
                         if self._safe_decimal(row.get("amount"))
                         else None,
                         "pct_chg": self._safe_decimal(row.get("pct_chg")),
-                        "turn": None,
+                        "change": self._safe_decimal(row.get("change")),
                     }
                 )
 
@@ -218,7 +218,7 @@ class TuShareDataSource(BaseDataSource):
                         if self._safe_decimal(row.get("amount"))
                         else None,
                         "pct_chg": self._safe_decimal(row.get("pct_chg")),
-                        "turn": None,
+                        "change": self._safe_decimal(row.get("change")),
                     }
                 )
 
@@ -360,14 +360,23 @@ class TuShareDataSource(BaseDataSource):
                     {
                         "code": code,
                         "trade_date": trade_date,
+                        "close": self._safe_decimal(row.get("close")),
+                        "turnover_rate": self._safe_decimal(row.get("turnover_rate")),
+                        "turnover_rate_f": self._safe_decimal(row.get("turnover_rate_f")),
+                        "volume_ratio": self._safe_decimal(row.get("volume_ratio")),
+                        "pe": self._safe_decimal(row.get("pe")),
                         "pe_ttm": self._safe_decimal(row.get("pe_ttm")),
                         "pb_mrq": self._safe_decimal(row.get("pb")),
-                        "total_mv": Decimal(str(float(total_mv) / 10000))
-                        if total_mv
-                        else None,  # 万元 -> 亿元
+                        "ps": self._safe_decimal(row.get("ps")),
+                        "ps_ttm": self._safe_decimal(row.get("ps_ttm")),
+                        "dv_ratio": self._safe_decimal(row.get("dv_ratio")),
+                        "dv_ttm": self._safe_decimal(row.get("dv_ttm")),
+                        "total_mv": Decimal(str(float(total_mv) / 10000)) if total_mv else None,
                         "circ_mv": Decimal(str(float(circ_mv) / 10000)) if circ_mv else None,
+                        "total_share": self._safe_decimal(row.get("total_share")),
+                        "float_share": self._safe_decimal(row.get("float_share")),
+                        "free_share": self._safe_decimal(row.get("free_share")),
                         "is_st": 1 if "ST" in name else 0,
-                        "turn": self._safe_decimal(row.get("turnover_rate")),
                     }
                 )
 
@@ -421,7 +430,7 @@ class TuShareDataSource(BaseDataSource):
                 if df is not None and not df.empty:
                     for _, row in df.iterrows():
                         trade_date = pd.to_datetime(row["trade_date"]).date()
-                        all_records.append(
+                            all_records.append(
                             {
                                 "code": code,
                                 "trade_date": trade_date,
@@ -437,7 +446,7 @@ class TuShareDataSource(BaseDataSource):
                                 if self._safe_decimal(row.get("amount"))
                                 else None,
                                 "pct_chg": self._safe_decimal(row.get("pct_chg")),
-                                "turn": None,
+                                "change": self._safe_decimal(row.get("change")),
                             }
                         )
                     success_count += 1

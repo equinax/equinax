@@ -15,7 +15,7 @@ import logging
 
 import pandas as pd
 import numpy as np
-from sqlalchemy import select, func, text
+from sqlalchemy import select, func, text, and_
 from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession, async_sessionmaker
 from sqlalchemy.dialects.postgresql import insert
 
@@ -341,14 +341,21 @@ async def calculate_style_factors(
         if not stock_codes:
             return {"task": "calculate_style_factors", "error": "No stocks found"}
 
-        # Load market data for calculation
+        # Load market data + turnover from indicator_valuation
         market_query = (
             select(
                 MarketDaily.code,
                 MarketDaily.date,
                 MarketDaily.close,
-                MarketDaily.turn,
+                IndicatorValuation.turnover_rate.label("turnover_rate"),
                 MarketDaily.pct_chg,
+            )
+            .outerjoin(
+                IndicatorValuation,
+                and_(
+                    MarketDaily.code == IndicatorValuation.code,
+                    MarketDaily.date == IndicatorValuation.date,
+                ),
             )
             .where(
                 MarketDaily.code.in_(stock_codes),
@@ -388,7 +395,7 @@ async def calculate_style_factors(
                     "code": r.code,
                     "date": r.date,
                     "close": float(r.close) if r.close else None,
-                    "turn": float(r.turn) if r.turn else None,
+                    "turn": float(r.turnover_rate) if r.turnover_rate else None,
                     "pct_chg": float(r.pct_chg) if r.pct_chg else None,
                 }
                 for r in market_records
@@ -601,13 +608,13 @@ async def calculate_market_regime(
                 SUM(CASE WHEN pct_chg >= 9.9 THEN 1 ELSE 0 END) as limit_up_count,
                 SUM(CASE WHEN pct_chg <= -9.9 THEN 1 ELSE 0 END) as limit_down_count,
                 SUM(amount) as total_amount,
-                AVG(turn) as avg_turnover,
+                AVG(iv.turnover_rate) as avg_turnover,
                 AVG(pct_chg) as avg_pct_chg
             FROM market_daily md
             JOIN asset_meta am ON md.code = am.code
+            LEFT JOIN indicator_valuation iv ON md.code = iv.code AND md.date = iv.date
             WHERE md.date = :calc_date
             AND am.asset_type = 'STOCK'
-            AND md.trade_status = 1
         """)
 
         stats_result = await db.execute(stats_query, {"calc_date": target_date})

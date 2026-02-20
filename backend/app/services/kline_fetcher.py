@@ -229,30 +229,9 @@ class KlineFetcher:
                     "volume": vol_raw * 100 if vol_raw is not None else None,
                     "amount": amt_raw * 1000 if amt_raw is not None else None,
                     "pct_chg": self._safe_decimal(row.get("pct_chg")),
-                    "turn": None,
+                    "change": self._safe_decimal(row.get("change")),
                 }
                 records.append(record)
-
-            # 尝试获取换手率 (daily_basic)
-            if asset_type == AssetType.STOCK and records:
-                time.sleep(0.2)  # Rate limit
-                try:
-                    basic_df = pro.daily_basic(
-                        ts_code=ts_code, start_date=start_str, end_date=end_str
-                    )
-                    if basic_df is not None and not basic_df.empty:
-                        turn_map = {}
-                        for _, brow in basic_df.iterrows():
-                            bts = pd.Timestamp(str(brow["trade_date"]))
-                            turn_map[bts.to_pydatetime().date()] = self._safe_decimal(
-                                brow.get("turnover_rate")
-                            )
-
-                        for record in records:
-                            if record["date"] in turn_map:
-                                record["turn"] = turn_map[record["date"]]
-                except Exception as e:
-                    logger.warning(f"Failed to fetch turnover for {code}: {e}")
 
         except Exception as e:
             logger.error(f"Error fetching {code} from TuShare: {e}")
@@ -281,7 +260,7 @@ class KlineFetcher:
                 "volume": stmt.excluded.volume,
                 "amount": stmt.excluded.amount,
                 "pct_chg": stmt.excluded.pct_chg,
-                "turn": stmt.excluded.turn,
+                "change": stmt.excluded.change,
             },
         )
 

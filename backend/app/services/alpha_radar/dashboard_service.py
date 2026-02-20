@@ -32,9 +32,7 @@ class DashboardService:
         Returns:
             dict with regime, regime_score, regime_description
         """
-        result = await self.db.execute(
-            select(MarketRegime).where(MarketRegime.date == target_date)
-        )
+        result = await self.db.execute(select(MarketRegime).where(MarketRegime.date == target_date))
         regime = result.scalar_one_or_none()
 
         if regime:
@@ -101,11 +99,15 @@ class DashboardService:
             pct_ma60 = float(row[2] or 0)
 
             # Composite score with weighted factors
-            regime_score = max(-100, min(100,
-                cumret_20d * 10 * 0.5 +      # 50% momentum
-                pct_ma20 * 20 * 0.3 +        # 30% short-term
-                pct_ma60 * 10 * 0.2          # 20% medium-term
-            ))
+            regime_score = max(
+                -100,
+                min(
+                    100,
+                    cumret_20d * 10 * 0.5  # 50% momentum
+                    + pct_ma20 * 20 * 0.3  # 30% short-term
+                    + pct_ma60 * 10 * 0.2,  # 20% medium-term
+                ),
+            )
 
             # Classification with refined descriptions
             if regime_score >= 30:
@@ -145,9 +147,7 @@ class DashboardService:
             dict with up_count, down_count, flat_count, up_down_ratio,
             above_ma20_ratio, limit_up_count, limit_down_count
         """
-        result = await self.db.execute(
-            select(MarketRegime).where(MarketRegime.date == target_date)
-        )
+        result = await self.db.execute(select(MarketRegime).where(MarketRegime.date == target_date))
         regime = result.scalar_one_or_none()
 
         if regime and regime.up_count and regime.down_count:
@@ -157,7 +157,9 @@ class DashboardService:
             flat_count = max(0, total - up_count - down_count)
 
             # Calculate up/down ratio
-            up_down_ratio = Decimal(str(up_count / down_count)) if down_count > 0 else Decimal("999")
+            up_down_ratio = (
+                Decimal(str(up_count / down_count)) if down_count > 0 else Decimal("999")
+            )
 
             return {
                 "up_count": up_count,
@@ -197,7 +199,9 @@ class DashboardService:
             limit_up = int(row[3] or 0)
             limit_down = int(row[4] or 0)
 
-            up_down_ratio = Decimal(str(up_count / down_count)) if down_count > 0 else Decimal("999")
+            up_down_ratio = (
+                Decimal(str(up_count / down_count)) if down_count > 0 else Decimal("999")
+            )
 
             return {
                 "up_count": up_count,
@@ -327,8 +331,8 @@ class DashboardService:
         result = await self.db.execute(query, {"target_date": target_date})
         rows = {row[0]: float(row[1] or 0) for row in result.fetchall()}
 
-        lv_chg = rows.get('sh.000016', 0)  # 上证50 - large value
-        sg_chg = rows.get('sh.000852', 0)  # 中证1000 - small growth
+        lv_chg = rows.get("sh.000016", 0)  # 上证50 - large value
+        sg_chg = rows.get("sh.000852", 0)  # 中证1000 - small growth
 
         # Convert to 0-100 strength scale
         total = abs(lv_chg) + abs(sg_chg) + 0.001
@@ -364,12 +368,13 @@ class DashboardService:
         query = text("""
             WITH today AS (
                 SELECT
-                    code,
-                    volume,
-                    turn,
-                    pct_chg
-                FROM market_daily
-                WHERE date = :target_date
+                    md.code,
+                    md.volume,
+                    iv.turnover_rate AS turn,
+                    md.pct_chg
+                FROM market_daily md
+                LEFT JOIN indicator_valuation iv ON md.code = iv.code AND md.date = iv.date
+                WHERE md.date = :target_date
             ),
             history AS (
                 SELECT
@@ -401,11 +406,11 @@ class DashboardService:
 
         # Calculate start date for 5-day average
         from datetime import timedelta
+
         start_date = target_date - timedelta(days=10)  # Extra buffer for trading days
 
         result = await self.db.execute(
-            query,
-            {"target_date": target_date, "start_date": start_date}
+            query, {"target_date": target_date, "start_date": start_date}
         )
         row = result.fetchone()
 

@@ -34,8 +34,7 @@ SELECT
     min(low) AS low,
     last(close, date) AS close,
     sum(volume) AS volume,
-    sum(amount) AS amount,
-    avg(turn) AS avg_turn
+    sum(amount) AS amount
 FROM market_daily
 GROUP BY code, time_bucket('1 week', date)
 WITH NO DATA;
@@ -51,8 +50,7 @@ SELECT
     min(low) AS low,
     last(close, date) AS close,
     sum(volume) AS volume,
-    sum(amount) AS amount,
-    avg(turn) AS avg_turn
+    sum(amount) AS amount
 FROM market_daily
 GROUP BY code, time_bucket('1 month', date)
 WITH NO DATA;
@@ -70,8 +68,7 @@ SELECT
     sum(CASE WHEN pct_chg <= -9.9 THEN 1 ELSE 0 END) AS limit_down_count,
     avg(pct_chg) AS avg_pct_chg,
     sum(amount) AS total_amount,
-    sum(volume) AS total_volume,
-    avg(turn) AS avg_turn
+    sum(volume) AS total_volume
 FROM market_daily
 GROUP BY time_bucket('1 day', date)
 WITH NO DATA;

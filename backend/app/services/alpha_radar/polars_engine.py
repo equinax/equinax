@@ -74,13 +74,14 @@ class PolarsEngine:
                     md.preclose,
                     md.volume,
                     md.amount,
-                    md.turn,
+                    iv.turnover_rate AS turn,
                     md.pct_chg,
                     am.name,
                     am.asset_type,
                     am.exchange
                 FROM market_daily md
                 JOIN asset_meta am ON md.code = am.code
+                LEFT JOIN indicator_valuation iv ON md.code = iv.code AND md.date = iv.date
                 WHERE md.date <= :target_date
                 AND md.date >= :start_date
                 AND am.asset_type = 'STOCK'
@@ -128,13 +129,14 @@ class PolarsEngine:
                     md.preclose,
                     md.volume,
                     md.amount,
-                    md.turn,
+                    iv.turnover_rate AS turn,
                     md.pct_chg,
                     am.name,
                     am.asset_type,
                     am.exchange
                 FROM market_daily md
                 JOIN asset_meta am ON md.code = am.code
+                LEFT JOIN indicator_valuation iv ON md.code = iv.code AND md.date = iv.date
                 WHERE md.date >= :start_date
                 AND md.date <= :end_date
                 AND am.asset_type = 'STOCK'
@@ -574,6 +576,7 @@ class PolarsEngine:
         df = df.sort(["code", "date"])
 
         from app.services.alpha_radar.engine.factors import compute_all_factors
+
         return compute_all_factors(df)
 
     @staticmethod

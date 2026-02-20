@@ -579,15 +579,14 @@ async def _insert_market_daily(session: AsyncSession, df: pd.DataFrame) -> int:
                 "preclose": safe_value(row.get("pre_close")),
                 "volume": safe_int(row.get("volume")),
                 "amount": safe_value(row.get("amount")),
-                "turn": safe_value(row.get("turn")),
                 "pct_chg": safe_value(row.get("pct_chg")),
-                "trade_status": 1,
+                "change": safe_value(row.get("change")),
             }
         )
 
     sql = text("""
-        INSERT INTO market_daily (code, date, open, high, low, close, preclose, volume, amount, turn, pct_chg, trade_status)
-        VALUES (:code, :date, :open, :high, :low, :close, :preclose, :volume, :amount, :turn, :pct_chg, :trade_status)
+        INSERT INTO market_daily (code, date, open, high, low, close, preclose, volume, amount, pct_chg, change)
+        VALUES (:code, :date, :open, :high, :low, :close, :preclose, :volume, :amount, :pct_chg, :change)
         ON CONFLICT (code, date) DO UPDATE SET
             open = EXCLUDED.open,
             high = EXCLUDED.high,
@@ -596,9 +595,8 @@ async def _insert_market_daily(session: AsyncSession, df: pd.DataFrame) -> int:
             preclose = EXCLUDED.preclose,
             volume = EXCLUDED.volume,
             amount = EXCLUDED.amount,
-            turn = EXCLUDED.turn,
             pct_chg = EXCLUDED.pct_chg,
-            trade_status = EXCLUDED.trade_status
+            change = EXCLUDED.change
     """)
 
     batch_size = 1000
@@ -614,10 +612,9 @@ async def _insert_market_daily(session: AsyncSession, df: pd.DataFrame) -> int:
 
 async def _insert_valuation(session: AsyncSession, df: pd.DataFrame) -> int:
     """
-    批量插入 indicator_valuation 表，并同步更新 market_daily.turn
+    批量插入 indicator_valuation 表
 
-    TuShare 的 daily_basic 接口返回换手率 (turnover_rate)，但 daily 接口不返回。
-    因此需要在这里将换手率同步到 market_daily 表。
+    TuShare daily_basic 接口返回的所有估值与换手率数据直接存入此表。
     """
     if df.empty:
         return 0
@@ -638,46 +635,59 @@ async def _insert_valuation(session: AsyncSession, df: pd.DataFrame) -> int:
             return default
 
     records = []
-    turnover_records = []
     for _, row in df.iterrows():
-        code = row["code"]
-        trade_date = row["trade_date"]
-        turn = safe_value(row.get("turn"))
-
         records.append(
             {
-                "code": code,
-                "date": trade_date,
+                "code": row["code"],
+                "date": row["trade_date"],
+                "close": safe_value(row.get("close")),
+                "turnover_rate": safe_value(row.get("turnover_rate")),
+                "turnover_rate_f": safe_value(row.get("turnover_rate_f")),
+                "volume_ratio": safe_value(row.get("volume_ratio")),
+                "pe": safe_value(row.get("pe")),
                 "pe_ttm": safe_value(row.get("pe_ttm")),
                 "pb_mrq": safe_value(row.get("pb_mrq")),
-                "ps_ttm": None,
-                "pcf_ncf_ttm": None,
+                "ps": safe_value(row.get("ps")),
+                "ps_ttm": safe_value(row.get("ps_ttm")),
+                "dv_ratio": safe_value(row.get("dv_ratio")),
+                "dv_ttm": safe_value(row.get("dv_ttm")),
                 "total_mv": safe_value(row.get("total_mv")),
                 "circ_mv": safe_value(row.get("circ_mv")),
+                "total_share": safe_value(row.get("total_share")),
+                "float_share": safe_value(row.get("float_share")),
+                "free_share": safe_value(row.get("free_share")),
                 "is_st": safe_int(row.get("is_st"), 0),
             }
         )
 
-        # Collect turnover data for market_daily update
-        if turn is not None:
-            turnover_records.append(
-                {
-                    "code": code,
-                    "date": trade_date,
-                    "turn": turn,
-                }
-            )
-
     sql = text("""
-        INSERT INTO indicator_valuation (code, date, pe_ttm, pb_mrq, ps_ttm, pcf_ncf_ttm, total_mv, circ_mv, is_st)
-        VALUES (:code, :date, :pe_ttm, :pb_mrq, :ps_ttm, :pcf_ncf_ttm, :total_mv, :circ_mv, :is_st)
+        INSERT INTO indicator_valuation (
+            code, date, close, turnover_rate, turnover_rate_f, volume_ratio,
+            pe, pe_ttm, pb_mrq, ps, ps_ttm, dv_ratio, dv_ttm,
+            total_mv, circ_mv, total_share, float_share, free_share, is_st
+        )
+        VALUES (
+            :code, :date, :close, :turnover_rate, :turnover_rate_f, :volume_ratio,
+            :pe, :pe_ttm, :pb_mrq, :ps, :ps_ttm, :dv_ratio, :dv_ttm,
+            :total_mv, :circ_mv, :total_share, :float_share, :free_share, :is_st
+        )
         ON CONFLICT (code, date) DO UPDATE SET
+            close = EXCLUDED.close,
+            turnover_rate = EXCLUDED.turnover_rate,
+            turnover_rate_f = EXCLUDED.turnover_rate_f,
+            volume_ratio = EXCLUDED.volume_ratio,
+            pe = EXCLUDED.pe,
             pe_ttm = EXCLUDED.pe_ttm,
             pb_mrq = EXCLUDED.pb_mrq,
+            ps = EXCLUDED.ps,
             ps_ttm = EXCLUDED.ps_ttm,
-            pcf_ncf_ttm = EXCLUDED.pcf_ncf_ttm,
+            dv_ratio = EXCLUDED.dv_ratio,
+            dv_ttm = EXCLUDED.dv_ttm,
             total_mv = EXCLUDED.total_mv,
             circ_mv = EXCLUDED.circ_mv,
+            total_share = EXCLUDED.total_share,
+            float_share = EXCLUDED.float_share,
+            free_share = EXCLUDED.free_share,
             is_st = EXCLUDED.is_st
     """)
 
@@ -688,20 +698,5 @@ async def _insert_valuation(session: AsyncSession, df: pd.DataFrame) -> int:
         batch = records[i : i + batch_size]
         await session.execute(sql, batch)
         total_inserted += len(batch)
-
-    # Update market_daily.turn with turnover data from valuation
-    # TuShare daily() doesn't return turnover, but daily_basic() does
-    if turnover_records:
-        update_turn_sql = text("""
-            UPDATE market_daily 
-            SET turn = :turn
-            WHERE code = :code AND date = :date
-        """)
-
-        for i in range(0, len(turnover_records), batch_size):
-            batch = turnover_records[i : i + batch_size]
-            await session.execute(update_turn_sql, batch)
-
-        logger.info(f"Updated {len(turnover_records)} turnover records in market_daily")
 
     return total_inserted
