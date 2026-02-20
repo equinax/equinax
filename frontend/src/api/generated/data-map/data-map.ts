@@ -14,6 +14,7 @@ import type {
   UseQueryResult,
 } from "@tanstack/react-query";
 import type {
+  AssetMetaRefreshResponse,
   BackfillRequest,
   BackfillResponse,
   CoverageResponse,
@@ -1154,6 +1155,82 @@ export const useTriggerDateBackfillApiV1DataMapDateBackfillPost = <
 > => {
   const mutationOptions =
     getTriggerDateBackfillApiV1DataMapDateBackfillPostMutationOptions(options);
+
+  return useMutation(mutationOptions);
+};
+/**
+ * @summary Refresh Asset Meta
+ */
+export const refreshAssetMetaApiV1DataMapRefreshAssetMetaPost = () => {
+  return customInstance<AssetMetaRefreshResponse>({
+    url: `/api/v1/data-map/refresh-asset-meta`,
+    method: "POST",
+  });
+};
+
+export const getRefreshAssetMetaApiV1DataMapRefreshAssetMetaPostMutationOptions =
+  <TError = unknown, TContext = unknown>(options?: {
+    mutation?: UseMutationOptions<
+      Awaited<
+        ReturnType<typeof refreshAssetMetaApiV1DataMapRefreshAssetMetaPost>
+      >,
+      TError,
+      void,
+      TContext
+    >;
+  }): UseMutationOptions<
+    Awaited<
+      ReturnType<typeof refreshAssetMetaApiV1DataMapRefreshAssetMetaPost>
+    >,
+    TError,
+    void,
+    TContext
+  > => {
+    const { mutation: mutationOptions } = options ?? {};
+
+    const mutationFn: MutationFunction<
+      Awaited<
+        ReturnType<typeof refreshAssetMetaApiV1DataMapRefreshAssetMetaPost>
+      >,
+      void
+    > = () => {
+      return refreshAssetMetaApiV1DataMapRefreshAssetMetaPost();
+    };
+
+    return { mutationFn, ...mutationOptions };
+  };
+
+export type RefreshAssetMetaApiV1DataMapRefreshAssetMetaPostMutationResult =
+  NonNullable<
+    Awaited<ReturnType<typeof refreshAssetMetaApiV1DataMapRefreshAssetMetaPost>>
+  >;
+
+export type RefreshAssetMetaApiV1DataMapRefreshAssetMetaPostMutationError =
+  unknown;
+
+/**
+ * @summary Refresh Asset Meta
+ */
+export const useRefreshAssetMetaApiV1DataMapRefreshAssetMetaPost = <
+  TError = unknown,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<
+      ReturnType<typeof refreshAssetMetaApiV1DataMapRefreshAssetMetaPost>
+    >,
+    TError,
+    void,
+    TContext
+  >;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof refreshAssetMetaApiV1DataMapRefreshAssetMetaPost>>,
+  TError,
+  void,
+  TContext
+> => {
+  const mutationOptions =
+    getRefreshAssetMetaApiV1DataMapRefreshAssetMetaPostMutationOptions(options);
 
   return useMutation(mutationOptions);
 };

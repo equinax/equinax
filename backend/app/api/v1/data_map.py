@@ -131,6 +131,12 @@ class GapDetail(BaseModel):
     missing_dates: List[str]
 
 
+class SparseDateInfo(BaseModel):
+    date: str
+    actual: int
+    expected: int
+
+
 class GapResponse(BaseModel):
     """Detailed gap analysis for a table."""
 
@@ -139,6 +145,10 @@ class GapResponse(BaseModel):
     reference_dates: int = Field(description="Total trading dates in range")
     covered_dates: int = Field(description="Dates with data")
     missing_dates: List[str] = Field(description="List of missing dates")
+    sparse_dates: List[SparseDateInfo] = Field(
+        default_factory=list,
+        description="Dates with data < 95% expected",
+    )
 
 
 # ============================================
@@ -154,13 +164,63 @@ def _build_where(date_col: str, where_filter: Optional[str] = None, extra: str =
     return (" AND ".join(parts)) if parts else "TRUE"
 
 
+async def _get_trading_dates(db: AsyncSession, start: date, end: date) -> List[date]:
+    """Query trading_calendar for open trading days in [start, end]."""
+    result = await db.execute(
+        text("""
+            SELECT cal_date FROM trading_calendar
+            WHERE is_open = 1 AND cal_date >= :start AND cal_date <= :end
+            ORDER BY cal_date
+        """),
+        {"start": start, "end": end},
+    )
+    return [row[0] for row in result]
+
+
+async def _get_latest_trading_date(db: AsyncSession) -> date:
+    """Get the most recent trading day from trading_calendar that is <= today."""
+    from datetime import datetime
+    from zoneinfo import ZoneInfo
+
+    china_tz = ZoneInfo("Asia/Shanghai")
+    now = datetime.now(china_tz)
+    today = now.date()
+
+    # If before 17:00 China time, use yesterday as cutoff (intraday data incomplete)
+    cutoff = today if now.hour >= 17 else today - timedelta(days=1)
+
+    result = await db.execute(
+        text("""
+            SELECT cal_date FROM trading_calendar
+            WHERE is_open = 1 AND cal_date <= :cutoff
+            ORDER BY cal_date DESC LIMIT 1
+        """),
+        {"cutoff": cutoff},
+    )
+    row = result.first()
+    if row:
+        return row[0]
+    return cutoff
+
+
+async def _get_expected_asset_count(db: AsyncSession, asset_type: str, target_date: date) -> int:
+    result = await db.execute(
+        text("""
+            SELECT COUNT(*) FROM asset_meta
+            WHERE asset_type = :atype
+              AND list_date <= :d
+              AND (delist_date IS NULL OR delist_date > :d)
+        """),
+        {"atype": asset_type, "d": target_date},
+    )
+    return result.scalar() or 0
+
+
 @router.get("/coverage", response_model=CoverageResponse)
 async def get_data_coverage(
     db: AsyncSession = Depends(get_db),
 ):
-    from workers.trading_days import get_latest_trading_day, get_trading_days_between
-
-    reference_day = get_latest_trading_day()
+    reference_day = await _get_latest_trading_date(db)
     reference_str = reference_day.strftime("%Y-%m-%d")
 
     physical_tables = list({t[1] for t in DATA_TABLES})
@@ -249,14 +309,13 @@ async def get_data_coverage(
                 date_count = (await db.execute(distinct_q)).scalar() or 0
 
             latest_date = date.fromisoformat(latest)
-            staleness = len(get_trading_days_between(latest_date, reference_day))
+            staleness_dates = await _get_trading_dates(db, latest_date, reference_day)
+            staleness = len(staleness_dates)
 
             table_status = "Stale" if staleness > 5 else "OK"
 
             earliest_date = date.fromisoformat(earliest)
-            expected_trading_days = get_trading_days_between(
-                earliest_date - timedelta(days=1), reference_day
-            )
+            expected_trading_days = await _get_trading_dates(db, earliest_date, reference_day)
             gap_days = max(0, len(expected_trading_days) - date_count)
             if gap_days > 10:
                 table_status = "Gap"
@@ -327,10 +386,15 @@ async def get_data_heatmap(
         q_end = date.today()
         q_start = q_end - timedelta(days=days)
 
+    trading_dates = await _get_trading_dates(db, q_start, q_end)
+    trading_date_set = {d.isoformat() for d in trading_dates}
+
     table_keys = []
     table_labels = {}
 
     date_table_counts: Dict[str, Dict[str, int]] = {}
+    for d_str in trading_date_set:
+        date_table_counts[d_str] = {}
 
     for table_key, phys_table, date_col, code_col, display, scope, where_filter in DATA_TABLES:
         table_keys.append(table_key)
@@ -351,19 +415,25 @@ async def get_data_heatmap(
 
             for row in result:
                 d = row.d
-                if d not in date_table_counts:
-                    date_table_counts[d] = {}
-                date_table_counts[d][table_key] = row.cnt
+                if d in trading_date_set:
+                    date_table_counts[d][table_key] = row.cnt
         except Exception as e:
             logger.warning(f"Heatmap query failed for {table_key}: {e}")
 
     expected_counts: Dict[str, int] = {}
+    representative_date = trading_dates[-1] if trading_dates else q_end
     for tk in table_keys:
-        max_cnt = 0
-        for d_counts in date_table_counts.values():
-            if tk in d_counts and d_counts[tk] > max_cnt:
-                max_cnt = d_counts[tk]
-        expected_counts[tk] = max_cnt
+        asset_type = VIRTUAL_TABLE_ASSET_MAP.get(tk)
+        if asset_type:
+            expected_counts[tk] = await _get_expected_asset_count(
+                db, asset_type, representative_date
+            )
+        else:
+            max_cnt = 0
+            for d_counts in date_table_counts.values():
+                if tk in d_counts and d_counts[tk] > max_cnt:
+                    max_cnt = d_counts[tk]
+            expected_counts[tk] = max_cnt
 
     rows = []
     for d in sorted(date_table_counts.keys(), reverse=True):
@@ -399,8 +469,6 @@ async def get_table_gaps(
     ),
     db: AsyncSession = Depends(get_db),
 ):
-    from workers.trading_days import get_trading_days_between
-
     entry = _find_table(table)
     if entry is None:
         raise HTTPException(
@@ -416,19 +484,63 @@ async def get_table_gaps(
         q_end = date.today()
         q_start = q_end - timedelta(days=days)
 
-    trading_days = get_trading_days_between(q_start - timedelta(days=1), q_end)
+    trading_days = await _get_trading_dates(db, q_start, q_end)
     trading_day_set = {d.strftime("%Y-%m-%d") for d in trading_days}
+
+    asset_type = VIRTUAL_TABLE_ASSET_MAP.get(table_key)
 
     filter_clause = _build_where(
         date_col, where_filter, f"{date_col} >= :start AND {date_col} <= :end"
     )
-    q = text(f"""
-        SELECT DISTINCT {date_col}::text as d
-        FROM {phys_table}
-        WHERE {filter_clause}
-    """)
-    result = await db.execute(q, {"start": q_start, "end": q_end})
-    existing_dates = {row.d for row in result}
+
+    if asset_type and code_col:
+        count_q = text(f"""
+            SELECT {date_col}::text as d, COUNT(*) as cnt
+            FROM {phys_table}
+            WHERE {filter_clause}
+            GROUP BY {date_col}
+        """)
+        result = await db.execute(count_q, {"start": q_start, "end": q_end})
+        date_counts = {row.d: row.cnt for row in result}
+        existing_dates = set(date_counts.keys())
+
+        expected_q = text("""
+            SELECT d::text, COUNT(*) as cnt
+            FROM unnest(CAST(:dates AS date[])) AS d
+            JOIN asset_meta am ON am.asset_type = :atype
+              AND am.list_date <= d
+              AND (am.delist_date IS NULL OR am.delist_date > d)
+            GROUP BY d
+        """)
+        dates_with_data = [td for td in trading_days if td.strftime("%Y-%m-%d") in date_counts]
+        expected_map: Dict[str, int] = {}
+        if dates_with_data:
+            exp_result = await db.execute(
+                expected_q,
+                {
+                    "dates": dates_with_data,
+                    "atype": asset_type,
+                },
+            )
+            expected_map = {row[0]: row[1] for row in exp_result}
+
+        sparse_dates = []
+        for td in dates_with_data:
+            d_str = td.strftime("%Y-%m-%d")
+            actual = date_counts[d_str]
+            expected = expected_map.get(d_str, 0)
+            if expected > 0 and actual / expected < 0.95:
+                sparse_dates.append(SparseDateInfo(date=d_str, actual=actual, expected=expected))
+        sparse_dates.sort(key=lambda x: x.date, reverse=True)
+    else:
+        q = text(f"""
+            SELECT DISTINCT {date_col}::text as d
+            FROM {phys_table}
+            WHERE {filter_clause}
+        """)
+        result = await db.execute(q, {"start": q_start, "end": q_end})
+        existing_dates = {row.d for row in result}
+        sparse_dates = []
 
     missing = sorted(trading_day_set - existing_dates, reverse=True)
 
@@ -436,8 +548,9 @@ async def get_table_gaps(
         table=table_key,
         display_name=display,
         reference_dates=len(trading_days),
-        covered_dates=len(existing_dates),
+        covered_dates=len(existing_dates & trading_day_set),
         missing_dates=missing,
+        sparse_dates=sparse_dates,
     )
 
 
@@ -677,10 +790,7 @@ async def get_date_detail(
         actual_q = text(f"SELECT COUNT(*) FROM {phys_table} WHERE {filter_clause}")
         actual = (await db.execute(actual_q, {"d": target_date})).scalar() or 0
 
-        expected_q = text(
-            "SELECT COUNT(*) FROM asset_meta WHERE status = 1 AND asset_type = :atype"
-        )
-        expected = (await db.execute(expected_q, {"atype": asset_type})).scalar() or 0
+        expected = await _get_expected_asset_count(db, asset_type, target_date)
 
         return DateDetailResponse(
             date=date_str,
@@ -773,4 +883,264 @@ async def trigger_date_backfill(
         date=request.date,
         results=results,
         errors=result.get("errors", []),
+    )
+
+
+# ============================================
+# Asset Meta Refresh
+# ============================================
+
+
+class AssetMetaRefreshResponse(BaseModel):
+    stocks_upserted: int = 0
+    indices_upserted: int = 0
+    etfs_upserted: int = 0
+    errors: List[str] = Field(default_factory=list)
+
+
+def _classify_board(ts_code: str, market: str = "") -> str:
+    code = ts_code.split(".")[0] if "." in ts_code else ts_code
+    if code.startswith("688"):
+        return "科创板"
+    if code.startswith("3"):
+        return "创业板"
+    if code.startswith("4") or code.startswith("8"):
+        return "北交所"
+    return "主板"
+
+
+@router.post("/refresh-asset-meta", response_model=AssetMetaRefreshResponse)
+async def refresh_asset_meta(
+    db: AsyncSession = Depends(get_db),
+):
+    import os
+    import tushare as ts
+
+    api_key = os.environ.get("TUSHARE_API_KEY")
+    if not api_key:
+        raise HTTPException(status_code=500, detail="TUSHARE_API_KEY not set")
+
+    ts.set_token(api_key)
+    pro = ts.pro_api()
+    errors: List[str] = []
+
+    upsert_sql = text("""
+        INSERT INTO asset_meta (code, name, asset_type, exchange, list_date, delist_date, status, category)
+        VALUES (:code, :name, :asset_type, :exchange, :list_date, :delist_date, :status, :category)
+        ON CONFLICT (code)
+        DO UPDATE SET
+            name = EXCLUDED.name,
+            list_date = COALESCE(EXCLUDED.list_date, asset_meta.list_date),
+            delist_date = EXCLUDED.delist_date,
+            status = EXCLUDED.status,
+            category = COALESCE(EXCLUDED.category, asset_meta.category),
+            updated_at = NOW()
+    """)
+
+    from workers.data_sources.base import convert_tushare_code_to_standard
+
+    stocks_count = 0
+    try:
+        df = pro.stock_basic(
+            exchange="",
+            list_status="L",
+            fields="ts_code,symbol,name,area,industry,list_date,market,is_hs",
+        )
+        if df is not None and not df.empty:
+            rows = []
+            for _, r in df.iterrows():
+                tc = str(r["ts_code"])
+                std_code = convert_tushare_code_to_standard(tc)
+                exchange = std_code.split(".")[0]
+                ld = None
+                if r.get("list_date") and str(r["list_date"]) not in ("", "nan", "None"):
+                    try:
+                        from datetime import datetime as dt
+
+                        ld = dt.strptime(str(r["list_date"]), "%Y%m%d").date()
+                    except (ValueError, TypeError):
+                        pass
+                rows.append(
+                    {
+                        "code": std_code,
+                        "name": str(r["name"]),
+                        "asset_type": "STOCK",
+                        "exchange": exchange,
+                        "list_date": ld,
+                        "delist_date": None,
+                        "status": 1,
+                        "category": _classify_board(tc, str(r.get("market", ""))),
+                    }
+                )
+            await db.execute(upsert_sql, rows)
+            stocks_count = len(rows)
+            logger.info(f"Refreshed {stocks_count} stocks from TuShare stock_basic")
+
+        df_d = pro.stock_basic(
+            exchange="", list_status="D", fields="ts_code,symbol,name,list_date,delist_date"
+        )
+        if df_d is not None and not df_d.empty:
+            rows_d = []
+            for _, r in df_d.iterrows():
+                tc = str(r["ts_code"])
+                std_code = convert_tushare_code_to_standard(tc)
+                exchange = std_code.split(".")[0]
+                ld = dd = None
+                for field, target in [("list_date", "ld"), ("delist_date", "dd")]:
+                    val = r.get(field)
+                    if val and str(val) not in ("", "nan", "None"):
+                        try:
+                            from datetime import datetime as dt
+
+                            parsed = dt.strptime(str(val), "%Y%m%d").date()
+                            if field == "list_date":
+                                ld = parsed
+                            else:
+                                dd = parsed
+                        except (ValueError, TypeError):
+                            pass
+                rows_d.append(
+                    {
+                        "code": std_code,
+                        "name": str(r["name"]),
+                        "asset_type": "STOCK",
+                        "exchange": exchange,
+                        "list_date": ld,
+                        "delist_date": dd,
+                        "status": 0,
+                        "category": _classify_board(tc),
+                    }
+                )
+            await db.execute(upsert_sql, rows_d)
+            stocks_count += len(rows_d)
+    except Exception as e:
+        logger.error(f"Failed to refresh stocks: {e}")
+        errors.append(f"Stocks: {str(e)[:200]}")
+
+    indices_count = 0
+    try:
+        for market in ["SSE", "SZSE"]:
+            df_idx = pro.index_basic(market=market, fields="ts_code,name,list_date,exp_date")
+            if df_idx is not None and not df_idx.empty:
+                rows_idx = []
+                for _, r in df_idx.iterrows():
+                    tc = str(r["ts_code"])
+                    std_code = convert_tushare_code_to_standard(tc)
+                    exchange = std_code.split(".")[0]
+                    ld = None
+                    if r.get("list_date") and str(r["list_date"]) not in ("", "nan", "None"):
+                        try:
+                            from datetime import datetime as dt
+
+                            ld = dt.strptime(str(r["list_date"]), "%Y%m%d").date()
+                        except (ValueError, TypeError):
+                            pass
+                    rows_idx.append(
+                        {
+                            "code": std_code,
+                            "name": str(r["name"]),
+                            "asset_type": "INDEX",
+                            "exchange": exchange,
+                            "list_date": ld,
+                            "delist_date": None,
+                            "status": 1,
+                            "category": "INDEX",
+                        }
+                    )
+                await db.execute(upsert_sql, rows_idx)
+                indices_count += len(rows_idx)
+        logger.info(f"Refreshed {indices_count} indices from TuShare index_basic")
+    except Exception as e:
+        logger.error(f"Failed to refresh indices: {e}")
+        errors.append(f"Indices: {str(e)[:200]}")
+
+    etfs_count = 0
+    try:
+        df_etf = pro.fund_basic(
+            market="E", status="L", fields="ts_code,name,list_date,delist_date,fund_type"
+        )
+        if df_etf is not None and not df_etf.empty:
+            rows_etf = []
+            for _, r in df_etf.iterrows():
+                tc = str(r["ts_code"])
+                std_code = convert_tushare_code_to_standard(tc)
+                exchange = std_code.split(".")[0]
+                ld = dd = None
+                for field in ["list_date", "delist_date"]:
+                    val = r.get(field)
+                    if val and str(val) not in ("", "nan", "None"):
+                        try:
+                            from datetime import datetime as dt
+
+                            parsed = dt.strptime(str(val), "%Y%m%d").date()
+                            if field == "list_date":
+                                ld = parsed
+                            else:
+                                dd = parsed
+                        except (ValueError, TypeError):
+                            pass
+                rows_etf.append(
+                    {
+                        "code": std_code,
+                        "name": str(r["name"]),
+                        "asset_type": "ETF",
+                        "exchange": exchange,
+                        "list_date": ld,
+                        "delist_date": dd,
+                        "status": 1,
+                        "category": str(r.get("fund_type", "ETF")),
+                    }
+                )
+            await db.execute(upsert_sql, rows_etf)
+            etfs_count = len(rows_etf)
+
+        df_etf_d = pro.fund_basic(
+            market="E", status="D", fields="ts_code,name,list_date,delist_date,fund_type"
+        )
+        if df_etf_d is not None and not df_etf_d.empty:
+            rows_etf_d = []
+            for _, r in df_etf_d.iterrows():
+                tc = str(r["ts_code"])
+                std_code = convert_tushare_code_to_standard(tc)
+                exchange = std_code.split(".")[0]
+                ld = dd = None
+                for field in ["list_date", "delist_date"]:
+                    val = r.get(field)
+                    if val and str(val) not in ("", "nan", "None"):
+                        try:
+                            from datetime import datetime as dt
+
+                            parsed = dt.strptime(str(val), "%Y%m%d").date()
+                            if field == "list_date":
+                                ld = parsed
+                            else:
+                                dd = parsed
+                        except (ValueError, TypeError):
+                            pass
+                rows_etf_d.append(
+                    {
+                        "code": std_code,
+                        "name": str(r["name"]),
+                        "asset_type": "ETF",
+                        "exchange": exchange,
+                        "list_date": ld,
+                        "delist_date": dd,
+                        "status": 0,
+                        "category": str(r.get("fund_type", "ETF")),
+                    }
+                )
+            await db.execute(upsert_sql, rows_etf_d)
+            etfs_count += len(rows_etf_d)
+        logger.info(f"Refreshed {etfs_count} ETFs from TuShare fund_basic")
+    except Exception as e:
+        logger.error(f"Failed to refresh ETFs: {e}")
+        errors.append(f"ETFs: {str(e)[:200]}")
+
+    await db.commit()
+
+    return AssetMetaRefreshResponse(
+        stocks_upserted=stocks_count,
+        indices_upserted=indices_count,
+        etfs_upserted=etfs_count,
+        errors=errors,
     )

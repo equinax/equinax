@@ -8,6 +8,7 @@ import {
   useTriggerBackfillApiV1DataMapBackfillPost,
   useGetDateDetailApiV1DataMapDateDetailTableGet,
   useTriggerDateBackfillApiV1DataMapDateBackfillPost,
+  useRefreshAssetMetaApiV1DataMapRefreshAssetMetaPost,
 } from '@/api/generated/data-map/data-map'
 import { useGetSyncJobApiV1DataSyncJobJobIdGet } from '@/api/generated/data-sync/data-sync'
 import { useQueryClient } from '@tanstack/react-query'
@@ -18,14 +19,16 @@ import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { cn } from '@/lib/utils'
-import { 
+  import { 
   Map as MapIcon, 
   AlertTriangle, 
   CheckCircle, 
   CheckCircle2,
   Download, 
+  DownloadCloud,
   ChevronRight, 
-  Loader2
+  Loader2,
+  RefreshCw
 } from 'lucide-react'
 
 // --- Helper Functions ---
@@ -196,14 +199,44 @@ const GapDetailPanel = ({
               <AlertTriangle className="w-4 h-4 text-orange-500" />
               Missing Ranges
             </h4>
+            {gapRanges.length > 1 && (() => {
+              const allDone = gapRanges.every(r => backfillingRanges.get(`${r.start}-${r.end}`)?.status === 'success')
+              const anyActive = gapRanges.some(r => {
+                const s = backfillingRanges.get(`${r.start}-${r.end}`)?.status
+                return s === 'queued' || s === 'running'
+              })
+              return (
+                <Button
+                  size="sm"
+                  variant="default"
+                  className="h-7 text-xs gap-1.5"
+                  disabled={allDone || anyActive}
+                  onClick={() => {
+                    gapRanges.forEach(r => {
+                      const s = backfillingRanges.get(`${r.start}-${r.end}`)?.status
+                      if (s !== 'success' && s !== 'queued' && s !== 'running') {
+                        onStartBackfill(r.start, r.end)
+                      }
+                    })
+                  }}
+                >
+                  {anyActive ? (
+                    <Loader2 className="w-3 h-3 animate-spin" />
+                  ) : (
+                    <DownloadCloud className="w-3 h-3" />
+                  )}
+                  {allDone ? '已全部补全' : anyActive ? '补全中...' : '补全全部'}
+                </Button>
+              )
+            })()}
            </div>
 
-          {gapRanges.length === 0 ? (
+          {gapRanges.length === 0 && (gapData.sparse_dates?.length ?? 0) === 0 ? (
             <div className="text-center py-8 text-muted-foreground text-sm bg-emerald-500/5 rounded-lg border border-emerald-500/10">
               <CheckCircle className="w-8 h-8 text-emerald-500 mx-auto mb-2" />
               No gaps found in this period!
             </div>
-          ) : (
+          ) : gapRanges.length > 0 ? (
             gapRanges.map((range, idx) => {
               const rangeKey = `${range.start}-${range.end}`
               const backfillState = backfillingRanges.get(rangeKey)
@@ -264,6 +297,28 @@ const GapDetailPanel = ({
                 </div>
               )
             })
+          ) : null}
+
+          {(gapData.sparse_dates?.length ?? 0) > 0 && (
+            <>
+              <h4 className="text-sm font-medium flex items-center gap-2 mt-4">
+                <AlertTriangle className="w-4 h-4 text-amber-500" />
+                Sparse Dates
+                <Badge variant="secondary" className="text-[10px] h-4 font-mono">&lt;95%</Badge>
+              </h4>
+              {gapData.sparse_dates!.map((s) => {
+                const pct = s.expected > 0 ? (s.actual / s.expected * 100).toFixed(1) : '0'
+                return (
+                  <div key={s.date} className="flex items-center justify-between bg-amber-500/5 border border-amber-500/10 rounded-lg px-3 py-2 text-xs">
+                    <span className="font-mono text-foreground/80">{s.date}</span>
+                    <span className="font-mono text-amber-500">
+                      {s.actual.toLocaleString()}/{s.expected.toLocaleString()}
+                      <span className="ml-1 opacity-70">({pct}%)</span>
+                    </span>
+                  </div>
+                )
+              })}
+            </>
           )}
         </div>
       </ScrollArea>
@@ -459,6 +514,25 @@ export default function DataMapPage() {
   
   const { mutate: triggerBackfill } = useTriggerBackfillApiV1DataMapBackfillPost()
 
+  const { mutate: refreshAssetMeta, isPending: isRefreshingMeta } = useRefreshAssetMetaApiV1DataMapRefreshAssetMetaPost()
+  const [metaResult, setMetaResult] = useState<{ stocks: number, indices: number, etfs: number } | null>(null)
+
+  const handleRefreshMeta = useCallback(() => {
+    setMetaResult(null)
+    refreshAssetMeta(undefined, {
+      onSuccess: (data) => {
+        setMetaResult({
+          stocks: data.stocks_upserted ?? 0,
+          indices: data.indices_upserted ?? 0,
+          etfs: data.etfs_upserted ?? 0,
+        })
+        refetchCoverage()
+        refetchHeatmap()
+        setTimeout(() => setMetaResult(null), 5000)
+      }
+    })
+  }, [refreshAssetMeta, refetchCoverage, refetchHeatmap])
+
   const handleStartBackfill = useCallback((start: string, end: string) => {
     if (!selectedTable) return
     
@@ -549,6 +623,25 @@ export default function DataMapPage() {
         </div>
 
         <div className="flex items-center gap-2">
+          <Button
+            variant="outline"
+            size="sm"
+            className="h-8 text-xs gap-1.5"
+            onClick={handleRefreshMeta}
+            disabled={isRefreshingMeta}
+          >
+            {isRefreshingMeta ? (
+              <Loader2 className="w-3.5 h-3.5 animate-spin" />
+            ) : (
+              <RefreshCw className="w-3.5 h-3.5" />
+            )}
+            更新资产列表
+          </Button>
+          {metaResult && (
+            <div className="text-[10px] text-muted-foreground font-mono animate-in fade-in slide-in-from-left-2 duration-300">
+              股票{metaResult.stocks} · 指数{metaResult.indices} · ETF{metaResult.etfs}
+            </div>
+          )}
           <Tabs value={selectedYear ? "" : days.toString()} onValueChange={(v) => { setSelectedYear(""); setDays(Number(v)) }} className="h-8">
             <TabsList className="h-8 bg-muted/50 p-0.5">
               {[30, 60, 90, 180, 365].map(d => (
