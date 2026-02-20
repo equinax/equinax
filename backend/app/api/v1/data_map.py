@@ -965,10 +965,10 @@ async def trigger_sparse_backfill(
 
     sync_type = ASSET_TYPE_TO_SYNC[asset_type]
 
-    if len(request.dates) > 60:
+    if len(request.dates) > 365:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Maximum 60 dates per request",
+            detail="Maximum 365 dates per request",
         )
 
     from workers.source_sync import sync_daily_data_with_source, sync_index_backfill
