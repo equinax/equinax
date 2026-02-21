@@ -117,7 +117,7 @@ class KLineData(BaseModel):
     volume: Optional[int]
     amount: Optional[Decimal]
     pct_chg: Optional[Decimal]
-    turn: Optional[Decimal]
+    turn: Optional[Decimal] = None
 
     class Config:
         from_attributes = True
