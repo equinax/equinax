@@ -184,14 +184,16 @@ def convert_tushare_code_to_standard(ts_code: str) -> str:
     """
     将 TuShare 代码格式转换为标准格式
 
-    TuShare: 000001.SZ, 600000.SH
-    标准: sz.000001, sh.600000
+    TuShare: 000001.SZ, 600000.SH, 801010.SI
+    标准: sz.000001, sh.600000, sw.801010
     """
     if not ts_code or "." not in ts_code:
         return ts_code
 
     code, exchange = ts_code.split(".")
     exchange = exchange.lower()
+    if exchange == "si":
+        exchange = "sw"
     return f"{exchange}.{code}"
 
 
@@ -199,14 +201,16 @@ def convert_standard_code_to_tushare(std_code: str) -> str:
     """
     将标准代码格式转换为 TuShare 格式
 
-    标准: sz.000001, sh.600000
-    TuShare: 000001.SZ, 600000.SH
+    标准: sz.000001, sh.600000, sw.801010
+    TuShare: 000001.SZ, 600000.SH, 801010.SI
     """
     if not std_code or "." not in std_code:
         return std_code
 
     exchange, code = std_code.split(".")
     exchange = exchange.upper()
+    if exchange == "SW":
+        exchange = "SI"
     return f"{code}.{exchange}"
 
 

@@ -30,9 +30,50 @@ CORE_INDEX_CODES = [
     "sh.000016",  # 上证50
     "sh.000300",  # 沪深300
     "sh.000905",  # 中证500
+    "sh.000906",  # 中证800
+    "sh.000852",  # 中证1000
+    "sh.000688",  # 科创50
     "sz.399001",  # 深证成指
     "sz.399006",  # 创业板指
+    "sz.399005",  # 中小100
+    "sz.399673",  # 创业板50
 ]
+
+SW_L1_INDEX_CODES = [
+    "sw.801010",  # 农林牧渔
+    "sw.801030",  # 基础化工
+    "sw.801040",  # 钢铁
+    "sw.801050",  # 有色金属
+    "sw.801080",  # 电子
+    "sw.801110",  # 家用电器
+    "sw.801120",  # 食品饮料
+    "sw.801130",  # 纺织服饰
+    "sw.801140",  # 轻工制造
+    "sw.801150",  # 医药生物
+    "sw.801160",  # 公用事业
+    "sw.801170",  # 交通运输
+    "sw.801180",  # 房地产
+    "sw.801200",  # 商贸零售
+    "sw.801210",  # 社会服务
+    "sw.801230",  # 综合
+    "sw.801710",  # 建筑材料
+    "sw.801720",  # 建筑装饰
+    "sw.801730",  # 电力设备
+    "sw.801740",  # 国防军工
+    "sw.801750",  # 计算机
+    "sw.801760",  # 传媒
+    "sw.801770",  # 通信
+    "sw.801780",  # 银行
+    "sw.801790",  # 非银金融
+    "sw.801880",  # 汽车
+    "sw.801890",  # 机械设备
+    "sw.801950",  # 煤炭
+    "sw.801960",  # 石油石化
+    "sw.801970",  # 环保
+    "sw.801980",  # 美容护理
+]
+
+ALL_INDEX_CODES = CORE_INDEX_CODES + SW_L1_INDEX_CODES
 
 
 # =============================================================================
@@ -398,7 +439,7 @@ async def sync_daily_data_with_source(
             logger.error(error_msg)
             results["errors"].append(error_msg)
 
-    # 3. 同步指数数据
+    # 3. 同步指数数据（核心市场指数 + 申万一级行业指数）
     if "index" in asset_types:
         current_step += 1
         if progress_callback:
@@ -408,16 +449,32 @@ async def sync_daily_data_with_source(
                 {"action": "fetch_index", "date": str(trade_date)},
             )
 
+        index_count = 0
+        # 3a. 核心市场指数 (via index_daily per code)
         try:
             df = source.fetch_index_daily_by_date(trade_date)
             if not df.empty:
                 count = await _insert_market_daily(session, df)
-                results["index_count"] = count
-                logger.info(f"Inserted {count} index records for {trade_date}")
+                index_count += count
+                logger.info(f"Inserted {count} core index records for {trade_date}")
         except Exception as e:
-            error_msg = f"Index sync failed: {e}"
+            error_msg = f"Core index sync failed: {e}"
             logger.error(error_msg)
             results["errors"].append(error_msg)
+
+        # 3b. 申万一级行业指数 (via sw_daily)
+        try:
+            df_sw = source.fetch_sw_daily_by_date(trade_date)
+            if not df_sw.empty:
+                count_sw = await _insert_market_daily(session, df_sw)
+                index_count += count_sw
+                logger.info(f"Inserted {count_sw} SW L1 index records for {trade_date}")
+        except Exception as e:
+            error_msg = f"SW index sync failed: {e}"
+            logger.error(error_msg)
+            results["errors"].append(error_msg)
+
+        results["index_count"] = index_count
 
     # 4. 同步估值数据（股票）
     if "stock" in asset_types:
@@ -545,30 +602,17 @@ async def sync_index_backfill(
     """
     按指数代码纵向补全 index 行情数据。
 
-    TuShare index_daily 接口必须传 ts_code，不支持按日期批量拉取。
-    因此对每个指数代码调用一次 API，传入完整日期范围，一次拿回所有日期数据。
-
-    Args:
-        session: 数据库会话
-        start_date: 开始日期（包含）
-        end_date: 结束日期（包含）
-
-    Returns:
-        {"status", "total_codes", "total_records", "errors": [...]}
+    使用 ALL_INDEX_CODES（11 核心 + 31 申万一级）作为代码源。
+    核心指数走 index_daily API，申万指数走 sw_daily API。
     """
     from .data_sources.base import convert_standard_code_to_tushare
 
     source = get_data_source()
-    logger.info(f"[IndexBackfill] Starting vertical index backfill {start_date} ~ {end_date}")
-
-    rows = (
-        await session.execute(
-            text("SELECT code FROM asset_meta WHERE asset_type = 'INDEX' AND status = 1")
-        )
-    ).fetchall()
-
-    index_codes = [r[0] for r in rows]
-    logger.info(f"[IndexBackfill] Found {len(index_codes)} active index codes")
+    index_codes = ALL_INDEX_CODES
+    logger.info(
+        f"[IndexBackfill] Starting vertical backfill {start_date} ~ {end_date}, "
+        f"{len(index_codes)} codes"
+    )
 
     total_records = 0
     errors: List[str] = []
@@ -576,7 +620,10 @@ async def sync_index_backfill(
     for i, std_code in enumerate(index_codes):
         ts_code = convert_standard_code_to_tushare(std_code)
         try:
-            df = source.fetch_index_daily_by_code(ts_code, start_date, end_date)
+            if std_code.startswith("sw."):
+                df = source.fetch_sw_daily_by_code(ts_code, start_date, end_date)
+            else:
+                df = source.fetch_index_daily_by_code(ts_code, start_date, end_date)
             if not df.empty:
                 count = await _insert_market_daily(session, df)
                 total_records += count
@@ -585,7 +632,7 @@ async def sync_index_backfill(
             logger.warning(f"[IndexBackfill] Failed {err}")
             errors.append(err)
 
-        if (i + 1) % 50 == 0:
+        if (i + 1) % 20 == 0:
             await session.commit()
             logger.info(
                 f"[IndexBackfill] Progress {i + 1}/{len(index_codes)}, records={total_records}"
@@ -597,7 +644,8 @@ async def sync_index_backfill(
 
     status_str = "success" if not errors else "partial"
     logger.info(
-        f"[IndexBackfill] Complete: {len(index_codes)} codes, {total_records} records, {len(errors)} errors"
+        f"[IndexBackfill] Complete: {len(index_codes)} codes, {total_records} records, "
+        f"{len(errors)} errors"
     )
 
     return {

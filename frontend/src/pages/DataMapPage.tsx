@@ -441,7 +441,7 @@ const GapDetailPanel = ({
                           {isDone && backfillResult ? `${backfillResult.after.toLocaleString()}/${backfillResult.expected.toLocaleString()}` : `${s.actual.toLocaleString()}/${s.expected.toLocaleString()}`}
                           <span className="ml-1 opacity-70">({isDone && backfillResult ? (backfillResult.after / backfillResult.expected * 100).toFixed(1) : pct}%)</span>
                         </span>
-                        {!isDone && !isSparseBackfilling && tableId !== 'market_daily_index' && (
+                        {!isDone && !isSparseBackfilling && (
                           <Button
                             size="sm"
                             variant="ghost"

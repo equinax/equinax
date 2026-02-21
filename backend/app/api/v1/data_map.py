@@ -33,7 +33,7 @@ _STOCK_FILTER = """
     (code LIKE 'sh.6%%' OR code LIKE 'sz.0%%' OR code LIKE 'sz.3%%' OR code LIKE 'bj.%%')
     AND code NOT LIKE 'sh.000%%' AND code NOT LIKE 'sz.399%%'
 """
-_INDEX_FILTER = "code LIKE 'sh.000%%' OR code LIKE 'sz.399%%'"
+_INDEX_FILTER = "code LIKE 'sh.000%%' OR code LIKE 'sz.399%%' OR code LIKE 'sw.%%'"
 _ETF_FILTER = "code LIKE 'sh.5%%' OR code LIKE 'sz.1%%'"
 
 DATA_TABLES = [
@@ -689,7 +689,7 @@ async def get_market_daily_breakdown(
             (code LIKE 'sh.6%%' OR code LIKE 'sz.0%%' OR code LIKE 'sz.3%%' OR code LIKE 'bj.%%')
             AND code NOT LIKE 'sh.000%%' AND code NOT LIKE 'sz.399%%'
         """,
-        "Index": "code LIKE 'sh.000%%' OR code LIKE 'sz.399%%'",
+        "Index": "code LIKE 'sh.000%%' OR code LIKE 'sz.399%%' OR code LIKE 'sw.%%'",
         "ETF": "code LIKE 'sh.5%%' OR code LIKE 'sz.1%%'",
     }
 
@@ -1282,12 +1282,21 @@ async def refresh_asset_meta(
 
     indices_count = 0
     try:
+        from workers.source_sync import CORE_INDEX_CODES, SW_L1_INDEX_CODES
+
+        curated_core_ts = {
+            c.replace("sh.", "").replace("sz.", "") + (".SH" if c.startswith("sh.") else ".SZ"): c
+            for c in CORE_INDEX_CODES
+        }
+
         for market in ["SSE", "SZSE"]:
             df_idx = pro.index_basic(market=market, fields="ts_code,name,list_date,exp_date")
             if df_idx is not None and not df_idx.empty:
                 rows_idx = []
                 for _, r in df_idx.iterrows():
                     tc = str(r["ts_code"])
+                    if tc not in curated_core_ts:
+                        continue
                     std_code = convert_tushare_code_to_standard(tc)
                     exchange = std_code.split(".")[0]
                     ld = None
@@ -1310,9 +1319,62 @@ async def refresh_asset_meta(
                             "category": "INDEX",
                         }
                     )
-                await db.execute(upsert_sql, rows_idx)
-                indices_count += len(rows_idx)
-        logger.info(f"Refreshed {indices_count} indices from TuShare index_basic")
+                if rows_idx:
+                    await db.execute(upsert_sql, rows_idx)
+                    indices_count += len(rows_idx)
+
+        sw_names = {
+            "sw.801010": "农林牧渔",
+            "sw.801030": "基础化工",
+            "sw.801040": "钢铁",
+            "sw.801050": "有色金属",
+            "sw.801080": "电子",
+            "sw.801110": "家用电器",
+            "sw.801120": "食品饮料",
+            "sw.801130": "纺织服饰",
+            "sw.801140": "轻工制造",
+            "sw.801150": "医药生物",
+            "sw.801160": "公用事业",
+            "sw.801170": "交通运输",
+            "sw.801180": "房地产",
+            "sw.801200": "商贸零售",
+            "sw.801210": "社会服务",
+            "sw.801230": "综合",
+            "sw.801710": "建筑材料",
+            "sw.801720": "建筑装饰",
+            "sw.801730": "电力设备",
+            "sw.801740": "国防军工",
+            "sw.801750": "计算机",
+            "sw.801760": "传媒",
+            "sw.801770": "通信",
+            "sw.801780": "银行",
+            "sw.801790": "非银金融",
+            "sw.801880": "汽车",
+            "sw.801890": "机械设备",
+            "sw.801950": "煤炭",
+            "sw.801960": "石油石化",
+            "sw.801970": "环保",
+            "sw.801980": "美容护理",
+        }
+        rows_sw = []
+        for code in SW_L1_INDEX_CODES:
+            rows_sw.append(
+                {
+                    "code": code,
+                    "name": sw_names.get(code, code),
+                    "asset_type": "INDEX",
+                    "exchange": "sw",
+                    "list_date": date(2014, 2, 21),
+                    "delist_date": None,
+                    "status": 1,
+                    "category": "SW_L1",
+                }
+            )
+        if rows_sw:
+            await db.execute(upsert_sql, rows_sw)
+            indices_count += len(rows_sw)
+
+        logger.info(f"Refreshed {indices_count} curated indices (core + SW L1)")
     except Exception as e:
         logger.error(f"Failed to refresh indices: {e}")
         errors.append(f"Indices: {str(e)[:200]}")

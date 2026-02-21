@@ -22,10 +22,49 @@ logger = logging.getLogger(__name__)
 CORE_INDEX_CODES_TUSHARE = [
     "000001.SH",  # 上证综指
     "000016.SH",  # 上证50
-    "000300.SH",  # 沪深300 (CSI 300)
+    "000300.SH",  # 沪深300
     "000905.SH",  # 中证500
+    "000906.SH",  # 中证800
+    "000852.SH",  # 中证1000
+    "000688.SH",  # 科创50
     "399001.SZ",  # 深证成指
     "399006.SZ",  # 创业板指
+    "399005.SZ",  # 中小100
+    "399673.SZ",  # 创业板50
+]
+
+SW_L1_CODES_TUSHARE = [
+    "801010.SI",  # 农林牧渔
+    "801030.SI",  # 基础化工
+    "801040.SI",  # 钢铁
+    "801050.SI",  # 有色金属
+    "801080.SI",  # 电子
+    "801110.SI",  # 家用电器
+    "801120.SI",  # 食品饮料
+    "801130.SI",  # 纺织服饰
+    "801140.SI",  # 轻工制造
+    "801150.SI",  # 医药生物
+    "801160.SI",  # 公用事业
+    "801170.SI",  # 交通运输
+    "801180.SI",  # 房地产
+    "801200.SI",  # 商贸零售
+    "801210.SI",  # 社会服务
+    "801230.SI",  # 综合
+    "801710.SI",  # 建筑材料
+    "801720.SI",  # 建筑装饰
+    "801730.SI",  # 电力设备
+    "801740.SI",  # 国防军工
+    "801750.SI",  # 计算机
+    "801760.SI",  # 传媒
+    "801770.SI",  # 通信
+    "801780.SI",  # 银行
+    "801790.SI",  # 非银金融
+    "801880.SI",  # 汽车
+    "801890.SI",  # 机械设备
+    "801950.SI",  # 煤炭
+    "801960.SI",  # 石油石化
+    "801970.SI",  # 环保
+    "801980.SI",  # 美容护理
 ]
 
 
@@ -266,6 +305,85 @@ class TuShareDataSource(BaseDataSource):
         except Exception as e:
             logger.warning(
                 f"[TuShare] Failed to fetch index {ts_code} range {start_str}-{end_str}: {e}"
+            )
+            return pd.DataFrame()
+
+    def fetch_sw_daily_by_date(self, trade_date: date) -> pd.DataFrame:
+        date_str = self._date_to_str(trade_date)
+        logger.info(f"[TuShare] Fetching SW L1 daily for {date_str}...")
+
+        records = []
+        for ts_code in SW_L1_CODES_TUSHARE:
+            try:
+                df = self._pro.sw_daily(ts_code=ts_code, trade_date=date_str)
+                if df is None or df.empty:
+                    continue
+
+                row = df.iloc[0]
+                code = convert_tushare_code_to_standard(row["ts_code"])
+                records.append(
+                    {
+                        "code": code,
+                        "trade_date": trade_date,
+                        "open": self._safe_decimal(row.get("open")),
+                        "high": self._safe_decimal(row.get("high")),
+                        "low": self._safe_decimal(row.get("low")),
+                        "close": self._safe_decimal(row.get("close")),
+                        "pre_close": None,
+                        "volume": self._safe_int(row.get("vol", 0)) * 100
+                        if self._safe_int(row.get("vol"))
+                        else None,
+                        "amount": self._safe_decimal(row.get("amount", 0)) * 1000
+                        if self._safe_decimal(row.get("amount"))
+                        else None,
+                        "pct_chg": self._safe_decimal(row.get("pct_change")),
+                        "change": self._safe_decimal(row.get("change")),
+                    }
+                )
+            except Exception as e:
+                logger.warning(f"[TuShare] Failed to fetch SW {ts_code}: {e}")
+                continue
+
+        logger.info(f"[TuShare] Fetched {len(records)} SW L1 indices for {date_str}")
+        return pd.DataFrame(records) if records else pd.DataFrame()
+
+    def fetch_sw_daily_by_code(
+        self, ts_code: str, start_date: date, end_date: date
+    ) -> pd.DataFrame:
+        start_str = self._date_to_str(start_date)
+        end_str = self._date_to_str(end_date)
+
+        try:
+            df = self._pro.sw_daily(ts_code=ts_code, start_date=start_str, end_date=end_str)
+            if df is None or df.empty:
+                return pd.DataFrame()
+
+            records = []
+            for _, row in df.iterrows():
+                code = convert_tushare_code_to_standard(row["ts_code"])
+                records.append(
+                    {
+                        "code": code,
+                        "trade_date": pd.to_datetime(str(row["trade_date"])).date(),
+                        "open": self._safe_decimal(row.get("open")),
+                        "high": self._safe_decimal(row.get("high")),
+                        "low": self._safe_decimal(row.get("low")),
+                        "close": self._safe_decimal(row.get("close")),
+                        "pre_close": None,
+                        "volume": self._safe_int(row.get("vol", 0)) * 100
+                        if self._safe_int(row.get("vol"))
+                        else None,
+                        "amount": self._safe_decimal(row.get("amount", 0)) * 1000
+                        if self._safe_decimal(row.get("amount"))
+                        else None,
+                        "pct_chg": self._safe_decimal(row.get("pct_change")),
+                        "change": self._safe_decimal(row.get("change")),
+                    }
+                )
+            return pd.DataFrame(records) if records else pd.DataFrame()
+        except Exception as e:
+            logger.warning(
+                f"[TuShare] Failed to fetch SW {ts_code} range {start_str}-{end_str}: {e}"
             )
             return pd.DataFrame()
 

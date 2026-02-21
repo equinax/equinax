@@ -12,6 +12,7 @@ from typing import Dict, Any, Optional, List
 from datetime import date, timedelta
 from decimal import Decimal
 import logging
+import math
 
 import pandas as pd
 import numpy as np
@@ -304,6 +305,9 @@ async def calculate_style_factors(
     Includes: size, volatility, turnover, value, momentum factors.
     Daily update.
     """
+    import time as _time
+
+    t0 = _time.monotonic()
     target_date = date.fromisoformat(calc_date) if calc_date else date.today()
 
     if target_date.weekday() >= 5:
@@ -313,7 +317,6 @@ async def calculate_style_factors(
             "reason": f"{target_date} is a weekend",
         }
 
-    lookback_20d = target_date - timedelta(days=30)  # ~20 trading days
     lookback_60d = target_date - timedelta(days=90)  # ~60 trading days
 
     session_maker = get_session_maker(database_url) if database_url else worker_session_maker
@@ -340,21 +343,12 @@ async def calculate_style_factors(
         if not stock_codes:
             return {"task": "calculate_style_factors", "error": "No stocks found"}
 
-        # Load market data + turnover from indicator_valuation
         market_query = (
             select(
                 MarketDaily.code,
                 MarketDaily.date,
                 MarketDaily.close,
-                IndicatorValuation.turnover_rate.label("turnover_rate"),
                 MarketDaily.pct_chg,
-            )
-            .outerjoin(
-                IndicatorValuation,
-                and_(
-                    MarketDaily.code == IndicatorValuation.code,
-                    MarketDaily.date == IndicatorValuation.date,
-                ),
             )
             .where(
                 MarketDaily.code.in_(stock_codes),
@@ -364,10 +358,16 @@ async def calculate_style_factors(
             .order_by(MarketDaily.code, MarketDaily.date)
         )
 
-        market_result = await db.execute(market_query)
-        market_records = market_result.fetchall()
+        turnover_query = select(
+            IndicatorValuation.code,
+            IndicatorValuation.date,
+            IndicatorValuation.turnover_rate,
+        ).where(
+            IndicatorValuation.code.in_(stock_codes),
+            IndicatorValuation.date >= lookback_60d,
+            IndicatorValuation.date <= target_date,
+        )
 
-        # Load valuation data
         valuation_query = select(
             IndicatorValuation.code,
             IndicatorValuation.total_mv,
@@ -377,97 +377,99 @@ async def calculate_style_factors(
             IndicatorValuation.code.in_(stock_codes),
             IndicatorValuation.date == target_date,
         )
-        valuation_result = await db.execute(valuation_query)
-        valuation_map = {
-            row.code: {
-                "total_mv": float(row.total_mv) if row.total_mv else None,
-                "pe_ttm": float(row.pe_ttm) if row.pe_ttm else None,
-                "pb_mrq": float(row.pb_mrq) if row.pb_mrq else None,
-            }
-            for row in valuation_result
-        }
 
-        # Convert to DataFrame for calculation
-        df = pd.DataFrame(
-            [
-                {
-                    "code": r.code,
-                    "date": r.date,
-                    "close": float(r.close) if r.close else None,
-                    "turn": float(r.turnover_rate) if r.turnover_rate else None,
-                    "pct_chg": float(r.pct_chg) if r.pct_chg else None,
-                }
-                for r in market_records
-            ]
-        )
+        market_result = await db.execute(market_query)
+        turnover_result = await db.execute(turnover_query)
+        valuation_result = await db.execute(valuation_query)
+        market_records = market_result.fetchall()
+        turnover_records = turnover_result.fetchall()
+        val_records = valuation_result.fetchall()
+
+        t_query = _time.monotonic()
+
+        df = pd.DataFrame(market_records, columns=["code", "date", "close", "pct_chg"])
+        df["close"] = pd.to_numeric(df["close"], errors="coerce")
+        df["pct_chg"] = pd.to_numeric(df["pct_chg"], errors="coerce")
 
         if df.empty:
             return {"task": "calculate_style_factors", "error": "No market data"}
 
-        # Calculate factors per stock
-        style_records = []
-        for code in stock_codes:
-            stock_df = df[df["code"] == code].copy()
-            if len(stock_df) < 10:
-                continue
+        turn_df = pd.DataFrame(turnover_records, columns=["code", "date", "turn"])
+        turn_df["turn"] = pd.to_numeric(turn_df["turn"], errors="coerce")
+        if not turn_df.empty:
+            df = df.merge(turn_df, on=["code", "date"], how="left")
+        else:
+            df["turn"] = np.nan
 
-            stock_df = stock_df.sort_values("date")
-            latest = stock_df.iloc[-1]
+        val_df = pd.DataFrame(val_records, columns=["code", "market_cap", "pe_ttm", "pb_mrq"])
+        for c in ["market_cap", "pe_ttm", "pb_mrq"]:
+            val_df[c] = pd.to_numeric(val_df[c], errors="coerce")
 
-            # Volatility: 20-day std of returns
-            if len(stock_df) >= 20:
-                vol_20d = stock_df["pct_chg"].tail(20).std()
-            else:
-                vol_20d = stock_df["pct_chg"].std()
+        group_sizes = df.groupby("code", sort=False).size()
+        valid_codes = group_sizes[group_sizes >= 10].index
+        df = df[df["code"].isin(valid_codes)]
 
-            # Turnover: 20-day average
-            if len(stock_df) >= 20:
-                avg_turn_20d = stock_df["turn"].tail(20).mean()
-            else:
-                avg_turn_20d = stock_df["turn"].mean()
-
-            # Momentum
-            if len(stock_df) >= 20:
-                momentum_20d = (stock_df["close"].iloc[-1] / stock_df["close"].iloc[-20] - 1) * 100
-            else:
-                momentum_20d = None
-
-            if len(stock_df) >= 60:
-                momentum_60d = (stock_df["close"].iloc[-1] / stock_df["close"].iloc[-60] - 1) * 100
-            else:
-                momentum_60d = None
-
-            # Get valuation
-            val = valuation_map.get(code, {})
-            market_cap = val.get("total_mv")
-            pe_ttm = val.get("pe_ttm")
-            pb_mrq = val.get("pb_mrq")
-
-            # EP ratio (inverse of PE)
-            ep_ratio = 1 / pe_ttm if pe_ttm and pe_ttm > 0 else None
-            bp_ratio = 1 / pb_mrq if pb_mrq and pb_mrq > 0 else None
-
-            style_records.append(
-                {
-                    "code": code,
-                    "date": target_date,
-                    "market_cap": market_cap,
-                    "volatility_20d": vol_20d,
-                    "avg_turnover_20d": avg_turn_20d,
-                    "ep_ratio": ep_ratio,
-                    "bp_ratio": bp_ratio,
-                    "momentum_20d": momentum_20d,
-                    "momentum_60d": momentum_60d,
-                }
-            )
-
-        if not style_records:
+        if df.empty:
             return {"task": "calculate_style_factors", "error": "No style data calculated"}
 
-        # Create DataFrame for ranking
-        style_df = pd.DataFrame(style_records)
+        grouped = df.groupby("code", sort=False)
 
-        # Calculate ranks and percentiles
+        df["vol_20d"] = grouped["pct_chg"].transform(lambda x: x.rolling(20, min_periods=10).std())
+
+        df["avg_turn_20d"] = grouped["turn"].transform(
+            lambda x: x.rolling(20, min_periods=10).mean()
+        )
+
+        close_20ago = grouped["close"].shift(19)  # shift(19) matches iloc[-20] relative to iloc[-1]
+        close_60ago = grouped["close"].shift(59)
+        df["momentum_20d"] = (df["close"] / close_20ago - 1.0) * 100.0
+        df["momentum_60d"] = (df["close"] / close_60ago - 1.0) * 100.0
+
+        day_df = df[df["date"] == target_date].copy()
+
+        if day_df.empty:
+            return {"task": "calculate_style_factors", "error": "No style data for target date"}
+
+        if not val_df.empty:
+            day_df = day_df.merge(val_df, on="code", how="left")
+        else:
+            day_df["market_cap"] = np.nan
+            day_df["pe_ttm"] = np.nan
+            day_df["pb_mrq"] = np.nan
+
+        day_df["ep_ratio"] = np.where(
+            (day_df["pe_ttm"].notna()) & (day_df["pe_ttm"] > 0),
+            1.0 / day_df["pe_ttm"],
+            np.nan,
+        )
+        day_df["bp_ratio"] = np.where(
+            (day_df["pb_mrq"].notna()) & (day_df["pb_mrq"] > 0),
+            1.0 / day_df["pb_mrq"],
+            np.nan,
+        )
+
+        style_df = day_df[
+            [
+                "code",
+                "market_cap",
+                "vol_20d",
+                "avg_turn_20d",
+                "ep_ratio",
+                "bp_ratio",
+                "momentum_20d",
+                "momentum_60d",
+            ]
+        ].copy()
+        style_df.rename(
+            columns={
+                "vol_20d": "volatility_20d",
+                "avg_turn_20d": "avg_turnover_20d",
+            },
+            inplace=True,
+        )
+        style_df["date"] = target_date
+
+        # --- Ranking (already vectorized) ---
         for col, rank_col, pct_col in [
             ("market_cap", "size_rank", "size_percentile"),
             ("volatility_20d", "vol_rank", "vol_percentile"),
@@ -475,107 +477,139 @@ async def calculate_style_factors(
             ("ep_ratio", "value_rank", "value_percentile"),
             ("momentum_20d", "momentum_rank", "momentum_percentile"),
         ]:
-            if col in style_df.columns:
-                style_df[rank_col] = style_df[col].rank(ascending=False, method="min")
-                style_df[pct_col] = style_df[col].rank(pct=True)
+            style_df[rank_col] = style_df[col].rank(ascending=False, method="min")
+            style_df[pct_col] = style_df[col].rank(pct=True)
 
-        # Add categories
-        style_df["size_category"] = style_df.apply(
-            lambda r: categorize_size(r.get("market_cap"), r.get("size_percentile")), axis=1
+        # --- Categorization (vectorized via np.select) ---
+        # Size category (based on market_cap thresholds)
+        mc = style_df["market_cap"]
+        style_df["size_category"] = np.select(
+            [mc >= 1000, mc >= 200, mc >= 50, mc >= 10, mc > 0],
+            [
+                SizeCategory.MEGA.value,
+                SizeCategory.LARGE.value,
+                SizeCategory.MID.value,
+                SizeCategory.SMALL.value,
+                SizeCategory.MICRO.value,
+            ],
+            default=None,
         )
-        style_df["vol_category"] = style_df["vol_percentile"].apply(categorize_volatility)
-        style_df["turnover_category"] = style_df["turnover_percentile"].apply(categorize_turnover)
-        style_df["value_category"] = style_df["value_percentile"].apply(categorize_value)
+        style_df.loc[style_df["market_cap"].isna(), "size_category"] = None
 
-        # Insert into database
+        # Vol/Turnover/Value categories (based on percentile thresholds)
+        for pct_col, cat_col, high_val, mid_val, low_val in [
+            (
+                "vol_percentile",
+                "vol_category",
+                VolatilityCategory.HIGH.value,
+                VolatilityCategory.NORMAL.value,
+                VolatilityCategory.LOW.value,
+            ),
+            (
+                "turnover_percentile",
+                "turnover_category",
+                TurnoverCategory.HOT.value,
+                TurnoverCategory.NORMAL.value,
+                TurnoverCategory.DEAD.value,
+            ),
+            (
+                "value_percentile",
+                "value_category",
+                ValueCategory.VALUE.value,
+                ValueCategory.NEUTRAL.value,
+                ValueCategory.GROWTH.value,
+            ),
+        ]:
+            pct = style_df[pct_col]
+            style_df[cat_col] = np.select(
+                [pct >= 0.7, pct <= 0.3],
+                [high_val, low_val],
+                default=mid_val,
+            )
+            style_df.loc[style_df[pct_col].isna(), cat_col] = None
+
+        t_compute = _time.monotonic()
+
+        # --- Bulk upsert (chunked at 500 rows to stay within PG param limits) ---
+        CHUNK_SIZE = 500
+        # Prepare records: convert NaN to None, floats to Decimal where needed
+        decimal_cols = [
+            "market_cap",
+            "size_percentile",
+            "volatility_20d",
+            "vol_percentile",
+            "avg_turnover_20d",
+            "turnover_percentile",
+            "ep_ratio",
+            "bp_ratio",
+            "value_percentile",
+            "momentum_20d",
+            "momentum_60d",
+            "momentum_percentile",
+        ]
+        int_cols = ["size_rank", "vol_rank", "turnover_rank", "value_rank", "momentum_rank"]
+
+        all_cols = (
+            ["code", "date"]
+            + decimal_cols
+            + int_cols
+            + ["size_category", "vol_category", "turnover_category", "value_category"]
+        )
+        update_cols = [c for c in all_cols if c not in ("code", "date")]
+
+        for c in decimal_cols:
+            style_df[c] = style_df[c].apply(
+                lambda v: Decimal(str(round(float(v), 4))) if pd.notna(v) else None
+            )
+        for c in int_cols:
+            style_df[c] = style_df[c].apply(lambda v: int(v) if pd.notna(v) else None)
+        for c in ["size_category", "vol_category", "turnover_category", "value_category"]:
+            style_df[c] = style_df[c].where(style_df[c].notna(), None)
+
+        records = style_df[all_cols].to_dict("records")
+
+        # to_dict("records") leaks NaN for nullable columns (numeric and category);
+        # asyncpg rejects NaN for both integer and string parameters.
+        _nan_cols = (
+            int_cols
+            + decimal_cols
+            + ["size_category", "vol_category", "turnover_category", "value_category"]
+        )
+        for rec in records:
+            for c in _nan_cols:
+                v = rec[c]
+                if v is not None and isinstance(v, float) and math.isnan(v):
+                    rec[c] = None
+
         records_inserted = 0
-        for _, row in style_df.iterrows():
-            stmt = (
-                insert(StockStyleExposure)
-                .values(
-                    code=row["code"],
-                    date=row["date"],
-                    market_cap=Decimal(str(row["market_cap"]))
-                    if pd.notna(row.get("market_cap"))
-                    else None,
-                    size_rank=int(row["size_rank"]) if pd.notna(row.get("size_rank")) else None,
-                    size_percentile=Decimal(str(row["size_percentile"]))
-                    if pd.notna(row.get("size_percentile"))
-                    else None,
-                    size_category=row["size_category"].value if row.get("size_category") else None,
-                    volatility_20d=Decimal(str(row["volatility_20d"]))
-                    if pd.notna(row.get("volatility_20d"))
-                    else None,
-                    vol_rank=int(row["vol_rank"]) if pd.notna(row.get("vol_rank")) else None,
-                    vol_percentile=Decimal(str(row["vol_percentile"]))
-                    if pd.notna(row.get("vol_percentile"))
-                    else None,
-                    vol_category=row["vol_category"].value if row.get("vol_category") else None,
-                    avg_turnover_20d=Decimal(str(row["avg_turnover_20d"]))
-                    if pd.notna(row.get("avg_turnover_20d"))
-                    else None,
-                    turnover_rank=int(row["turnover_rank"])
-                    if pd.notna(row.get("turnover_rank"))
-                    else None,
-                    turnover_percentile=Decimal(str(row["turnover_percentile"]))
-                    if pd.notna(row.get("turnover_percentile"))
-                    else None,
-                    turnover_category=row["turnover_category"].value
-                    if row.get("turnover_category")
-                    else None,
-                    ep_ratio=Decimal(str(row["ep_ratio"]))
-                    if pd.notna(row.get("ep_ratio"))
-                    else None,
-                    bp_ratio=Decimal(str(row["bp_ratio"]))
-                    if pd.notna(row.get("bp_ratio"))
-                    else None,
-                    value_rank=int(row["value_rank"]) if pd.notna(row.get("value_rank")) else None,
-                    value_percentile=Decimal(str(row["value_percentile"]))
-                    if pd.notna(row.get("value_percentile"))
-                    else None,
-                    value_category=row["value_category"].value
-                    if row.get("value_category")
-                    else None,
-                    momentum_20d=Decimal(str(row["momentum_20d"]))
-                    if pd.notna(row.get("momentum_20d"))
-                    else None,
-                    momentum_60d=Decimal(str(row["momentum_60d"]))
-                    if pd.notna(row.get("momentum_60d"))
-                    else None,
-                    momentum_rank=int(row["momentum_rank"])
-                    if pd.notna(row.get("momentum_rank"))
-                    else None,
-                    momentum_percentile=Decimal(str(row["momentum_percentile"]))
-                    if pd.notna(row.get("momentum_percentile"))
-                    else None,
-                )
-                .on_conflict_do_update(
-                    index_elements=["code", "date"],
-                    set_={
-                        "market_cap": Decimal(str(row["market_cap"]))
-                        if pd.notna(row.get("market_cap"))
-                        else None,
-                        "size_category": row["size_category"].value
-                        if row.get("size_category")
-                        else None,
-                        "volatility_20d": Decimal(str(row["volatility_20d"]))
-                        if pd.notna(row.get("volatility_20d"))
-                        else None,
-                        "vol_category": row["vol_category"].value
-                        if row.get("vol_category")
-                        else None,
-                    },
-                )
+        for i in range(0, len(records), CHUNK_SIZE):
+            chunk = records[i : i + CHUNK_SIZE]
+            stmt = insert(StockStyleExposure).values(chunk)
+            stmt = stmt.on_conflict_do_update(
+                index_elements=["code", "date"],
+                set_={col: stmt.excluded[col] for col in update_cols},
             )
             await db.execute(stmt)
-            records_inserted += 1
+            records_inserted += len(chunk)
 
         await db.commit()
+
+        t_end = _time.monotonic()
+        logger.info(
+            f"calculate_style_factors({target_date}): "
+            f"{records_inserted} records, "
+            f"query={t_query - t0:.1f}s, "
+            f"compute={t_compute - t_query:.1f}s, "
+            f"upsert={t_end - t_compute:.1f}s, "
+            f"total={t_end - t0:.1f}s"
+        )
 
         return {
             "task": "calculate_style_factors",
             "calc_date": str(target_date),
             "records_inserted": records_inserted,
+            "records_count": records_inserted,
+            "duration_seconds": round(t_end - t0, 1),
         }
 
 
