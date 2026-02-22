@@ -19,8 +19,12 @@ class ScoringEngine:
     def __init__(
         self,
         market_regime_score: float = 50.0,
+        ici_20d: float = 0.0,
+        dispersion_std: float = 0.0,
     ):
         self.market_regime_score = market_regime_score
+        self.ici_20d = ici_20d
+        self.dispersion_std = dispersion_std
 
     def _apply_regime_discount(self, raw_score_expr, regime_weight: float = 0.20):
         """Apply market regime discount to a raw score expression.
@@ -171,6 +175,7 @@ class ScoringEngine:
             "rally_dominance_20d": 50.0,
             "cycle_smoothness_20d": 50.0,
             "max_consecutive_down_20d": 0.0,
+            "sector_coherence_sci": 0.0,
         }
 
         for col, default in required_columns.items():

@@ -75,6 +75,13 @@ scoring:
       fill_null: 0.0
       weight: 0.05
 
+    # Low SCI = sector divergence = individual stock alpha opportunity (contrarian edge)
+    - signal: sector_divergence_signal
+      source: sector_coherence_sci
+      transform: "(0.7 - col).clip(0.0, 0.4) / 0.4 * 100"
+      fill_null: 0.0
+      weight: 0.03
+
   penalties:
     # Extreme volatility — M-shape, violent swings (反面教材 D)
     - signal: volatility_penalty

@@ -195,29 +195,51 @@ class ScreenerService:
         regime: Dict[str, Any] = {}
         if regime_date:
             regime = await self.polars_engine.load_market_regime(regime_date)
-            scoring_engine = ScoringEngine(market_regime_score=regime["market_regime_score"])
+
+            # Map SCI values to individual stocks via sw_industry_l1
+            sci_map = regime.get("sci_by_industry", {})
+            if sci_map and "sw_industry_l1" in df.columns:
+                sci_mapping_df = pl.DataFrame(
+                    {
+                        "sw_industry_l1": list(sci_map.keys()),
+                        "sector_coherence_sci": [float(v) for v in sci_map.values()],
+                    }
+                )
+                df = df.join(sci_mapping_df, on="sw_industry_l1", how="left")
+                df = df.with_columns(pl.col("sector_coherence_sci").fill_null(0.0))
+
+            scoring_engine = ScoringEngine(
+                market_regime_score=regime["market_regime_score"],
+                ici_20d=regime.get("ici_20d", 0.0),
+                dispersion_std=regime.get("dispersion_std", 0.0),
+            )
             should_abstain = regime.get("should_abstain", False)
+            abstain_reason = regime.get("abstain_reason")
         else:
             scoring_engine = ScoringEngine()
             should_abstain = False
+            abstain_reason = None
 
         abstain_flag = False
-        abstain_reason = None
+        abstain_reason_out = None
 
         if should_abstain:
-            abstain_flag = True
-            abstain_reason = "market_hostile"
+            if tab == "dragon" and abstain_reason == "extreme_dispersion":
+                pass
+            else:
+                abstain_flag = True
+                abstain_reason_out = abstain_reason or "market_hostile"
 
         if tab == "rally" and regime_date and regime.get("breadth_5d_avg", 50.0) < 40.0:
             abstain_flag = True
-            abstain_reason = "narrow_breadth"
+            abstain_reason_out = "narrow_breadth"
 
         if tab == "overnight" and regime_date:
             cfg = load_strategy_config("overnight")
             regime_max = cfg.market_gate.get("regime_max")
             if regime_max is not None and regime.get("market_regime_score", 50.0) > regime_max:
                 abstain_flag = True
-                abstain_reason = "regime_too_hot"
+                abstain_reason_out = "regime_too_hot"
 
         if tab not in VALID_TABS:
             tab = "overnight"  # Default to overnight if unknown tab is provided
@@ -282,7 +304,7 @@ class ScreenerService:
 
         if abstain_flag:
             result["abstain"] = True
-            result["abstain_reason"] = abstain_reason
+            result["abstain_reason"] = abstain_reason_out
 
         return result
 

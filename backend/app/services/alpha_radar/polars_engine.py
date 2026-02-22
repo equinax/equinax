@@ -12,6 +12,13 @@ import polars as pl
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.services.alpha_radar.engine.factors.market_factors import (
+    compute_ici,
+    compute_sci,
+    compute_dispersion,
+    SW_INDUSTRY_NAME_TO_INDEX,
+)
+
 
 class PolarsEngine:
     """
@@ -410,6 +417,100 @@ class PolarsEngine:
             elif low_regime and weak_days >= 3:
                 should_abstain = True
 
+        # --- ICI/SCI/Dispersion (Phase 1) ---
+        start_date_limit = rows[-1][0] if rows else target_date
+
+        # 1. Load stock pct_chg data
+        stock_pct_result = await self.db.execute(
+            text("""
+                SELECT md.date, md.code, md.pct_chg
+                FROM market_daily md
+                JOIN asset_meta am ON md.code = am.code
+                WHERE md.date <= :target_date
+                AND md.date >= :start_date
+                AND am.asset_type = 'STOCK'
+            """),
+            {"target_date": target_date, "start_date": start_date_limit},
+        )
+        stock_rows = stock_pct_result.fetchall()
+        stock_pct_df = pl.DataFrame(stock_rows, schema=["date", "code", "pct_chg"], orient="row")
+
+        # 2. Load index pct_chg data (already have from rows)
+        # rows is [date, close, pct_chg], sorted DESC
+        index_pct_df = pl.DataFrame(rows, schema=["date", "close", "pct_chg"], orient="row").select(
+            ["date", "pct_chg"]
+        )
+
+        # 3. Load industry index data
+        ind_pct_result = await self.db.execute(
+            text("""
+                SELECT date, code, pct_chg
+                FROM market_daily
+                WHERE date <= :target_date
+                AND date >= :start_date
+                AND code LIKE 'sh.801%'
+            """),
+            {"target_date": target_date, "start_date": start_date_limit},
+        )
+        ind_rows = ind_pct_result.fetchall()
+        ind_pct_df = pl.DataFrame(ind_rows, schema=["date", "code", "pct_chg"], orient="row")
+
+        # 4. Load stock-to-industry mapping
+        profile_result = await self.db.execute(
+            text("SELECT code, sw_industry_l1 FROM stock_profile")
+        )
+        profile_rows = profile_result.fetchall()
+        stock_industry_map = {}
+        for r in profile_rows:
+            if r[1] and r[1] in SW_INDUSTRY_NAME_TO_INDEX:
+                stock_industry_map[r[0]] = SW_INDUSTRY_NAME_TO_INDEX[r[1]]
+
+        # 5. Compute metrics
+        ici_20d = compute_ici(stock_pct_df, index_pct_df, target_date)
+        sci_by_industry = compute_sci(stock_pct_df, ind_pct_df, stock_industry_map, target_date)
+        dispersion_std = compute_dispersion(stock_pct_df, index_pct_df, target_date)
+
+        # 6. Phase 2: ICI → regime_discount enhancement
+        # ICI measures market coherence (how much stocks move together with the index).
+        # High ICI + index falling = systemic risk (everything drops together) → penalize
+        # High ICI + index rising = systemic uptrend (ride the wave) → mild boost
+        # Low ICI = stock divergence (alpha stock-picking is most valuable) → boost
+        ici_modifier = 0.0
+        if ici_20d > 0.5 and ret_5d < -1.0:
+            ici_modifier = -15.0  # 系统性风险惩罚
+        elif ici_20d > 0.5 and ret_5d > 1.0:
+            ici_modifier = 5.0  # 系统性顺势加分
+        elif ici_20d < 0.25:
+            ici_modifier = 10.0  # 个股分化期，选股价值高
+        regime_score = max(0.0, min(100.0, regime_score + ici_modifier))
+
+        # Re-evaluate should_abstain with ICI-adjusted regime_score
+        low_regime = regime_score < 45
+        should_abstain = False
+        abstain_reason = None
+        if not is_capitulation:
+            hostile_signals = sum(
+                [hostile_breadth, hostile_moneyflow, hostile_weakness, low_regime]
+            )
+            if hostile_breadth and hostile_signals >= 3:
+                should_abstain = True
+                abstain_reason = "hostile_breadth"
+            elif low_regime and weak_days >= 3:
+                should_abstain = True
+                abstain_reason = "sustained_fragility"
+            elif dispersion_std > 4.5 and hostile_signals >= 2:
+                should_abstain = True
+                abstain_reason = "extreme_dispersion"
+
+        # 7. Determine market regime v2
+        market_regime_v2 = "个股分化"
+        if ici_20d > 0.5 and ret_5d > 0:
+            market_regime_v2 = "系统性主导"
+        elif ici_20d > 0.5 and ret_5d < 0:
+            market_regime_v2 = "系统性风险"
+        elif 0.25 <= ici_20d <= 0.5:
+            market_regime_v2 = "行业轮动"
+
         return {
             "index_return_5d": round(ret_5d, 2),
             "index_return_10d": round(ret_10d, 2),
@@ -418,9 +519,15 @@ class PolarsEngine:
             "breadth_today": round(breadth_today, 1),
             "market_regime_score": round(regime_score, 1),
             "should_abstain": should_abstain,
+            "abstain_reason": abstain_reason,
             "mf_pct_inflow": round(mf_pct_inflow, 1),
             "mf_avg_net": round(mf_avg_net, 1),
             "limit_down": limit_down,
+            "ici_20d": round(ici_20d, 4),
+            "ici_modifier": round(ici_modifier, 1),
+            "sci_by_industry": sci_by_industry,
+            "dispersion_std": round(dispersion_std, 4),
+            "market_regime_v2": market_regime_v2,
         }
 
     async def load_moneyflow_data(self, target_date: date) -> pl.DataFrame:

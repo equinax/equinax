@@ -69,6 +69,12 @@ scoring:
       fill_null: 50.0
       weight: 0.02
 
+    - signal: sector_coherence_component
+      source: sector_coherence_sci
+      transform: "(col - 0.3).clip(0.0, 0.4) / 0.4 * 100"
+      fill_null: 0.0
+      weight: 0.03
+
   penalties:
     - signal: recent_spike_penalty
       source: recent_vol_spike_max

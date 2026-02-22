@@ -24,6 +24,7 @@ from typing import Optional
 
 import polars as pl
 from sqlalchemy import text
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.session import async_session_maker
 from app.services.alpha_radar.polars_engine import PolarsEngine
@@ -33,6 +34,12 @@ from app.services.alpha_radar.engine.config_loader import VALID_TABS, load_strat
 from app.services.alpha_radar.engine.factors import compute_all_factors
 from app.services.alpha_radar.engine.strategies.rally.scoring import RALLY_MIN_SCORE
 from app.services.alpha_radar.engine.strategies.overnight.scoring import OVERNIGHT_MIN_SCORE
+from app.services.alpha_radar.engine.factors.market_factors import (
+    compute_ici,
+    compute_sci,
+    compute_dispersion,
+    SW_INDUSTRY_NAME_TO_INDEX,
+)
 
 # Silence SQL logs
 logging.getLogger("sqlalchemy.engine").setLevel(logging.WARNING)
@@ -110,7 +117,14 @@ async def load_all_data(
     end_date: datetime.date,
     lookback_days: int = 120,
 ) -> tuple[
-    pl.DataFrame, pl.DataFrame, pl.DataFrame, pl.DataFrame, pl.DataFrame, pl.DataFrame, pl.DataFrame
+    pl.DataFrame,
+    pl.DataFrame,
+    pl.DataFrame,
+    pl.DataFrame,
+    pl.DataFrame,
+    pl.DataFrame,
+    pl.DataFrame,
+    pl.DataFrame,
 ]:
     """Load ALL market, valuation, style, profile, moneyflow, and limit data in one shot."""
 
@@ -301,9 +315,46 @@ async def load_all_data(
         limit_df = limit_df.with_columns(pl.col("date").cast(pl.Date))
     log.info(f"  Limit list data: {limit_df.height} rows")
 
+    # 8. Industry index data (SW L1 indices for ICI/SCI)
+    result = await db.execute(
+        text("""
+            SELECT code, date, close, pct_chg
+            FROM market_daily
+            WHERE code LIKE 'sh.801%'
+            AND date >= :data_start AND date <= :end_date
+            ORDER BY code, date
+        """),
+        {"data_start": data_start, "end_date": end_date},
+    )
+    rows = result.fetchall()
+    columns = list(result.keys())
+    industry_index_df = (
+        pl.DataFrame({col: [row[i] for row in rows] for i, col in enumerate(columns)})
+        if rows
+        else pl.DataFrame()
+    )
+    if not industry_index_df.is_empty():
+        industry_index_df = industry_index_df.with_columns(
+            [
+                pl.col("date").cast(pl.Date),
+                pl.col("close").cast(pl.Float64),
+                pl.col("pct_chg").cast(pl.Float64),
+            ]
+        )
+    log.info(f"  Industry index data: {industry_index_df.height} rows")
+
     elapsed = time.time() - t0
     log.info(f"  Data load: {elapsed:.1f}s total")
-    return market_df, valuation_df, style_df, profile_df, index_df, moneyflow_df, limit_df
+    return (
+        market_df,
+        valuation_df,
+        style_df,
+        profile_df,
+        index_df,
+        moneyflow_df,
+        limit_df,
+        industry_index_df,
+    )
 
 
 async def load_all_data_cached(
@@ -313,7 +364,14 @@ async def load_all_data_cached(
     lookback_days: int = 120,
     use_cache: bool = True,
 ) -> tuple[
-    pl.DataFrame, pl.DataFrame, pl.DataFrame, pl.DataFrame, pl.DataFrame, pl.DataFrame, pl.DataFrame
+    pl.DataFrame,
+    pl.DataFrame,
+    pl.DataFrame,
+    pl.DataFrame,
+    pl.DataFrame,
+    pl.DataFrame,
+    pl.DataFrame,
+    pl.DataFrame,
 ]:
     """Load data with Parquet caching."""
     if not use_cache:
@@ -341,6 +399,7 @@ async def load_all_data_cached(
         "index": CACHE_DIR / f"{cache_key}_index.parquet",
         "moneyflow": CACHE_DIR / f"{cache_key}_moneyflow.parquet",
         "limit": CACHE_DIR / f"{cache_key}_limit.parquet",
+        "industry_index": CACHE_DIR / f"{cache_key}_industry_index.parquet",
     }
 
     if all(f.exists() for f in files.values()):
@@ -353,8 +412,18 @@ async def load_all_data_cached(
         index_df = pl.read_parquet(files["index"])
         moneyflow_df = pl.read_parquet(files["moneyflow"])
         limit_df = pl.read_parquet(files["limit"])
+        industry_index_df = pl.read_parquet(files["industry_index"])
         log.info(f"  Cache load: {time.time() - t0:.1f}s")
-        return market_df, valuation_df, style_df, profile_df, index_df, moneyflow_df, limit_df
+        return (
+            market_df,
+            valuation_df,
+            style_df,
+            profile_df,
+            index_df,
+            moneyflow_df,
+            limit_df,
+            industry_index_df,
+        )
 
     log.info("Cache miss. Loading from database...")
     (
@@ -365,6 +434,7 @@ async def load_all_data_cached(
         index_df,
         moneyflow_df,
         limit_df,
+        industry_index_df,
     ) = await load_all_data(db, start_date, end_date, lookback_days)
 
     log.info(f"Saving to cache: {CACHE_DIR}/{cache_key}_*.parquet")
@@ -375,8 +445,18 @@ async def load_all_data_cached(
     index_df.write_parquet(files["index"])
     moneyflow_df.write_parquet(files["moneyflow"])
     limit_df.write_parquet(files["limit"])
+    industry_index_df.write_parquet(files["industry_index"])
 
-    return market_df, valuation_df, style_df, profile_df, index_df, moneyflow_df, limit_df
+    return (
+        market_df,
+        valuation_df,
+        style_df,
+        profile_df,
+        index_df,
+        moneyflow_df,
+        limit_df,
+        industry_index_df,
+    )
 
 
 def compute_regime_score(
@@ -385,6 +465,8 @@ def compute_regime_score(
     market_df: "pl.DataFrame | None" = None,
     moneyflow_df: "pl.DataFrame | None" = None,
     limit_df: "pl.DataFrame | None" = None,
+    industry_index_df: "pl.DataFrame | None" = None,
+    profile_df: "pl.DataFrame | None" = None,
 ) -> tuple[float, int, dict]:
     """Compute market regime score from index + breadth + moneyflow + limits.
 
@@ -556,6 +638,81 @@ def compute_regime_score(
         "limit_down": limit_down_count,
     }
 
+    # ICI/SCI/Dispersion
+    ici_20d = 0.0
+    sci_by_industry = {}
+    dispersion_std = 0.0
+    market_regime_v2 = "个股分化"
+
+    if market_df is not None and not market_df.is_empty():
+        # Filter market_df to last 25 days for ICI/SCI
+        ici_window_dates = (
+            market_df.select("date")
+            .unique()
+            .filter(pl.col("date") <= target_date)
+            .sort("date", descending=True)
+            .head(25)
+        )
+        min_date = ici_window_dates["date"].min()
+
+        if min_date:
+            stock_pct_df = market_df.filter(
+                (pl.col("date") >= min_date) & (pl.col("date") <= target_date)
+            ).select(["date", "code", "pct_chg"])
+
+            index_pct_df = index_df.filter(
+                (pl.col("date") >= min_date) & (pl.col("date") <= target_date)
+            ).select(["date", "pct_chg"])
+
+            ici_20d = compute_ici(stock_pct_df, index_pct_df, target_date)
+            dispersion_std = compute_dispersion(stock_pct_df, index_pct_df, target_date)
+
+            if (
+                industry_index_df is not None
+                and not industry_index_df.is_empty()
+                and profile_df is not None
+            ):
+                ind_pct_df = industry_index_df.filter(
+                    (pl.col("date") >= min_date) & (pl.col("date") <= target_date)
+                ).select(["date", "code", "pct_chg"])
+
+                p_rows = profile_df.select(["code", "sw_industry_l1"]).rows()
+                stock_industry_map = {}
+                for r in p_rows:
+                    if r[1] and r[1] in SW_INDUSTRY_NAME_TO_INDEX:
+                        stock_industry_map[r[0]] = SW_INDUSTRY_NAME_TO_INDEX[r[1]]
+
+                sci_by_industry = compute_sci(
+                    stock_pct_df, ind_pct_df, stock_industry_map, target_date
+                )
+
+    if ici_20d > 0.5 and ret_5d > 0:
+        market_regime_v2 = "系统性主导"
+    elif ici_20d > 0.5 and ret_5d < 0:
+        market_regime_v2 = "系统性风险"
+    elif 0.25 <= ici_20d <= 0.5:
+        market_regime_v2 = "行业轮动"
+
+    # Phase 2: ICI → regime_discount enhancement
+    ici_modifier = 0.0
+    if ici_20d > 0.5 and ret_5d < -1.0:
+        ici_modifier = -15.0
+    elif ici_20d > 0.5 and ret_5d > 1.0:
+        ici_modifier = 5.0
+    elif ici_20d < 0.25:
+        ici_modifier = 10.0
+    score = max(0.0, min(100.0, round(score + ici_modifier, 1)))
+
+    details.update(
+        {
+            "ici_20d": round(ici_20d, 4),
+            "ici_modifier": round(ici_modifier, 1),
+            "sci_by_industry": sci_by_industry,
+            "dispersion_std": round(dispersion_std, 4),
+            "market_regime_v2": market_regime_v2,
+        }
+    )
+
     return score, weak_days, details
 
 
@@ -566,18 +723,26 @@ def compute_scores_for_date(
     style_df: pl.DataFrame,
     profile_df: pl.DataFrame,
     index_df: pl.DataFrame,
+    moneyflow_df: pl.DataFrame,
+    limit_df: pl.DataFrame,
+    industry_index_df: pl.DataFrame,
     tab: str,
-    top_n: int,
+    top_n: int | None = None,
     lookback_days: int = 120,
-    moneyflow_df: "pl.DataFrame | None" = None,
-    limit_df: "pl.DataFrame | None" = None,
     precomputed_factors: bool = False,
+    engine: "PolarsEngine | None" = None,
 ) -> list[dict]:
-    """Compute scores for a single date using pre-loaded data. Pure Polars, no DB calls."""
+    """Compute scores for a single date using vectorized operations."""
 
-    engine = PolarsEngine.__new__(PolarsEngine)  # Skip __init__ (needs db)
+    # 1. Compute market regime score
     regime_score, weak_days, regime_details = compute_regime_score(
-        target_date, index_df, market_df, moneyflow_df, limit_df
+        target_date,
+        index_df,
+        market_df,
+        moneyflow_df,
+        limit_df,
+        industry_index_df,
+        profile_df,
     )
 
     # Iter 13: Multi-signal tradeable-day gate.
@@ -604,6 +769,13 @@ def compute_scores_for_date(
         # Path 2: Sustained fragility (low regime + weak days, even without hostile breadth today)
         elif low_regime and weak_days >= 3:
             should_abstain = True
+        # Path 3: Extreme dispersion with hostile confirmation (skip for dragon — 涨停 thrives in dispersion)
+        elif (
+            tab != "dragon"
+            and regime_details.get("dispersion_std", 0.0) > 4.5
+            and hostile_signals >= 2
+        ):
+            should_abstain = True
     if should_abstain:
         return []
 
@@ -623,7 +795,11 @@ def compute_scores_for_date(
     if tab == "overnight" and regime_score > 50:
         return []
 
-    scoring = ScoringEngine(market_regime_score=regime_score)
+    scoring = ScoringEngine(
+        market_regime_score=regime_score,
+        ici_20d=regime_details.get("ici_20d", 0.0),
+        dispersion_std=regime_details.get("dispersion_std", 0.0),
+    )
 
     # Get trading dates up to target_date
     all_dates = market_df.select("date").unique().sort("date")
@@ -702,6 +878,18 @@ def compute_scores_for_date(
     # Join profiles
     if not profile_df.is_empty():
         df = df.join(profile_df, on="code", how="left")
+
+    # Map SCI to individual stocks
+    sci_map = regime_details.get("sci_by_industry", {})
+    if sci_map and "sw_industry_l1" in df.columns:
+        sci_mapping_df = pl.DataFrame(
+            {
+                "sw_industry_l1": list(sci_map.keys()),
+                "sector_coherence_sci": [float(v) for v in sci_map.values()],
+            }
+        )
+        df = df.join(sci_mapping_df, on="sw_industry_l1", how="left")
+        df = df.with_columns(pl.col("sector_coherence_sci").fill_null(0.0))
 
     # Iter 9: compute and join sector momentum
     sector_mom = PolarsEngine.compute_sector_momentum(market_df, profile_df, target_date)
@@ -998,6 +1186,7 @@ async def run_backtest(
             index_df,
             moneyflow_df,
             limit_df,
+            industry_index_df,
         ) = await load_all_data_cached(
             db, earliest, end_date, lookback_days=120, use_cache=use_cache
         )
@@ -1017,7 +1206,13 @@ async def run_backtest(
         all_results[d] = {}
         # Always compute regime for every date (used by report generation)
         regime_score, weak_days, regime_details = compute_regime_score(
-            d, index_df, market_df, moneyflow_df, limit_df
+            d,
+            index_df,
+            market_df,
+            moneyflow_df,
+            limit_df,
+            industry_index_df,
+            profile_df,
         )
         regime_data[d] = {
             "regime_score": regime_score,
@@ -1034,10 +1229,11 @@ async def run_backtest(
                 style_df,
                 profile_df,
                 index_df,
-                tab,
-                tab_top_n,
-                moneyflow_df=moneyflow_df,
-                limit_df=limit_df,
+                moneyflow_df,
+                limit_df,
+                industry_index_df,
+                tab=tab,
+                top_n=tab_top_n,
                 precomputed_factors=True,
             )
             if not recs and tab == tabs[0]:
@@ -1057,6 +1253,8 @@ async def run_backtest(
                     if hostile_breadth and hostile_signals >= 3:
                         abstained_dates.add(d)
                     elif low_regime and weak_days >= 3:
+                        abstained_dates.add(d)
+                    elif regime_details.get("dispersion_std", 0.0) > 4.5 and hostile_signals >= 2:
                         abstained_dates.add(d)
             tab_period = load_strategy_config(tab).eval_period if tab in VALID_TABS else period
             perf = evaluate_t_plus_n(recs, d, market_df, tab_period, limit_df=limit_df, tab=tab)
