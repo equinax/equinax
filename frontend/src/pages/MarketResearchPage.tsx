@@ -18,6 +18,9 @@ import type {
   AnalysisBundleItem,
   AnalysisBundleResponse,
   RegressionResult,
+  ReturnDistributionAnalysis,
+  RollingDistStats,
+  RegimeSignal,
 } from '@/api/generated/schemas'
 
 // --- Page Component ---
@@ -118,6 +121,23 @@ export default function MarketResearchPage() {
 
   // --- Chart Options Generators ---
 
+  const makeDataZoom = (sliderHeight = 20) => [
+    { type: 'inside', xAxisIndex: 0, filterMode: 'filter' },
+    {
+      type: 'slider',
+      xAxisIndex: 0,
+      height: sliderHeight,
+      bottom: 4,
+      borderColor: 'rgba(99,102,241,0.4)',
+      backgroundColor: 'rgba(99,102,241,0.08)',
+      fillerColor: 'rgba(99,102,241,0.2)',
+      handleStyle: { color: '#818cf8', borderColor: '#818cf8' },
+      textStyle: { color: '#a1a1aa', fontSize: 10 },
+      dataBackground: { lineStyle: { color: '#a5b4fc' }, areaStyle: { color: 'rgba(165,180,252,0.15)' } },
+      selectedDataBackground: { lineStyle: { color: '#818cf8' }, areaStyle: { color: 'rgba(129,140,248,0.25)' } },
+    }
+  ]
+
   const getOverviewChartOption = (item: AnalysisBundleItem, baseName: string) => {
     const dates = item.series_stock.dates
     
@@ -161,8 +181,9 @@ export default function MarketResearchPage() {
     return {
       backgroundColor: 'transparent',
       tooltip: { trigger: 'axis', axisPointer: { type: 'cross' } },
-      legend: { textStyle: { color: '#a1a1aa' }, bottom: 0 },
-      grid: { top: 30, right: 20, bottom: 60, left: 50, containLabel: true },
+      legend: { textStyle: { color: '#a1a1aa' }, bottom: 28 },
+      grid: { top: 30, right: 20, bottom: 80, left: 50, containLabel: true },
+      dataZoom: makeDataZoom(),
       xAxis: { type: 'category', data: dates, axisLine: { lineStyle: { color: '#52525b' } } },
       yAxis: { 
         type: 'value', 
@@ -179,8 +200,9 @@ export default function MarketResearchPage() {
     return {
       backgroundColor: 'transparent',
       tooltip: { trigger: 'axis' },
-      legend: { textStyle: { color: '#a1a1aa' }, bottom: 0 },
-      grid: { top: 30, right: 20, bottom: 60, left: 50, containLabel: true },
+      legend: { textStyle: { color: '#a1a1aa' }, bottom: 28 },
+      grid: { top: 30, right: 20, bottom: 80, left: 50, containLabel: true },
+      dataZoom: makeDataZoom(),
       xAxis: { type: 'category', data: data.dates, axisLine: { lineStyle: { color: '#52525b' } } },
       yAxis: { 
         type: 'value', 
@@ -283,8 +305,9 @@ export default function MarketResearchPage() {
     return {
       backgroundColor: 'transparent',
       tooltip: { trigger: 'axis' },
-      legend: { textStyle: { color: '#a1a1aa' }, bottom: 0 },
-      grid: { top: 30, right: 20, bottom: 60, left: 50, containLabel: true },
+      legend: { textStyle: { color: '#a1a1aa' }, bottom: 28 },
+      grid: { top: 30, right: 20, bottom: 80, left: 50, containLabel: true },
+      dataZoom: makeDataZoom(),
       xAxis: { type: 'category', data: data.dates, axisLine: { lineStyle: { color: '#52525b' } } },
       yAxis: { 
         type: 'value', 
@@ -312,6 +335,207 @@ export default function MarketResearchPage() {
     }
   }
 
+  const getDailyReturnsChartOption = (item: AnalysisBundleItem, baseName: string) => {
+    const dates = item.returns.dates
+    const stockReturns = item.returns.stock.map(v => v !== null ? v * 100 : null)
+    const baseReturns = item.returns.base.map(v => v !== null ? v * 100 : null)
+    const industryReturns = item.returns.industry.map(v => v !== null ? v * 100 : null)
+
+    return {
+      backgroundColor: 'transparent',
+      tooltip: { 
+        trigger: 'axis',
+        axisPointer: { type: 'shadow' },
+        formatter: (params: any) => {
+          let res = params[0].axisValue + '<br/>'
+          params.forEach((param: any) => {
+            const val = param.value !== null ? param.value.toFixed(2) + '%' : '-'
+            res += `${param.marker} ${param.seriesName}: ${val}<br/>`
+          })
+          return res
+        }
+      },
+      legend: { textStyle: { color: '#a1a1aa' }, bottom: 28 },
+      grid: { top: 30, right: 20, bottom: 80, left: 50, containLabel: true },
+      dataZoom: makeDataZoom(),
+      xAxis: { type: 'category', data: dates, axisLine: { lineStyle: { color: '#52525b' } } },
+      yAxis: { 
+        type: 'value', 
+        splitLine: { lineStyle: { color: '#27272a' } },
+        axisLabel: { formatter: '{value}%' }
+      },
+      series: [
+        {
+          name: baseName,
+          type: 'bar',
+          data: baseReturns,
+          itemStyle: { color: '#3b82f6', opacity: 0.3 },
+          barGap: '-100%',
+          z: 1
+        },
+        {
+          name: item.industry_l1_name || '行业',
+          type: 'bar',
+          data: industryReturns,
+          itemStyle: { color: '#f97316', opacity: 0.3 },
+          barGap: '-100%',
+          z: 2
+        },
+        {
+          name: item.stock_name,
+          type: 'bar',
+          data: stockReturns,
+          itemStyle: {
+            color: (params: any) => {
+              return params.value >= 0 ? '#22c55e' : '#ef4444'
+            }
+          },
+          z: 3
+        }
+      ]
+    }
+  }
+
+  const getRollingDistChartOption = (stats: RollingDistStats, dates: string[]) => {
+    return {
+      backgroundColor: 'transparent',
+      tooltip: { trigger: 'axis' },
+      legend: { textStyle: { color: '#a1a1aa' }, bottom: 28 },
+      grid: { top: 30, right: 40, bottom: 80, left: 40, containLabel: true },
+      dataZoom: makeDataZoom(),
+      xAxis: { type: 'category', data: dates, axisLine: { lineStyle: { color: '#52525b' } } },
+      yAxis: [
+        {
+          type: 'value',
+          name: '偏度 (Skew)',
+          splitLine: { lineStyle: { color: '#27272a' } },
+          axisLabel: { color: '#a1a1aa' }
+        },
+        {
+          type: 'value',
+          name: '峰度 (Kurtosis)',
+          splitLine: { show: false },
+          axisLabel: { color: '#a1a1aa' }
+        }
+      ],
+      series: [
+        {
+          name: '偏度',
+          type: 'line',
+          data: stats.skew,
+          showSymbol: false,
+          itemStyle: { color: '#8b5cf6' },
+          yAxisIndex: 0
+        },
+        {
+          name: '峰度',
+          type: 'line',
+          data: stats.kurtosis,
+          showSymbol: false,
+          itemStyle: { color: '#ec4899' },
+          yAxisIndex: 1
+        }
+      ]
+    }
+  }
+
+  const getRollingVolChartOption = (dist: ReturnDistributionAnalysis, dates: string[], baseName: string) => {
+    return {
+      backgroundColor: 'transparent',
+      tooltip: { trigger: 'axis' },
+      legend: { textStyle: { color: '#a1a1aa' }, bottom: 28 },
+      grid: { top: 30, right: 20, bottom: 80, left: 50, containLabel: true },
+      dataZoom: makeDataZoom(),
+      xAxis: { type: 'category', data: dates, axisLine: { lineStyle: { color: '#52525b' } } },
+      yAxis: { 
+        type: 'value', 
+        name: '波动率 (Std)',
+        splitLine: { lineStyle: { color: '#27272a' } }
+      },
+      series: [
+        {
+          name: baseName,
+          type: 'line',
+          data: dist.base.std,
+          showSymbol: false,
+          itemStyle: { color: '#3b82f6' }
+        },
+        {
+          name: '行业',
+          type: 'line',
+          data: dist.industry?.std || [],
+          showSymbol: false,
+          itemStyle: { color: '#f97316' }
+        },
+        {
+          name: '个股',
+          type: 'line',
+          data: dist.stock.std,
+          showSymbol: false,
+          itemStyle: { color: '#22c55e' }
+        }
+      ]
+    }
+  }
+
+  const getRegimeChartOption = (regime: RegimeSignal) => {
+    const markAreaData: any[] = []
+    if (regime.signal.length > 0) {
+      let currentSignal = regime.signal[0]
+      let startIndex = 0
+      
+      const colorMap: Record<string, string> = {
+        'buy': 'rgba(34, 197, 94, 0.25)',
+        'sell': 'rgba(239, 68, 68, 0.25)',
+        'neutral': 'rgba(113, 113, 122, 0.2)',
+        'caution': 'rgba(245, 158, 11, 0.25)'
+      }
+
+      for (let i = 1; i < regime.signal.length; i++) {
+        if (regime.signal[i] !== currentSignal) {
+          markAreaData.push([
+            { xAxis: regime.dates[startIndex], itemStyle: { color: colorMap[currentSignal] || colorMap['neutral'] } },
+            { xAxis: regime.dates[i-1] }
+          ])
+          currentSignal = regime.signal[i]
+          startIndex = i
+        }
+      }
+      markAreaData.push([
+        { xAxis: regime.dates[startIndex], itemStyle: { color: colorMap[currentSignal] || colorMap['neutral'] } },
+        { xAxis: regime.dates[regime.dates.length - 1] }
+      ])
+    }
+
+    return {
+      backgroundColor: 'transparent',
+      tooltip: { trigger: 'axis' },
+      grid: { top: 10, right: 20, bottom: 40, left: 50, containLabel: true },
+      dataZoom: makeDataZoom(14),
+      xAxis: { type: 'category', data: regime.dates, show: false },
+      yAxis: { 
+        type: 'value', 
+        splitLine: { show: false },
+        min: -1,
+        max: 1
+      },
+      series: [
+        {
+          name: 'Regime Score',
+          type: 'line',
+          data: regime.score,
+          showSymbol: false,
+          connectNulls: true,
+          itemStyle: { color: '#f59e0b' },
+          lineStyle: { width: 2, color: '#f59e0b' },
+          markArea: {
+            data: markAreaData
+          }
+        }
+      ]
+    }
+  }
+
   // --- Render Helpers ---
 
   const renderMetricCard = (title: string, value: number | null | undefined, subtext?: string) => (
@@ -327,7 +551,7 @@ export default function MarketResearchPage() {
   const currentItem = bundleData?.items[0]
 
   return (
-    <div className="flex h-[calc(100vh-4rem)] overflow-hidden">
+    <div className="flex h-screen overflow-hidden -m-4">
       {/* Left Sidebar */}
       <div className="w-72 shrink-0 border-r bg-card/30 flex flex-col gap-3 p-3 overflow-y-auto">
         <div>
@@ -440,17 +664,18 @@ export default function MarketResearchPage() {
       {/* Main Workspace */}
       <div className="flex-1 overflow-hidden flex flex-col">
         {bundleData && currentItem ? (
-          <Tabs value={activeTab} onValueChange={setActiveTab} className="flex-1 flex flex-col">
-            <div className="border-b px-4 pt-2">
+          <Tabs value={activeTab} onValueChange={setActiveTab} className="flex-1 flex flex-col min-h-0">
+            <div className="border-b px-4 pt-2 shrink-0">
               <TabsList>
                 <TabsTrigger value="overview">概览</TabsTrigger>
                 <TabsTrigger value="rolling">滚动相关性</TabsTrigger>
                 <TabsTrigger value="regression">Beta / Alpha</TabsTrigger>
                 <TabsTrigger value="residuals">残差分析</TabsTrigger>
+                <TabsTrigger value="returns">涨跌幅分析</TabsTrigger>
               </TabsList>
             </div>
 
-            <div className="flex-1 overflow-y-auto p-3">
+            <div className="flex-1 overflow-y-auto p-3 pb-8 min-h-0">
               <TabsContent value="overview" className="space-y-3 mt-0">
                 <div className="grid grid-cols-3 md:grid-cols-5 gap-2">
                   {renderMetricCard("相关性 (vs 基准)", currentItem.pearson.stock_vs_base)}
@@ -556,6 +781,89 @@ export default function MarketResearchPage() {
                   {renderMetricCard("残差波动率 (vs 基准)", currentItem.residual_vol.stock_on_base?.annualized, "年化")}
                   {renderMetricCard("残差波动率 (vs 行业)", currentItem.residual_vol.stock_on_industry?.annualized, "年化")}
                 </div>
+              </TabsContent>
+
+              <TabsContent value="returns" className="space-y-3 mt-0">
+                {currentItem.return_distribution ? (
+                  <>
+                    <div className="grid grid-cols-2 md:grid-cols-5 gap-2">
+                      {renderMetricCard("偏度 (Skew)", currentItem.return_distribution.stock.skew.slice(-1)[0], "↗右偏=上涨极值多")}
+                      {renderMetricCard("峰度 (Kurtosis)", currentItem.return_distribution.stock.kurtosis.slice(-1)[0], "↑高=极端行情风险")}
+                      {renderMetricCard("波动率 (Std)", currentItem.return_distribution.stock.std.slice(-1)[0], "↑高=恐慌 ↓低=冷静")}
+                      {renderMetricCard("正收益占比", currentItem.return_distribution.stock.positive_pct.slice(-1)[0], "市场广度(涨家比例)")}
+                      <Card className="p-2">
+                        <div className="text-[10px] text-muted-foreground truncate">当前状态</div>
+                        <div className={`text-lg font-bold mt-0.5 ${
+                          currentItem.return_distribution.regime.signal.slice(-1)[0] === 'buy' ? 'text-green-500' :
+                          currentItem.return_distribution.regime.signal.slice(-1)[0] === 'sell' ? 'text-red-500' :
+                          currentItem.return_distribution.regime.signal.slice(-1)[0] === 'caution' ? 'text-amber-500' :
+                          'text-muted-foreground'
+                        }`}>
+                          {({'buy': '买入', 'sell': '卖出', 'caution': '谨慎', 'neutral': '观望'} as Record<string, string>)[currentItem.return_distribution.regime.signal.slice(-1)[0]] || currentItem.return_distribution.regime.signal.slice(-1)[0]}
+                        </div>
+                        <p className="text-[10px] text-muted-foreground">右偏低波→买 左偏高波→卖</p>
+                      </Card>
+                    </div>
+
+                    <Card>
+                      <CardHeader className="py-2 px-3">
+                        <CardTitle className="text-sm">日收益率分布</CardTitle>
+                      </CardHeader>
+                      <CardContent className="h-[200px] px-2 pb-2">
+                        <ReactECharts 
+                          option={getDailyReturnsChartOption(currentItem, bundleData.base_index_name)} 
+                          style={{ height: '100%', width: '100%' }}
+                          theme="dark"
+                        />
+                      </CardContent>
+                    </Card>
+
+                    <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
+                      <Card>
+                        <CardHeader className="py-2 px-3">
+                          <CardTitle className="text-sm">滚动偏度 & 峰度</CardTitle>
+                        </CardHeader>
+                        <CardContent className="h-[250px] px-2 pb-2">
+                          <ReactECharts 
+                            option={getRollingDistChartOption(currentItem.return_distribution.stock, currentItem.return_distribution.stock.dates)}
+                            style={{ height: '100%', width: '100%' }}
+                            theme="dark"
+                          />
+                        </CardContent>
+                      </Card>
+
+                      <Card>
+                        <CardHeader className="py-2 px-3">
+                          <CardTitle className="text-sm">滚动波动率 (Std)</CardTitle>
+                        </CardHeader>
+                        <CardContent className="h-[250px] px-2 pb-2">
+                          <ReactECharts 
+                            option={getRollingVolChartOption(currentItem.return_distribution, currentItem.return_distribution.stock.dates, bundleData.base_index_name)}
+                            style={{ height: '100%', width: '100%' }}
+                            theme="dark"
+                          />
+                        </CardContent>
+                      </Card>
+                    </div>
+
+                    <Card>
+                      <CardHeader className="py-2 px-3">
+                        <CardTitle className="text-sm">市场状态信号 (Regime)</CardTitle>
+                      </CardHeader>
+                      <CardContent className="h-[140px] px-2 pb-2">
+                        <ReactECharts 
+                          option={getRegimeChartOption(currentItem.return_distribution.regime)}
+                          style={{ height: '100%', width: '100%' }}
+                          theme="dark"
+                        />
+                      </CardContent>
+                    </Card>
+                  </>
+                ) : (
+                  <div className="flex items-center justify-center h-40 text-muted-foreground">
+                    暂无分布分析数据
+                  </div>
+                )}
               </TabsContent>
             </div>
           </Tabs>

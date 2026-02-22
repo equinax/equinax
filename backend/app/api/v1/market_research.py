@@ -153,6 +153,32 @@ class ReturnSeries(BaseModel):
     stock: List[Optional[float]]
 
 
+# ---- Return Distribution Analysis Models ----
+
+
+class RollingDistStats(BaseModel):
+    dates: List[str]
+    mean: List[Optional[float]]
+    std: List[Optional[float]]
+    skew: List[Optional[float]]
+    kurtosis: List[Optional[float]]
+    positive_pct: List[Optional[float]]
+
+
+class RegimeSignal(BaseModel):
+    dates: List[str]
+    signal: List[str]  # valid values: "buy", "sell", "neutral", "caution"
+    score: List[Optional[float]]
+
+
+class ReturnDistributionAnalysis(BaseModel):
+    window: int
+    base: RollingDistStats
+    industry: Optional[RollingDistStats] = None
+    stock: RollingDistStats
+    regime: RegimeSignal
+
+
 class AnalysisBundleItem(BaseModel):
     stock_code: str
     stock_name: str
@@ -171,6 +197,7 @@ class AnalysisBundleItem(BaseModel):
     regression: RegressionMetrics
     residuals: ResidualData
     residual_vol: ResidualVolMetrics
+    return_distribution: Optional[ReturnDistributionAnalysis] = None
 
     warnings: List[str] = []
 
@@ -246,6 +273,81 @@ def _ols(x, y):
     r_squared = 1 - ss_res / ss_tot if ss_tot > 0 else 0.0
     resid_std = float(np.std(residuals, ddof=2))
     return alpha, beta, r_squared, resid_std, residuals, n
+
+
+def _rolling_dist_stats(returns: np.ndarray, window: int) -> RollingDistStats:
+    n = len(returns)
+    pad = [None] * (window - 1)
+    means, stds, skews, kurts, pos_pcts = [], [], [], [], []
+
+    for i in range(window, n + 1):
+        w = returns[i - window : i]
+        m = float(np.mean(w))
+        s = float(np.std(w, ddof=1))
+        means.append(round(m, 8))
+        stds.append(round(s, 8))
+
+        if s > 0 and window >= 8:
+            n_w = len(w)
+            m2 = float(np.sum((w - m) ** 2) / n_w)
+            m3 = float(np.sum((w - m) ** 3) / n_w)
+            m4 = float(np.sum((w - m) ** 4) / n_w)
+            # skewness = m3 / m2^1.5, excess kurtosis = m4 / m2^2 - 3
+            sk = m3 / (m2**1.5) if m2 > 0 else 0.0
+            ku = (m4 / (m2**2) - 3.0) if m2 > 0 else 0.0
+            skews.append(round(sk, 6))
+            kurts.append(round(ku, 6))
+        else:
+            skews.append(None)
+            kurts.append(None)
+
+        pos_pcts.append(round(float(np.sum(w > 0)) / window, 4))
+
+    return RollingDistStats(
+        dates=[],
+        mean=pad + means,
+        std=pad + stds,
+        skew=pad + skews,
+        kurtosis=pad + kurts,
+        positive_pct=pad + pos_pcts,
+    )
+
+
+def _regime_signal(
+    stock_stats: RollingDistStats,
+    base_stats: RollingDistStats,
+) -> RegimeSignal:
+    signals = []
+    scores = []
+
+    for i in range(len(stock_stats.mean)):
+        sk = stock_stats.skew[i]
+        st = stock_stats.std[i]
+        base_st = base_stats.std[i]
+
+        if sk is None or st is None or base_st is None:
+            signals.append("neutral")
+            scores.append(None)
+            continue
+
+        # Normalize std relative to base: high = stock much more volatile
+        vol_ratio = st / base_st if base_st > 0 else 1.0
+
+        # Score: positive skew + low vol = buy signal; negative skew + high vol = sell
+        # Range roughly -2 to +2
+        score = sk * 0.6 - (vol_ratio - 1.0) * 0.4
+        scores.append(round(score, 4))
+
+        if sk > 0.3 and vol_ratio < 1.5:
+            signals.append("buy")
+        elif sk < -0.3 and vol_ratio > 1.5:
+            signals.append("sell")
+        elif sk < -0.3 or vol_ratio > 2.0:
+            signals.append("caution")
+        else:
+            signals.append("neutral")
+
+    return RegimeSignal(dates=[], signal=signals, score=scores)
 
 
 # ============================================
@@ -584,7 +686,29 @@ async def analyze_bundle(
         else:
             res_data.stock_on_industry = [None] * len(ret_dates)
 
-        # 10. Assemble Item
+        # 10. Return Distribution Analysis
+        dist_base = _rolling_dist_stats(ret_base, request.rolling_window)
+        dist_base.dates = ret_dates_iso
+        dist_stock = _rolling_dist_stats(ret_stock, request.rolling_window)
+        dist_stock.dates = ret_dates_iso
+
+        dist_industry = None
+        if ret_industry is not None:
+            dist_industry = _rolling_dist_stats(ret_industry, request.rolling_window)
+            dist_industry.dates = ret_dates_iso
+
+        regime = _regime_signal(dist_stock, dist_base)
+        regime.dates = ret_dates_iso
+
+        return_dist = ReturnDistributionAnalysis(
+            window=request.rolling_window,
+            base=dist_base,
+            industry=dist_industry,
+            stock=dist_stock,
+            regime=regime,
+        )
+
+        # 11. Assemble Item
         item = AnalysisBundleItem(
             stock_code=stock_code,
             stock_name=stock_ctx.stock_name,
@@ -624,6 +748,7 @@ async def analyze_bundle(
             regression=reg_metrics,
             residuals=res_data,
             residual_vol=res_vol,
+            return_distribution=return_dist,
             warnings=warnings,
         )
         items.append(item)

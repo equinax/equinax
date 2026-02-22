@@ -7,6 +7,7 @@ import type { PearsonMetrics } from "./pearsonMetrics";
 import type { RegressionMetrics } from "./regressionMetrics";
 import type { ResidualVolMetrics } from "./residualVolMetrics";
 import type { ResidualData } from "./residualData";
+import type { AnalysisBundleItemReturnDistribution } from "./analysisBundleItemReturnDistribution";
 import type { ReturnSeries } from "./returnSeries";
 import type { RollingCorrData } from "./rollingCorrData";
 import type { SeriesData } from "./seriesData";
@@ -21,6 +22,7 @@ export interface AnalysisBundleItem {
   regression: RegressionMetrics;
   residual_vol: ResidualVolMetrics;
   residuals: ResidualData;
+  return_distribution?: AnalysisBundleItemReturnDistribution;
   returns: ReturnSeries;
   rolling_corr: RollingCorrData;
   series_base: SeriesData;
