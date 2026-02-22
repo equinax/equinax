@@ -17,6 +17,7 @@ from app.api.v1 import (
     alpha_radar,
     limit_up,
     market_research,
+    index_research,
 )
 
 api_router = APIRouter()
@@ -38,3 +39,4 @@ api_router.include_router(limit_up.router, prefix="/market", tags=["Market"])
 api_router.include_router(
     market_research.router, prefix="/market-research", tags=["Market Research"]
 )
+api_router.include_router(index_research.router, prefix="/index-research", tags=["Index Research"])

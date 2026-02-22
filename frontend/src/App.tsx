@@ -21,6 +21,7 @@ import EtfRotationPage from '@/pages/EtfRotationPage'
 import DataMapPage from '@/pages/DataMapPage'
 import DynamicBacktestPage from '@/pages/dynamic-backtest'
 import MarketResearchPage from '@/pages/MarketResearchPage'
+import IndexResearchPage from '@/pages/IndexResearchPage'
 
 function App() {
   return (
@@ -48,6 +49,7 @@ function App() {
           <Route path="industry-rotation" element={<IndustryRotationPage />} />
           <Route path="etf-rotation" element={<EtfRotationPage />} />
           <Route path="market-research" element={<MarketResearchPage />} />
+          <Route path="index-research" element={<IndexResearchPage />} />
         </Route>
       </Routes>
     </ThemeProvider>
