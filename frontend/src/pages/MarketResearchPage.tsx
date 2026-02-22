@@ -672,6 +672,7 @@ export default function MarketResearchPage() {
                 <TabsTrigger value="regression">Beta / Alpha</TabsTrigger>
                 <TabsTrigger value="residuals">残差分析</TabsTrigger>
                 <TabsTrigger value="returns">涨跌幅分析</TabsTrigger>
+                <TabsTrigger value="all">汇总</TabsTrigger>
               </TabsList>
             </div>
 
@@ -863,6 +864,120 @@ export default function MarketResearchPage() {
                   <div className="flex items-center justify-center h-40 text-muted-foreground">
                     暂无分布分析数据
                   </div>
+                )}
+              </TabsContent>
+
+              <TabsContent value="all" className="space-y-4 mt-0">
+                {/* --- 概览 --- */}
+                <div className="text-xs font-semibold text-muted-foreground uppercase tracking-wider border-b border-border pb-1">概览</div>
+                <div className="grid grid-cols-3 md:grid-cols-5 gap-2">
+                  {renderMetricCard("相关性 (vs 基准)", currentItem.pearson.stock_vs_base)}
+                  {renderMetricCard("相关性 (vs 行业)", currentItem.pearson.stock_vs_industry)}
+                  {renderMetricCard("行业 vs 基准", currentItem.pearson.industry_vs_base)}
+                  {renderMetricCard("Beta (vs 基准)", currentItem.regression.stock_on_base?.beta, `R²: ${currentItem.regression.stock_on_base?.r_squared.toFixed(4)}`)}
+                  {renderMetricCard("Beta (vs 行业)", currentItem.regression.stock_on_industry?.beta, `R²: ${currentItem.regression.stock_on_industry?.r_squared.toFixed(4)}`)}
+                </div>
+                <Card>
+                  <CardHeader className="py-2 px-3"><CardTitle className="text-sm">累计收益率对比 (归一化)</CardTitle></CardHeader>
+                  <CardContent className="h-[280px] px-2 pb-2">
+                    <ReactECharts option={getOverviewChartOption(currentItem, bundleData.base_index_name)} style={{ height: '100%', width: '100%' }} theme="dark" />
+                  </CardContent>
+                </Card>
+
+                {/* --- 滚动相关性 --- */}
+                <div className="text-xs font-semibold text-muted-foreground uppercase tracking-wider border-b border-border pb-1">滚动相关性</div>
+                <Card>
+                  <CardHeader className="py-2 px-3"><CardTitle className="text-sm">{rollingWindow}日滚动相关系数</CardTitle></CardHeader>
+                  <CardContent className="h-[280px] px-2 pb-2">
+                    <ReactECharts option={getRollingCorrChartOption(currentItem, bundleData.base_index_name)} style={{ height: '100%', width: '100%' }} theme="dark" />
+                  </CardContent>
+                </Card>
+
+                {/* --- Beta / Alpha --- */}
+                <div className="text-xs font-semibold text-muted-foreground uppercase tracking-wider border-b border-border pb-1">Beta / Alpha</div>
+                <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
+                  <Card>
+                    <CardHeader className="py-2 px-3"><CardTitle className="text-sm">回归: 个股 vs 基准</CardTitle></CardHeader>
+                    <CardContent className="h-[280px] px-2 pb-2">
+                      <ReactECharts option={getScatterOption(currentItem.returns.base, currentItem.returns.stock, bundleData.base_index_name, currentItem.stock_name, currentItem.regression.stock_on_base)} style={{ height: '100%', width: '100%' }} theme="dark" />
+                    </CardContent>
+                  </Card>
+                  <Card>
+                    <CardHeader className="py-2 px-3"><CardTitle className="text-sm">回归: 个股 vs 行业</CardTitle></CardHeader>
+                    <CardContent className="h-[280px] px-2 pb-2">
+                      <ReactECharts option={getScatterOption(currentItem.returns.industry, currentItem.returns.stock, currentItem.industry_l1_name || '行业', currentItem.stock_name, currentItem.regression.stock_on_industry)} style={{ height: '100%', width: '100%' }} theme="dark" />
+                    </CardContent>
+                  </Card>
+                </div>
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
+                  {renderMetricCard("Alpha (年化)", currentItem.regression.stock_on_base ? currentItem.regression.stock_on_base.alpha * 252 : null)}
+                  {renderMetricCard("Beta", currentItem.regression.stock_on_base?.beta)}
+                  {renderMetricCard("R²", currentItem.regression.stock_on_base?.r_squared)}
+                  {renderMetricCard("残差波动率", currentItem.residual_vol.stock_on_base?.annualized)}
+                </div>
+
+                {/* --- 残差分析 --- */}
+                <div className="text-xs font-semibold text-muted-foreground uppercase tracking-wider border-b border-border pb-1">残差分析</div>
+                <Card>
+                  <CardHeader className="py-2 px-3"><CardTitle className="text-sm">累计超额收益 (残差)</CardTitle></CardHeader>
+                  <CardContent className="h-[280px] px-2 pb-2">
+                    <ReactECharts option={getResidualsChartOption(currentItem)} style={{ height: '100%', width: '100%' }} theme="dark" />
+                  </CardContent>
+                </Card>
+                <div className="grid grid-cols-2 gap-2">
+                  {renderMetricCard("残差波动率 (vs 基准)", currentItem.residual_vol.stock_on_base?.annualized, "年化")}
+                  {renderMetricCard("残差波动率 (vs 行业)", currentItem.residual_vol.stock_on_industry?.annualized, "年化")}
+                </div>
+
+                {/* --- 涨跌幅分析 --- */}
+                {currentItem.return_distribution && (
+                  <>
+                    <div className="text-xs font-semibold text-muted-foreground uppercase tracking-wider border-b border-border pb-1">涨跌幅分析</div>
+                    <div className="grid grid-cols-2 md:grid-cols-5 gap-2">
+                      {renderMetricCard("偏度 (Skew)", currentItem.return_distribution.stock.skew.slice(-1)[0], "↗右偏=上涨极值多")}
+                      {renderMetricCard("峰度 (Kurtosis)", currentItem.return_distribution.stock.kurtosis.slice(-1)[0], "↑高=极端行情风险")}
+                      {renderMetricCard("波动率 (Std)", currentItem.return_distribution.stock.std.slice(-1)[0], "↑高=恐慌 ↓低=冷静")}
+                      {renderMetricCard("正收益占比", currentItem.return_distribution.stock.positive_pct.slice(-1)[0], "市场广度(涨家比例)")}
+                      <Card className="p-2">
+                        <div className="text-[10px] text-muted-foreground truncate">当前状态</div>
+                        <div className={`text-lg font-bold mt-0.5 ${
+                          currentItem.return_distribution.regime.signal.slice(-1)[0] === 'buy' ? 'text-green-500' :
+                          currentItem.return_distribution.regime.signal.slice(-1)[0] === 'sell' ? 'text-red-500' :
+                          currentItem.return_distribution.regime.signal.slice(-1)[0] === 'caution' ? 'text-amber-500' :
+                          'text-muted-foreground'
+                        }`}>
+                          {({'buy': '买入', 'sell': '卖出', 'caution': '谨慎', 'neutral': '观望'} as Record<string, string>)[currentItem.return_distribution.regime.signal.slice(-1)[0]] || currentItem.return_distribution.regime.signal.slice(-1)[0]}
+                        </div>
+                        <p className="text-[10px] text-muted-foreground">右偏低波→买 左偏高波→卖</p>
+                      </Card>
+                    </div>
+                    <Card>
+                      <CardHeader className="py-2 px-3"><CardTitle className="text-sm">日收益率分布</CardTitle></CardHeader>
+                      <CardContent className="h-[200px] px-2 pb-2">
+                        <ReactECharts option={getDailyReturnsChartOption(currentItem, bundleData.base_index_name)} style={{ height: '100%', width: '100%' }} theme="dark" />
+                      </CardContent>
+                    </Card>
+                    <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
+                      <Card>
+                        <CardHeader className="py-2 px-3"><CardTitle className="text-sm">滚动偏度 & 峰度</CardTitle></CardHeader>
+                        <CardContent className="h-[220px] px-2 pb-2">
+                          <ReactECharts option={getRollingDistChartOption(currentItem.return_distribution.stock, currentItem.return_distribution.stock.dates)} style={{ height: '100%', width: '100%' }} theme="dark" />
+                        </CardContent>
+                      </Card>
+                      <Card>
+                        <CardHeader className="py-2 px-3"><CardTitle className="text-sm">滚动波动率 (Std)</CardTitle></CardHeader>
+                        <CardContent className="h-[220px] px-2 pb-2">
+                          <ReactECharts option={getRollingVolChartOption(currentItem.return_distribution, currentItem.return_distribution.stock.dates, bundleData.base_index_name)} style={{ height: '100%', width: '100%' }} theme="dark" />
+                        </CardContent>
+                      </Card>
+                    </div>
+                    <Card>
+                      <CardHeader className="py-2 px-3"><CardTitle className="text-sm">市场状态信号 (Regime)</CardTitle></CardHeader>
+                      <CardContent className="h-[140px] px-2 pb-2">
+                        <ReactECharts option={getRegimeChartOption(currentItem.return_distribution.regime)} style={{ height: '100%', width: '100%' }} theme="dark" />
+                      </CardContent>
+                    </Card>
+                  </>
                 )}
               </TabsContent>
             </div>
