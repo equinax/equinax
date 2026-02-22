@@ -125,10 +125,15 @@ dev-lint:
 dev-format:
     docker compose exec api ruff format app/
 
-# Generate API client for frontend
+# Generate API client for frontend (runs on host, requires local node/pnpm)
 [group('dev')]
 dev-api-gen:
     cd frontend && pnpm run api:generate
+
+# Generate API client for frontend (runs inside Docker container)
+[group('dev')]
+dev-api-gen-docker:
+    docker compose exec frontend pnpm run api:generate:docker
 
 # Install/update frontend dependencies (syncs package.json to container)
 [group('dev')]

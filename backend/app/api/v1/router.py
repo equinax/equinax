@@ -16,6 +16,7 @@ from app.api.v1 import (
     data_map,
     alpha_radar,
     limit_up,
+    market_research,
 )
 
 api_router = APIRouter()
@@ -34,3 +35,6 @@ api_router.include_router(data_sync.router, prefix="/data-sync", tags=["Data Syn
 api_router.include_router(data_map.router, prefix="/data-map", tags=["Data Map"])
 api_router.include_router(alpha_radar.router, prefix="/alpha-radar", tags=["Alpha Radar"])
 api_router.include_router(limit_up.router, prefix="/market", tags=["Market"])
+api_router.include_router(
+    market_research.router, prefix="/market-research", tags=["Market Research"]
+)

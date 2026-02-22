@@ -10,6 +10,7 @@ import {
   RefreshCw,
   Settings,
   Radar,
+  Microscope,
 } from 'lucide-react'
 import {
   Tooltip,
@@ -25,6 +26,7 @@ const navigation = [
   { name: '结果分析', href: '/results', icon: BarChart3 },
   { name: '选股雷达', href: '/alpha-radar', icon: Radar },
   { name: '市场发现', href: '/universe', icon: Database },
+  { name: '市场研究', href: '/market-research', icon: Microscope },
   { name: '数据同步', href: '/data-sync', icon: RefreshCw },
 ]
 

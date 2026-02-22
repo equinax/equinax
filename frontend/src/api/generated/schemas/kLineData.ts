@@ -22,6 +22,6 @@ export interface KLineData {
   open: KLineDataOpen;
   pct_chg: KLineDataPctChg;
   preclose: KLineDataPreclose;
-  turn: KLineDataTurn;
+  turn?: KLineDataTurn;
   volume: KLineDataVolume;
 }

@@ -106,14 +106,20 @@ v1/
 
 ## Frontend API Generation
 
-API types are auto-generated from OpenAPI spec:
+API types and hooks are auto-generated from the backend OpenAPI spec using orval. Two ways to run:
 
 ```bash
-# From frontend directory
-pnpm orval
+# Option 1: Run on host machine (requires local node/pnpm)
+just dev-api-gen
+# or: cd frontend && pnpm run api:generate
+
+# Option 2: Run inside Docker container (recommended for CI / no local node)
+just dev-api-gen-docker
+# or: docker compose exec frontend pnpm run api:generate:docker
 ```
 
-This reads from `http://localhost:3080/openapi.json` and generates typed hooks.
+Host command reads from `http://localhost:3080/api/openapi.json`.
+Docker command reads from `http://api:8000/api/openapi.json` (Docker internal network).
 
 ## Industry Classification Systems
 

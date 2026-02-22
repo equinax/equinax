@@ -20,6 +20,7 @@ import IndustryRotationPage from '@/pages/IndustryRotationPage'
 import EtfRotationPage from '@/pages/EtfRotationPage'
 import DataMapPage from '@/pages/DataMapPage'
 import DynamicBacktestPage from '@/pages/dynamic-backtest'
+import MarketResearchPage from '@/pages/MarketResearchPage'
 
 function App() {
   return (
@@ -46,6 +47,7 @@ function App() {
           <Route path="alpha-radar/multi-browse" element={<MultiStockBrowsePage />} />
           <Route path="industry-rotation" element={<IndustryRotationPage />} />
           <Route path="etf-rotation" element={<EtfRotationPage />} />
+          <Route path="market-research" element={<MarketResearchPage />} />
         </Route>
       </Routes>
     </ThemeProvider>

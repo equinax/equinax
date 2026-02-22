@@ -122,6 +122,7 @@ services:
       - ./frontend/public:/app/public:cached
       - ./frontend/package.json:/app/package.json:cached
       - ./frontend/pnpm-lock.yaml:/app/pnpm-lock.yaml:cached
+      - ./frontend/orval.config.ts:/app/orval.config.ts:cached
       - frontend_node_modules:/app/node_modules
     ports:
       - "3000:3000"
