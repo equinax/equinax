@@ -1,22 +1,19 @@
-# Overnight Ultra-Short (隔夜超短) — v7.0 Uptrend Pullback Reversal
+# Overnight Ultra-Short (隔夜超短) — v8.0 First Uptick Entry
 #
-# PARADIGM SHIFT from v6:
-# v6: "declining stocks near 20d low" → picks in downtrends, negative alpha
-# v7: "uptrending stocks in pullback" → picks in 主升段 with controlled cycles
+# PARADIGM SHIFT from v7:
+# v7: "uptrending stocks currently in pullback" → picks mid-decline, no reversal confirmation
+# v8: "uptrending stocks at pullback-to-rally transition" → picks first up day after pullback (止跌回升第一升)
 #
-# IDEAL patterns (from chart analysis):
-#   A. 立霸股份: 60d uptrend, rally>pullback, at pullback-to-rally transition
-#   B. 播恩集团: gentle continuous rally, short pullback, low volatility
-#   C. 君逸数码: strong uptrend, 5 pullbacks, at pullback bottom with doji
-# ANTI patterns:
-#   D. *ST智胜: violent swings, M-shape, extreme volatility
-#   E. 益方/英联: 20+ day decline, doji in 退潮期 = worthless
+# KEY CHANGE: Entry timing shifted from "during pullback" to "first uptick after pullback"
+#   - pre_filter: prev_consecutive_down_days >= 1 (yesterday was declining)
+#   - today must be an up day (implicit via first_uptick_after_pullback > 0)
+#   - Anti-patterns: 电广传媒 (doji at top, pullback not bottomed), 正强股份 (mid-decline)
 #
 # Buy T+1 open, sell T+2 open. Prioritize win-rate over magnitude.
 
 strategy: overnight
-version: "7.5"
-description: "隔夜超短 — 主升段回踩反转·T+1开盘买T+2开盘卖·弱市回避"
+version: "8.0"
+description: "隔夜超短 — 止跌回升第一升·T+1开盘买T+2开盘卖·弱市回避"
 
 label_cn: 隔夜超短
 score_column: overnight_score
@@ -26,33 +23,40 @@ backtest_top_n: 5
 
 scoring:
   positive_factors:
-    # 60d uptrend quality (return + rally dominance + smoothness)
+    # First uptick after pullback — THE core entry signal (止跌回升第一升)
+    - signal: first_uptick_signal
+      source: first_uptick_after_pullback
+      transform: "col.clip(5.0, 80.0) / 80.0 * 100"
+      fill_null: 0.0
+      weight: 0.22
+
+    # 30d uptrend quality (return + rally dominance + smoothness)
     - signal: uptrend_quality_signal
-      source: uptrend_score_60d
+      source: uptrend_score_30d
       transform: "col.clip(20.0, 80.0) / 80.0 * 100"
       fill_null: 0.0
-      weight: 0.30
+      weight: 0.25
 
     # Rally > pullback in recent 20d (more green candles, bigger green)
     - signal: rally_dominance_signal
       source: rally_dominance_20d
       transform: "col.clip(30.0, 80.0) / 80.0 * 100"
       fill_null: 0.0
-      weight: 0.15
+      weight: 0.10
 
-    # Currently in pullback within uptrend (low 20d position = entry opportunity)
+    # Currently near box bottom (low 20d position = entry opportunity)
     - signal: pullback_depth_signal
       source: price_range_position_20d
       transform: "(0.60 - col).clip(0.0, 0.50) / 0.50 * 100"
       fill_null: 0.0
-      weight: 0.15
+      weight: 0.05
 
     # Doji / reversal candle signal — wide shadow = pullback exhaustion
     - signal: reversal_candle_signal
       source: shadow_range_pct
       transform: "(col.clip(1.0, 5.0) - 1.0) / 4.0 * 100"
       fill_null: 0.0
-      weight: 0.20
+      weight: 0.15
 
     # Controlled moves, not violent swings (anti 反面教材 D)
     - signal: smoothness_signal
@@ -91,20 +95,20 @@ scoring:
       weight: 0.10
 
   pre_filters:
-    # MUST be in uptrend: 60d return > 0%
-    - column: return_60d
+    # MUST be in uptrend: 30d return > 0%
+    - column: return_30d
       op: gt
       value: 0.0
       fill_null: 0.0
 
-    # MUST have recent pullback (at least 1 down day for entry timing)
-    - column: consecutive_down_days
+    # MUST have had recent pullback: yesterday was a down day
+    - column: prev_consecutive_down_days
       op: gte
       value: 1
       fill_null: 0.0
 
-    # MUST NOT be in prolonged decline (反面教材 E: 连跌10天以上不要)
-    - column: consecutive_down_days
+    # Pullback must not have been too long (反面教材 E: 连跌8天以上不要)
+    - column: prev_consecutive_down_days
       op: lte
       value: 8
       fill_null: 0.0

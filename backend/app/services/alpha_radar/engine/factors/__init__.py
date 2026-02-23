@@ -30,6 +30,7 @@ from .resistance import compute_resistance
 from .streak import compute_streak
 from .doji import compute_doji
 from .overnight_patterns import compute_overnight_patterns
+from .pullback_reversal_phase import compute_pullback_reversal_phase
 from .uptrend_cycle import compute_uptrend_cycle
 
 
@@ -68,6 +69,9 @@ def compute_all_factors(df: pl.DataFrame) -> pl.DataFrame:
         df
     )  # needs price_range_position_20d, _ret_5d, vol_ramp_5v20, vol_jump_1d
     df = compute_uptrend_cycle(df)  # needs consecutive_down_days, return_std_20d
+    df = compute_pullback_reversal_phase(
+        df
+    )  # needs consecutive_down_days, price_range_position_20d, close_strength
 
     # Phase 4: Overnight pattern composites (need Phase 2+3 outputs)
     df = compute_overnight_patterns(df)

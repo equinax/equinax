@@ -159,12 +159,10 @@ def compute_intermediates(df: pl.DataFrame) -> pl.DataFrame:
     # --- From price.py ---
     df = df.with_columns(
         [
-            # 60-day high
             pl.col("high")
             .rolling_max(window_size=60)
             .over("code", order_by="date")
             .alias("high_60d"),
-            # 60-day low
             pl.col("low")
             .rolling_min(window_size=60)
             .over("code", order_by="date")

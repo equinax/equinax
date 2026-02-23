@@ -115,7 +115,7 @@ async def load_all_data(
     db,
     start_date: datetime.date,
     end_date: datetime.date,
-    lookback_days: int = 120,
+    lookback_days: int = 60,
 ) -> tuple[
     pl.DataFrame,
     pl.DataFrame,
@@ -130,13 +130,15 @@ async def load_all_data(
 
     t0 = time.time()
 
+    db_lookback = lookback_days
+
     # Get actual lookback start date (trading days)
     result = await db.execute(
         text(
             "SELECT DISTINCT date FROM market_daily "
             "WHERE date <= :start_date ORDER BY date DESC LIMIT :lookback"
         ),
-        {"start_date": start_date, "lookback": lookback_days},
+        {"start_date": start_date, "lookback": db_lookback},
     )
     dates = [row[0] for row in result.fetchall()]
     data_start = dates[-1] if dates else start_date
@@ -361,7 +363,7 @@ async def load_all_data_cached(
     db,
     start_date: datetime.date,
     end_date: datetime.date,
-    lookback_days: int = 120,
+    lookback_days: int = 60,
     use_cache: bool = True,
 ) -> tuple[
     pl.DataFrame,
@@ -377,13 +379,14 @@ async def load_all_data_cached(
     if not use_cache:
         return await load_all_data(db, start_date, end_date, lookback_days)
 
-    # Calculate data_start to generate cache key
+    db_lookback = lookback_days
+
     result = await db.execute(
         text(
             "SELECT DISTINCT date FROM market_daily "
             "WHERE date <= :start_date ORDER BY date DESC LIMIT :lookback"
         ),
-        {"start_date": start_date, "lookback": lookback_days},
+        {"start_date": start_date, "lookback": db_lookback},
     )
     dates = [row[0] for row in result.fetchall()]
     data_start = dates[-1] if dates else start_date
@@ -728,7 +731,7 @@ def compute_scores_for_date(
     industry_index_df: pl.DataFrame,
     tab: str,
     top_n: int | None = None,
-    lookback_days: int = 120,
+    lookback_days: int = 60,
     precomputed_factors: bool = False,
     engine: "PolarsEngine | None" = None,
 ) -> list[dict]:
@@ -1188,7 +1191,7 @@ async def run_backtest(
             limit_df,
             industry_index_df,
         ) = await load_all_data_cached(
-            db, earliest, end_date, lookback_days=120, use_cache=use_cache
+            db, earliest, end_date, lookback_days=60, use_cache=use_cache
         )
 
     log.info(f"\nPrecomputing factors on full dataset...")

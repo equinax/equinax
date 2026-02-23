@@ -67,6 +67,9 @@ class PolarsEngine:
         Returns:
             Polars DataFrame with market data
         """
+        # Pad lookback for factor shift/rolling windows
+        db_lookback = lookback_days
+
         # Determine date range to load
         if target_date:
             # Snapshot mode - load lookback_days before target
@@ -102,7 +105,7 @@ class PolarsEngine:
                     ORDER BY date DESC
                     LIMIT :lookback
                 """),
-                {"target_date": target_date, "lookback": lookback_days},
+                {"target_date": target_date, "lookback": db_lookback},
             )
             dates = [row[0] for row in result.fetchall()]
             calc_start_date = dates[-1] if dates else target_date
@@ -120,7 +123,7 @@ class PolarsEngine:
                     ORDER BY date DESC
                     LIMIT :lookback
                 """),
-                {"start_date": start_date, "lookback": lookback_days},
+                {"start_date": start_date, "lookback": db_lookback},
             )
             dates = [row[0] for row in result.fetchall()]
             calc_start_date = dates[-1] if dates else start_date

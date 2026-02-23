@@ -78,12 +78,12 @@ class ScreenerService:
                 # Default to 20 trading days
                 start_date = end_date  # Simplified - would need proper calculation
 
-        # Load data — all strategies need 120+ days for long-term trend factors
+        # Load data — all strategies need 60+ days for long-term trend factors
         market_data_full = await self.polars_engine.load_market_data(
             target_date=target_date if mode == "snapshot" else None,
             start_date=start_date if mode == "period" else None,
             end_date=end_date if mode == "period" else None,
-            lookback_days=120,
+            lookback_days=60,
         )
 
         if market_data_full.is_empty():

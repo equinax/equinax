@@ -18,7 +18,7 @@ services:
       - shared_preload_libraries=timescaledb
       - -c
       - timescaledb.max_background_workers=8
-    shm_size: '512mb'
+    shm_size: '1gb'
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U quant -d quantdb"]
       interval: 5s
@@ -70,6 +70,11 @@ services:
         condition: service_healthy
       redis:
         condition: service_healthy
+    deploy:
+      resources:
+        limits:
+          cpus: '4.0'
+          memory: 8G
     command: uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
     networks:
       - quant_network
@@ -103,8 +108,8 @@ services:
     deploy:
       resources:
         limits:
-          cpus: '2.0'
-          memory: 2G
+          cpus: '4.0'
+          memory: 4G
     restart: unless-stopped
     stop_grace_period: 30s
     networks:
