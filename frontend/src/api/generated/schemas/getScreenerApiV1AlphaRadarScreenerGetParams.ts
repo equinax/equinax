@@ -7,6 +7,10 @@ import type { SortOrder } from "./sortOrder";
 
 export type GetScreenerApiV1AlphaRadarScreenerGetParams = {
   tab?: ScreenerTab;
+  /**
+   * Strategy config version
+   */
+  version?: string | null;
   mode?: TimeMode;
   /**
    * Target date for snapshot

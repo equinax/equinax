@@ -56,21 +56,12 @@ def score_tab(
     tab: ScreenerTabKey,
     df: pl.DataFrame,
     market_regime_score: float = 50.0,
+    version: str | None = None,
 ) -> Tuple[pl.DataFrame, str]:
-    """Score a DataFrame for a given strategy tab.
-
-    Args:
-        tab: Strategy tab key ("weekly", "rally", "dragon", "overnight")
-        df: DataFrame with technical indicators already computed
-        market_regime_score: Current market regime score (0-100)
-
-    Returns:
-        Tuple of (scored DataFrame, score column name)
-    """
-    config = load_strategy_config(tab)
+    config = load_strategy_config(tab, version=version)
     engine_cls = _get_strategy_engine(tab)
     engine = engine_cls(market_regime_score=market_regime_score)
 
-    scored_df = engine.score(df)
+    scored_df = engine.score(df, version=version)
 
     return scored_df, config.score_column

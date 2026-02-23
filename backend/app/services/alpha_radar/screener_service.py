@@ -13,7 +13,11 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.services.alpha_radar.polars_engine import PolarsEngine
 from app.services.alpha_radar.scoring import ScoringEngine
 from app.services.alpha_radar.engine import score_tab
-from app.services.alpha_radar.engine.config_loader import VALID_TABS, load_strategy_config
+from app.services.alpha_radar.engine.config_loader import (
+    VALID_TABS,
+    load_strategy_config,
+    list_strategy_versions,
+)
 
 
 class ScreenerService:
@@ -43,6 +47,7 @@ class ScreenerService:
         page_size: int = 50,
         sort_by: str = "score",
         sort_order: str = "desc",
+        version: Optional[str] = None,
     ) -> Dict[str, Any]:
         """
         Get screener results with scoring and filtering.
@@ -180,7 +185,7 @@ class ScreenerService:
                 )
                 df = df.with_columns(pl.col("sector_momentum_5d").fill_null(0.0))
         # Iter 14/15: Load and join per-stock moneyflow for dragon scoring
-        if tab in VALID_TABS and load_strategy_config(tab).requires_moneyflow:
+        if tab in VALID_TABS and load_strategy_config(tab, version=version).requires_moneyflow:
             mf_date = target_date if mode == "snapshot" else end_date
             if mf_date:
                 moneyflow_df = await self.polars_engine.load_moneyflow_data(mf_date)
@@ -235,7 +240,7 @@ class ScreenerService:
             abstain_reason_out = "narrow_breadth"
 
         if tab == "overnight" and regime_date:
-            cfg = load_strategy_config("overnight")
+            cfg = load_strategy_config("overnight", version=version)
             regime_max = cfg.market_gate.get("regime_max")
             if regime_max is not None and regime.get("market_regime_score", 50.0) > regime_max:
                 abstain_flag = True
@@ -245,7 +250,9 @@ class ScreenerService:
             tab = "overnight"  # Default to overnight if unknown tab is provided
         # Calculate scores based on tab
 
-        df, score_col = score_tab(tab, df, market_regime_score=regime["market_regime_score"])  # type: ignore[arg-type]
+        df, score_col = score_tab(
+            tab, df, market_regime_score=regime["market_regime_score"], version=version
+        )  # type: ignore[arg-type]
 
         # Generate quant labels
         df = scoring_engine.generate_quant_labels(df)

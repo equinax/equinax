@@ -35,12 +35,12 @@ from app.services.alpha_radar.scoring import ScoringEngine
 class DragonScoringEngine(ScoringEngine):
     """Scoring engine for the Dragon Leader (龙头涨停) strategy tab."""
 
-    def score(self, df: pl.DataFrame) -> pl.DataFrame:
+    def score(self, df: pl.DataFrame, version: str | None = None) -> pl.DataFrame:
         """Calculate dragon_score — Iter 21 (current best)."""
         if df.is_empty():
             return df
 
         df = self._ensure_columns(df)
 
-        cfg = load_strategy_config("dragon")
+        cfg = load_strategy_config("dragon", version=version)
         return score_from_config(cfg, df, self._apply_regime_discount)

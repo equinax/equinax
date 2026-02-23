@@ -286,6 +286,13 @@ class ScreenerResponse(BaseModel):
     abstain_reason: Optional[str] = None
 
 
+class StrategyVersionItem(BaseModel):
+    version: str
+    label_cn: str
+    description: str
+    is_head: bool
+
+
 # ============================================
 # ETF Screener Schemas
 # ============================================
@@ -1096,10 +1103,36 @@ async def get_dashboard(
     )
 
 
+@router.get("/strategy-versions", response_model=List[StrategyVersionItem])
+async def get_strategy_versions(
+    tab: ScreenerTab = Query(..., description="Strategy tab to list versions for"),
+):
+    """
+    List available config versions for a strategy tab.
+
+    Returns all versions with metadata. The version marked `is_head=true`
+    is the default (latest/best) version.
+    """
+    from app.services.alpha_radar.engine.config_loader import list_strategy_versions
+
+    versions = list_strategy_versions(tab.value)
+    return [
+        StrategyVersionItem(
+            version=v["version"],
+            label_cn=v["label_cn"],
+            description=v["description"],
+            is_head=v["is_head"],
+        )
+        for v in versions
+    ]
+
+
 @router.get("/screener", response_model=ScreenerResponse)
 async def get_screener(
     # Tab selection
     tab: ScreenerTab = Query(default=ScreenerTab.WEEKLY),
+    # Version selection (None = head/latest)
+    version: Optional[str] = Query(default=None, description="Strategy config version"),
     # Time parameters
     mode: TimeMode = Query(default=TimeMode.SNAPSHOT),
     date: Optional[datetime.date] = Query(default=None, description="Target date for snapshot"),
@@ -1158,6 +1191,7 @@ async def get_screener(
         page_size=page_size,
         sort_by=sort_by.value,
         sort_order=sort_order.value,
+        version=version,
     )
 
     # Convert items to ScreenerItem models

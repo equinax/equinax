@@ -38,6 +38,7 @@ import type {
   GetScreenerApiV1AlphaRadarScreenerGetParams,
   GetSectorHeatmapApiV1AlphaRadarSectorHeatmapGetParams,
   GetSectorRotationApiV1AlphaRadarSectorRotationGetParams,
+  GetStrategyVersionsApiV1AlphaRadarStrategyVersionsGetParams,
   HTTPValidationError,
   IndustryEtfMappingResponse,
   PerformanceEvalRequest,
@@ -46,6 +47,7 @@ import type {
   ScreenerResponse,
   SectorHeatmapResponse,
   SectorRotationResponse,
+  StrategyVersionItem,
   TimeControllerRequest,
   TimeControllerResponse,
 } from ".././schemas";
@@ -521,6 +523,249 @@ export const useGetDashboardApiV1AlphaRadarDashboardGet = <
     params,
     options,
   );
+
+  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
+    queryKey: QueryKey;
+  };
+
+  query.queryKey = queryOptions.queryKey;
+
+  return query;
+};
+
+/**
+ * List available config versions for a strategy tab.
+
+Returns all versions with metadata. The version marked `is_head=true`
+is the default (latest/best) version.
+ * @summary Get Strategy Versions
+ */
+export const getStrategyVersionsApiV1AlphaRadarStrategyVersionsGet = (
+  params: GetStrategyVersionsApiV1AlphaRadarStrategyVersionsGetParams,
+  signal?: AbortSignal,
+) => {
+  return customInstance<StrategyVersionItem[]>({
+    url: `/api/v1/alpha-radar/strategy-versions`,
+    method: "GET",
+    params,
+    signal,
+  });
+};
+
+export const getGetStrategyVersionsApiV1AlphaRadarStrategyVersionsGetQueryKey =
+  (params: GetStrategyVersionsApiV1AlphaRadarStrategyVersionsGetParams) => {
+    return [
+      `/api/v1/alpha-radar/strategy-versions`,
+      ...(params ? [params] : []),
+    ] as const;
+  };
+
+export const getGetStrategyVersionsApiV1AlphaRadarStrategyVersionsGetInfiniteQueryOptions =
+  <
+    TData = InfiniteData<
+      Awaited<
+        ReturnType<typeof getStrategyVersionsApiV1AlphaRadarStrategyVersionsGet>
+      >,
+      GetStrategyVersionsApiV1AlphaRadarStrategyVersionsGetParams["page"]
+    >,
+    TError = HTTPValidationError,
+  >(
+    params: GetStrategyVersionsApiV1AlphaRadarStrategyVersionsGetParams,
+    options?: {
+      query?: Partial<
+        UseInfiniteQueryOptions<
+          Awaited<
+            ReturnType<
+              typeof getStrategyVersionsApiV1AlphaRadarStrategyVersionsGet
+            >
+          >,
+          TError,
+          TData,
+          Awaited<
+            ReturnType<
+              typeof getStrategyVersionsApiV1AlphaRadarStrategyVersionsGet
+            >
+          >,
+          QueryKey,
+          GetStrategyVersionsApiV1AlphaRadarStrategyVersionsGetParams["page"]
+        >
+      >;
+    },
+  ) => {
+    const { query: queryOptions } = options ?? {};
+
+    const queryKey =
+      queryOptions?.queryKey ??
+      getGetStrategyVersionsApiV1AlphaRadarStrategyVersionsGetQueryKey(params);
+
+    const queryFn: QueryFunction<
+      Awaited<
+        ReturnType<typeof getStrategyVersionsApiV1AlphaRadarStrategyVersionsGet>
+      >,
+      QueryKey,
+      GetStrategyVersionsApiV1AlphaRadarStrategyVersionsGetParams["page"]
+    > = ({ signal, pageParam }) =>
+      getStrategyVersionsApiV1AlphaRadarStrategyVersionsGet(
+        { ...params, page: pageParam || params?.["page"] },
+        signal,
+      );
+
+    return { queryKey, queryFn, ...queryOptions } as UseInfiniteQueryOptions<
+      Awaited<
+        ReturnType<typeof getStrategyVersionsApiV1AlphaRadarStrategyVersionsGet>
+      >,
+      TError,
+      TData,
+      Awaited<
+        ReturnType<typeof getStrategyVersionsApiV1AlphaRadarStrategyVersionsGet>
+      >,
+      QueryKey,
+      GetStrategyVersionsApiV1AlphaRadarStrategyVersionsGetParams["page"]
+    > & { queryKey: QueryKey };
+  };
+
+export type GetStrategyVersionsApiV1AlphaRadarStrategyVersionsGetInfiniteQueryResult =
+  NonNullable<
+    Awaited<
+      ReturnType<typeof getStrategyVersionsApiV1AlphaRadarStrategyVersionsGet>
+    >
+  >;
+export type GetStrategyVersionsApiV1AlphaRadarStrategyVersionsGetInfiniteQueryError =
+  HTTPValidationError;
+
+/**
+ * @summary Get Strategy Versions
+ */
+export const useGetStrategyVersionsApiV1AlphaRadarStrategyVersionsGetInfinite =
+  <
+    TData = InfiniteData<
+      Awaited<
+        ReturnType<typeof getStrategyVersionsApiV1AlphaRadarStrategyVersionsGet>
+      >,
+      GetStrategyVersionsApiV1AlphaRadarStrategyVersionsGetParams["page"]
+    >,
+    TError = HTTPValidationError,
+  >(
+    params: GetStrategyVersionsApiV1AlphaRadarStrategyVersionsGetParams,
+    options?: {
+      query?: Partial<
+        UseInfiniteQueryOptions<
+          Awaited<
+            ReturnType<
+              typeof getStrategyVersionsApiV1AlphaRadarStrategyVersionsGet
+            >
+          >,
+          TError,
+          TData,
+          Awaited<
+            ReturnType<
+              typeof getStrategyVersionsApiV1AlphaRadarStrategyVersionsGet
+            >
+          >,
+          QueryKey,
+          GetStrategyVersionsApiV1AlphaRadarStrategyVersionsGetParams["page"]
+        >
+      >;
+    },
+  ): UseInfiniteQueryResult<TData, TError> & { queryKey: QueryKey } => {
+    const queryOptions =
+      getGetStrategyVersionsApiV1AlphaRadarStrategyVersionsGetInfiniteQueryOptions(
+        params,
+        options,
+      );
+
+    const query = useInfiniteQuery(queryOptions) as UseInfiniteQueryResult<
+      TData,
+      TError
+    > & { queryKey: QueryKey };
+
+    query.queryKey = queryOptions.queryKey;
+
+    return query;
+  };
+
+export const getGetStrategyVersionsApiV1AlphaRadarStrategyVersionsGetQueryOptions =
+  <
+    TData = Awaited<
+      ReturnType<typeof getStrategyVersionsApiV1AlphaRadarStrategyVersionsGet>
+    >,
+    TError = HTTPValidationError,
+  >(
+    params: GetStrategyVersionsApiV1AlphaRadarStrategyVersionsGetParams,
+    options?: {
+      query?: Partial<
+        UseQueryOptions<
+          Awaited<
+            ReturnType<
+              typeof getStrategyVersionsApiV1AlphaRadarStrategyVersionsGet
+            >
+          >,
+          TError,
+          TData
+        >
+      >;
+    },
+  ) => {
+    const { query: queryOptions } = options ?? {};
+
+    const queryKey =
+      queryOptions?.queryKey ??
+      getGetStrategyVersionsApiV1AlphaRadarStrategyVersionsGetQueryKey(params);
+
+    const queryFn: QueryFunction<
+      Awaited<
+        ReturnType<typeof getStrategyVersionsApiV1AlphaRadarStrategyVersionsGet>
+      >
+    > = ({ signal }) =>
+      getStrategyVersionsApiV1AlphaRadarStrategyVersionsGet(params, signal);
+
+    return { queryKey, queryFn, ...queryOptions } as UseQueryOptions<
+      Awaited<
+        ReturnType<typeof getStrategyVersionsApiV1AlphaRadarStrategyVersionsGet>
+      >,
+      TError,
+      TData
+    > & { queryKey: QueryKey };
+  };
+
+export type GetStrategyVersionsApiV1AlphaRadarStrategyVersionsGetQueryResult =
+  NonNullable<
+    Awaited<
+      ReturnType<typeof getStrategyVersionsApiV1AlphaRadarStrategyVersionsGet>
+    >
+  >;
+export type GetStrategyVersionsApiV1AlphaRadarStrategyVersionsGetQueryError =
+  HTTPValidationError;
+
+/**
+ * @summary Get Strategy Versions
+ */
+export const useGetStrategyVersionsApiV1AlphaRadarStrategyVersionsGet = <
+  TData = Awaited<
+    ReturnType<typeof getStrategyVersionsApiV1AlphaRadarStrategyVersionsGet>
+  >,
+  TError = HTTPValidationError,
+>(
+  params: GetStrategyVersionsApiV1AlphaRadarStrategyVersionsGetParams,
+  options?: {
+    query?: Partial<
+      UseQueryOptions<
+        Awaited<
+          ReturnType<
+            typeof getStrategyVersionsApiV1AlphaRadarStrategyVersionsGet
+          >
+        >,
+        TError,
+        TData
+      >
+    >;
+  },
+): UseQueryResult<TData, TError> & { queryKey: QueryKey } => {
+  const queryOptions =
+    getGetStrategyVersionsApiV1AlphaRadarStrategyVersionsGetQueryOptions(
+      params,
+      options,
+    );
 
   const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
     queryKey: QueryKey;

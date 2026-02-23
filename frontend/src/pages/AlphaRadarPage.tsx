@@ -11,6 +11,7 @@ import {
   useGetDashboardApiV1AlphaRadarDashboardGet,
   useGetScreenerApiV1AlphaRadarScreenerGet,
   useGetEtfScreenerApiV1AlphaRadarEtfScreenerGet,
+  useGetStrategyVersionsApiV1AlphaRadarStrategyVersionsGet,
 } from '@/api/generated/alpha-radar/alpha-radar'
 import type { EtfCategory, ScreenerTab, TimeMode } from '@/api/generated/schemas'
 import { MarketDashboard } from '@/components/alpha-radar/MarketDashboard'
@@ -92,6 +93,11 @@ export default function AlphaRadarPage() {
     return validTabs.includes(tabParam || '') ? (tabParam as ScreenerTab) : 'overnight'
   })
 
+  // Strategy version state (null = head/default) - restore from URL
+  const [selectedVersion, setSelectedVersion] = useState<string | null>(() => {
+    return searchParams.get('version')
+  })
+
   // Initialize ETF category from URL params (default: all)
   const [etfCategory, setEtfCategory] = useState<EtfCategory | 'all'>(() => {
     const categoryParam = searchParams.get('category')
@@ -130,9 +136,16 @@ export default function AlphaRadarPage() {
         prev.delete('category')
       }
 
+      // Sync version (only when explicitly selected, not head)
+      if (radarMode === 'stock' && selectedVersion) {
+        prev.set('version', selectedVersion)
+      } else {
+        prev.delete('version')
+      }
+
       return prev
     }, { replace: true })
-  }, [radarMode, selectedDate, activeTab, etfCategory, setSearchParams])
+  }, [radarMode, selectedDate, activeTab, etfCategory, selectedVersion, setSearchParams])
 
   // Pagination state
   const [page, setPage] = useState(1)
@@ -161,10 +174,17 @@ export default function AlphaRadarPage() {
     end_date: dateRange.to ? formatDateString(dateRange.to) : undefined,
   })
 
+  // Fetch strategy versions for current stock tab
+  const { data: strategyVersions } = useGetStrategyVersionsApiV1AlphaRadarStrategyVersionsGet(
+    { tab: activeTab },
+    { query: { enabled: radarMode === 'stock' } }
+  )
+
   // Fetch stock screener data (only when in stock mode)
   const { data: screener, isLoading: isLoadingScreener } = useGetScreenerApiV1AlphaRadarScreenerGet(
     {
       tab: activeTab,
+      version: selectedVersion ?? undefined,
       mode: timeMode,
       date: selectedDate ? formatDateString(selectedDate) : undefined,
       start_date: dateRange.from ? formatDateString(dateRange.from) : undefined,
@@ -210,6 +230,7 @@ export default function AlphaRadarPage() {
   // Handle tab change (stock screener) - reset to page 1
   const handleTabChange = (tab: string) => {
     setActiveTab(tab as ScreenerTab)
+    setSelectedVersion(null)
     setPage(1)
     setRowSelection({})
   }
@@ -364,6 +385,26 @@ export default function AlphaRadarPage() {
                     ))}
                   </TabsList>
                 </Tabs>
+                {strategyVersions && strategyVersions.length > 1 && (
+                  <div className="flex items-center gap-1 shrink-0">
+                    {strategyVersions.map((v) => {
+                      const isActive = selectedVersion === v.version || (!selectedVersion && v.is_head)
+                      return (
+                        <button
+                          key={v.version}
+                          onClick={() => setSelectedVersion(v.is_head ? null : v.version)}
+                          className={`text-xs px-2 py-0.5 rounded-full border transition-colors ${
+                            isActive
+                              ? 'bg-primary text-primary-foreground border-primary'
+                              : 'bg-muted/50 text-muted-foreground border-transparent hover:border-border'
+                          }`}
+                        >
+                          v{v.version}
+                        </button>
+                      )
+                    })}
+                  </div>
+                )}
                 <span className="text-xs text-muted-foreground shrink-0">
                   {STOCK_TABS.find((t) => t.value === activeTab)?.description}
                 </span>

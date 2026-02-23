@@ -1,0 +1,154 @@
+# Overnight Ultra-Short (隔夜超短) — v7.5 Uptrend Pullback Reversal
+#
+# PARADIGM SHIFT from v6:
+# v6: "declining stocks near 20d low" → picks in downtrends, negative alpha
+# v7: "uptrending stocks in pullback" → picks in 主升段 with controlled cycles
+#
+# IDEAL patterns (from chart analysis):
+#   A. 立霸股份: 60d uptrend, rally>pullback, at pullback-to-rally transition
+#   B. 播恩集团: gentle continuous rally, short pullback, low volatility
+#   C. 君逸数码: strong uptrend, 5 pullbacks, at pullback bottom with doji
+# ANTI patterns:
+#   D. *ST智胜: violent swings, M-shape, extreme volatility
+#   E. 益方/英联: 20+ day decline, doji in 退潮期 = worthless
+#
+# Buy T+1 open, sell T+2 open. Prioritize win-rate over magnitude.
+#
+# Cross-seed backtest (baseline):
+#   seed_42: WR=83.3%, AR=2.62%
+#   seed_123: WR=60.0%, AR=1.12%
+#   seed_55: WR=60.0%, AR=1.66%
+#   seed_99: WR=53.3%, AR=0.67%
+#   avg: WR=64.2%, AR=1.52%
+
+strategy: overnight
+version: "7.5"
+head: true
+description: "隔夜超短 — 主升段回踩反转·T+1开盘买T+2开盘卖·弱市回避"
+
+label_cn: 隔夜超短
+score_column: overnight_score
+eval_period: 2
+requires_moneyflow: false
+backtest_top_n: 5
+
+scoring:
+  positive_factors:
+    # 30d uptrend quality (return + rally dominance + smoothness)
+    - signal: uptrend_quality_signal
+      source: uptrend_score_30d
+      transform: "col.clip(20.0, 80.0) / 80.0 * 100"
+      fill_null: 0.0
+      weight: 0.30
+
+    # Rally > pullback in recent 20d (more green candles, bigger green)
+    - signal: rally_dominance_signal
+      source: rally_dominance_20d
+      transform: "col.clip(30.0, 80.0) / 80.0 * 100"
+      fill_null: 0.0
+      weight: 0.15
+
+    # Currently in pullback within uptrend (low 20d position = entry opportunity)
+    - signal: pullback_depth_signal
+      source: price_range_position_20d
+      transform: "(0.60 - col).clip(0.0, 0.50) / 0.50 * 100"
+      fill_null: 0.0
+      weight: 0.15
+
+    # Doji / reversal candle signal — wide shadow = pullback exhaustion
+    - signal: reversal_candle_signal
+      source: shadow_range_pct
+      transform: "(col.clip(1.0, 5.0) - 1.0) / 4.0 * 100"
+      fill_null: 0.0
+      weight: 0.20
+
+    # Controlled moves, not violent swings (anti 反面教材 D)
+    - signal: smoothness_signal
+      source: cycle_smoothness_20d
+      transform: "col.clip(20.0, 80.0) / 80.0 * 100"
+      fill_null: 0.0
+      weight: 0.05
+
+    # MA alignment confirms uptrend structure
+    - signal: ma_trend_signal
+      source: ma_alignment_score
+      transform: "col.clip(40.0, 95.0) / 95.0 * 100"
+      fill_null: 0.0
+      weight: 0.10
+
+    # Volume interest confirms reversal
+    - signal: volume_interest_signal
+      source: volume_ratio_5d
+      transform: "(col - 0.5).clip(0.0, 2.0) / 2.0 * 100"
+      fill_null: 0.0
+      weight: 0.05
+
+    # Low SCI = sector divergence = individual stock alpha opportunity (contrarian edge)
+    - signal: sector_divergence_signal
+      source: sector_coherence_sci
+      transform: "(0.7 - col).clip(0.0, 0.4) / 0.4 * 100"
+      fill_null: 0.0
+      weight: 0.03
+
+  penalties:
+    # Extreme volatility — M-shape, violent swings (反面教材 D)
+    - signal: volatility_penalty
+      source: return_std_20d
+      transform: "(col - 3.0).clip(0.0, 4.0) / 4.0 * 100"
+      fill_null: 0.0
+      weight: 0.10
+
+  pre_filters:
+    # MUST be in uptrend: 30d return > 0%
+    - column: return_30d
+      op: gt
+      value: 0.0
+      fill_null: 0.0
+
+    # MUST have recent pullback (at least 1 down day for entry timing)
+    - column: consecutive_down_days
+      op: gte
+      value: 1
+      fill_null: 0.0
+
+    # MUST NOT be in prolonged decline (反面教材 E: 连跌10天以上不要)
+    - column: consecutive_down_days
+      op: lte
+      value: 8
+      fill_null: 0.0
+
+    # No catastrophic pullbacks in recent 20d
+    - column: max_consecutive_down_20d
+      op: lte
+      value: 10.0
+      fill_null: 0.0
+
+    # Exclude extreme daily drops (tightened from -7.0 in v7.4: losers drop harder)
+    - column: pct_chg
+      op: gte
+      value: -5.0
+      fill_null: 0.0
+
+  regime_discount:
+    enabled: false
+
+market_gate:
+  regime_max: 50
+  note: "Contrarian strategy — abstain when regime > 50. Validated across seeds 42/123/55/99."
+
+parameter_bounds:
+  weights:
+    min: 0.05
+    max: 0.40
+    step: 0.01
+  total_positive_weight:
+    target: 1.00
+    min: 0.80
+    max: 1.00
+  total_penalty_weight:
+    target: 0.10
+    min: 0.00
+    max: 0.20
+  backtest_top_n:
+    min: 3
+    max: 8

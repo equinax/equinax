@@ -3,6 +3,7 @@ from __future__ import annotations
 import ast
 import functools
 import operator
+import re
 from pathlib import Path
 from typing import Any, Literal
 
@@ -64,12 +65,49 @@ class StrategyConfigYAML:
         self.market_gate: dict = data.get("market_gate", {})
 
 
-@functools.lru_cache(maxsize=8)
-def load_strategy_config(strategy: str, config_dir: Path | None = None) -> StrategyConfigYAML:
+def _version_sort_key(filename: str) -> tuple[int, ...]:
+    """Extract numeric parts from version filename for sorting.
+
+    'v8.0.yaml' -> (8, 0), 'v22.yaml' -> (22,), 'v3b.yaml' -> (3,)
+    """
+    stem = Path(filename).stem
+    nums = re.findall(r"\d+", stem)
+    return tuple(int(n) for n in nums) if nums else (0,)
+
+
+def _resolve_head_version(strategy_dir: Path) -> Path:
+    yamls = sorted(strategy_dir.glob("v*.yaml"), key=lambda p: _version_sort_key(p.name))
+    if not yamls:
+        raise ConfigLoadError(f"No version files found in {strategy_dir}")
+    for yf in yamls:
+        with open(yf) as f:
+            data = yaml.safe_load(f)
+        if data.get("head") is True:
+            return yf
+    return yamls[-1]
+
+
+@functools.lru_cache(maxsize=32)
+def load_strategy_config(
+    strategy: str,
+    version: str | None = None,
+    config_dir: Path | None = None,
+) -> StrategyConfigYAML:
     config_dir = config_dir or CONFIGS_DIR
-    path = config_dir / f"{strategy}.yaml"
-    if not path.exists():
-        raise ConfigLoadError(f"Config file not found: {path}")
+    strategy_dir = config_dir / strategy
+
+    if strategy_dir.is_dir():
+        if version is None:
+            path = _resolve_head_version(strategy_dir)
+        else:
+            path = strategy_dir / f"v{version}.yaml"
+            if not path.exists():
+                raise ConfigLoadError(f"Version file not found: {path}")
+    else:
+        path = config_dir / f"{strategy}.yaml"
+        if not path.exists():
+            raise ConfigLoadError(f"Config not found for strategy '{strategy}' in {config_dir}")
+
     with open(path) as f:
         data = yaml.safe_load(f)
     if data.get("strategy") != strategy:
@@ -77,6 +115,44 @@ def load_strategy_config(strategy: str, config_dir: Path | None = None) -> Strat
             f"Strategy mismatch: file says '{data.get('strategy')}', expected '{strategy}'"
         )
     return StrategyConfigYAML(data)
+
+
+def list_strategy_versions(
+    strategy: str,
+    config_dir: Path | None = None,
+) -> list[dict[str, Any]]:
+    config_dir = config_dir or CONFIGS_DIR
+    strategy_dir = config_dir / strategy
+
+    if not strategy_dir.is_dir():
+        cfg = load_strategy_config(strategy, config_dir=config_dir)
+        return [
+            {
+                "version": cfg.version,
+                "label_cn": cfg.label_cn,
+                "description": cfg.description,
+                "is_head": True,
+            }
+        ]
+
+    yamls = sorted(strategy_dir.glob("v*.yaml"), key=lambda p: _version_sort_key(p.name))
+    if not yamls:
+        raise ConfigLoadError(f"No version files found in {strategy_dir}")
+
+    head_path = _resolve_head_version(strategy_dir)
+    versions: list[dict[str, Any]] = []
+    for yf in yamls:
+        with open(yf) as f:
+            data = yaml.safe_load(f)
+        versions.append(
+            {
+                "version": str(data.get("version", yf.stem)),
+                "label_cn": data.get("label_cn", ""),
+                "description": data.get("description", ""),
+                "is_head": yf == head_path,
+            }
+        )
+    return versions
 
 
 def compile_transform(transform_str: str, source_col: str, fill_null: float) -> pl.Expr:

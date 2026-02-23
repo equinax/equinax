@@ -16,12 +16,12 @@ class WeeklyScoringEngine(ScoringEngine):
     Inherits _ensure_columns() and _apply_regime_discount() from ScoringEngine.
     """
 
-    def score(self, df: pl.DataFrame) -> pl.DataFrame:
+    def score(self, df: pl.DataFrame, version: str | None = None) -> pl.DataFrame:
         """Calculate weekly_score for all rows in df."""
         if df.is_empty():
             return df
 
         df = self._ensure_columns(df)
 
-        cfg = load_strategy_config("weekly")
+        cfg = load_strategy_config("weekly", version=version)
         return score_from_config(cfg, df, self._apply_regime_discount)
