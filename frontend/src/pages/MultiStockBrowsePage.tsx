@@ -7,6 +7,7 @@ import { Skeleton } from '@/components/ui/skeleton'
 import { ArrowLeft, FileDown, Loader2 } from 'lucide-react'
 import { StockChart } from '@/components/stock/StockChart'
 import type { PriceLine, VerticalMarker, HoverData } from '@/components/stock/StockChart'
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { ChartSyncManager } from '@/lib/dynamic-backtest/chart-sync'
 import { useEvaluatePerformanceApiV1AlphaRadarEvaluatePerformancePost } from '@/api/generated/alpha-radar/alpha-radar'
 import { getKlineApiV1StocksCodeKlineGet, getGetKlineApiV1StocksCodeKlineGetQueryKey, useGetKlineApiV1StocksCodeKlineGet } from '@/api/generated/stocks/stocks'
@@ -102,6 +103,41 @@ const STOCK_TAB_LABELS: Record<string, string> = {
   overnight: '隔夜超短',
 }
 
+// 申万一级行业名称 → 行业指数代码 映射
+const SW_INDUSTRY_NAME_TO_INDEX: Record<string, string> = {
+  "农林牧渔": "sw.801010",
+  "基础化工": "sw.801030",
+  "钢铁": "sw.801040",
+  "有色金属": "sw.801050",
+  "电子": "sw.801080",
+  "家用电器": "sw.801110",
+  "食品饮料": "sw.801120",
+  "纺织服饰": "sw.801130",
+  "轻工制造": "sw.801140",
+  "医药生物": "sw.801150",
+  "公用事业": "sw.801160",
+  "交通运输": "sw.801170",
+  "房地产": "sw.801180",
+  "商贸零售": "sw.801200",
+  "社会服务": "sw.801210",
+  "综合": "sw.801230",
+  "建筑材料": "sw.801710",
+  "建筑装饰": "sw.801720",
+  "电力设备": "sw.801730",
+  "国防军工": "sw.801740",
+  "计算机": "sw.801750",
+  "传媒": "sw.801760",
+  "通信": "sw.801770",
+  "银行": "sw.801780",
+  "非银金融": "sw.801790",
+  "汽车": "sw.801880",
+  "机械设备": "sw.801890",
+  "煤炭": "sw.801950",
+  "石油石化": "sw.801960",
+  "环保": "sw.801970",
+  "美容护理": "sw.801980",
+}
+
 export default function MultiStockBrowsePage() {
   const [searchParams] = useSearchParams()
   const navigate = useNavigate()
@@ -124,6 +160,7 @@ export default function MultiStockBrowsePage() {
 
   const syncManagerRef = useRef<ChartSyncManager>(new ChartSyncManager())
   const [isExporting, setIsExporting] = useState(false)
+  const [industryDialog, setIndustryDialog] = useState<{ name: string; code: string } | null>(null)
 
   const handleGoBack = useCallback(() => {
     const params = new URLSearchParams()
@@ -255,6 +292,15 @@ export default function MultiStockBrowsePage() {
     }
     return map
   }, [codes])
+
+  const handleIndustryClick = useCallback((industryName: string, indexCode: string) => {
+    setIndustryDialog({ name: industryName, code: indexCode })
+  }, [])
+
+  const industryVerticalMarker = useMemo((): VerticalMarker[] => {
+    if (!date) return []
+    return [{ date, color: '#3b82f6', label: '推荐日', lineStyle: 'dashed' }]
+  }, [date])
 
   const periods = evalPeriods
 
@@ -522,9 +568,31 @@ export default function MultiStockBrowsePage() {
             quantLabels={labelsMap[code]}
             evalPeriods={evalPeriods}
             tab={tab}
+            onIndustryClick={handleIndustryClick}
           />
         ))}
       </div>
+
+      <Dialog open={!!industryDialog} onOpenChange={(open) => !open && setIndustryDialog(null)}>
+        <DialogContent className="max-w-4xl p-0">
+          <DialogHeader className="px-4 pt-4 pb-0">
+            <DialogTitle className="text-base font-medium">
+              {industryDialog?.name} 行业指数
+              <span className="ml-2 text-xs font-mono text-muted-foreground">{industryDialog?.code}</span>
+            </DialogTitle>
+          </DialogHeader>
+          {industryDialog && (
+            <div className="px-2 pb-2">
+              <StockChart
+                code={industryDialog.code}
+                height={400}
+                endDate={date}
+                verticalMarkers={industryVerticalMarker}
+              />
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
     </div>
   )
 }
@@ -558,9 +626,10 @@ interface StockChartItemProps {
   quantLabels?: string[]
   evalPeriods: readonly number[]
   tab: string
+  onIndustryClick?: (industryName: string, indexCode: string) => void
 }
 
-function StockChartItem({ code, date, isFirst, stockInfo, evalDone, priceLines, verticalMarkers, onChartReady, onDataLoaded, sharedDates, quantLabels, evalPeriods, tab }: StockChartItemProps) {
+function StockChartItem({ code, date, isFirst, stockInfo, evalDone, priceLines, verticalMarkers, onChartReady, onDataLoaded, sharedDates, quantLabels, evalPeriods, tab, onIndustryClick }: StockChartItemProps) {
   const { data: klineData } = useGetKlineApiV1StocksCodeKlineGet(
     code,
     { limit: 1000 },
@@ -625,7 +694,20 @@ function StockChartItem({ code, date, isFirst, stockInfo, evalDone, priceLines, 
         <span className="font-mono font-medium">{code}</span>
         <span className="text-muted-foreground">{displayName}</span>
         {stockInfo?.sw_industry_l1 && (
-          <span className="text-xs text-muted-foreground/70">{stockInfo.sw_industry_l1}</span>
+          <span
+            className={cn(
+              "text-xs text-muted-foreground/70",
+              SW_INDUSTRY_NAME_TO_INDEX[stockInfo.sw_industry_l1] && "cursor-pointer hover:text-foreground hover:underline"
+            )}
+            onClick={() => {
+              const indexCode = SW_INDUSTRY_NAME_TO_INDEX[stockInfo.sw_industry_l1!]
+              if (indexCode && onIndustryClick) {
+                onIndustryClick(stockInfo.sw_industry_l1!, indexCode)
+              }
+            }}
+          >
+            {stockInfo.sw_industry_l1}
+          </span>
         )}
         {activeOhlc && (
           <>
