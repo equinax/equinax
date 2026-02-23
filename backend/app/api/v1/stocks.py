@@ -119,6 +119,20 @@ class KLineData(BaseModel):
     pct_chg: Optional[Decimal]
     turn: Optional[Decimal] = None
 
+    # Valuation fields (from IndicatorValuation, stocks only)
+    turnover_rate: Optional[Decimal] = None
+    turnover_rate_f: Optional[Decimal] = None
+    volume_ratio: Optional[Decimal] = None
+    pe: Optional[Decimal] = None
+    pe_ttm: Optional[Decimal] = None
+    pb_mrq: Optional[Decimal] = None
+    ps: Optional[Decimal] = None
+    ps_ttm: Optional[Decimal] = None
+    dv_ratio: Optional[Decimal] = None
+    dv_ttm: Optional[Decimal] = None
+    total_mv: Optional[Decimal] = None
+    circ_mv: Optional[Decimal] = None
+
     class Config:
         from_attributes = True
 
@@ -188,6 +202,33 @@ class ETFIndicatorResponse(BaseModel):
 # ============================================
 # Helper Functions
 # ============================================
+
+
+def _build_kline_data(md: MarketDaily, iv: Optional[IndicatorValuation] = None) -> KLineData:
+    return KLineData(
+        date=md.date,
+        open=md.open,
+        high=md.high,
+        low=md.low,
+        close=md.close,
+        preclose=md.preclose,
+        volume=md.volume,
+        amount=md.amount,
+        pct_chg=md.pct_chg,
+        turn=None,
+        turnover_rate=iv.turnover_rate if iv else None,
+        turnover_rate_f=iv.turnover_rate_f if iv else None,
+        volume_ratio=iv.volume_ratio if iv else None,
+        pe=iv.pe if iv else None,
+        pe_ttm=iv.pe_ttm if iv else None,
+        pb_mrq=iv.pb_mrq if iv else None,
+        ps=iv.ps if iv else None,
+        ps_ttm=iv.ps_ttm if iv else None,
+        dv_ratio=iv.dv_ratio if iv else None,
+        dv_ttm=iv.dv_ttm if iv else None,
+        total_mv=iv.total_mv if iv else None,
+        circ_mv=iv.circ_mv if iv else None,
+    )
 
 
 def convert_to_stock_response(
@@ -414,8 +455,24 @@ async def get_kline(
             detail="Asset not found",
         )
 
-    # Build K-line query from market_daily
-    query = select(MarketDaily).where(MarketDaily.code == code)
+    is_stock = asset.asset_type == AssetType.STOCK or asset.asset_type == "STOCK"
+
+    kline_data: list[tuple[MarketDaily, Optional[IndicatorValuation]]] = []
+
+    if is_stock:
+        query = (
+            select(MarketDaily, IndicatorValuation)
+            .outerjoin(
+                IndicatorValuation,
+                and_(
+                    MarketDaily.code == IndicatorValuation.code,
+                    MarketDaily.date == IndicatorValuation.date,
+                ),
+            )
+            .where(MarketDaily.code == code)
+        )
+    else:
+        query = select(MarketDaily).where(MarketDaily.code == code)
 
     if start_date:
         query = query.where(MarketDaily.date >= start_date)
@@ -425,18 +482,18 @@ async def get_kline(
     query = query.order_by(MarketDaily.date.desc()).limit(limit)
 
     result = await db.execute(query)
-    kline_data = result.scalars().all()
 
-    # Reverse to get chronological order
-    kline_data = list(reversed(kline_data))
+    if is_stock:
+        rows = result.all()
+        kline_data = list(reversed([(md, iv) for md, iv in rows]))
+    else:
+        kline_data_raw = result.scalars().all()
+        kline_data = list(reversed([(md, None) for md in kline_data_raw]))
 
-    # If adjustment is requested, fetch adjust factors and apply
     if adjust != AdjustType.NONE and kline_data:
-        # Get date range for factor query
-        min_date = kline_data[0].date
-        max_date = kline_data[-1].date
+        min_date = kline_data[0][0].date
+        max_date = kline_data[-1][0].date
 
-        # Fetch all adjust factors for this code
         factor_query = (
             select(AdjustFactor)
             .where(AdjustFactor.code == code)
@@ -445,8 +502,6 @@ async def get_kline(
         factor_result = await db.execute(factor_query)
         factors = factor_result.scalars().all()
 
-        # Build factor lookup: date -> factor
-        # For each kline date, find the applicable factor (most recent factor <= kline date)
         factor_map: dict[date, Decimal] = {}
         for f in factors:
             if adjust == AdjustType.HFQ and f.back_adjust_factor:
@@ -454,14 +509,11 @@ async def get_kline(
             elif adjust == AdjustType.QFQ and f.fore_adjust_factor:
                 factor_map[f.divid_operate_date] = f.fore_adjust_factor
 
-        # Get sorted factor dates
         factor_dates = sorted(factor_map.keys())
 
         def get_factor_for_date(d: date) -> Decimal:
-            """Get the applicable adjustment factor for a given date."""
             if not factor_dates:
                 return Decimal("1")
-            # Find the most recent factor date <= d
             applicable_factor = Decimal("1")
             for fd in factor_dates:
                 if fd <= d:
@@ -470,28 +522,32 @@ async def get_kline(
                     break
             return applicable_factor
 
-        # For 后复权 (hfq): we need to normalize to the latest factor
-        # adjusted_price = raw_price * (current_factor / latest_factor)
-        # But baostock's back_adjust_factor is cumulative, so:
-        # adjusted_price = raw_price * back_adjust_factor
-        #
-        # For 前复权 (qfq): similar logic with fore_adjust_factor
-
-        # Apply factors to kline data
         adjusted_data = []
-        for k in kline_data:
-            factor = get_factor_for_date(k.date)
+        for md, iv in kline_data:
+            factor = get_factor_for_date(md.date)
             adjusted_kline = KLineData(
-                date=k.date,
-                open=k.open * factor if k.open else None,
-                high=k.high * factor if k.high else None,
-                low=k.low * factor if k.low else None,
-                close=k.close * factor if k.close else None,
-                preclose=k.preclose * factor if k.preclose else None,
-                volume=k.volume,
-                amount=k.amount,
-                pct_chg=k.pct_chg,
+                date=md.date,
+                open=md.open * factor if md.open else None,
+                high=md.high * factor if md.high else None,
+                low=md.low * factor if md.low else None,
+                close=md.close * factor if md.close else None,
+                preclose=md.preclose * factor if md.preclose else None,
+                volume=md.volume,
+                amount=md.amount,
+                pct_chg=md.pct_chg,
                 turn=None,
+                turnover_rate=iv.turnover_rate if iv else None,
+                turnover_rate_f=iv.turnover_rate_f if iv else None,
+                volume_ratio=iv.volume_ratio if iv else None,
+                pe=iv.pe if iv else None,
+                pe_ttm=iv.pe_ttm if iv else None,
+                pb_mrq=iv.pb_mrq if iv else None,
+                ps=iv.ps if iv else None,
+                ps_ttm=iv.ps_ttm if iv else None,
+                dv_ratio=iv.dv_ratio if iv else None,
+                dv_ttm=iv.dv_ttm if iv else None,
+                total_mv=iv.total_mv if iv else None,
+                circ_mv=iv.circ_mv if iv else None,
             )
             adjusted_data.append(adjusted_kline)
 
@@ -505,7 +561,7 @@ async def get_kline(
     return KLineResponse(
         code=code,
         code_name=asset.name,
-        data=[KLineData.model_validate(k) for k in kline_data],
+        data=[_build_kline_data(md, iv) for md, iv in kline_data],
         total=len(kline_data),
     )
 

@@ -48,9 +48,9 @@ function App() {
           <Route path="alpha-radar/multi-browse" element={<MultiStockBrowsePage />} />
           <Route path="industry-rotation" element={<IndustryRotationPage />} />
           <Route path="etf-rotation" element={<EtfRotationPage />} />
-          <Route path="market-research" element={<MarketResearchPage />} />
-          <Route path="index-research" element={<IndexResearchPage />} />
-        </Route>
+           <Route path="market-research" element={<MarketResearchPage />} />
+           <Route path="index-research" element={<IndexResearchPage />} />
+         </Route>
       </Routes>
     </ThemeProvider>
   )

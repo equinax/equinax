@@ -51,6 +51,19 @@ export interface HoverData {
   amount: number
   turn: number | null
   change_pct: number
+  // Valuation indicators (from IndicatorValuation)
+  turnover_rate: number | null
+  turnover_rate_f: number | null
+  volume_ratio: number | null
+  pe: number | null
+  pe_ttm: number | null
+  pb_mrq: number | null
+  ps: number | null
+  ps_ttm: number | null
+  dv_ratio: number | null
+  dv_ttm: number | null
+  total_mv: number | null
+  circ_mv: number | null
 }
 
 export interface PriceLine {
@@ -67,11 +80,45 @@ export interface VerticalMarker {
   lineStyle?: 'solid' | 'dashed'
 }
 
+/** Build a HoverData object from a raw KLineData entry */
+function buildHoverDataFromKline(dataPoint: KLineData): HoverData {
+  const open = Number(dataPoint.open) || 0
+  const close = Number(dataPoint.close) || 0
+  const preclose = Number(dataPoint.preclose) || 0
+  const change_pct = preclose !== 0 ? ((close - preclose) / preclose) * 100 : 0
+  return {
+    date: dataPoint.date,
+    open,
+    high: Number(dataPoint.high) || 0,
+    low: Number(dataPoint.low) || 0,
+    close,
+    preclose,
+    volume: Number(dataPoint.volume) || 0,
+    amount: Number(dataPoint.amount) || 0,
+    turn: dataPoint.turn != null ? Number(dataPoint.turn) : null,
+    change_pct: parseFloat(change_pct.toFixed(2)),
+    turnover_rate: dataPoint.turnover_rate != null ? Number(dataPoint.turnover_rate) : null,
+    turnover_rate_f: dataPoint.turnover_rate_f != null ? Number(dataPoint.turnover_rate_f) : null,
+    volume_ratio: dataPoint.volume_ratio != null ? Number(dataPoint.volume_ratio) : null,
+    pe: dataPoint.pe != null ? Number(dataPoint.pe) : null,
+    pe_ttm: dataPoint.pe_ttm != null ? Number(dataPoint.pe_ttm) : null,
+    pb_mrq: dataPoint.pb_mrq != null ? Number(dataPoint.pb_mrq) : null,
+    ps: dataPoint.ps != null ? Number(dataPoint.ps) : null,
+    ps_ttm: dataPoint.ps_ttm != null ? Number(dataPoint.ps_ttm) : null,
+    dv_ratio: dataPoint.dv_ratio != null ? Number(dataPoint.dv_ratio) : null,
+    dv_ttm: dataPoint.dv_ttm != null ? Number(dataPoint.dv_ttm) : null,
+    total_mv: dataPoint.total_mv != null ? Number(dataPoint.total_mv) : null,
+    circ_mv: dataPoint.circ_mv != null ? Number(dataPoint.circ_mv) : null,
+  }
+}
+
 interface StockChartProps {
   code: string
   height?: number | string
   endDate?: string
   onHoverData?: (data: HoverData | null) => void
+  /** Fires once with the latest kline entry when data loads, for fallback display */
+  onLatestData?: (data: HoverData) => void
   onLoadingChange?: (isLoading: boolean) => void
   priceLines?: PriceLine[]
   verticalMarkers?: VerticalMarker[]
@@ -239,13 +286,15 @@ class VertLine implements ISeriesPrimitive<Time> {
   }
 }
 
-export function StockChart({ code, height = 500, endDate, onHoverData, onLoadingChange, priceLines, verticalMarkers, onChartReady, onDataLoaded, minimal = false, sharedDates }: StockChartProps) {
+export function StockChart({ code, height = 500, endDate, onHoverData, onLatestData, onLoadingChange, priceLines, verticalMarkers, onChartReady, onDataLoaded, minimal = false, sharedDates }: StockChartProps) {
   const containerRef = useRef<HTMLDivElement>(null)
   const chartRef = useRef<HTMLDivElement>(null)
   const chartApiRef = useRef<IChartApi | null>(null)
 
   const onHoverDataRef = useRef(onHoverData)
   onHoverDataRef.current = onHoverData
+  const onLatestDataRef = useRef(onLatestData)
+  onLatestDataRef.current = onLatestData
   const onChartReadyRef = useRef(onChartReady)
   onChartReadyRef.current = onChartReady
   const onDataLoadedRef = useRef(onDataLoaded)
@@ -356,6 +405,10 @@ export function StockChart({ code, height = 500, endDate, onHoverData, onLoading
 
   useEffect(() => {
     mergedKlineDataRef.current = mergedKlineData
+    if (mergedKlineData.length > 0) {
+      const latest = mergedKlineData[mergedKlineData.length - 1]
+      onLatestDataRef.current?.(buildHoverDataFromKline(latest))
+    }
   }, [mergedKlineData])
 
   const calculatedIndicators = useMemo(() => {
@@ -655,23 +708,7 @@ export function StockChart({ code, height = 500, endDate, onHoverData, onLoading
         const dataPoint = currentData.find(d => d.date === timeStr)
 
         if (dataPoint) {
-          const open = Number(dataPoint.open) || 0
-          const close = Number(dataPoint.close) || 0
-          const preclose = Number(dataPoint.preclose) || 0
-          const change_pct = preclose !== 0 ? ((close - preclose) / preclose) * 100 : 0
-
-          onHoverDataRef.current?.({
-            date: dataPoint.date,
-            open,
-            high: Number(dataPoint.high) || 0,
-            low: Number(dataPoint.low) || 0,
-            close,
-            preclose,
-            volume: Number(dataPoint.volume) || 0,
-            amount: Number(dataPoint.amount) || 0,
-            turn: dataPoint.turn != null ? Number(dataPoint.turn) : null,
-            change_pct: parseFloat(change_pct.toFixed(2)),
-          })
+          onHoverDataRef.current?.(buildHoverDataFromKline(dataPoint))
         } else {
           onHoverDataRef.current?.(null)
         }

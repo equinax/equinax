@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useCallback, useState } from 'react'
 import { useParams, useNavigate, useSearchParams } from 'react-router-dom'
 import { Card, CardContent } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
@@ -22,6 +22,7 @@ export default function UniverseDetailPage() {
   const navigate = useNavigate()
   const [searchParams] = useSearchParams()
   const [hoverData, setHoverData] = useState<HoverData | null>(null)
+  const [latestData, setLatestData] = useState<HoverData | null>(null)
   const [isChartLoading, setIsChartLoading] = useState(false)
 
   const fromPage = searchParams.get('from')
@@ -29,13 +30,15 @@ export default function UniverseDetailPage() {
 
   const handleBack = () => {
     if (fromPage) {
-      // If we have a known source, use browser history
       navigate(-1)
     } else {
-      // Default fallback to universe page
       navigate('/universe')
     }
   }
+
+  const handleLatestData = useCallback((data: HoverData) => {
+    setLatestData(data)
+  }, [])
 
   const { data: detail, isLoading } = useGetAssetDetailApiV1UniverseCodeGet(
     code || '',
@@ -63,31 +66,8 @@ export default function UniverseDetailPage() {
     )
   }
 
-  const displayData = hoverData ? {
-    price: hoverData.close,
-    change_pct: hoverData.change_pct,
-    preclose: hoverData.preclose,
-    open: hoverData.open,
-    high: hoverData.high,
-    low: hoverData.low,
-    volume: hoverData.volume,
-    amount: hoverData.amount,
-    turn: hoverData.turn,
-    date: hoverData.date,
-    isHover: true
-  } : {
-    price: detail.price,
-    change_pct: detail.change_pct,
-    preclose: null as number | null,
-    open: null as number | null,
-    high: detail.high,
-    low: detail.low,
-    volume: detail.volume,
-    amount: detail.amount,
-    turn: detail.turnover,
-    date: activeDate || detail.price_date,
-    isHover: false
-  }
+  const d = hoverData ?? latestData
+  const isHover = !!hoverData
 
   const formatVolume = (volume: number | undefined | null) => {
     if (volume == null) return '-'
@@ -110,16 +90,14 @@ export default function UniverseDetailPage() {
     return num.toLocaleString()
   }
 
-  const priceColor = getPriceChangeColor(displayData.change_pct)
+  const priceColor = getPriceChangeColor(d?.change_pct ?? detail.change_pct)
 
   return (
     <Card className={cn(
       "flex flex-col h-[calc(100vh-6rem)] transition-colors",
-      displayData.isHover && "bg-muted/30"
+      isHover && "bg-muted/30"
     )}>
-      {/* Header */}
       <div className="flex items-center gap-4 px-2 py-1 border-b shrink-0">
-        {/* Back + Title */}
         <div className="flex items-center gap-2 shrink-0">
           <Button variant="ghost" size="icon" onClick={handleBack} className="-ml-1 h-8 w-8">
             <ArrowLeft className="h-4 w-4" />
@@ -143,48 +121,58 @@ export default function UniverseDetailPage() {
           )}
         </div>
 
-        {/* Metrics Groups */}
         <div className="flex items-center gap-6 flex-1 min-w-0 text-xs">
-          {/* Group 1: Price / Change / Date */}
           <div className="flex flex-col leading-tight shrink-0">
             <span className={cn("text-lg font-bold font-mono", priceColor)}>
-              {formatPrice(displayData.price, detail.asset_type)}
+              {formatPrice(d?.close ?? detail.price, detail.asset_type)}
             </span>
             <span className={cn("font-mono flex items-center", priceColor)}>
-              {displayData.change_pct != null && Number(displayData.change_pct) > 0 ? (
+              {(d?.change_pct ?? detail.change_pct) != null && Number(d?.change_pct ?? detail.change_pct) > 0 ? (
                 <TrendingUp className="h-3 w-3 mr-0.5" />
-              ) : displayData.change_pct != null && Number(displayData.change_pct) < 0 ? (
+              ) : (d?.change_pct ?? detail.change_pct) != null && Number(d?.change_pct ?? detail.change_pct) < 0 ? (
                 <TrendingDown className="h-3 w-3 mr-0.5" />
               ) : null}
-              {formatPriceChange(displayData.change_pct)}
+              {formatPriceChange(d?.change_pct ?? detail.change_pct)}
             </span>
-            <span className="text-[10px] text-muted-foreground font-mono">{displayData.date}</span>
+            <span className="text-[10px] text-muted-foreground font-mono">
+              {d?.date ?? activeDate ?? detail.price_date}
+            </span>
           </div>
 
-          {/* Group 2: High / Low / Open */}
           <div className="flex flex-col leading-tight text-muted-foreground">
-            <span>高 <span className={cn("font-mono", priceColor)}>{formatPrice(displayData.high, detail.asset_type)}</span></span>
-            <span>低 <span className={cn("font-mono", priceColor)}>{formatPrice(displayData.low, detail.asset_type)}</span></span>
-            <span>开 <span className={cn("font-mono", priceColor)}>{formatPrice(displayData.open, detail.asset_type)}</span></span>
+            <span>高 <span className={cn("font-mono", priceColor)}>{formatPrice(d?.high ?? detail.high, detail.asset_type)}</span></span>
+            <span>低 <span className={cn("font-mono", priceColor)}>{formatPrice(d?.low ?? detail.low, detail.asset_type)}</span></span>
+            <span>开 <span className={cn("font-mono", priceColor)}>{formatPrice(d?.open ?? null, detail.asset_type)}</span></span>
           </div>
 
-          {!displayData.isHover && (
-            <div className="flex flex-col leading-tight text-muted-foreground">
-              <span>市值 <span className="font-mono text-foreground">{formatMarketCap(detail.market_cap)}</span></span>
-              <span>流值 <span className="font-mono text-foreground">{formatMarketCap(detail.circ_mv)}</span></span>
-              <span>市盈 <span className="font-mono text-foreground">{formatRatio(detail.pe_ttm)}</span></span>
-            </div>
-          )}
-
-          {/* Group 4: Volume / Amount / Turnover */}
           <div className="flex flex-col leading-tight text-muted-foreground">
-            <span>总手 <span className="font-mono text-foreground">{formatVolume(displayData.volume)}</span></span>
-            <span>金额 <span className="font-mono text-foreground">{formatAmount(displayData.amount)}</span></span>
-            <span>换手 <span className="font-mono text-foreground">{formatTurnover(displayData.turn)}</span></span>
+            <span>市值 <span className="font-mono text-foreground">{formatMarketCap(d?.total_mv ?? detail.market_cap)}</span></span>
+            <span>流值 <span className="font-mono text-foreground">{formatMarketCap(d?.circ_mv ?? detail.circ_mv)}</span></span>
+            <span>市盈 <span className="font-mono text-foreground">{formatRatio(d?.pe_ttm ?? detail.pe_ttm)}</span></span>
+          </div>
+
+          <div className="flex flex-col leading-tight text-muted-foreground">
+            <span>总手 <span className="font-mono text-foreground">{formatVolume(d?.volume ?? detail.volume)}</span></span>
+            <span>金额 <span className="font-mono text-foreground">{formatAmount(d?.amount ?? detail.amount)}</span></span>
+            <span>换手 <span className="font-mono text-foreground">{formatTurnover(d?.turnover_rate ?? detail.turnover)}</span></span>
+          </div>
+
+          <div className="flex flex-col leading-tight text-muted-foreground">
+            <span>市净 <span className="font-mono text-foreground">{formatRatio(d?.pb_mrq ?? detail.pb_mrq)}</span></span>
+            <span>市销 <span className="font-mono text-foreground">{formatRatio(d?.ps_ttm ?? detail.ps_ttm)}</span></span>
+            <span>量比 <span className="font-mono text-foreground">{
+              d?.volume_ratio != null ? d.volume_ratio.toFixed(2) : '-'
+            }</span></span>
+          </div>
+
+          <div className="flex flex-col leading-tight text-muted-foreground">
+            <span>股息 <span className="font-mono text-foreground">{
+              d?.dv_ratio != null ? `${d.dv_ratio.toFixed(2)}%` : '-'
+            }</span></span>
+            <span>静PE <span className="font-mono text-foreground">{formatRatio(d?.pe ?? null)}</span></span>
           </div>
         </div>
 
-        {/* Loading indicator + Button */}
         <div className="flex items-center gap-2 shrink-0">
           {isChartLoading && (
             <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
@@ -201,13 +189,13 @@ export default function UniverseDetailPage() {
         </div>
       </div>
 
-      {/* Chart */}
       <CardContent className="p-0 flex-1 min-h-0">
         <StockChart 
           code={code || ''} 
           height="100%"
           endDate={activeDate || undefined} 
           onHoverData={setHoverData}
+          onLatestData={handleLatestData}
           onLoadingChange={setIsChartLoading}
         />
       </CardContent>
