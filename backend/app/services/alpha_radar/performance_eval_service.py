@@ -369,11 +369,12 @@ class PerformanceEvalService:
         result = await self.db.execute(
             text(
                 "SELECT code, close FROM market_daily "
-                "WHERE code = ANY(:codes) AND date = :target_date"
+                "WHERE code = ANY(:codes) AND date = :target_date "
+                "AND close IS NOT NULL"
             ),
             {"codes": codes, "target_date": target_date},
         )
-        return {row[0]: Decimal(str(row[1])) for row in result.fetchall()}
+        return {row[0]: Decimal(str(row[1])) for row in result.fetchall() if row[1] is not None}
 
     async def _get_open_prices(
         self, codes: list[str], target_date: datetime.date
@@ -382,11 +383,12 @@ class PerformanceEvalService:
         result = await self.db.execute(
             text(
                 "SELECT code, open FROM market_daily "
-                "WHERE code = ANY(:codes) AND date = :target_date"
+                "WHERE code = ANY(:codes) AND date = :target_date "
+                "AND open IS NOT NULL"
             ),
             {"codes": codes, "target_date": target_date},
         )
-        return {row[0]: Decimal(str(row[1])) for row in result.fetchall()}
+        return {row[0]: Decimal(str(row[1])) for row in result.fetchall() if row[1] is not None}
 
     async def _get_future_trading_dates(
         self, ref_date: datetime.date, max_period: int

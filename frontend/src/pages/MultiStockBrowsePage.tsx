@@ -637,6 +637,7 @@ function StockChartItem({ code, date, isFirst, stockInfo, evalDone, priceLines, 
   )
 
   const [hoverData, setHoverData] = useState<HoverData | null>(null)
+  const [latestData, setLatestData] = useState<HoverData | null>(null)
 
   const displayName = stockInfo?.name ?? klineData?.code_name ?? (evalDone ? '—' : '')
   const buyPrice = stockInfo?.buy_price ? parseFloat(String(stockInfo.buy_price)) : null
@@ -718,21 +719,31 @@ function StockChartItem({ code, date, isFirst, stockInfo, evalDone, priceLines, 
             <span className={cn("font-mono text-xs font-medium", activeOhlc.change_pct > 0 ? 'text-red-500' : activeOhlc.change_pct < 0 ? 'text-green-500' : 'text-muted-foreground')}>
               {activeOhlc.change_pct > 0 ? '+' : ''}{activeOhlc.change_pct.toFixed(2)}%
             </span>
+            {(() => {
+              const tr = hoverData?.turnover_rate ?? latestData?.turnover_rate ?? (stockInfo?.turnover != null ? parseFloat(String(stockInfo.turnover)) : null)
+              return tr != null ? <span className="text-xs text-muted-foreground">换手 {tr.toFixed(1)}%</span> : null
+            })()}
             <span className="text-xs text-muted-foreground">量 {formatVol(hoverData?.volume ?? stockInfo?.volume)}</span>
             {isLimitUp && (
               <span className="text-xs font-bold text-red-600 bg-red-100 dark:bg-red-900/40 dark:text-red-400 px-1 rounded">涨停</span>
             )}
           </>
         )}
-        {stockInfo && (stockInfo.total_mv || stockInfo.pe_ttm) && (
-          <>
-            {stockInfo.total_mv != null && <span className="text-xs text-muted-foreground">市值 {formatMv(stockInfo.total_mv)}</span>}
-            {stockInfo.circ_mv != null && <span className="text-xs text-muted-foreground">流值 {formatMv(stockInfo.circ_mv)}</span>}
-            {stockInfo.turnover != null && <span className="text-xs text-muted-foreground">换手 {parseFloat(String(stockInfo.turnover)).toFixed(1)}%</span>}
-            {stockInfo.pe_ttm != null && <span className="text-xs text-muted-foreground">PE {parseFloat(String(stockInfo.pe_ttm)).toFixed(1)}</span>}
-            {stockInfo.pb_mrq != null && <span className="text-xs text-muted-foreground">PB {parseFloat(String(stockInfo.pb_mrq)).toFixed(2)}</span>}
-          </>
-        )}
+        {(() => {
+          const mv = hoverData?.total_mv ?? latestData?.total_mv ?? stockInfo?.total_mv
+          const cmv = hoverData?.circ_mv ?? latestData?.circ_mv ?? stockInfo?.circ_mv
+          const pe = hoverData?.pe_ttm ?? latestData?.pe_ttm ?? (stockInfo?.pe_ttm != null ? parseFloat(String(stockInfo.pe_ttm)) : null)
+          const pb = hoverData?.pb_mrq ?? latestData?.pb_mrq ?? (stockInfo?.pb_mrq != null ? parseFloat(String(stockInfo.pb_mrq)) : null)
+          if (mv == null && pe == null) return null
+          return (
+            <>
+              {mv != null && <span className="text-xs text-muted-foreground">市值 {formatMv(mv)}</span>}
+              {cmv != null && <span className="text-xs text-muted-foreground">流值 {formatMv(cmv)}</span>}
+              {pe != null && <span className="text-xs text-muted-foreground">PE {pe.toFixed(1)}</span>}
+              {pb != null && <span className="text-xs text-muted-foreground">PB {pb.toFixed(2)}</span>}
+            </>
+          )
+        })()}
         {quantLabels && quantLabels.length > 0 && (
           <span className="text-xs">
             <span className="text-muted-foreground">推荐:</span>
@@ -776,6 +787,7 @@ function StockChartItem({ code, date, isFirst, stockInfo, evalDone, priceLines, 
           onChartReady={onChartReady}
           onDataLoaded={onDataLoaded}
           onHoverData={setHoverData}
+          onLatestData={setLatestData}
           minimal={true}
           sharedDates={sharedDates}
         />
