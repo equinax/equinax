@@ -712,6 +712,12 @@ function StockChartItem({ code, date, isFirst, stockInfo, evalDone, priceLines, 
         )}
         {activeOhlc && (
           <>
+            <span className="font-mono text-xs text-muted-foreground">{(() => {
+              const d = hoverData?.date ?? date
+              if (!d) return ''
+              const [y, m, dd] = d.split('-')
+              return `${m}/${dd}/${y}`
+            })()}</span>
             <span className="text-xs text-muted-foreground">开 <span className={cn("font-mono", ohlcColor(activeOhlc.open))}>{activeOhlc.open.toFixed(2)}</span></span>
             <span className="text-xs text-muted-foreground">收 <span className={cn("font-mono", ohlcColor(activeOhlc.close))}>{activeOhlc.close.toFixed(2)}</span></span>
             <span className="text-xs text-muted-foreground">高 <span className={cn("font-mono", ohlcColor(activeOhlc.high))}>{activeOhlc.high.toFixed(2)}</span></span>
