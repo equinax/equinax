@@ -734,8 +734,14 @@ def compute_scores_for_date(
     lookback_days: int = 60,
     precomputed_factors: bool = False,
     engine: "PolarsEngine | None" = None,
-) -> list[dict]:
-    """Compute scores for a single date using vectorized operations."""
+    version: str | None = None,
+) -> tuple[list[dict], float]:
+    """Compute scores for a single date using vectorized operations.
+
+    Returns:
+        (recommendations, confidence) where confidence is 1.0 for normal days
+        and 0.3-0.5 for days that would have been abstained under the old model.
+    """
 
     # 1. Compute market regime score
     regime_score, weak_days, regime_details = compute_regime_score(
@@ -748,10 +754,11 @@ def compute_scores_for_date(
         profile_df,
     )
 
-    # Iter 13: Multi-signal tradeable-day gate.
-    # Primary signal: target-day breadth < 35% (all hostile dates have this)
-    # Confirmation: moneyflow outflow OR sustained weakness OR high limit-downs
-    # Exception: extreme capitulation (breadth < 5% or limit_down > 500) = contrarian buy
+    # Confidence-weighted market gate (was: binary abstain gate)
+    # Instead of returning [] on hostile conditions, we reduce confidence
+    # so that every date still produces recommendations.
+    confidence = 1.0
+
     breadth_today = regime_details.get("breadth_today", 50.0)
     mf_pct_inflow = regime_details.get("mf_pct_inflow", 50.0)
     mf_avg_net = regime_details.get("mf_avg_net", 0.0)
@@ -763,40 +770,30 @@ def compute_scores_for_date(
     hostile_weakness = weak_days >= 2
     low_regime = regime_score < 45
 
-    should_abstain = False
     if not is_capitulation:
-        # Path 1: Hostile breadth with multi-signal confirmation
         hostile_signals = sum([hostile_breadth, hostile_moneyflow, hostile_weakness, low_regime])
+        # Path 1: Hostile breadth with multi-signal confirmation → confidence 0.3
         if hostile_breadth and hostile_signals >= 3:
-            should_abstain = True
-        # Path 2: Sustained fragility (low regime + weak days, even without hostile breadth today)
+            confidence = min(confidence, 0.3)
+        # Path 2: Sustained fragility (low regime + weak days) → confidence 0.3
         elif low_regime and weak_days >= 3:
-            should_abstain = True
-        # Path 3: Extreme dispersion with hostile confirmation (skip for dragon — 涨停 thrives in dispersion)
+            confidence = min(confidence, 0.3)
+        # Path 3: Extreme dispersion with hostile confirmation → confidence 0.4
         elif (
             tab != "dragon"
             and regime_details.get("dispersion_std", 0.0) > 4.5
             and hostile_signals >= 2
         ):
-            should_abstain = True
-    if should_abstain:
-        return []
+            confidence = min(confidence, 0.4)
 
-    # Iter 6 (rally): Abstain when 5-day average breadth is weak (< 40%).
-    # Low avg breadth = narrow market participation over the past week.
-    # Even if today's breadth bounced, sustained narrow breadth means
-    # rally picks face broad headwinds. Catches WR=0% (03-26) and WR=20% (11-24).
+    # Rally-specific gate: weak 5-day breadth → confidence 0.4
     breadth_5d_avg = regime_details.get("breadth_5d_avg", 50.0)
     if tab == "rally" and breadth_5d_avg < 40.0:
-        return []
+        confidence = min(confidence, 0.4)
 
-    # v7.2 (overnight): Regime gate — abstain when market is too weak.
-    # Overnight is contrarian: buy uptrend pullbacks, sell T+2 open.
-    # When regime > 50, pullback stocks keep falling instead of bouncing.
-    # Cross-seed validation (seeds 42/123/55/99): avg WR=60.2%, AR=+1.39%
-    # Natural gap at 49.1 (good) vs 50.5 (bad) in training data.
+    # Overnight-specific gate: regime too weak → confidence 0.5
     if tab == "overnight" and regime_score > 50:
-        return []
+        confidence = min(confidence, 0.5)
 
     scoring = ScoringEngine(
         market_regime_score=regime_score,
@@ -808,7 +805,7 @@ def compute_scores_for_date(
     all_dates = market_df.select("date").unique().sort("date")
     dates_before = all_dates.filter(pl.col("date") <= target_date)
     if dates_before.height < 20:
-        return []
+        return [], confidence
 
     # Get lookback start
     lookback_dates = dates_before.tail(lookback_days)
@@ -818,7 +815,7 @@ def compute_scores_for_date(
     df = market_df.filter((pl.col("date") >= lookback_start) & (pl.col("date") <= target_date))
 
     if df.is_empty():
-        return []
+        return [], confidence
 
     # Calculate technical indicators
     if not precomputed_factors:
@@ -827,7 +824,7 @@ def compute_scores_for_date(
     # Filter to target date only
     df = df.filter(pl.col("date") == target_date)
     if df.is_empty():
-        return []
+        return [], confidence
 
     # Join valuation (for target_date)
     if not valuation_df.is_empty():
@@ -944,9 +941,9 @@ def compute_scores_for_date(
 
     # Calculate scores
     if tab in VALID_TABS:
-        df, score_col = score_tab(tab, df, market_regime_score=regime_score)  # type: ignore[arg-type]
+        df, score_col = score_tab(tab, df, market_regime_score=regime_score, version=version)  # type: ignore[arg-type]
     else:
-        return []
+        return [], confidence
 
     # Sort and get top N with sector diversification cap (max 2 per sector)
     df = df.sort([score_col, "code"], descending=[True, False], nulls_last=True)
@@ -982,7 +979,7 @@ def compute_scores_for_date(
                 "pct_chg": row.get("pct_chg", 0),
             }
         )
-    return results
+    return results, confidence
 
 
 def evaluate_t_plus_n(
@@ -1163,6 +1160,7 @@ async def run_backtest(
     period: int = 5,
     verbose: bool = False,
     use_cache: bool = True,
+    version: str | None = None,
 ):
     """Run the full backtest."""
 
@@ -1203,11 +1201,10 @@ async def run_backtest(
     log.info(f"\nRunning backtest...")
 
     all_results = {}
-    abstained_dates = set()
+    confidence_map: dict[datetime.date, float] = {}
     regime_data: dict[datetime.date, dict] = {}
     for d in test_dates:
         all_results[d] = {}
-        # Always compute regime for every date (used by report generation)
         regime_score, weak_days, regime_details = compute_regime_score(
             d,
             index_df,
@@ -1222,10 +1219,11 @@ async def run_backtest(
             "weak_days": weak_days,
             **regime_details,
         }
+        date_confidence = 1.0
         for tab in tabs:
             t0 = time.time()
-            tab_top_n = top_n or load_strategy_config(tab).backtest_top_n
-            recs = compute_scores_for_date(
+            tab_top_n = top_n or load_strategy_config(tab, version=version).backtest_top_n
+            recs, tab_confidence = compute_scores_for_date(
                 d,
                 market_df,
                 valuation_df,
@@ -1238,38 +1236,25 @@ async def run_backtest(
                 tab=tab,
                 top_n=tab_top_n,
                 precomputed_factors=True,
+                version=version,
             )
-            if not recs and tab == tabs[0]:
-                breadth_today = regime_details.get("breadth_today", 50.0)
-                mf_pct_inflow = regime_details.get("mf_pct_inflow", 50.0)
-                mf_avg_net = regime_details.get("mf_avg_net", 0.0)
-                limit_down = regime_details.get("limit_down", 0)
-                is_capitulation = breadth_today < 5.0 or limit_down > 500
-                hostile_breadth = breadth_today < 35.0
-                hostile_moneyflow = mf_pct_inflow < 32.0 or mf_avg_net < -1200
-                hostile_weakness = weak_days >= 2
-                low_regime = regime_score < 45
-                if not is_capitulation:
-                    hostile_signals = sum(
-                        [hostile_breadth, hostile_moneyflow, hostile_weakness, low_regime]
-                    )
-                    if hostile_breadth and hostile_signals >= 3:
-                        abstained_dates.add(d)
-                    elif low_regime and weak_days >= 3:
-                        abstained_dates.add(d)
-                    elif regime_details.get("dispersion_std", 0.0) > 4.5 and hostile_signals >= 2:
-                        abstained_dates.add(d)
-            tab_period = load_strategy_config(tab).eval_period if tab in VALID_TABS else period
+            date_confidence = min(date_confidence, tab_confidence)
+            tab_period = (
+                load_strategy_config(tab, version=version).eval_period
+                if tab in VALID_TABS
+                else period
+            )
             perf = evaluate_t_plus_n(recs, d, market_df, tab_period, limit_df=limit_df, tab=tab)
             elapsed = time.time() - t0
             all_results[d][tab] = {
                 "recommendations": recs,
                 "performance": perf,
                 "elapsed": elapsed,
+                "confidence": tab_confidence,
             }
 
             if verbose and recs:
-                log.info(f"\n  {d} | {tab} | {elapsed:.2f}s")
+                log.info(f"\n  {d} | {tab} | {elapsed:.2f}s | confidence={tab_confidence}")
                 for r in recs:
                     ret_info = next((s for s in perf["stocks"] if s["code"] == r["code"]), {})
                     ret_val = ret_info.get("return", "N/A")
@@ -1286,69 +1271,73 @@ async def run_backtest(
                     log.info(
                         f"    {r['code']} {r['name']:<8} score={score_str} close={close_str} chg={chg_str}% → T+{tab_period}: {ret_val}% {marker}"
                     )
-            elif verbose and d in abstained_dates and tab == tabs[0]:
+            elif verbose and date_confidence < 1.0 and tab == tabs[0]:
                 rd = regime_data[d]
                 log.info(
-                    f"\n  {d} | ABSTAIN (regime={rd['regime_score']:.1f}, weak_days={rd['weak_days']}, "
+                    f"\n  {d} | LOW_CONF={date_confidence} (regime={rd['regime_score']:.1f}, weak_days={rd['weak_days']}, "
                     f"breadth={rd.get('breadth_today', 0):.1f}%, "
                     f"mf_inflow={rd.get('mf_pct_inflow', 0):.1f}%, "
                     f"mf_net={rd.get('mf_avg_net', 0):.0f})"
                 )
+        confidence_map[d] = date_confidence
 
     # Print summary table
     total_elapsed = time.time() - t_start
-    col_width = 26
+    col_width = 30
     header_parts = [f"{'Date':<14}"]
     for tab in tabs:
-        tp = load_strategy_config(tab).eval_period if tab in VALID_TABS else period
+        tp = load_strategy_config(tab, version=version).eval_period if tab in VALID_TABS else period
         header_parts.append(f"{tab.upper()}(T+{tp})"[:col_width].ljust(col_width))
     separator_width = 14 + col_width * len(tabs)
     log.info(f"\n{'=' * separator_width}")
     log.info(" ".join(header_parts))
     log.info(f"{'=' * separator_width}")
 
+    low_confidence_dates = {d for d, c in confidence_map.items() if c < 1.0}
     for d in test_dates:
         row_parts = [f"{d!s:<14}"]
+        conf = confidence_map.get(d, 1.0)
+        conf_tag = f" [{conf}]" if conf < 1.0 else ""
         for tab in tabs:
-            if d in abstained_dates:
-                row_parts.append("ABSTAIN                   ")
+            perf = all_results[d][tab]["performance"]
+            wr = perf["win_rate"]
+            ar = perf["avg_return"]
+            plr = perf["profit_loss_ratio"]
+            if wr is not None:
+                row_parts.append(f"WR={wr}% AR={ar}% PL={plr or 'N/A':<5}{conf_tag}")
             else:
-                perf = all_results[d][tab]["performance"]
-                wr = perf["win_rate"]
-                ar = perf["avg_return"]
-                plr = perf["profit_loss_ratio"]
-                if wr is not None:
-                    row_parts.append(f"WR={wr}% AR={ar}% PL={plr or 'N/A':<5}")
-                else:
-                    row_parts.append("NO_DATA                   ")
+                row_parts.append(f"NO_DATA{conf_tag:<23}")
         log.info(" ".join(row_parts))
 
-    # Averages (excluding abstained dates)
-    log.info(f"\n{'--- AVERAGES ---':^110}")
-    if abstained_dates:
-        log.info(
-            f"  (Excluding {len(abstained_dates)} abstained date(s): {', '.join(str(d) for d in sorted(abstained_dates))})"
-        )
+    # Weighted averages
+    log.info(f"\n{'--- WEIGHTED AVERAGES ---':^110}")
+    if low_confidence_dates:
+        log.info(f"  ({len(low_confidence_dates)} low-confidence date(s) with reduced weight)")
     log.info(f"{'Tab':<14} {'Avg WR':<12} {'Avg AR':<12} {'Avg P/L':<12} {'# Dates':<10}")
     log.info("-" * 60)
 
     for tab in tabs:
-        wrs, ars, plrs = [], [], []
+        wrs, ars, plrs, weights = [], [], [], []
         for d in test_dates:
-            if d in abstained_dates:
-                continue
             perf = all_results[d][tab]["performance"]
+            conf = confidence_map.get(d, 1.0)
             if perf["win_rate"] is not None:
                 wrs.append(perf["win_rate"])
                 ars.append(perf["avg_return"])
+                weights.append(conf)
                 if perf["profit_loss_ratio"] is not None:
-                    plrs.append(perf["profit_loss_ratio"])
+                    plrs.append((perf["profit_loss_ratio"], conf))
 
         if wrs:
-            avg_wr = sum(wrs) / len(wrs)
-            avg_ar = sum(ars) / len(ars)
-            avg_plr = sum(plrs) / len(plrs) if plrs else None
-            plr_str = f"{avg_plr:.2f}" if avg_plr is not None else "N/A"
+            total_weight = sum(weights)
+            avg_wr = sum(w * wr for w, wr in zip(weights, wrs)) / total_weight
+            avg_ar = sum(w * ar for w, ar in zip(weights, ars)) / total_weight
+            if plrs:
+                plr_weight = sum(c for _, c in plrs)
+                avg_plr = sum(v * c for v, c in plrs) / plr_weight
+                plr_str = f"{avg_plr:.2f}"
+            else:
+                plr_str = "N/A"
             log.info(
                 f"{tab:<14} {avg_wr:.1f}%{'':<7} {avg_ar:.2f}%{'':<7} {plr_str:<12} {len(wrs)}"
             )
@@ -1356,7 +1345,7 @@ async def run_backtest(
             log.info(f"{tab:<14} NO DATA")
 
     log.info(f"\nTotal time: {total_elapsed:.1f}s")
-    return all_results, abstained_dates, regime_data
+    return all_results, confidence_map, regime_data
 
 
 def parse_args():
@@ -1397,6 +1386,12 @@ def parse_args():
         action="store_true",
         help="Clear all cached Parquet files and exit",
     )
+    parser.add_argument(
+        "--version",
+        type=str,
+        default=None,
+        help="Strategy config version (e.g. 8.0). Default: head version.",
+    )
     return parser.parse_args()
 
 
@@ -1426,6 +1421,7 @@ def main():
             args.period,
             args.verbose,
             use_cache=not args.no_cache,
+            version=args.version,
         )
     )
 

@@ -257,6 +257,8 @@ data-fixtures *args='status':
 #   just alpha-report --sample heavy                     # Heavy: ~54 weekly dates
 #   just alpha-report --sample full                      # Full: all trading days 2025-01~2026-02
 #   just alpha-report --dates 2025-06-09,2025-09-15      # Specific dates
+#   just alpha-report --months 2026-01,2026-02            # All trading days in months
+#   just alpha-report --version 8.0 --tabs overnight     # Specific config version
 #   just alpha-report --tabs weekly                      # Single tab
 [group('alpha')]
 alpha-report *args='':

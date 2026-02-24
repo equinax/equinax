@@ -60,7 +60,7 @@ async def analyze_limit_up_overlap(
     losers_with_limit_up = 0
 
     for d in test_dates:
-        recs = compute_scores_for_date(
+        recs, _confidence = compute_scores_for_date(
             d,
             market_df,
             valuation_df,
@@ -176,7 +176,7 @@ async def analyze_missed_dragons(
 
     for d in test_dates:
         # Get recommendations
-        recs = compute_scores_for_date(
+        recs, _confidence = compute_scores_for_date(
             d,
             market_df,
             valuation_df,

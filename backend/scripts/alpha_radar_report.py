@@ -9,6 +9,8 @@ Usage:
     docker compose exec api python -m scripts.alpha_radar_report --sample heavy   # ~50 dates
     docker compose exec api python -m scripts.alpha_radar_report --sample full    # All trading days 2025-01 ~ 2026-02
     docker compose exec api python -m scripts.alpha_radar_report --dates 2025-03-10,2025-06-09
+    docker compose exec api python -m scripts.alpha_radar_report --months 2026-01,2026-02
+    docker compose exec api python -m scripts.alpha_radar_report --version 8.0 --tabs overnight
     docker compose exec api python -m scripts.alpha_radar_report --seed 42        # Reproducible random sampling
 """
 
@@ -19,7 +21,7 @@ import logging
 import os
 import sys
 import time
-import uuid
+
 
 log = logging.getLogger("alpha_radar_report")
 
@@ -61,7 +63,7 @@ def _bold_if_above(val: float | None, target: float, formatted: str) -> str:
 
 def generate_summary_md(
     all_results: dict,
-    abstained_dates: set,
+    confidence_map: dict[datetime.date, float],
     regime_data: dict,
     tabs: list[str],
     top_n: int,
@@ -72,41 +74,42 @@ def generate_summary_md(
 ) -> str:
     lines: list[str] = []
     now = datetime.datetime.now().strftime("%Y-%m-%d %H:%M")
-    active_dates = [d for d in test_dates if d not in abstained_dates]
+    low_conf_dates = [d for d in test_dates if confidence_map.get(d, 1.0) < 1.0]
 
     lines.append("# Alpha Radar 综合回测报告")
     lines.append("")
     lines.append(f"- **生成时间**: {now}")
     lines.append(f"- **样本日期数**: {len(test_dates)} ({test_dates[0]} ~ {test_dates[-1]})")
     lines.append(
-        f"- **有效日期数**: {len(active_dates)} (排除 {len(abstained_dates)} 个 abstain 日)"
+        f"- **日期数**: {len(test_dates)} (其中 {len(low_conf_dates)} 个低信心日, 权重 < 1.0)"
     )
     lines.append(f"- **Top-N**: {top_n}")
     lines.append(f"- **策略**: {', '.join(f'{tab}({tab_labels.get(tab, tab)})' for tab in tabs)}")
     lines.append(f"- **耗时**: {elapsed:.1f}s")
     lines.append("")
 
-    # --- Per-tab aggregate ---
+    # --- Per-tab aggregate (weighted) ---
     lines.append("## 策略汇总")
     lines.append("")
     lines.append(
-        "| 策略 | 评估周期 | 平均胜率 | 目标 | 平均收益率 | 目标 | 平均盈亏比 | 有效日数 | 达标 |"
+        "| 策略 | 评估周期 | 加权胜率 | 目标 | 加权收益率 | 目标 | 加权盈亏比 | 日期数 | 达标 |"
     )
     lines.append(
-        "|------|----------|----------|------|------------|------|------------|----------|------|"
+        "|------|----------|----------|------|------------|------|------------|--------|------|"
     )
 
     for tab in tabs:
-        wrs, ars, plrs = [], [], []
+        wrs, ars, weights = [], [], []
+        plrs: list[tuple[float, float]] = []
         for d in test_dates:
-            if d in abstained_dates:
-                continue
             perf = all_results[d][tab]["performance"]
+            conf = confidence_map.get(d, 1.0)
             if perf["win_rate"] is not None:
                 wrs.append(perf["win_rate"])
                 ars.append(perf["avg_return"])
+                weights.append(conf)
                 if perf["profit_loss_ratio"] is not None:
-                    plrs.append(perf["profit_loss_ratio"])
+                    plrs.append((perf["profit_loss_ratio"], conf))
 
         if not wrs:
             lines.append(
@@ -114,9 +117,14 @@ def generate_summary_md(
             )
             continue
 
-        avg_wr = sum(wrs) / len(wrs)
-        avg_ar = sum(ars) / len(ars)
-        avg_plr = sum(plrs) / len(plrs) if plrs else None
+        total_w = sum(weights)
+        avg_wr = sum(w * v for w, v in zip(weights, wrs)) / total_w
+        avg_ar = sum(w * v for w, v in zip(weights, ars)) / total_w
+        if plrs:
+            plr_w = sum(c for _, c in plrs)
+            avg_plr = sum(v * c for v, c in plrs) / plr_w
+        else:
+            avg_plr = None
 
         t = TARGETS.get(tab, {})
         wr_target = t.get("wr", 0)
@@ -142,17 +150,14 @@ def generate_summary_md(
     # --- Date × Tab matrix ---
     lines.append("## 逐日明细")
     lines.append("")
-    header = "| 日期 | " + " | ".join(f"{tab} WR / AR" for tab in tabs) + " |"
-    sep = "|------|" + "|".join("------|" for _ in tabs)
+    header = "| 日期 | 信心 | " + " | ".join(f"{tab} WR / AR" for tab in tabs) + " |"
+    sep = "|------|------|" + "|".join("------|" for _ in tabs)
     lines.append(header)
     lines.append(sep)
 
     for d in test_dates:
-        if d in abstained_dates:
-            cells = " | ".join("ABSTAIN" for _ in tabs)
-            lines.append(f"| {d} | {cells} |")
-            continue
-
+        conf = confidence_map.get(d, 1.0)
+        conf_str = f"{conf}" if conf < 1.0 else "1.0"
         cells = []
         for tab in tabs:
             perf = all_results[d][tab]["performance"]
@@ -162,10 +167,11 @@ def generate_summary_md(
                 t = TARGETS.get(tab, {})
                 wr_str = _bold_if_above(wr, t.get("wr", 0), _fmt(wr, "%", 1))
                 ar_str = _bold_if_above(ar, t.get("ar", 0), _fmt(ar))
-                cells.append(f"{wr_str} / {ar_str}")
+                indicator = " ⚠️" if conf < 1.0 else ""
+                cells.append(f"{wr_str} / {ar_str}{indicator}")
             else:
                 cells.append("NO_DATA")
-        lines.append(f"| {d} | " + " | ".join(cells) + " |")
+        lines.append(f"| {d} | {conf_str} | " + " | ".join(cells) + " |")
 
     lines.append("")
 
@@ -175,8 +181,6 @@ def generate_summary_md(
     for tab in tabs:
         date_metrics: list[tuple[datetime.date, float, float]] = []
         for d in test_dates:
-            if d in abstained_dates:
-                continue
             perf = all_results[d][tab]["performance"]
             if perf["win_rate"] is not None and perf["avg_return"] is not None:
                 date_metrics.append((d, perf["win_rate"], perf["avg_return"]))
@@ -192,16 +196,22 @@ def generate_summary_md(
         lines.append(f"- **最差**: {worst[0]} — WR={worst[1]}%, AR={worst[2]:.2f}%")
         lines.append("")
 
-    # --- Abstain analysis ---
-    if abstained_dates:
-        lines.append("## Abstain 分析")
+    # --- Low-confidence analysis ---
+    if low_conf_dates:
+        lines.append("## 低信心日分析")
         lines.append("")
-        lines.append("| 日期 | Regime Score | Weak Days | Breadth | MF Inflow% | MF Avg Net |")
-        lines.append("|------|-------------|-----------|---------|------------|------------|")
-        for d in sorted(abstained_dates):
+        lines.append(
+            "| 日期 | 信心系数 | Regime Score | Weak Days | Breadth | MF Inflow% | MF Avg Net |"
+        )
+        lines.append(
+            "|------|----------|-------------|-----------|---------|------------|------------|"
+        )
+        for d in sorted(low_conf_dates):
             rd = regime_data.get(d, {})
+            conf = confidence_map.get(d, 1.0)
             lines.append(
                 f"| {d} "
+                f"| {conf} "
                 f"| {rd.get('regime_score', 'N/A')} "
                 f"| {rd.get('weak_days', 'N/A')} "
                 f"| {_fmt(rd.get('breadth_today'), '%', 1)} "
@@ -220,7 +230,7 @@ def generate_date_md(
     d: datetime.date,
     results_for_date: dict,
     regime: dict,
-    abstained: bool,
+    confidence: float,
     tabs: list[str],
     tab_labels: dict[str, str],
     tab_periods: dict[str, int],
@@ -236,6 +246,7 @@ def generate_date_md(
     lines.append("")
     lines.append(f"| 指标 | 值 |")
     lines.append(f"|------|----|")
+    lines.append(f"| 信心系数 | {confidence} |")
     lines.append(f"| Regime Score | {regime.get('regime_score', 'N/A')} |")
     lines.append(f"| Weak Days | {regime.get('weak_days', 'N/A')} |")
     lines.append(f"| 5日收益率 | {_fmt(regime.get('ret_5d'), '%')} |")
@@ -253,12 +264,9 @@ def generate_date_md(
     lines.append(f"| 跌停数 | {regime.get('limit_down', 'N/A')} |")
     lines.append("")
 
-    if abstained:
-        lines.append("> **⚠️ 该日被判定为 ABSTAIN（弃权），不生成推荐。**")
+    if confidence < 1.0:
+        lines.append(f"> ⚠️ 该日信心系数: {confidence} — 市场环境不利，推荐权重降低")
         lines.append("")
-        lines.append("---")
-        lines.append(f"*Generated by alpha_radar_report.py*")
-        return "\n".join(lines) + "\n"
 
     # --- Per-tab sections ---
     for tab in tabs:
@@ -337,7 +345,7 @@ def generate_date_md(
 
 def generate_reports(
     all_results: dict,
-    abstained_dates: set,
+    confidence_map: dict[datetime.date, float],
     regime_data: dict,
     tabs: list[str],
     top_n: int,
@@ -353,7 +361,7 @@ def generate_reports(
 
     summary = generate_summary_md(
         all_results,
-        abstained_dates,
+        confidence_map,
         regime_data,
         tabs,
         top_n,
@@ -369,12 +377,12 @@ def generate_reports(
 
     for d in test_dates:
         regime = regime_data.get(d, {})
-        abstained = d in abstained_dates
+        conf = confidence_map.get(d, 1.0)
         date_md = generate_date_md(
             d,
             all_results.get(d, {}),
             regime,
-            abstained,
+            conf,
             tabs,
             tab_labels,
             tab_periods,
@@ -412,16 +420,28 @@ def parse_args():
         help="Comma-separated dates (YYYY-MM-DD). Overrides --sample if provided.",
     )
     parser.add_argument(
+        "--months",
+        type=str,
+        default=None,
+        help="Comma-separated months (YYYY-MM). Expands to all trading days in those months. Overrides --sample.",
+    )
+    parser.add_argument(
         "--output-dir",
         type=str,
         default=None,
-        help="Output directory (default: .reports/YYYY-MM-DD_<random>)",
+        help="Output directory (default: .reports/YYYY-MM-DD_HHMMSS)",
     )
     parser.add_argument(
         "--seed",
         type=int,
         default=None,
         help="Random seed for date sampling (default: random each run)",
+    )
+    parser.add_argument(
+        "--version",
+        type=str,
+        default=None,
+        help="Strategy config version (e.g. 8.0). Default: head version.",
     )
     return parser.parse_args()
 
@@ -437,6 +457,22 @@ def main():
 
     if args.dates:
         test_dates = [datetime.date.fromisoformat(d.strip()) for d in args.dates.split(",")]
+    elif args.months:
+        from scripts.alpha_radar_backtest import get_trading_days
+
+        months = [m.strip() for m in args.months.split(",")]
+        test_dates = []
+        for m in months:
+            year, month = int(m[:4]), int(m[5:7])
+            if month == 12:
+                end = datetime.date(year + 1, 1, 1) - datetime.timedelta(days=1)
+            else:
+                end = datetime.date(year, month + 1, 1) - datetime.timedelta(days=1)
+            start = datetime.date(year, month, 1)
+            days = get_trading_days(start=start, end=end)
+            test_dates.extend(days)
+        test_dates = sorted(set(test_dates))
+        log.info(f"--months {args.months}: {len(test_dates)} trading days")
     elif args.sample == "full":
         test_dates = _get_full_trading_days()
     else:
@@ -448,28 +484,28 @@ def main():
     tabs = [t.strip() for t in args.tabs.split(",")]
 
     from scripts.alpha_radar_backtest import run_backtest
-    from app.services.alpha_radar.engine.config_loader import VALID_TABS, load_strategy_config
+    from app.services.alpha_radar.engine.config_loader import load_strategy_config
 
-    tab_labels = {k: load_strategy_config(k).label_cn for k in VALID_TABS}
-    tab_periods = {k: load_strategy_config(k).eval_period for k in VALID_TABS}
+    tab_labels = {k: load_strategy_config(k, version=args.version).label_cn for k in tabs}
+    tab_periods = {k: load_strategy_config(k, version=args.version).eval_period for k in tabs}
 
     output_dir = args.output_dir
     if not output_dir:
-        today = datetime.date.today().isoformat()
-        run_id = uuid.uuid4().hex[:6]
-        output_dir = f".reports/{today}_{run_id}"
+        tz_shanghai = datetime.timezone(datetime.timedelta(hours=8))
+        now = datetime.datetime.now(tz=tz_shanghai)
+        output_dir = f".reports/{now.strftime('%Y-%m-%d_%H%M%S')}"
 
     log.info(f"Running backtest: {len(test_dates)} dates × {len(tabs)} tabs, top_n={args.top_n}")
     t_start = time.time()
-    all_results, abstained_dates, regime_data = asyncio.run(
-        run_backtest(test_dates, tabs, args.top_n, verbose=False)
+    all_results, confidence_map, regime_data = asyncio.run(
+        run_backtest(test_dates, tabs, args.top_n, verbose=False, version=args.version)
     )
     elapsed = time.time() - t_start
 
     log.info(f"Backtest complete in {elapsed:.1f}s. Generating reports...")
     generate_reports(
         all_results,
-        abstained_dates,
+        confidence_map,
         regime_data,
         tabs,
         args.top_n,

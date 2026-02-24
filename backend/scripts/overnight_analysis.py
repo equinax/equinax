@@ -81,7 +81,7 @@ async def run_analysis():
             d, index_df, market_df, moneyflow_df, limit_df
         )
 
-        recs = compute_scores_for_date(
+        recs, _confidence = compute_scores_for_date(
             d,
             market_df,
             valuation_df,

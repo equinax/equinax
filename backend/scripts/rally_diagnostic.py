@@ -63,7 +63,7 @@ async def analyze_market_cap_distribution(
     size_category_counts: dict[str, int] = {}
 
     for d in test_dates:
-        recs = compute_scores_for_date(
+        recs, _confidence = compute_scores_for_date(
             d,
             market_df,
             valuation_df,
