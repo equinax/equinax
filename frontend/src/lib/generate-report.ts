@@ -33,6 +33,7 @@ export interface MarkdownReportData {
   date: string
   tab?: string
   tabLabel?: string
+  codes?: string[]
   assessment?: string
   stocks: MarkdownReportStock[]
   periodStats: MarkdownPeriodStats[]
@@ -73,14 +74,31 @@ export function generateMarkdownReport(data: MarkdownReportData): void {
   const lines: string[] = []
 
   // Header
-  const strategyNote = tabLabel ? ` · ${tabLabel}` : ''
-  lines.push(`# Alpha Radar 推荐报告${strategyNote}`)
+  const strategyNote = tabLabel ? ` ${tabLabel}` : ''
+  lines.push(`# ${date}${strategyNote}`)
   lines.push('')
   lines.push(`- **推荐日期**: ${date}`)
   lines.push(`- **股票数量**: ${stocks.length}`)
   if (assessment) lines.push(`- **综合评价**: ${assessment}`)
   lines.push(`- **报告生成**: ${new Date().toLocaleString('zh-CN')}`)
   lines.push('')
+
+  // Quick restore params
+  if (data.codes && data.codes.length > 0) {
+    lines.push('## 快速恢复参数')
+    lines.push('')
+    const params = new URLSearchParams()
+    params.set('codes', data.codes.join(','))
+    if (data.date) params.set('date', data.date)
+    if (data.tab) params.set('tab', data.tab)
+    const restoreUrl = `${window.location.origin}/alpha-radar/multi-browse?${params.toString()}`
+    lines.push('将以下链接粘贴到「多股评估」入口页面，可快速恢复当前推荐列表：')
+    lines.push('')
+    lines.push('```')
+    lines.push(restoreUrl)
+    lines.push('```')
+    lines.push('')
+  }
 
   // Aggregate stats table
   if (periodStats.length > 0) {
@@ -219,7 +237,7 @@ export function generateMarkdownReport(data: MarkdownReportData): void {
   const url = URL.createObjectURL(blob)
   const a = document.createElement('a')
   a.href = url
-  a.download = `推荐报告_${date}${tabLabel ? `_${tabLabel}` : ''}.md`
+  a.download = `${date}${tabLabel ? ` ${tabLabel}` : ''}.md`
   document.body.appendChild(a)
   a.click()
   document.body.removeChild(a)

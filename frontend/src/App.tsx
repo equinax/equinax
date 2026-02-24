@@ -16,6 +16,7 @@ import SettingsPage from '@/pages/SettingsPage'
 import DataSyncPage from '@/pages/DataSyncPage'
 import AlphaRadarPage from '@/pages/AlphaRadarPage'
 import MultiStockBrowsePage from '@/pages/MultiStockBrowsePage'
+import MultiBrowseEntryPage from '@/pages/MultiBrowseEntryPage'
 import IndustryRotationPage from '@/pages/IndustryRotationPage'
 import EtfRotationPage from '@/pages/EtfRotationPage'
 import DataMapPage from '@/pages/DataMapPage'
@@ -46,6 +47,7 @@ function App() {
           <Route path="data-map" element={<DataMapPage />} />
           <Route path="alpha-radar" element={<AlphaRadarPage />} />
           <Route path="alpha-radar/multi-browse" element={<MultiStockBrowsePage />} />
+          <Route path="multi-browse" element={<MultiBrowseEntryPage />} />
           <Route path="industry-rotation" element={<IndustryRotationPage />} />
           <Route path="etf-rotation" element={<EtfRotationPage />} />
            <Route path="market-research" element={<MarketResearchPage />} />

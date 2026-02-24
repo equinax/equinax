@@ -4,7 +4,8 @@ import { useQueries } from '@tanstack/react-query'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Skeleton } from '@/components/ui/skeleton'
-import { ArrowLeft, FileDown, Loader2 } from 'lucide-react'
+import { ArrowLeft, FileDown, Loader2, CheckSquare, Square } from 'lucide-react'
+import { Checkbox } from '@/components/ui/checkbox'
 import { StockChart } from '@/components/stock/StockChart'
 import type { PriceLine, VerticalMarker, HoverData } from '@/components/stock/StockChart'
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
@@ -161,6 +162,35 @@ export default function MultiStockBrowsePage() {
   const syncManagerRef = useRef<ChartSyncManager>(new ChartSyncManager())
   const [isExporting, setIsExporting] = useState(false)
   const [industryDialog, setIndustryDialog] = useState<{ name: string; code: string } | null>(null)
+  const [selectedCodes, setSelectedCodes] = useState<Set<string>>(() => new Set(codes))
+
+  // Keep selectedCodes in sync when codes change (e.g. URL param update)
+  useEffect(() => {
+    setSelectedCodes(new Set(codes))
+  }, [codes.join(',')])
+
+  const allSelected = selectedCodes.size === codes.length
+  const noneSelected = selectedCodes.size === 0
+
+  const handleToggleAll = useCallback(() => {
+    if (allSelected) {
+      setSelectedCodes(new Set())
+    } else {
+      setSelectedCodes(new Set(codes))
+    }
+  }, [allSelected, codes])
+
+  const handleToggleCode = useCallback((code: string) => {
+    setSelectedCodes(prev => {
+      const next = new Set(prev)
+      if (next.has(code)) {
+        next.delete(code)
+      } else {
+        next.add(code)
+      }
+      return next
+    })
+  }, [])
 
   const handleGoBack = useCallback(() => {
     const params = new URLSearchParams()
@@ -313,7 +343,9 @@ export default function MultiStockBrowsePage() {
     if (isExporting || !evalMutation.data) return
     setIsExporting(true)
     try {
-      const mdStocks: MarkdownReportStock[] = codes.map(code => {
+      const exportCodes = codes.filter(c => selectedCodes.has(c))
+      if (exportCodes.length === 0) return
+      const mdStocks: MarkdownReportStock[] = exportCodes.map(code => {
         const info = stockMap[code]
         const stockData = evalMutation.data!.stocks.find(s => s.code === code)
         return {
@@ -352,6 +384,7 @@ export default function MultiStockBrowsePage() {
         date,
         tab,
         tabLabel,
+        codes: exportCodes,
         assessment: evalMutation.data!.assessment,
         stocks: mdStocks,
         periodStats: mdPeriodStats,
@@ -360,7 +393,7 @@ export default function MultiStockBrowsePage() {
     } finally {
       setIsExporting(false)
     }
-  }, [codes, date, tab, tabLabel, stockMap, labelsMap, evalMutation.data, isExporting])
+  }, [codes, date, tab, tabLabel, stockMap, labelsMap, evalMutation.data, isExporting, selectedCodes])
 
   if (codes.length === 0 || !date) {
     return (
@@ -411,16 +444,30 @@ export default function MultiStockBrowsePage() {
               {evalMutation.data.assessment}
             </Badge>
           )}
-          <Button
-            variant="outline"
-            size="sm"
-            className="ml-auto h-7 gap-1.5 text-xs"
-            disabled={isExporting || codes.length === 0}
-            onClick={handleExportReport}
-          >
-            {isExporting ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <FileDown className="h-3.5 w-3.5" />}
-            导出报告
-          </Button>
+          <div className="flex items-center gap-1.5 ml-auto">
+            <Button
+              variant="ghost"
+              size="sm"
+              className="h-7 gap-1 text-xs text-muted-foreground"
+              onClick={handleToggleAll}
+            >
+              {allSelected ? <CheckSquare className="h-3.5 w-3.5" /> : <Square className="h-3.5 w-3.5" />}
+              {allSelected ? '反选' : '全选'}
+            </Button>
+            {!allSelected && !noneSelected && (
+              <span className="text-xs text-muted-foreground">{selectedCodes.size}/{codes.length}</span>
+            )}
+            <Button
+              variant="outline"
+              size="sm"
+              className="h-7 gap-1.5 text-xs"
+              disabled={isExporting || selectedCodes.size === 0}
+              onClick={handleExportReport}
+            >
+              {isExporting ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <FileDown className="h-3.5 w-3.5" />}
+              导出报告{!allSelected && selectedCodes.size > 0 ? ` (${selectedCodes.size})` : ''}
+            </Button>
+          </div>
         </div>
         <div className="px-3 py-2">
           {evalMutation.isPending ? (
@@ -569,6 +616,8 @@ export default function MultiStockBrowsePage() {
             evalPeriods={evalPeriods}
             tab={tab}
             onIndustryClick={handleIndustryClick}
+            isSelected={selectedCodes.has(code)}
+            onToggleSelect={handleToggleCode}
           />
         ))}
       </div>
@@ -627,9 +676,11 @@ interface StockChartItemProps {
   evalPeriods: readonly number[]
   tab: string
   onIndustryClick?: (industryName: string, indexCode: string) => void
+  isSelected: boolean
+  onToggleSelect: (code: string) => void
 }
 
-function StockChartItem({ code, date, isFirst, stockInfo, evalDone, priceLines, verticalMarkers, onChartReady, onDataLoaded, sharedDates, quantLabels, evalPeriods, tab, onIndustryClick }: StockChartItemProps) {
+function StockChartItem({ code, date, isFirst, stockInfo, evalDone, priceLines, verticalMarkers, onChartReady, onDataLoaded, sharedDates, quantLabels, evalPeriods, tab, onIndustryClick, isSelected, onToggleSelect }: StockChartItemProps) {
   const { data: klineData } = useGetKlineApiV1StocksCodeKlineGet(
     code,
     { limit: 1000 },
@@ -780,6 +831,11 @@ function StockChartItem({ code, date, isFirst, stockInfo, evalDone, priceLines, 
               </span>
             )
           })}
+          <Checkbox
+            checked={isSelected}
+            onCheckedChange={() => onToggleSelect(code)}
+            className="ml-1 h-4 w-4"
+          />
         </div>
       </div>
 
