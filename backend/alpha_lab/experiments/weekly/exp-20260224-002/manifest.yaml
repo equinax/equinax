@@ -1,0 +1,42 @@
+experiment_id: "exp-20260224-002"
+strategy: weekly
+created_at: "2026-02-24"
+parent_version: "2"
+target_version: "3"
+
+hypothesis: |
+  v2 backtest 显示多个日期 WR=20% (5选1)，说明 top_n=5 时被迫选入低质量候选。
+  2025-02-26 WR=20% AR=-1.54%, 2025-07-25 WR=20% AR=3.85%（1个大赢家被4个输家稀释）。
+  减少 backtest_top_n 从 5→3，集中资金在最高置信度的选股上。
+  预期：WR 提升（减少低分候选），AR 提升（集中度效应）。
+
+changes:
+  - path: "backtest_top_n"
+    from: 5
+    to: 3
+
+backtest_params:
+  dates: 25
+  seed: 42
+  tabs: ["weekly"]
+  version: "3"
+
+baseline:
+  version: "2"
+  seed: 42
+  win_rate: 47.3
+  avg_return: 0.83
+  profit_loss_ratio: 7.82
+
+results:
+  version_tested: "3"
+  win_rate: 55.1
+  avg_return: 1.40
+  profit_loss_ratio: 12.36
+  vs_baseline:
+    baseline_version: "2"
+    win_rate_delta: 7.8
+    avg_return_delta: 0.57
+
+decision: accept
+decision_reason: "WR +7.8pp (47.3→55.1), AR +0.57pp (0.83→1.40), P/L +4.54 (7.82→12.36). 大幅改善，集中选股有效减少低质量候选。"

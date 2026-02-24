@@ -1313,8 +1313,10 @@ async def run_backtest(
     log.info(f"\n{'--- WEIGHTED AVERAGES ---':^110}")
     if low_confidence_dates:
         log.info(f"  ({len(low_confidence_dates)} low-confidence date(s) with reduced weight)")
-    log.info(f"{'Tab':<14} {'Avg WR':<12} {'Avg AR':<12} {'Avg P/L':<12} {'# Dates':<10}")
-    log.info("-" * 60)
+    log.info(
+        f"{'Tab':<14} {'Avg WR':<12} {'Avg AR':<12} {'Avg P/L':<12} {'CAGR':<12} {'# Dates':<10}"
+    )
+    log.info("-" * 72)
 
     for tab in tabs:
         wrs, ars, plrs, weights = [], [], [], []
@@ -1338,8 +1340,16 @@ async def run_backtest(
                 plr_str = f"{avg_plr:.2f}"
             else:
                 plr_str = "N/A"
+            tab_period = (
+                load_strategy_config(tab, version=version).eval_period
+                if tab in VALID_TABS
+                else period
+            )
+            periods_per_year = 252 / tab_period
+            cagr = ((1 + avg_ar / 100) ** periods_per_year - 1) * 100
+            cagr_str = f"{cagr:+.1f}%"
             log.info(
-                f"{tab:<14} {avg_wr:.1f}%{'':<7} {avg_ar:.2f}%{'':<7} {plr_str:<12} {len(wrs)}"
+                f"{tab:<14} {avg_wr:.1f}%{'':<7} {avg_ar:.2f}%{'':<7} {plr_str:<12} {cagr_str:<12} {len(wrs)}"
             )
         else:
             log.info(f"{tab:<14} NO DATA")

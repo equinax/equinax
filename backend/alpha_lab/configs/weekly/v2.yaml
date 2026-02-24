@@ -1,0 +1,96 @@
+# Weekly (周内短线) — 低波+高一致性+稳定5日收益
+# v2: 新增 stability_score 因子, anti_climax 权重 0.20→0.15
+# 实验: exp-20260224-001
+
+strategy: weekly
+version: "2"
+description: "周内短线 — 低波+高一致性+稳定5日收益 (v2: +stability)"
+
+label_cn: 周内短线
+score_column: weekly_score
+eval_period: 5
+requires_moneyflow: false
+backtest_top_n: 5
+
+scoring:
+  positive_factors:
+    - signal: anti_climax_component
+      source: climax_score
+      transform: "(1 - col) * 100"
+      fill_null: 0.0
+      weight: 0.15
+
+    - signal: consistency_component
+      source: volume_consistency_score
+      fill_null: 50.0
+      weight: 0.15
+
+    - signal: consolidation_component
+      source: post_spike_consolidation
+      fill_null: 50.0
+      weight: 0.15
+
+    - signal: trend_quality_component
+      source: trend_quality_20d
+      fill_null: 50.0
+      weight: 0.10
+
+    - signal: buildup_component
+      source: volume_buildup_quality
+      fill_null: 40.0
+      weight: 0.10
+
+    - signal: accumulation_component
+      source: accumulation_score
+      transform: "col * 100"
+      fill_null: 0.0
+      weight: 0.10
+
+    - signal: momentum_quality_component
+      source: momentum_quality_ratio
+      fill_null: 50.0
+      weight: 0.05
+
+    - signal: stability_component
+      source: stability_score
+      fill_null: 50.0
+      weight: 0.05
+
+  penalties:
+    - signal: recent_spike_penalty
+      source: recent_vol_spike_max
+      fill_null: 0.0
+      weight: 0.10
+
+    - signal: resistance_penalty
+      source: resistance_proximity_penalty
+      fill_null: 0.0
+      weight: 0.10
+
+    - signal: surge_penalty
+      source: pct_chg
+      transform: "((col.abs() - 3.0).clip(0.0, 4.0) / 4.0) * 100"
+      fill_null: 0.0
+      weight: 0.05
+
+  pre_filters: []
+
+  regime_discount:
+    enabled: true
+
+parameter_bounds:
+  weights:
+    min: 0.02
+    max: 0.30
+    step: 0.01
+  total_positive_weight:
+    target: 0.85
+    min: 0.70
+    max: 0.95
+  total_penalty_weight:
+    target: 0.25
+    min: 0.15
+    max: 0.40
+  backtest_top_n:
+    min: 3
+    max: 8

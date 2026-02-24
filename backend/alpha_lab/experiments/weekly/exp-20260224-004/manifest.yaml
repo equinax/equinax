@@ -1,0 +1,48 @@
+experiment_id: "exp-20260224-004"
+strategy: weekly
+created_at: "2026-02-24"
+parent_version: "3"
+target_version: "4"
+
+hypothesis: |
+  v3 WR=55.1%, AR=1.40%。momentum_quality_ratio (weight=0.05) 是动量类信号，
+  与策略"低波超卖反弹"核心逻辑不完全匹配。
+  替换为 cycle_smoothness_20d，度量日内波动率相对趋势的平滑度 (0-100)，
+  高值=价格路径平稳，与"低波+高一致性"核心论点更一致。
+  保持 8 个正向因子、3 个惩罚、总权重不变 (0.85+0.25)、top_n=3。
+
+changes:
+  - path: "scoring.positive_factors[momentum_quality_component]"
+    from: "signal: momentum_quality_component, source: momentum_quality_ratio, weight: 0.05"
+    to: null
+  - path: "scoring.positive_factors[+cycle_smoothness_component]"
+    from: null
+    to: "signal: cycle_smoothness_component, source: cycle_smoothness_20d, weight: 0.05"
+
+backtest_params:
+  dates: 25
+  seed: 42
+  tabs: ["weekly"]
+  version: "4"
+
+baseline:
+  version: "3"
+  seed: 42
+  win_rate: 55.1
+  avg_return: 1.40
+  profit_loss_ratio: 12.36
+
+results:
+  win_rate: 52.4
+  avg_return: 1.06
+  profit_loss_ratio: 6.12
+  vs_baseline:
+    win_rate_delta: -2.7
+    avg_return_delta: -0.34
+
+decision: rejected
+decision_reason: |
+  WR reject 触发: win_rate_delta=-2.7 (阈值<-2.0)。
+  momentum_quality_ratio 虽是动量信号，但在策略中仍有正向贡献。
+  cycle_smoothness_20d 未能提供同等价值，反而损害选股质量。
+  这是最终迭代 (20/20)，v3 确认为最终 head。

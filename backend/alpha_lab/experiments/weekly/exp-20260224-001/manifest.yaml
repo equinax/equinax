@@ -1,0 +1,49 @@
+experiment_id: "exp-20260224-001"
+strategy: weekly
+created_at: "2026-02-24"
+parent_version: "1"
+target_version: "2"
+
+hypothesis: |
+  Weekly 策略核心理念是 "低波动+高一致性"，但当前未直接使用 stability_score
+  （基于 return_std_20d 的波动率稳定性评分，0-100）。该因子直接度量收益波动率：
+  std < 1.5% → 高分，std > 4% → 接近零分。
+
+  加入 stability_score (weight=0.05) 作为新正向因子，从 anti_climax 中调出 0.05
+  (0.20→0.15)，保持 total_positive_weight=0.85 不变。
+
+  预期效果：过滤掉波动过大的候选，提高整体胜率和收益稳定性。
+
+changes:
+  - path: "scoring.positive_factors[+stability_component]"
+    from: null
+    to: "signal: stability_component, source: stability_score, weight: 0.05"
+  - path: "scoring.positive_factors[anti_climax_component].weight"
+    from: 0.20
+    to: 0.15
+
+backtest_params:
+  dates: 25
+  seed: 42
+  tabs: ["weekly"]
+  version: "2"
+
+baseline:
+  version: "1"
+  seed: 42
+  win_rate: 47.0
+  avg_return: 0.48
+  profit_loss_ratio: 7.28
+
+results:
+  version_tested: "2"
+  win_rate: 47.3
+  avg_return: 0.83
+  profit_loss_ratio: 7.82
+  vs_baseline:
+    baseline_version: "1"
+    win_rate_delta: 0.3
+    avg_return_delta: 0.35
+
+decision: accept
+decision_reason: "WR +0.3pp (47.0→47.3), AR +0.35pp (0.48→0.83), P/L +0.54 (7.28→7.82). 所有指标正向改善，无回退。stability_score 补充了低波动选股能力。"

@@ -92,10 +92,10 @@ def generate_summary_md(
     lines.append("## 策略汇总")
     lines.append("")
     lines.append(
-        "| 策略 | 评估周期 | 加权胜率 | 目标 | 加权收益率 | 目标 | 加权盈亏比 | 日期数 | 达标 |"
+        "| 策略 | 评估周期 | 加权胜率 | 目标 | 加权收益率 | 目标 | 加权盈亏比 | 年化复合 | 日期数 | 达标 |"
     )
     lines.append(
-        "|------|----------|----------|------|------------|------|------------|--------|------|"
+        "|------|----------|----------|------|------------|------|------------|----------|--------|------|"
     )
 
     for tab in tabs:
@@ -113,7 +113,7 @@ def generate_summary_md(
 
         if not wrs:
             lines.append(
-                f"| {tab} ({tab_labels.get(tab, '')}) | T+{tab_periods.get(tab, '?')} | N/A | | N/A | | N/A | 0 | |"
+                f"| {tab} ({tab_labels.get(tab, '')}) | T+{tab_periods.get(tab, '?')} | N/A | | N/A | | N/A | N/A | 0 | |"
             )
             continue
 
@@ -126,6 +126,10 @@ def generate_summary_md(
         else:
             avg_plr = None
 
+        period = tab_periods.get(tab, 5)
+        periods_per_year = 252 / period
+        cagr = ((1 + avg_ar / 100) ** periods_per_year - 1) * 100
+
         t = TARGETS.get(tab, {})
         wr_target = t.get("wr", 0)
         ar_target = t.get("ar", 0)
@@ -133,6 +137,7 @@ def generate_summary_md(
         wr_str = _bold_if_above(avg_wr, wr_target, _fmt(avg_wr))
         ar_str = _bold_if_above(avg_ar, ar_target, _fmt(avg_ar))
         plr_str = _fmt(avg_plr, "", 2) if avg_plr else "N/A"
+        cagr_str = f"{cagr:+.1f}%"
 
         wr_pass = avg_wr >= wr_target
         ar_pass = avg_ar >= ar_target
@@ -142,7 +147,7 @@ def generate_summary_md(
             f"| {tab} ({tab_labels.get(tab, '')}) | T+{tab_periods.get(tab, '?')} "
             f"| {wr_str} | >{wr_target}% "
             f"| {ar_str} | >{ar_target}% "
-            f"| {plr_str} | {len(wrs)} | {status} |"
+            f"| {plr_str} | {cagr_str} | {len(wrs)} | {status} |"
         )
 
     lines.append("")

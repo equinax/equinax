@@ -1,5 +1,5 @@
 strategy: weekly
-version: "1.0"
+version: "3.0"
 description: "做稳定的5个交易日内短线收益。不追高、不追涨停、不赌方向。"
 
 core_thesis: |
@@ -10,15 +10,16 @@ eval_period: 5
 eval_basis: "T+1 开盘买入, T+6 收盘评估"
 
 current_performance:
-  iteration: 16
+  iteration: 20
   seed: 42
   metrics:
-    win_rate: 67.6
-    avg_return: 1.31
-    profit_loss_ratio: 3.33
+    win_rate: 55.1
+    avg_return: 1.40
+    profit_loss_ratio: 12.36
   targets:
     win_rate: 65.0
     avg_return: 1.5
+  status: converged
 
 positive_factors:
   - ref: signals/anti_climax.yaml
@@ -28,6 +29,7 @@ positive_factors:
   - ref: signals/buildup.yaml
   - ref: signals/accumulation.yaml
   - ref: signals/momentum_quality.yaml
+  - ref: signals/stability.yaml
 
 penalties:
   - ref: signals/recent_spike_penalty.yaml
@@ -45,7 +47,7 @@ filters:
     op: neq
     value: 1
 
-backtest_top_n: 5
+backtest_top_n: 3
 requires_moneyflow: false
 
 capability_envelope:
@@ -63,7 +65,17 @@ capability_envelope:
         这是信息量问题，非权重问题。
 
 validated_findings:
-  effective: []
+  effective:
+    - id: stability_score_addition
+      description: "新增 stability_score (weight=0.05)，anti_climax 0.20→0.15。WR +0.3pp, AR +0.35pp"
+      iteration: 17
+      experiment: exp-20260224-001
+      version: "2"
+    - id: top_n_concentration
+      description: "backtest_top_n 5→3，集中选股。WR +7.8pp, AR +0.57pp"
+      iteration: 18
+      experiment: exp-20260224-002
+      version: "3"
 
   ineffective:
     - id: price_position_60d_penalty
@@ -86,20 +98,32 @@ validated_findings:
       description: "与price_position_60d同理"
       iteration: 16
       never_retry: true
+    - id: rally_dominance_any
+      description: "动量方向信号与超卖反弹核心逻辑不匹配，WR -3.7pp, AR -1.24pp"
+      iteration: 19
+      never_retry: true
+    - id: cycle_smoothness_replacement
+      description: "替换momentum_quality→cycle_smoothness，WR -2.7pp, AR -0.34pp。momentum_quality有隐藏正向贡献"
+      iteration: 20
+      never_retry: true
 
   assessment: |
-    在线性加权框架下已达局部最优。
-    进一步提升可能需要非线性方法或额外数据源。
+    v3 是20轮迭代后的最终最优版本 (WR=55.1%, AR=1.40%, P/L=12.36)。
+    相比原始 v1 (WR=47.0%, AR=0.48%, P/L=7.28)：WR +8.1pp, AR +0.92pp, P/L +5.08。
+    有效改进: stability_score 因子 (iter 17) + top_n 5→3 集中选股 (iter 18)。
+    后续 4 次迭代 (rally_dominance, cycle_smoothness) 均被拒绝，表明线性加权公式
+    在当前因子集合下已接近局部最优。突破需要非线性方法或新数据源。
 
 scoring_weights_reference:
   positive:
-    - { signal: anti_climax, source: climax_score, weight: 0.20, note: "远离高潮顶部" }
+    - { signal: anti_climax, source: climax_score, weight: 0.15, note: "远离高潮顶部" }
     - { signal: consistency, source: volume_consistency_score, weight: 0.15, note: "成交量稳定可靠" }
     - { signal: consolidation, source: post_spike_consolidation, weight: 0.15, note: "放量后整理充分" }
     - { signal: trend_quality, source: trend_quality_20d, weight: 0.10, note: "20日趋势质量" }
     - { signal: buildup, source: volume_buildup_quality, weight: 0.10, note: "量能逐步堆积" }
     - { signal: accumulation, source: accumulation_score, weight: 0.10, note: "持续性资金流入" }
     - { signal: momentum_quality, source: momentum_quality_ratio, weight: 0.05, note: "动量质量" }
+    - { signal: stability, source: stability_score, weight: 0.05, note: "收益波动率稳定性 (v2新增)" }
   penalties:
     - { signal: recent_spike_penalty, source: recent_vol_spike_max, weight: 0.10, note: "异常放量冲高" }
     - { signal: resistance_penalty, source: resistance_proximity_penalty, weight: 0.10, note: "接近阻力位" }
@@ -111,3 +135,21 @@ iteration_milestones:
   - iteration: "v1.0 Iter 16"
     metrics: { win_rate: 67.6, avg_return: 1.31, profit_loss_ratio: 3.33 }
     note: "超卖反弹假设检验。两次尝试均退步，回滚。确认局部最优。"
+  - iteration: "v2.0 Iter 17"
+    metrics: { win_rate: 47.3, avg_return: 0.83, profit_loss_ratio: 7.82 }
+    note: "新增 stability_score 因子 (weight=0.05)，anti_climax 0.20→0.15。WR +0.3pp, AR +0.35pp vs 实测基线。"
+    head_promoted_from: "1"
+    head_promoted_to: "2"
+  - iteration: "v3.0 Iter 18"
+    metrics: { win_rate: 55.1, avg_return: 1.40, profit_loss_ratio: 12.36 }
+    note: "backtest_top_n 5→3。WR +7.8pp, AR +0.57pp。集中选股大幅改善。"
+    head_promoted_from: "2"
+    head_promoted_to: "3"
+  - iteration: "Iter 19"
+    metrics: { win_rate: 51.4, avg_return: 0.16, profit_loss_ratio: 2.24 }
+    note: "rally_dominance_20d 因子添加。REJECTED: WR -3.7pp, AR -1.24pp。动量方向信号不匹配。"
+    decision: rejected
+  - iteration: "Iter 20 (FINAL)"
+    metrics: { win_rate: 52.4, avg_return: 1.06, profit_loss_ratio: 6.12 }
+    note: "cycle_smoothness_20d 替换 momentum_quality。REJECTED: WR -2.7pp。迭代收敛，v3 确认为最终版本。"
+    decision: rejected

@@ -1,0 +1,19 @@
+signal_id: stability
+display_name: "收益波动稳定性"
+description: "stability_score 基于 return_std_20d，低波动→高分。筛选出收益稳定的品种。"
+
+source_column: stability_score
+fill_null: 50.0
+component_name: stability_component
+
+weight: 0.05
+direction: positive
+
+bounds:
+  weight_min: 0.02
+  weight_max: 0.15
+
+evidence:
+  - "v2 实验 (exp-20260224-001): 新增后 WR +0.3pp, AR +0.35pp"
+
+status: active
