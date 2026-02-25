@@ -70,6 +70,7 @@ def generate_summary_md(
     test_dates: list[datetime.date],
     tab_labels: dict[str, str],
     tab_periods: dict[str, int],
+    tab_versions: dict[str, str],
     elapsed: float,
 ) -> str:
     lines: list[str] = []
@@ -85,6 +86,7 @@ def generate_summary_md(
     )
     lines.append(f"- **Top-N**: {top_n}")
     lines.append(f"- **策略**: {', '.join(f'{tab}({tab_labels.get(tab, tab)})' for tab in tabs)}")
+    lines.append(f"- **版本**: {', '.join(f'v{tab_versions.get(tab, "?")}' for tab in tabs)}")
     lines.append(f"- **耗时**: {elapsed:.1f}s")
     lines.append("")
 
@@ -357,6 +359,7 @@ def generate_reports(
     test_dates: list[datetime.date],
     tab_labels: dict[str, str],
     tab_periods: dict[str, int],
+    tab_versions: dict[str, str],
     output_dir: str,
     elapsed: float,
 ) -> None:
@@ -373,6 +376,7 @@ def generate_reports(
         test_dates,
         tab_labels,
         tab_periods,
+        tab_versions,
         elapsed,
     )
     summary_path = os.path.join(output_dir, "summary.md")
@@ -491,8 +495,10 @@ def main():
     from scripts.alpha_radar_backtest import run_backtest
     from app.services.alpha_radar.engine.config_loader import load_strategy_config
 
-    tab_labels = {k: load_strategy_config(k, version=args.version).label_cn for k in tabs}
-    tab_periods = {k: load_strategy_config(k, version=args.version).eval_period for k in tabs}
+    tab_configs = {k: load_strategy_config(k, version=args.version) for k in tabs}
+    tab_labels = {k: cfg.label_cn for k, cfg in tab_configs.items()}
+    tab_periods = {k: cfg.eval_period for k, cfg in tab_configs.items()}
+    tab_versions = {k: cfg.version for k, cfg in tab_configs.items()}
 
     output_dir = args.output_dir
     if not output_dir:
@@ -517,6 +523,7 @@ def main():
         test_dates,
         tab_labels,
         tab_periods,
+        tab_versions,
         output_dir,
         elapsed,
     )

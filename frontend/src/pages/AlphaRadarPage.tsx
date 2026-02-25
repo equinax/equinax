@@ -123,7 +123,7 @@ export default function AlphaRadarPage() {
       }
 
       // Sync activeTab (only when in stock mode and not default)
-      if (radarMode === 'stock' && activeTab !== 'weekly') {
+      if (radarMode === 'stock' && activeTab !== 'overnight') {
         prev.set('tab', activeTab)
       } else {
         prev.delete('tab')

@@ -109,6 +109,7 @@ const CELL_WIDTH = 42 // Default cell width
 const MIN_CELL_WIDTH = 36 // Minimum cell width for readability
 const CELL_HEIGHT = 20
 const DATE_COLUMN_WIDTH = 38 // Compact - date text "MM-DD" is ~32px
+const DATE_COLUMN_WIDTH_WIDE = 58 // Wider when showing limit-up totals
 const HEADER_HEIGHT = 32
 const COLLAPSED_ROW_HEIGHT = 16 // Height for collapsed industry icons row
 
@@ -331,10 +332,27 @@ export function RotationMatrix({
     return new Set(cells.map((c) => `${c.industryCode}-${c.date}`))
   }, [hoveredStockCode, stockToCellsMap])
 
+  const dateLimitUpTotals = useMemo(() => {
+    if (!visibleMetrics.includes('limit_up')) return new Map<string, number>()
+    const totals = new Map<string, number>()
+    for (const dateStr of data.trading_days) {
+      let total = 0
+      for (const industry of data.industries) {
+        const cell = industry.cells.find((c) => c.date === dateStr)
+        if (cell?.limit_up_count) total += cell.limit_up_count
+      }
+      totals.set(dateStr, total)
+    }
+    return totals
+  }, [data.trading_days, data.industries, visibleMetrics])
+
+  const showLimitUpTotals = visibleMetrics.includes('limit_up')
+  const dateColWidth = showLimitUpTotals ? DATE_COLUMN_WIDTH_WIDE : DATE_COLUMN_WIDTH
+
   // Calculate dimensions - responsive cell width based on VISIBLE industries
   const numIndustries = visibleIndustries.length
   const hasHiddenIndustries = hiddenGroups.length > 0
-  const availableWidth = containerWidth - DATE_COLUMN_WIDTH
+  const availableWidth = containerWidth - dateColWidth
   // Use exact division to fill container completely
   const cellWidth =
     numIndustries > 0 && containerWidth > 0
@@ -344,7 +362,7 @@ export function RotationMatrix({
   // Add collapsed row height if there are hidden industries
   const collapsedRowHeight = hasHiddenIndustries ? COLLAPSED_ROW_HEIGHT : 0
   // SVG fills container width exactly
-  const svgWidth = containerWidth || DATE_COLUMN_WIDTH + numIndustries * CELL_WIDTH
+  const svgWidth = containerWidth || dateColWidth + numIndustries * CELL_WIDTH
   const headerSvgHeight = collapsedRowHeight + HEADER_HEIGHT
 
   // Handle cell hover
@@ -436,7 +454,7 @@ export function RotationMatrix({
         >
           {/* Collapsed industries row - ChevronDown icons (grouped) */}
           {hasHiddenIndustries && (
-            <g transform={`translate(${DATE_COLUMN_WIDTH}, 0)`}>
+            <g transform={`translate(${dateColWidth}, 0)`}>
               {hiddenGroups.map((group) => {
                 const xPos = group.slotPosition * cellWidth + cellWidth / 2
                 const codes = group.industries.map((i) => i.code)
@@ -474,14 +492,14 @@ export function RotationMatrix({
           <rect
             x={0}
             y={collapsedRowHeight}
-            width={DATE_COLUMN_WIDTH}
+            width={dateColWidth}
             height={HEADER_HEIGHT}
             className="fill-muted"
           />
           <foreignObject
             x={0}
             y={collapsedRowHeight}
-            width={DATE_COLUMN_WIDTH}
+            width={dateColWidth}
             height={HEADER_HEIGHT}
           >
             <div className="flex items-center justify-center h-full">
@@ -503,12 +521,12 @@ export function RotationMatrix({
           </foreignObject>
 
           {/* Header row - Industry names (clickable to hide) */}
-          <g transform={`translate(${DATE_COLUMN_WIDTH}, ${collapsedRowHeight})`}>
+          <g transform={`translate(${dateColWidth}, ${collapsedRowHeight})`}>
             {/* Background for header row */}
             <rect
               x={0}
               y={0}
-              width={svgWidth - DATE_COLUMN_WIDTH}
+              width={svgWidth - dateColWidth}
               height={HEADER_HEIGHT}
               className="fill-muted"
             />
@@ -576,7 +594,7 @@ export function RotationMatrix({
 
               // Calculate position - below the arrow, on top of header
               const xPos =
-                DATE_COLUMN_WIDTH + hoveredGroup.slotPosition * cellWidth + cellWidth / 2
+                dateColWidth + hoveredGroup.slotPosition * cellWidth + cellWidth / 2
               const names = hoveredGroup.industries.map((i) => i.name.slice(0, 4))
               const tooltipText = names.join(' · ')
               const tooltipWidth = Math.max(60, tooltipText.length * 9 + 20)
@@ -628,7 +646,7 @@ export function RotationMatrix({
           {/* Date column with soft background - clickable for sorting */}
           <g>
             {/* Background */}
-            <rect x={0} y={0} width={DATE_COLUMN_WIDTH} height={matrixHeight} className="fill-muted" />
+            <rect x={0} y={0} width={dateColWidth} height={matrixHeight} className="fill-muted" />
             {/* Date labels - clickable */}
             {data.trading_days.map((dateStr, rowIndex) => {
               const isActiveSortDate = sortByDate === dateStr
@@ -648,12 +666,11 @@ export function RotationMatrix({
                   }}
                   onMouseLeave={() => setDateHover(null)}
                 >
-                  {/* Background color when weighted change mode */}
                   {isWeightedChange && marketChange !== undefined ? (
                     <rect
                       x={0}
                       y={rowIndex * CELL_HEIGHT}
-                      width={DATE_COLUMN_WIDTH}
+                      width={dateColWidth}
                       height={CELL_HEIGHT}
                       fill={getMarketChangeColor(marketChangeNum)}
                     />
@@ -661,14 +678,13 @@ export function RotationMatrix({
                     <rect
                       x={0}
                       y={rowIndex * CELL_HEIGHT}
-                      width={DATE_COLUMN_WIDTH}
+                      width={dateColWidth}
                       height={CELL_HEIGHT}
                       fill="transparent"
                     />
                   )}
-                  {/* Date text - always show */}
                   <text
-                    x={DATE_COLUMN_WIDTH / 2}
+                    x={showLimitUpTotals ? 20 : dateColWidth / 2}
                     y={rowIndex * CELL_HEIGHT + CELL_HEIGHT / 2}
                     textAnchor="middle"
                     dominantBaseline="middle"
@@ -678,9 +694,25 @@ export function RotationMatrix({
                   >
                     {formatDate(dateStr)}
                   </text>
-                  {/* Sort indicator */}
+                  {showLimitUpTotals && (() => {
+                    const total = dateLimitUpTotals.get(dateStr) ?? 0
+                    return total > 0 ? (
+                      <text
+                        x={dateColWidth - 6}
+                        y={rowIndex * CELL_HEIGHT + CELL_HEIGHT / 2}
+                        textAnchor="end"
+                        dominantBaseline="middle"
+                        fontSize={8}
+                        className="font-mono"
+                        fill="#c93b3b"
+                        opacity={0.7}
+                      >
+                        {total}
+                      </text>
+                    ) : null
+                  })()}
                   {isActiveSortDate && (
-                    <g transform={`translate(${DATE_COLUMN_WIDTH - 4}, ${rowIndex * CELL_HEIGHT + CELL_HEIGHT / 2})`}>
+                    <g transform={`translate(${dateColWidth - 4}, ${rowIndex * CELL_HEIGHT + CELL_HEIGHT / 2})`}>
                       {sortDirection === 'desc' ? (
                         <ArrowDown x={-3} y={-3} width={6} height={6} className="text-foreground" />
                       ) : (
@@ -694,7 +726,7 @@ export function RotationMatrix({
           </g>
 
           {/* Matrix cells */}
-          <g transform={`translate(${DATE_COLUMN_WIDTH}, 0)`}>
+          <g transform={`translate(${dateColWidth}, 0)`}>
             {data.trading_days.map((dateStr, rowIndex) => {
               const marketChange = data.market_changes?.[dateStr]
 
