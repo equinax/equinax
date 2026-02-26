@@ -374,15 +374,11 @@ async def load_stock_data(
 
     adjust_data = []
     for row in adjust_rows:
+        factor_val = float(row.adjust_factor) if row.adjust_factor else 1.0
         adjust_data.append(
             {
                 "date": row.divid_operate_date,
-                "foreAdjustFactor": float(row.fore_adjust_factor)
-                if row.fore_adjust_factor
-                else 1.0,
-                "backAdjustFactor": float(row.back_adjust_factor)
-                if row.back_adjust_factor
-                else 1.0,
+                "adjustFactor": factor_val,
             }
         )
 

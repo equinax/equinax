@@ -28,10 +28,11 @@ import asyncpg
 
 # Default paths
 SCRIPT_DIR = Path(__file__).parent
-DEFAULT_POSTGRES_URL = os.environ.get(
-    "DATABASE_URL",
-    "postgresql://quant:quant_dev_password@localhost:5432/quantdb"
-).replace("+asyncpg", "").replace("postgresql+asyncpg", "postgresql")
+DEFAULT_POSTGRES_URL = (
+    os.environ.get("DATABASE_URL", "postgresql://quant:quant_dev_password@localhost:5432/quantdb")
+    .replace("+asyncpg", "")
+    .replace("postgresql+asyncpg", "postgresql")
+)
 
 BATCH_SIZE = 10000
 
@@ -96,8 +97,6 @@ async def create_tables(conn: asyncpg.Connection) -> None:
             id BIGSERIAL PRIMARY KEY,
             code VARCHAR(20) NOT NULL,
             divid_operate_date DATE,
-            fore_adjust_factor NUMERIC(12, 6),
-            back_adjust_factor NUMERIC(12, 6),
             adjust_factor NUMERIC(12, 6),
             created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
             UNIQUE(code, divid_operate_date)
@@ -108,7 +107,9 @@ async def create_tables(conn: asyncpg.Connection) -> None:
     await conn.execute("CREATE INDEX IF NOT EXISTS idx_daily_k_date ON daily_k_data(date)")
     await conn.execute("CREATE INDEX IF NOT EXISTS idx_daily_k_code ON daily_k_data(code)")
     await conn.execute("CREATE INDEX IF NOT EXISTS idx_adjust_factor_code ON adjust_factor(code)")
-    await conn.execute("CREATE INDEX IF NOT EXISTS idx_stock_basic_exchange ON stock_basic(exchange)")
+    await conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_stock_basic_exchange ON stock_basic(exchange)"
+    )
 
     print("Tables and indexes created successfully")
 
@@ -135,17 +136,19 @@ async def migrate_stock_basic(sqlite_conn: sqlite3.Connection, pg_conn: asyncpg.
         code = record.get("code", "")
         exchange = "sh" if code.startswith("sh.") else "sz" if code.startswith("sz.") else None
 
-        records.append((
-            code,
-            record.get("code_name"),
-            parse_date(record.get("ipo_date")),
-            parse_date(record.get("out_date")),
-            record.get("type"),
-            record.get("status"),
-            exchange,
-            None,  # sector
-            None,  # industry
-        ))
+        records.append(
+            (
+                code,
+                record.get("code_name"),
+                parse_date(record.get("ipo_date")),
+                parse_date(record.get("out_date")),
+                record.get("type"),
+                record.get("status"),
+                exchange,
+                None,  # sector
+                None,  # industry
+            )
+        )
 
     # Batch insert
     await pg_conn.executemany(
@@ -203,25 +206,27 @@ async def migrate_daily_k_data(sqlite_conn: sqlite3.Connection, pg_conn: asyncpg
                 except:
                     return None
 
-            batch.append((
-                parse_date(record.get("date")),
-                record.get("code"),
-                safe_decimal(record.get("open")),
-                safe_decimal(record.get("high")),
-                safe_decimal(record.get("low")),
-                safe_decimal(record.get("close")),
-                safe_decimal(record.get("preclose")),
-                safe_int(record.get("volume")),
-                safe_decimal(record.get("amount")),
-                safe_decimal(record.get("turn")),
-                safe_int(record.get("tradestatus")),
-                safe_decimal(record.get("pctChg")),
-                safe_decimal(record.get("peTTM")),
-                safe_decimal(record.get("pbMRQ")),
-                safe_decimal(record.get("psTTM")),
-                safe_decimal(record.get("pcfNcfTTM")),
-                safe_int(record.get("isST")),
-            ))
+            batch.append(
+                (
+                    parse_date(record.get("date")),
+                    record.get("code"),
+                    safe_decimal(record.get("open")),
+                    safe_decimal(record.get("high")),
+                    safe_decimal(record.get("low")),
+                    safe_decimal(record.get("close")),
+                    safe_decimal(record.get("preclose")),
+                    safe_int(record.get("volume")),
+                    safe_decimal(record.get("amount")),
+                    safe_decimal(record.get("turn")),
+                    safe_int(record.get("tradestatus")),
+                    safe_decimal(record.get("pctChg")),
+                    safe_decimal(record.get("peTTM")),
+                    safe_decimal(record.get("pbMRQ")),
+                    safe_decimal(record.get("psTTM")),
+                    safe_decimal(record.get("pcfNcfTTM")),
+                    safe_int(record.get("isST")),
+                )
+            )
 
         # Insert batch
         await pg_conn.executemany(
@@ -245,7 +250,9 @@ async def migrate_daily_k_data(sqlite_conn: sqlite3.Connection, pg_conn: asyncpg
     return migrated
 
 
-async def migrate_adjust_factor(sqlite_conn: sqlite3.Connection, pg_conn: asyncpg.Connection) -> int:
+async def migrate_adjust_factor(
+    sqlite_conn: sqlite3.Connection, pg_conn: asyncpg.Connection
+) -> int:
     """Migrate adjust_factor table."""
     print("\nMigrating adjust_factor...")
 
@@ -271,18 +278,18 @@ async def migrate_adjust_factor(sqlite_conn: sqlite3.Connection, pg_conn: asyncp
             except:
                 return None
 
-        records.append((
-            record.get("code"),
-            parse_date(record.get("dividOperateDate")),
-            safe_decimal(record.get("foreAdjustFactor")),
-            safe_decimal(record.get("backAdjustFactor")),
-            safe_decimal(record.get("adjustFactor")),
-        ))
+        records.append(
+            (
+                record.get("code"),
+                parse_date(record.get("dividOperateDate")),
+                safe_decimal(record.get("adjustFactor") or record.get("backAdjustFactor")),
+            )
+        )
 
     await pg_conn.executemany(
         """
-        INSERT INTO adjust_factor (code, divid_operate_date, fore_adjust_factor, back_adjust_factor, adjust_factor)
-        VALUES ($1, $2, $3, $4, $5)
+        INSERT INTO adjust_factor (code, divid_operate_date, adjust_factor)
+        VALUES ($1, $2, $3)
         ON CONFLICT (code, divid_operate_date) DO NOTHING
         """,
         records,
@@ -302,10 +309,11 @@ async def main(source_path: Path, postgres_url: str):
     # Parse and display target (hide password)
     try:
         from urllib.parse import urlparse
+
         parsed = urlparse(postgres_url)
         display_url = f"{parsed.hostname}:{parsed.port or 5432}/{parsed.path.lstrip('/')}"
     except:
-        display_url = postgres_url.split('@')[-1] if '@' in postgres_url else postgres_url
+        display_url = postgres_url.split("@")[-1] if "@" in postgres_url else postgres_url
     print(f"Target: {display_url}")
 
     # Check SQLite database exists
@@ -375,21 +383,17 @@ Environment Variables:
 
 Note:
   For quick data initialization, use: python -m scripts.data_cli init
-        """
+        """,
     )
 
-    parser.add_argument(
-        "--source", "-s",
-        type=Path,
-        required=True,
-        help="Path to SQLite database"
-    )
+    parser.add_argument("--source", "-s", type=Path, required=True, help="Path to SQLite database")
 
     parser.add_argument(
-        "--database-url", "-d",
+        "--database-url",
+        "-d",
         type=str,
         default=DEFAULT_POSTGRES_URL,
-        help="PostgreSQL connection URL"
+        help="PostgreSQL connection URL",
     )
 
     args = parser.parse_args()

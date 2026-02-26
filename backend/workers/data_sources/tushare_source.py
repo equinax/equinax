@@ -459,6 +459,36 @@ class TuShareDataSource(BaseDataSource):
             logger.error(f"[TuShare] Error fetching ETF adj_factor: {e}")
             raise
 
+    def fetch_etf_adj_factor_by_date(self, trade_date: date) -> pd.DataFrame:
+        date_str = self._date_to_str(trade_date)
+        logger.info(f"[TuShare] Fetching ETF adj_factor for {date_str}...")
+
+        try:
+            df = self._pro.fund_adj(trade_date=date_str)
+
+            if df is None or df.empty:
+                logger.warning(f"[TuShare] No ETF adj_factor data for {date_str}")
+                return pd.DataFrame()
+
+            logger.info(f"[TuShare] Fetched {len(df)} ETF adj_factors for {date_str}")
+
+            records = []
+            for _, row in df.iterrows():
+                code = convert_tushare_code_to_standard(row["ts_code"])
+                records.append(
+                    {
+                        "code": code,
+                        "trade_date": trade_date,
+                        "adj_factor": self._safe_decimal(row.get("adj_factor")),
+                    }
+                )
+
+            return pd.DataFrame(records)
+
+        except Exception as e:
+            logger.error(f"[TuShare] Error fetching ETF adj_factor by date: {e}")
+            raise
+
     def get_trading_days(self, start_date: date, end_date: date) -> List[date]:
         """
         获取日期范围内的交易日列表

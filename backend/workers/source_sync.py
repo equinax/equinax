@@ -140,7 +140,7 @@ async def get_pg_index_max_date(session: AsyncSession) -> Optional[date]:
 
 
 # =============================================================================
-# 复权因子同步（使用 baostock）
+# 复权因子同步（使用 TuShare 按日期批量获取）
 # =============================================================================
 
 
@@ -148,28 +148,35 @@ async def batch_insert_adjust_factors(
     session: AsyncSession,
     records: List[Dict],
 ) -> int:
-    """批量插入复权因子数据 (upsert)"""
+    """批量插入复权因子数据 (upsert)
+
+    asyncpg 限制单次查询参数不超过 32767 个,
+    每条记录约 5 个字段, 所以每批最多 ~6000 条记录.
+    """
     if not records:
         return 0
 
     from app.db.models.asset import AdjustFactor
     from sqlalchemy.dialects.postgresql import insert
 
-    stmt = insert(AdjustFactor).values(records)
-    stmt = stmt.on_conflict_do_update(
-        index_elements=["code", "divid_operate_date"],
-        set_={
-            "fore_adjust_factor": stmt.excluded.fore_adjust_factor,
-            "back_adjust_factor": stmt.excluded.back_adjust_factor,
-            "adjust_factor": stmt.excluded.adjust_factor,
-        },
-    )
-    await session.execute(stmt)
-    return len(records)
+    CHUNK_SIZE = 8000  # 8000 * 3 columns = 24000 params, safely under 32767
+    total = 0
+    for i in range(0, len(records), CHUNK_SIZE):
+        chunk = records[i : i + CHUNK_SIZE]
+        stmt = insert(AdjustFactor).values(chunk)
+        stmt = stmt.on_conflict_do_update(
+            index_elements=["code", "divid_operate_date"],
+            set_={
+                "adjust_factor": stmt.excluded.adjust_factor,
+            },
+        )
+        await session.execute(stmt)
+        total += len(chunk)
+    return total
 
 
 def _deduplicate_adjust_records(records: List[Dict]) -> List[Dict]:
-    """去除重复的复权因子记录（baostock 有时返回重复数据）"""
+    """去除重复的复权因子记录"""
     seen: set = set()
     deduped: List[Dict] = []
     for record in records:
@@ -180,153 +187,109 @@ def _deduplicate_adjust_records(records: List[Dict]) -> List[Dict]:
     return deduped
 
 
-def _fetch_adjust_factors_batch_sync(
-    codes_with_names: List[Tuple[str, str]],
-    start_date: str,
-) -> Tuple[List[Dict], Dict[str, str]]:
-    """使用 baostock 批量获取复权因子（同步函数，在线程池中调用）"""
-    import baostock as bs
-
-    all_records: List[Dict] = []
-    errors: Dict[str, str] = {}
-
-    lg = bs.login()
-    if lg.error_code != "0":
-        return [], {"_login": f"baostock login failed: {lg.error_msg}"}
-
-    try:
-        for code, name in codes_with_names:
-            try:
-                rs = bs.query_adjust_factor(code=code, start_date=start_date)
-
-                while (rs.error_code == "0") and rs.next():
-                    row = rs.get_row_data()
-                    if len(row) >= 5:
-                        all_records.append(
-                            {
-                                "code": row[0],
-                                "divid_operate_date": date.fromisoformat(row[1]),
-                                "fore_adjust_factor": Decimal(row[2]) if row[2] else None,
-                                "back_adjust_factor": Decimal(row[3]) if row[3] else None,
-                                "adjust_factor": Decimal(row[4]) if row[4] else None,
-                            }
-                        )
-
-            except Exception as e:
-                errors[code] = str(e)
-
-    finally:
-        bs.logout()
-
-    all_records = _deduplicate_adjust_records(all_records)
-    return all_records, errors
-
-
 async def sync_adjust_factors(
     session: AsyncSession,
     progress_callback: Optional[Callable[[str, int, Dict], Any]] = None,
 ) -> Dict[str, Any]:
-    """
-    同步复权因子数据 - 分批增量模式
+    """同步复权因子数据 - TuShare 按日期批量获取（股票+ETF）"""
+    from .data_sources import get_data_source
 
-    使用 baostock query_adjust_factor 接口获取复权因子。
-    优化策略：3天内已同步则跳过（复权因子是稀疏事件）。
-    """
+    source = get_data_source()
+
     max_date_query = text("SELECT MAX(divid_operate_date) FROM adjust_factor")
     result = await session.execute(max_date_query)
     max_date = result.scalar()
 
     latest_trading_day = get_latest_trading_day()
-    today = date.today()
 
     if max_date and max_date >= latest_trading_day:
         logger.info(f"Adjust factor data is up to date (max_date={max_date})")
         return {"status": "skip", "message": "复权因子已是最新", "records": 0}
 
+    # 确定需要同步的日期范围
     if max_date:
-        days_since_last = (today - max_date).days
-        if days_since_last <= 3:
-            logger.info(f"Adjust factor recently synced ({days_since_last} days ago), skipping")
-            return {
-                "status": "skip",
-                "message": f"复权因子已是最新（{days_since_last}天前已同步）",
-                "records": 0,
-            }
+        start_date = max_date - timedelta(days=3)
+    else:
+        start_date = date(2020, 1, 1)
 
-    lookback_days = 7
-    start_date_str = (
-        (max_date - timedelta(days=lookback_days)).strftime("%Y-%m-%d")
-        if max_date
-        else "2020-01-01"
-    )
+    end_date = latest_trading_day
 
-    active_stocks_query = text("""
-        SELECT DISTINCT am.code, am.name
-        FROM asset_meta am
-        INNER JOIN market_daily md ON am.code = md.code
-        WHERE am.asset_type = 'STOCK'
-          AND am.status = 1
-          AND md.date >= :since_date
-        ORDER BY am.code
-    """)
+    trading_days = source.get_trading_days(start_date, end_date)
 
-    since_date = max_date - timedelta(days=30) if max_date else date(2020, 1, 1)
-    active_result = await session.execute(active_stocks_query, {"since_date": since_date})
-    active_stocks = [(row[0], row[1]) for row in active_result]
+    if not trading_days:
+        return {"status": "skip", "message": "没有需要同步的交易日", "records": 0}
 
-    if not active_stocks:
-        return {"status": "skip", "message": "没有活跃股票需要同步", "records": 0}
-
-    total_stocks = len(active_stocks)
+    total_days = len(trading_days)
     logger.info(
-        f"Starting adjust factor sync for {total_stocks} active stocks (since {since_date})"
+        f"Starting adjust factor sync via TuShare: {total_days} trading days "
+        f"({start_date} ~ {end_date})"
     )
 
     if progress_callback:
         await progress_callback(
-            "开始同步复权因子...",
+            f"开始同步复权因子（{total_days}个交易日）...",
             0,
-            {"action": "adjust_factor_start", "total_stocks": total_stocks},
+            {"action": "adjust_factor_start", "total_days": total_days},
         )
 
-    BATCH_SIZE = 100
     total_records = 0
     total_errors: Dict[str, str] = {}
-    loop = asyncio.get_event_loop()
 
-    total_batches = (total_stocks + BATCH_SIZE - 1) // BATCH_SIZE
+    for i, trade_date in enumerate(trading_days):
+        date_str = trade_date.strftime("%Y%m%d")
+        batch_records: List[Dict] = []
 
-    for batch_idx in range(0, total_stocks, BATCH_SIZE):
-        batch = active_stocks[batch_idx : batch_idx + BATCH_SIZE]
-        batch_num = batch_idx // BATCH_SIZE + 1
+        try:
+            stock_df = source.fetch_stock_adj_factor_by_date(trade_date)
+            if not stock_df.empty:
+                for _, row in stock_df.iterrows():
+                    adj_val = row.get("adj_factor")
+                    batch_records.append(
+                        {
+                            "code": row["code"],
+                            "divid_operate_date": trade_date,
+                            "adjust_factor": adj_val,
+                        }
+                    )
+        except Exception as e:
+            total_errors[f"stock_{date_str}"] = str(e)
+            logger.warning(f"Failed to fetch stock adj_factor for {date_str}: {e}")
 
-        records, batch_errors = await loop.run_in_executor(
-            None,
-            _fetch_adjust_factors_batch_sync,
-            batch,
-            start_date_str,
-        )
+        try:
+            etf_df = source.fetch_etf_adj_factor_by_date(trade_date)
+            if not etf_df.empty:
+                for _, row in etf_df.iterrows():
+                    adj_val = row.get("adj_factor")
+                    batch_records.append(
+                        {
+                            "code": row["code"],
+                            "divid_operate_date": row["trade_date"],
+                            "adjust_factor": adj_val,
+                        }
+                    )
+        except Exception as e:
+            total_errors[f"etf_{date_str}"] = str(e)
+            logger.warning(f"Failed to fetch ETF adj_factor for {date_str}: {e}")
 
-        total_errors.update(batch_errors)
-
-        if records:
+        # 3. 去重并批量插入
+        if batch_records:
+            batch_records = _deduplicate_adjust_records(batch_records)
             try:
-                await batch_insert_adjust_factors(session, records)
+                await batch_insert_adjust_factors(session, batch_records)
                 await session.flush()
-                total_records += len(records)
+                total_records += len(batch_records)
             except Exception as e:
                 await session.rollback()
-                logger.warning(f"Failed to insert adjust factors for batch {batch_num}: {e}")
-                total_errors[f"batch_{batch_num}"] = str(e)
+                logger.warning(f"Failed to insert adjust factors for {date_str}: {e}")
+                total_errors[f"insert_{date_str}"] = str(e)
 
-        done_count = min(batch_idx + BATCH_SIZE, total_stocks)
-        progress_pct = int(done_count / total_stocks * 100)
+        progress_pct = int((i + 1) / total_days * 100)
+        msg = f"复权因子 [{i + 1}/{total_days}]: {trade_date} +{len(batch_records)}条（股票+ETF）"
 
-        last_code, last_name = batch[-1] if batch else ("", "")
-        records_str = f"+{len(records)}条" if records else ""
-        msg = f"复权因子 [{done_count}/{total_stocks}]: {last_code} {last_name} {records_str}"
-
-        logger.info(f"Adjust factor batch {batch_num}/{total_batches}: {len(records)} records")
+        if (i + 1) % 10 == 0 or i == total_days - 1:
+            logger.info(
+                f"Adjust factor progress: {i + 1}/{total_days} days, {total_records} total records"
+            )
 
         if progress_callback:
             await progress_callback(
@@ -334,12 +297,16 @@ async def sync_adjust_factors(
                 progress_pct,
                 {
                     "action": "adjust_factor_progress",
-                    "batch": batch_num,
-                    "total_batches": total_batches,
-                    "done": done_count,
-                    "total": total_stocks,
+                    "day": i + 1,
+                    "total_days": total_days,
+                    "date": str(trade_date),
+                    "records": len(batch_records),
                 },
             )
+
+        # TuShare rate limit: 2 API calls per day iteration
+        if i < total_days - 1:
+            await asyncio.sleep(0.3)
 
     await session.commit()
 
@@ -348,9 +315,9 @@ async def sync_adjust_factors(
 
     return {
         "status": "success" if error_count == 0 else "partial",
-        "message": f"复权因子同步完成 ({total_stocks}只股票, {total_records}条记录)",
+        "message": f"复权因子同步完成（{total_days}个交易日, {total_records}条记录, 含ETF）",
         "records": total_records,
-        "stocks_processed": total_stocks,
+        "days_processed": total_days,
         "error_count": error_count,
     }
 

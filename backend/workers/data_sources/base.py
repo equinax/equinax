@@ -150,6 +150,22 @@ class BaseDataSource(ABC):
         pass
 
     @abstractmethod
+    def fetch_etf_adj_factor_by_date(self, trade_date: date) -> pd.DataFrame:
+        """
+        获取指定日期的 ETF 复权因子
+
+        Args:
+            trade_date: 交易日期
+
+        Returns:
+            DataFrame with columns:
+            - code: str
+            - trade_date: date
+            - adj_factor: Decimal
+        """
+        pass
+
+    @abstractmethod
     def get_trading_days(self, start_date: date, end_date: date) -> List[date]:
         """
         获取日期范围内的交易日列表

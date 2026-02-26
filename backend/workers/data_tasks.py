@@ -1616,7 +1616,7 @@ async def _upsert_limit_list(session: AsyncSession, records: list) -> int:
 
 
 async def _backfill_adjust_factor(session: AsyncSession) -> int:
-    """Backfill adjust_factor using baostock."""
+    """Backfill adjust_factor using TuShare."""
     from workers.source_sync import sync_adjust_factors
 
     result = await sync_adjust_factors(session)

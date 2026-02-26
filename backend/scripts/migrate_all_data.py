@@ -32,10 +32,11 @@ import asyncpg
 
 # Default paths
 SCRIPT_DIR = Path(__file__).parent
-DEFAULT_POSTGRES_URL = os.environ.get(
-    "DATABASE_URL",
-    "postgresql://quant:quant_dev_password@localhost:5432/quantdb"
-).replace("+asyncpg", "").replace("postgresql+asyncpg", "postgresql")
+DEFAULT_POSTGRES_URL = (
+    os.environ.get("DATABASE_URL", "postgresql://quant:quant_dev_password@localhost:5432/quantdb")
+    .replace("+asyncpg", "")
+    .replace("postgresql+asyncpg", "postgresql")
+)
 
 BATCH_SIZE = 10000
 
@@ -43,6 +44,7 @@ BATCH_SIZE = 10000
 # =============================================================================
 # Utility Functions
 # =============================================================================
+
 
 def parse_date(val) -> Optional[date]:
     """Parse date string to date object."""
@@ -89,31 +91,31 @@ def determine_exchange(code: str) -> str:
 
 def determine_category(code: str) -> str:
     """Determine category (board) from code."""
-    code_num = code.split('.')[-1] if '.' in code else code
+    code_num = code.split(".")[-1] if "." in code else code
 
-    if code_num.startswith('688'):
+    if code_num.startswith("688"):
         return "科创板"
-    elif code_num.startswith('30'):
+    elif code_num.startswith("30"):
         return "创业板"
-    elif code_num.startswith('8') or code_num.startswith('4'):
+    elif code_num.startswith("8") or code_num.startswith("4"):
         return "北交所"
-    elif code_num.startswith('51') or code_num.startswith('15') or code_num.startswith('56'):
+    elif code_num.startswith("51") or code_num.startswith("15") or code_num.startswith("56"):
         return "ETF"
-    elif code_num.startswith('60') or code_num.startswith('00'):
+    elif code_num.startswith("60") or code_num.startswith("00"):
         return "主板"
     return "其他"
 
 
 def determine_board_type(code: str) -> str:
     """Determine board type (MAIN/GEM/STAR/BSE) from stock code."""
-    code_num = code.split('.')[-1] if '.' in code else code
+    code_num = code.split(".")[-1] if "." in code else code
 
-    if code_num.startswith('688'):
+    if code_num.startswith("688"):
         return "STAR"  # 科创板
-    elif code_num.startswith('30'):
-        return "GEM"   # 创业板
-    elif code_num.startswith('8') or code_num.startswith('4'):
-        return "BSE"   # 北交所
+    elif code_num.startswith("30"):
+        return "GEM"  # 创业板
+    elif code_num.startswith("8") or code_num.startswith("4"):
+        return "BSE"  # 北交所
     else:
         return "MAIN"  # 主板 (60xxxx, 00xxxx)
 
@@ -140,10 +142,8 @@ def get_price_limits(board: str, is_st: bool) -> tuple:
 # Stock Migration
 # =============================================================================
 
-async def migrate_stock_basic(
-    sqlite_conn: sqlite3.Connection,
-    pg_conn: asyncpg.Connection
-) -> int:
+
+async def migrate_stock_basic(sqlite_conn: sqlite3.Connection, pg_conn: asyncpg.Connection) -> int:
     """Migrate stock_basic -> asset_meta + stock_profile."""
     print("\nMigrating stock_basic -> asset_meta + stock_profile...")
 
@@ -174,26 +174,30 @@ async def migrate_stock_basic(
         else:
             status_val = 1
 
-        asset_records.append((
-            code,
-            record.get("code_name") or code,
-            "STOCK",
-            exchange,
-            parse_date(record.get("ipo_date") or record.get("ipoDate")),
-            parse_date(record.get("out_date") or record.get("outDate")),
-            status_val,
-            category,
-        ))
+        asset_records.append(
+            (
+                code,
+                record.get("code_name") or code,
+                "STOCK",
+                exchange,
+                parse_date(record.get("ipo_date") or record.get("ipoDate")),
+                parse_date(record.get("out_date") or record.get("outDate")),
+                status_val,
+                category,
+            )
+        )
 
         # Stock profile with industry info
         # Model columns: sw_industry_l1/l2/l3, concepts, province, total_shares, float_shares
-        profile_records.append((
-            code,
-            record.get("sw_industry") or record.get("industry"),  # sw_industry_l1
-            None,  # sw_industry_l2
-            None,  # sw_industry_l3
-            record.get("area"),  # province
-        ))
+        profile_records.append(
+            (
+                code,
+                record.get("sw_industry") or record.get("industry"),  # sw_industry_l1
+                None,  # sw_industry_l2
+                None,  # sw_industry_l3
+                record.get("area"),  # province
+            )
+        )
 
     # Insert asset_meta
     await pg_conn.executemany(
@@ -232,8 +236,7 @@ async def migrate_stock_basic(
 
 
 async def populate_stock_structural_info(
-    sqlite_conn: sqlite3.Connection,
-    pg_conn: asyncpg.Connection
+    sqlite_conn: sqlite3.Connection, pg_conn: asyncpg.Connection
 ) -> int:
     """Populate stock_structural_info table with board and structural type info.
 
@@ -262,7 +265,7 @@ async def populate_stock_structural_info(
         ORDER BY code, date DESC
     """)
     for r in st_records:
-        st_map[r['code']] = bool(r['is_st'])
+        st_map[r["code"]] = bool(r["is_st"])
 
     print(f"  Found {len(st_map)} stocks with ST status info")
 
@@ -271,8 +274,8 @@ async def populate_stock_structural_info(
     today = date.today()
 
     for stock in stocks:
-        code = stock['code']
-        list_date = stock['list_date']
+        code = stock["code"]
+        list_date = stock["list_date"]
 
         # Determine board
         board = determine_board_type(code)
@@ -297,18 +300,20 @@ async def populate_stock_structural_info(
         # Get price limits
         limit_up, limit_down = get_price_limits(board, is_st)
 
-        records.append((
-            code,
-            board,
-            structural_type,
-            limit_up,
-            limit_down,
-            is_st,
-            is_new,
-            False,  # is_suspended
-            list_date,
-            None,  # st_date
-        ))
+        records.append(
+            (
+                code,
+                board,
+                structural_type,
+                limit_up,
+                limit_down,
+                is_st,
+                is_new,
+                False,  # is_suspended
+                list_date,
+                None,  # st_date
+            )
+        )
 
     # Insert/update stock_structural_info
     await pg_conn.executemany(
@@ -336,10 +341,7 @@ async def populate_stock_structural_info(
     return len(records)
 
 
-async def migrate_daily_k_data(
-    sqlite_conn: sqlite3.Connection,
-    pg_conn: asyncpg.Connection
-) -> int:
+async def migrate_daily_k_data(sqlite_conn: sqlite3.Connection, pg_conn: asyncpg.Connection) -> int:
     """Migrate daily_k_data -> market_daily + indicator_valuation."""
     print("\nMigrating daily_k_data -> market_daily + indicator_valuation...")
 
@@ -364,20 +366,22 @@ async def migrate_daily_k_data(
             record = dict(zip(columns, row))
 
             # Market daily data (OHLCV only)
-            market_batch.append((
-                record.get("code"),
-                parse_date(record.get("date")),
-                safe_decimal(record.get("open")),
-                safe_decimal(record.get("high")),
-                safe_decimal(record.get("low")),
-                safe_decimal(record.get("close")),
-                safe_decimal(record.get("preclose")),
-                safe_int(record.get("volume")),
-                safe_decimal(record.get("amount")),
-                safe_decimal(record.get("turn")),
-                safe_decimal(record.get("pctChg")),
-                safe_int(record.get("tradestatus")),
-            ))
+            market_batch.append(
+                (
+                    record.get("code"),
+                    parse_date(record.get("date")),
+                    safe_decimal(record.get("open")),
+                    safe_decimal(record.get("high")),
+                    safe_decimal(record.get("low")),
+                    safe_decimal(record.get("close")),
+                    safe_decimal(record.get("preclose")),
+                    safe_int(record.get("volume")),
+                    safe_decimal(record.get("amount")),
+                    safe_decimal(record.get("turn")),
+                    safe_decimal(record.get("pctChg")),
+                    safe_int(record.get("tradestatus")),
+                )
+            )
 
             # Valuation data (if any valuation field is present)
             pe_ttm = safe_decimal(record.get("peTTM"))
@@ -398,17 +402,19 @@ async def migrate_daily_k_data(
             # Insert record if circ_mv exists OR any valuation field exists
             # Priority: circ_mv (computed from amount/turn) is the most important for market cap display
             if circ_mv is not None or any([pe_ttm, pb_mrq, ps_ttm, pcf, is_st]):
-                valuation_batch.append((
-                    record.get("code"),
-                    parse_date(record.get("date")),
-                    pe_ttm,
-                    pb_mrq,
-                    ps_ttm,
-                    pcf,
-                    circ_mv,  # total_mv (use circ_mv as approximation)
-                    circ_mv,  # circ_mv
-                    is_st,
-                ))
+                valuation_batch.append(
+                    (
+                        record.get("code"),
+                        parse_date(record.get("date")),
+                        pe_ttm,
+                        pb_mrq,
+                        ps_ttm,
+                        pcf,
+                        circ_mv,  # total_mv (use circ_mv as approximation)
+                        circ_mv,  # circ_mv
+                        is_st,
+                    )
+                )
 
         # Insert market_daily batch
         await pg_conn.executemany(
@@ -453,10 +459,8 @@ async def migrate_daily_k_data(
 # ETF Migration
 # =============================================================================
 
-async def migrate_etf_basic(
-    sqlite_conn: sqlite3.Connection,
-    pg_conn: asyncpg.Connection
-) -> int:
+
+async def migrate_etf_basic(sqlite_conn: sqlite3.Connection, pg_conn: asyncpg.Connection) -> int:
     """Migrate etf_basic -> asset_meta + etf_profile."""
     print("\nMigrating etf_basic -> asset_meta + etf_profile...")
 
@@ -489,26 +493,34 @@ async def migrate_etf_basic(
         else:
             status_val = 1
 
-        asset_records.append((
-            code,
-            record.get("code_name") or record.get("name") or code,
-            "ETF",
-            exchange,
-            parse_date(record.get("ipo_date") or record.get("list_date")),
-            parse_date(record.get("out_date") or record.get("delist_date")),
-            status_val,
-            "ETF",
-        ))
+        asset_records.append(
+            (
+                code,
+                record.get("code_name") or record.get("name") or code,
+                "ETF",
+                exchange,
+                parse_date(record.get("ipo_date") or record.get("list_date")),
+                parse_date(record.get("out_date") or record.get("delist_date")),
+                status_val,
+                "ETF",
+            )
+        )
 
         # ETF profile - fund_type, tracking_index_code, tracking_index_name, management_fee, custodian_fee
-        profile_records.append((
-            code,
-            record.get("etf_type") or record.get("fund_type"),
-            record.get("underlying_index_code") or record.get("index_code") or record.get("tracking_index_code"),
-            record.get("underlying_index_name") or record.get("index_name") or record.get("tracking_index_name"),
-            safe_decimal(record.get("management_fee")),
-            safe_decimal(record.get("custody_fee") or record.get("custodian_fee")),
-        ))
+        profile_records.append(
+            (
+                code,
+                record.get("etf_type") or record.get("fund_type"),
+                record.get("underlying_index_code")
+                or record.get("index_code")
+                or record.get("tracking_index_code"),
+                record.get("underlying_index_name")
+                or record.get("index_name")
+                or record.get("tracking_index_name"),
+                safe_decimal(record.get("management_fee")),
+                safe_decimal(record.get("custody_fee") or record.get("custodian_fee")),
+            )
+        )
 
     # Insert asset_meta
     await pg_conn.executemany(
@@ -548,10 +560,7 @@ async def migrate_etf_basic(
     return len(asset_records)
 
 
-async def migrate_etf_daily(
-    sqlite_conn: sqlite3.Connection,
-    pg_conn: asyncpg.Connection
-) -> int:
+async def migrate_etf_daily(sqlite_conn: sqlite3.Connection, pg_conn: asyncpg.Connection) -> int:
     """Migrate etf_daily -> market_daily + indicator_etf."""
     print("\nMigrating etf_daily -> market_daily + indicator_etf...")
 
@@ -588,20 +597,22 @@ async def migrate_etf_daily(
             record = dict(zip(columns, row))
 
             # Market daily data
-            market_batch.append((
-                record.get("code"),
-                parse_date(record.get("date")),
-                safe_decimal(record.get("open")),
-                safe_decimal(record.get("high")),
-                safe_decimal(record.get("low")),
-                safe_decimal(record.get("close")),
-                safe_decimal(record.get("preclose")),
-                safe_int(record.get("volume")),
-                safe_decimal(record.get("amount")),
-                safe_decimal(record.get("turn")),
-                safe_decimal(record.get("pctChg") or record.get("pct_chg")),
-                safe_int(record.get("tradestatus") or record.get("trade_status")),
-            ))
+            market_batch.append(
+                (
+                    record.get("code"),
+                    parse_date(record.get("date")),
+                    safe_decimal(record.get("open")),
+                    safe_decimal(record.get("high")),
+                    safe_decimal(record.get("low")),
+                    safe_decimal(record.get("close")),
+                    safe_decimal(record.get("preclose")),
+                    safe_int(record.get("volume")),
+                    safe_decimal(record.get("amount")),
+                    safe_decimal(record.get("turn")),
+                    safe_decimal(record.get("pctChg") or record.get("pct_chg")),
+                    safe_int(record.get("tradestatus") or record.get("trade_status")),
+                )
+            )
 
             # ETF specific indicators
             iopv = safe_decimal(record.get("iopv"))
@@ -609,14 +620,16 @@ async def migrate_etf_daily(
             unit_total = safe_decimal(record.get("unit_total"))
 
             if any([iopv, discount_rate, unit_total]):
-                etf_indicator_batch.append((
-                    record.get("code"),
-                    parse_date(record.get("date")),
-                    iopv,
-                    discount_rate,
-                    unit_total,
-                    None,  # tracking_error
-                ))
+                etf_indicator_batch.append(
+                    (
+                        record.get("code"),
+                        parse_date(record.get("date")),
+                        iopv,
+                        discount_rate,
+                        unit_total,
+                        None,  # tracking_error
+                    )
+                )
 
         # Insert market_daily batch
         await pg_conn.executemany(
@@ -653,9 +666,9 @@ async def migrate_etf_daily(
 # Adjust Factor Migration
 # =============================================================================
 
+
 async def migrate_adjust_factor(
-    sqlite_conn: sqlite3.Connection,
-    pg_conn: asyncpg.Connection
+    sqlite_conn: sqlite3.Connection, pg_conn: asyncpg.Connection
 ) -> int:
     """Migrate adjust_factor table."""
     print("\nMigrating adjust_factor...")
@@ -678,18 +691,23 @@ async def migrate_adjust_factor(
     for row in rows:
         record = dict(zip(columns, row))
 
-        records.append((
-            record.get("code"),
-            parse_date(record.get("dividOperateDate") or record.get("divid_operate_date")),
-            safe_decimal(record.get("foreAdjustFactor") or record.get("fore_adjust_factor")),
-            safe_decimal(record.get("backAdjustFactor") or record.get("back_adjust_factor")),
-            safe_decimal(record.get("adjustFactor") or record.get("adjust_factor")),
-        ))
+        records.append(
+            (
+                record.get("code"),
+                parse_date(record.get("dividOperateDate") or record.get("divid_operate_date")),
+                safe_decimal(
+                    record.get("adjustFactor")
+                    or record.get("adjust_factor")
+                    or record.get("backAdjustFactor")
+                    or record.get("back_adjust_factor")
+                ),
+            )
+        )
 
     await pg_conn.executemany(
         """
-        INSERT INTO adjust_factor (code, divid_operate_date, fore_adjust_factor, back_adjust_factor, adjust_factor)
-        VALUES ($1, $2, $3, $4, $5)
+        INSERT INTO adjust_factor (code, divid_operate_date, adjust_factor)
+        VALUES ($1, $2, $3)
         ON CONFLICT (code, divid_operate_date) DO NOTHING
         """,
         records,
@@ -703,6 +721,7 @@ async def migrate_adjust_factor(
 # Main Functions
 # =============================================================================
 
+
 async def migrate_stock_database(source_path: Path, postgres_url: str) -> Dict[str, int]:
     """Migrate a stock database."""
     results = {}
@@ -714,11 +733,11 @@ async def migrate_stock_database(source_path: Path, postgres_url: str) -> Dict[s
         pg_conn = await asyncpg.connect(postgres_url)
 
         try:
-            results['stock_basic'] = await migrate_stock_basic(sqlite_conn, pg_conn)
-            results['daily_k_data'] = await migrate_daily_k_data(sqlite_conn, pg_conn)
-            results['adjust_factor'] = await migrate_adjust_factor(sqlite_conn, pg_conn)
+            results["stock_basic"] = await migrate_stock_basic(sqlite_conn, pg_conn)
+            results["daily_k_data"] = await migrate_daily_k_data(sqlite_conn, pg_conn)
+            results["adjust_factor"] = await migrate_adjust_factor(sqlite_conn, pg_conn)
             # Populate structural info after basic data is migrated
-            results['structural_info'] = await populate_stock_structural_info(sqlite_conn, pg_conn)
+            results["structural_info"] = await populate_stock_structural_info(sqlite_conn, pg_conn)
         finally:
             await pg_conn.close()
     finally:
@@ -738,9 +757,9 @@ async def migrate_etf_database(source_path: Path, postgres_url: str) -> Dict[str
         pg_conn = await asyncpg.connect(postgres_url)
 
         try:
-            results['etf_basic'] = await migrate_etf_basic(sqlite_conn, pg_conn)
-            results['etf_daily'] = await migrate_etf_daily(sqlite_conn, pg_conn)
-            results['adjust_factor'] = await migrate_adjust_factor(sqlite_conn, pg_conn)
+            results["etf_basic"] = await migrate_etf_basic(sqlite_conn, pg_conn)
+            results["etf_daily"] = await migrate_etf_daily(sqlite_conn, pg_conn)
+            results["adjust_factor"] = await migrate_adjust_factor(sqlite_conn, pg_conn)
         finally:
             await pg_conn.close()
     finally:
@@ -824,47 +843,43 @@ def cli():
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )
 
+    parser.add_argument("--source", "-s", type=Path, help="Path to SQLite database")
+
     parser.add_argument(
-        "--source", "-s",
-        type=Path,
-        help="Path to SQLite database"
+        "--source-dir", type=Path, help="Directory containing multiple SQLite databases"
     )
 
     parser.add_argument(
-        "--source-dir",
-        type=Path,
-        help="Directory containing multiple SQLite databases"
-    )
-
-    parser.add_argument(
-        "--type", "-t",
+        "--type",
+        "-t",
         choices=["stock", "etf"],
         default="stock",
-        help="Type of data to migrate (default: stock)"
+        help="Type of data to migrate (default: stock)",
     )
 
     parser.add_argument(
-        "--database-url", "-d",
+        "--database-url",
+        "-d",
         type=str,
         default=DEFAULT_POSTGRES_URL,
-        help="PostgreSQL connection URL"
+        help="PostgreSQL connection URL",
     )
 
     parser.add_argument(
-        "--all", "-a",
-        action="store_true",
-        help="Migrate all databases in source-dir"
+        "--all", "-a", action="store_true", help="Migrate all databases in source-dir"
     )
 
     args = parser.parse_args()
 
-    exit_code = asyncio.run(main(
-        source=args.source,
-        source_dir=args.source_dir,
-        data_type=args.type,
-        postgres_url=args.database_url,
-        migrate_all=args.all,
-    ))
+    exit_code = asyncio.run(
+        main(
+            source=args.source,
+            source_dir=args.source_dir,
+            data_type=args.type,
+            postgres_url=args.database_url,
+            migrate_all=args.all,
+        )
+    )
     exit(exit_code)
 
 

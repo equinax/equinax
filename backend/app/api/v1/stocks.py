@@ -164,11 +164,7 @@ class StockSearchResult(BaseModel):
 
 
 class AdjustFactorResponse(BaseModel):
-    """Schema for adjust factor response."""
-
     divid_operate_date: date
-    fore_adjust_factor: Optional[Decimal]
-    back_adjust_factor: Optional[Decimal]
     adjust_factor: Optional[Decimal]
 
     class Config:
@@ -491,9 +487,6 @@ async def get_kline(
         kline_data = list(reversed([(md, None) for md in kline_data_raw]))
 
     if adjust != AdjustType.NONE and kline_data:
-        min_date = kline_data[0][0].date
-        max_date = kline_data[-1][0].date
-
         factor_query = (
             select(AdjustFactor)
             .where(AdjustFactor.code == code)
@@ -504,12 +497,16 @@ async def get_kline(
 
         factor_map: dict[date, Decimal] = {}
         for f in factors:
-            if adjust == AdjustType.HFQ and f.back_adjust_factor:
-                factor_map[f.divid_operate_date] = f.back_adjust_factor
-            elif adjust == AdjustType.QFQ and f.fore_adjust_factor:
-                factor_map[f.divid_operate_date] = f.fore_adjust_factor
+            if f.adjust_factor:
+                factor_map[f.divid_operate_date] = f.adjust_factor
 
         factor_dates = sorted(factor_map.keys())
+
+        # 前复权: normalize by latest factor so latest price = raw price
+        # 后复权: use raw cumulative factor (normalized by IPO base = 1.0)
+        base_divisor = Decimal("1")
+        if adjust == AdjustType.QFQ and factor_dates:
+            base_divisor = factor_map[factor_dates[-1]]
 
         def get_factor_for_date(d: date) -> Decimal:
             if not factor_dates:
@@ -520,7 +517,7 @@ async def get_kline(
                     applicable_factor = factor_map[fd]
                 else:
                     break
-            return applicable_factor
+            return applicable_factor / base_divisor
 
         adjusted_data = []
         for md, iv in kline_data:

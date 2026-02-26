@@ -214,8 +214,6 @@ class AdjustFactor(Base):
     code: Mapped[str] = mapped_column(String(20), nullable=False)
     divid_operate_date: Mapped[date] = mapped_column(Date, nullable=False)
 
-    fore_adjust_factor: Mapped[Optional[Decimal]] = mapped_column(Numeric(12, 6), nullable=True)
-    back_adjust_factor: Mapped[Optional[Decimal]] = mapped_column(Numeric(12, 6), nullable=True)
     adjust_factor: Mapped[Optional[Decimal]] = mapped_column(Numeric(12, 6), nullable=True)
 
     created_at: Mapped[datetime] = mapped_column(

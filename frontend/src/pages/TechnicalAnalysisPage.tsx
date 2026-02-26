@@ -271,8 +271,6 @@ export default function TechnicalAnalysisPage() {
                     <TableHeader>
                       <TableRow>
                         <TableHead className="text-xs">除权日期</TableHead>
-                        <TableHead className="text-xs text-right">前复权因子</TableHead>
-                        <TableHead className="text-xs text-right">后复权因子</TableHead>
                         <TableHead className="text-xs text-right">复权因子</TableHead>
                       </TableRow>
                     </TableHeader>
@@ -280,8 +278,6 @@ export default function TechnicalAnalysisPage() {
                       {adjustFactors?.map((factor) => (
                         <TableRow key={factor.divid_operate_date}>
                           <TableCell className="text-xs py-1">{factor.divid_operate_date}</TableCell>
-                          <TableCell className="text-xs py-1 text-right">{factor.fore_adjust_factor ?? '-'}</TableCell>
-                          <TableCell className="text-xs py-1 text-right">{factor.back_adjust_factor ?? '-'}</TableCell>
                           <TableCell className="text-xs py-1 text-right">{factor.adjust_factor ?? '-'}</TableCell>
                         </TableRow>
                       ))}

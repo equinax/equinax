@@ -26,8 +26,7 @@ export interface StockData {
 // 复权因子
 export interface AdjustFactor {
   date: string
-  backAdjustFactor: number
-  foreAdjustFactor: number
+  adjustFactor: number
 }
 
 // 交易类型
