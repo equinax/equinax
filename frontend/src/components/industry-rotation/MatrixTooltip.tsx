@@ -99,7 +99,7 @@ export function MatrixTooltip({ data }: MatrixTooltipProps) {
   return createPortal(
     <div
       ref={tooltipRef}
-      className="fixed z-50 bg-white/60 backdrop-blur-[2px] text-gray-900 rounded p-3 shadow-lg text-sm pointer-events-none border border-gray-300"
+      className="fixed z-50 bg-white/85 backdrop-blur-[2px] text-gray-900 rounded p-3 shadow-lg text-sm pointer-events-none border border-gray-300"
       style={tooltipStyle}
     >
       {/* Header */}
@@ -192,7 +192,7 @@ export function MatrixTooltip({ data }: MatrixTooltipProps) {
           </div>
           {/* Limit-up stocks list (show all) */}
           {limit_up_stocks && limit_up_stocks.length > 0 && (
-            <div className="text-xs space-y-0.5 mt-1 max-h-48 overflow-y-auto">
+            <div className="text-xs space-y-0.5 mt-1">
               {limit_up_stocks.map((stock) => (
                 <div key={stock.code} className="flex justify-between text-gray-600">
                   <span>{stock.name}</span>
