@@ -13,6 +13,7 @@ import {
   Microscope,
   Activity,
   ListChecks,
+  BookMarked,
 } from 'lucide-react'
 import {
   Tooltip,
@@ -31,6 +32,7 @@ const navigation = [
   { name: '市场发现', href: '/universe', icon: Database },
   { name: '市场研究', href: '/market-research', icon: Microscope },
   { name: '指数研究', href: '/index-research', icon: Activity },
+  { name: '个股追踪', href: '/stock-tracker', icon: BookMarked },
   { name: '数据同步', href: '/data-sync', icon: RefreshCw },
 ]
 

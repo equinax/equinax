@@ -23,6 +23,9 @@ import DataMapPage from '@/pages/DataMapPage'
 import DynamicBacktestPage from '@/pages/dynamic-backtest'
 import MarketResearchPage from '@/pages/MarketResearchPage'
 import IndexResearchPage from '@/pages/IndexResearchPage'
+import StockTrackerPage from '@/pages/StockTrackerPage'
+import StockTrackerTimelinePage from '@/pages/StockTrackerTimelinePage'
+import StockTrackerDetailPage from '@/pages/StockTrackerDetailPage'
 
 function App() {
   return (
@@ -52,6 +55,9 @@ function App() {
           <Route path="etf-rotation" element={<EtfRotationPage />} />
            <Route path="market-research" element={<MarketResearchPage />} />
            <Route path="index-research" element={<IndexResearchPage />} />
+           <Route path="stock-tracker" element={<StockTrackerPage />} />
+           <Route path="stock-tracker/:tsCode" element={<StockTrackerTimelinePage />} />
+           <Route path="stock-tracker/:tsCode/:entryId" element={<StockTrackerDetailPage />} />
          </Route>
       </Routes>
     </ThemeProvider>

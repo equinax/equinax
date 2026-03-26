@@ -18,6 +18,7 @@ from app.api.v1 import (
     limit_up,
     market_research,
     index_research,
+    stock_tracker,
 )
 
 api_router = APIRouter()
@@ -40,3 +41,4 @@ api_router.include_router(
     market_research.router, prefix="/market-research", tags=["Market Research"]
 )
 api_router.include_router(index_research.router, prefix="/index-research", tags=["Index Research"])
+api_router.include_router(stock_tracker.router, prefix="/stock-tracker", tags=["Stock Tracker"])

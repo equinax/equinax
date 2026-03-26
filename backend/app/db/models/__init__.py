@@ -45,6 +45,18 @@ from app.db.models.classification import (
     MarketRegimeType,
 )
 
+# Stock tracker models
+from app.db.models.stock_tracker import (
+    StockTrack,
+    TrackDailyEntry,
+    DailySketchPoints,
+    DailySituationScore,
+    TradeOperation,
+    BaostockMinuteCache,
+    PatternType,
+    OpType,
+)
+
 __all__ = [
     "User",
     # Asset models
@@ -86,4 +98,13 @@ __all__ = [
     "TurnoverCategory",
     "ValueCategory",
     "MarketRegimeType",
+    # Stock tracker models
+    "StockTrack",
+    "TrackDailyEntry",
+    "DailySketchPoints",
+    "DailySituationScore",
+    "TradeOperation",
+    "BaostockMinuteCache",
+    "PatternType",
+    "OpType",
 ]
