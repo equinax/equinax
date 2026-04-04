@@ -80,10 +80,10 @@ export default function StockTrackerTimelinePage() {
       </div>
 
       {isLoading ? (
-        <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-2">
+        <div className="grid grid-cols-5 sm:grid-cols-6 md:grid-cols-8 lg:grid-cols-10 gap-0">
           {Array.from({ length: 10 }).map((_, i) => (
-            <div key={i} className="border rounded-lg">
-              <Skeleton className="w-full h-[180px] rounded-lg" />
+            <div key={i} className="border">
+              <Skeleton className="w-full h-[120px]" />
             </div>
           ))}
         </div>
@@ -98,7 +98,7 @@ export default function StockTrackerTimelinePage() {
           </CardContent>
         </Card>
       ) : (
-        <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-2">
+        <div className="grid grid-cols-5 sm:grid-cols-6 md:grid-cols-8 lg:grid-cols-10 gap-0">
           {items.map((day: TimelineDayRead) => {
             const hasEntry = day.has_entry && day.entry_id
             const scores = day.scores_summary
@@ -111,7 +111,7 @@ export default function StockTrackerTimelinePage() {
             return hasEntry ? (
               <div
                 key={day.trade_date}
-                className="border rounded-lg hover:border-primary/50 transition-colors cursor-pointer"
+                className="border hover:border-primary/50 transition-colors cursor-pointer"
                 onClick={() =>
                   navigate(`/stock-tracker/${tsCode}/${day.entry_id}`)
                 }
@@ -129,14 +129,14 @@ export default function StockTrackerTimelinePage() {
                   scores={scores}
                   pattern={day.pattern ?? null}
                   notes={day.notes ?? null}
-                  width={220}
-                  height={180}
+                  width={140}
+                  height={120}
                 />
               </div>
             ) : (
               <div
                 key={day.trade_date}
-                className="border border-dashed rounded-lg opacity-60"
+                className="border border-dashed opacity-60"
               >
                 <DayChart
                   mode="thumbnail"
@@ -147,8 +147,8 @@ export default function StockTrackerTimelinePage() {
                   close={day.close ?? null}
                   preClose={day.pre_close ?? null}
                   pctChg={day.pct_chg ?? null}
-                  width={220}
-                  height={180}
+                  width={140}
+                  height={120}
                 />
               </div>
             )

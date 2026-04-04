@@ -106,12 +106,9 @@ interface DayChartProps {
   autoPattern?: string | null
 }
 
-// ─── Thumbnail Layout Constants ───────────────────────────────────────────────
-const THUMB_PADDING = { top: 22, right: 30, bottom: 24, left: 20 }
-
 // ─── Thumbnail Grid Lines ─────────────────────────────────────────────────────
-// Only show 9:30, 11:30, 15:00 as vertical markers in thumbnail
-const THUMB_TIME_MARKERS = [9 * 60 + 30, 11 * 60 + 30, 15 * 60]
+// Only show 10:30, 11:30, 14:00 as vertical markers in thumbnail
+const THUMB_TIME_MARKERS = [10 * 60 + 30, 11 * 60 + 30, 14 * 60]
 
 // ─── Parse key points helper ──────────────────────────────────────────────────
 function parseKeyPoints(
@@ -141,15 +138,16 @@ function ThumbnailChart({
   keyPoints,
   scores,
   pattern,
-  notes,
-  width = 220,
-  height = 180,
+  width = 140,
+  height = 120,
   onClick,
 }: Omit<DayChartProps, 'mode' | 'onSave' | 'isSaving' | 'autoPattern'>) {
-  const plotLeft = THUMB_PADDING.left
-  const plotTop = THUMB_PADDING.top
-  const plotWidth = width - THUMB_PADDING.left - THUMB_PADDING.right
-  const plotHeight = height - THUMB_PADDING.top - THUMB_PADDING.bottom
+  const candleStripWidth = Math.round(width / 30)
+  const scoreBarHeight = Math.round(height / 20)
+  const plotLeft = candleStripWidth
+  const plotTop = 18
+  const plotWidth = width - candleStripWidth - 4
+  const plotHeight = height - plotTop - scoreBarHeight
 
   // Format date as MM-DD
   const dateLabel = useMemo(() => {
@@ -197,7 +195,7 @@ function ThumbnailChart({
     if (!scores) return null
     const total = scores.market + scores.sector + scores.stock
     if (total <= 0) return null
-    const barWidth = plotWidth
+    const barWidth = width
     return {
       market: (scores.market / total) * barWidth,
       sector: (scores.sector / total) * barWidth,
@@ -209,8 +207,8 @@ function ThumbnailChart({
   // Y position of 0% reference
   const zeroY = priceToY(0, plotTop, plotHeight)
 
-  // Candlestick X position
-  const candleX = plotLeft + 4
+  const candleBodyWidth = Math.max(4, Math.round(candleStripWidth * 0.6))
+  const candleX = Math.round((candleStripWidth - candleBodyWidth) / 2)
 
   return (
     <div
@@ -231,7 +229,6 @@ function ThumbnailChart({
             width={width}
             height={height}
             fill="rgba(255,255,255,0.02)"
-            cornerRadius={6}
           />
 
           {/* ── Top bar: date + pattern ── */}
@@ -241,11 +238,11 @@ function ThumbnailChart({
             text={dateLabel}
             fontSize={12}
             fontStyle="bold"
-            fill="rgba(255,255,255,0.85)"
+            fill="#6b7280"
           />
           {pctChg != null && (
             <Text
-              x={plotLeft + 44}
+              x={plotLeft + 36}
               y={5}
               text={`${pctChg >= 0 ? '+' : ''}${pctChg.toFixed(2)}%`}
               fontSize={10}
@@ -254,7 +251,7 @@ function ThumbnailChart({
           )}
           {pattern && (
             <Text
-              x={width - THUMB_PADDING.right - 4}
+              x={width - 20}
               y={2}
               text={pattern}
               fontSize={16}
@@ -271,15 +268,15 @@ function ThumbnailChart({
             y={plotTop}
             width={plotWidth}
             height={plotHeight}
-            fill="rgba(255,255,255,0.015)"
-            stroke="rgba(255,255,255,0.06)"
+            fill="rgba(0,0,0,0.01)"
+            stroke="rgba(120,120,120,0.1)"
             strokeWidth={0.5}
           />
 
           {/* ── Grid: horizontal 0% reference ── */}
           <Line
             points={[plotLeft, zeroY, plotLeft + plotWidth, zeroY]}
-            stroke="rgba(255,255,255,0.2)"
+            stroke="rgba(120,120,120,0.35)"
             strokeWidth={0.5}
             dash={[3, 3]}
           />
@@ -291,45 +288,23 @@ function ThumbnailChart({
               <Line
                 key={slot}
                 points={[x, plotTop, x, plotTop + plotHeight]}
-                stroke="rgba(255,255,255,0.08)"
+                stroke="rgba(120,120,120,0.25)"
                 strokeWidth={0.5}
                 dash={[2, 2]}
               />
             )
           })}
 
-          {/* ── Y-axis labels (right side) ── */}
-          <Text
-            x={plotLeft + plotWidth + 2}
-            y={priceToY(PRICE_RANGE, plotTop, plotHeight) - 4}
-            text="+10%"
-            fontSize={8}
-            fill="rgba(255,255,255,0.3)"
-          />
-          <Text
-            x={plotLeft + plotWidth + 2}
-            y={zeroY - 4}
-            text="0%"
-            fontSize={8}
-            fill="rgba(255,255,255,0.3)"
-          />
-          <Text
-            x={plotLeft + plotWidth + 2}
-            y={priceToY(-PRICE_RANGE, plotTop, plotHeight) - 4}
-            text="-10%"
-            fontSize={8}
-            fill="rgba(255,255,255,0.3)"
-          />
-
           {/* ── Candlestick ── */}
+          <Rect x={0} y={plotTop} width={candleStripWidth} height={plotHeight} fill="rgba(0,0,0,0.02)" />
           {candle && (
             <Group>
               {/* Wick */}
               <Line
                 points={[
-                  candleX + 4,
+                  candleX + Math.round(candleBodyWidth / 2),
                   priceToY(candle.highPct, plotTop, plotHeight),
-                  candleX + 4,
+                  candleX + Math.round(candleBodyWidth / 2),
                   priceToY(candle.lowPct, plotTop, plotHeight),
                 ]}
                 stroke={candle.isUp ? '#ef4444' : '#22c55e'}
@@ -343,7 +318,7 @@ function ThumbnailChart({
                   plotTop,
                   plotHeight,
                 )}
-                width={8}
+                width={candleBodyWidth}
                 height={Math.max(
                   1,
                   Math.abs(
@@ -361,7 +336,7 @@ function ThumbnailChart({
             <Group>
               <Line
                 points={lineCoords}
-                stroke="rgba(255,255,255,0.6)"
+                stroke="#8b5cf6"
                 strokeWidth={1.5}
                 lineJoin="round"
                 lineCap="round"
@@ -383,43 +358,27 @@ function ThumbnailChart({
           {scoreSegments && (
             <Group>
               <Rect
-                x={plotLeft}
-                y={height - THUMB_PADDING.bottom + 2}
+                x={0}
+                y={height - scoreBarHeight}
                 width={scoreSegments.market}
-                height={6}
+                height={scoreBarHeight}
                 fill="#3b82f6"
-                cornerRadius={[3, 0, 0, 3]}
               />
               <Rect
-                x={plotLeft + scoreSegments.market}
-                y={height - THUMB_PADDING.bottom + 2}
+                x={scoreSegments.market}
+                y={height - scoreBarHeight}
                 width={scoreSegments.sector}
-                height={6}
+                height={scoreBarHeight}
                 fill="#22c55e"
               />
               <Rect
-                x={plotLeft + scoreSegments.market + scoreSegments.sector}
-                y={height - THUMB_PADDING.bottom + 2}
+                x={scoreSegments.market + scoreSegments.sector}
+                y={height - scoreBarHeight}
                 width={scoreSegments.stock}
-                height={6}
+                height={scoreBarHeight}
                 fill="#ec4899"
-                cornerRadius={[0, 3, 3, 0]}
               />
             </Group>
-          )}
-
-          {/* ── Notes text (only when notes exist) ── */}
-          {notes && (
-            <Text
-              x={plotLeft}
-              y={height - 8}
-              text={notes}
-              fontSize={9}
-              fill="rgba(255,255,255,0.5)"
-              width={plotWidth}
-              ellipsis={true}
-              wrap="none"
-            />
           )}
         </Layer>
       </Stage>
