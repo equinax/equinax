@@ -3,4 +3,5 @@
 
 export type SyncDailyApiV1StockTrackerTracksTsCodeSyncDailyPostParams = {
   days?: number;
+  before?: string | null;
 };

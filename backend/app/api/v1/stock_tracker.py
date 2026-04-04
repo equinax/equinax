@@ -390,6 +390,7 @@ async def get_timeline(
 async def sync_daily(
     ts_code: str,
     days: int = Query(default=60, ge=1, le=365),
+    before: Optional[date] = Query(default=None),
     db: AsyncSession = Depends(get_db),
 ):
     result = await db.execute(select(StockTrack).where(StockTrack.ts_code == ts_code))
@@ -397,12 +398,15 @@ async def sync_daily(
     if not track:
         raise HTTPException(status_code=404, detail="Track not found")
 
-    market_result = await db.execute(
+    market_query = (
         select(MarketDaily)
         .where(MarketDaily.code == ts_code)
         .order_by(MarketDaily.date.desc())
         .limit(days)
     )
+    if before:
+        market_query = market_query.where(MarketDaily.date < before)
+    market_result = await db.execute(market_query)
     market_rows = market_result.scalars().all()
 
     created = 0

@@ -139,10 +139,27 @@ function ThumbnailChart({
   scores,
   pattern,
   notes,
-  width = 140,
   height = 140,
   onClick,
 }: Omit<DayChartProps, 'mode' | 'onSave' | 'isSaving' | 'autoPattern'>) {
+  const containerRef = useRef<HTMLDivElement>(null)
+  const [measuredWidth, setMeasuredWidth] = useState(0)
+
+  useEffect(() => {
+    const el = containerRef.current
+    if (!el) return
+    const ro = new ResizeObserver((entries) => {
+      const entry = entries[0]
+      if (entry) {
+        const w = Math.floor(entry.contentRect.width)
+        if (w > 0) setMeasuredWidth(w)
+      }
+    })
+    ro.observe(el)
+    return () => ro.disconnect()
+  }, [])
+
+  const width = measuredWidth || 140
   const candleStripWidth = Math.round(width / 30) + 1
   const scoreBarHeight = Math.round(height / 20)
   const noteAreaHeight = 16
@@ -151,9 +168,7 @@ function ThumbnailChart({
   const plotWidth = width - candleStripWidth
   const plotHeight = height - plotTop - scoreBarHeight - noteAreaHeight
 
-  // Format date as MM-DD
   const dateLabel = useMemo(() => {
-    // tradeDate format: "YYYYMMDD" or "YYYY-MM-DD"
     const cleaned = tradeDate.replace(/-/g, '')
     if (cleaned.length === 8) {
       return `${cleaned.slice(4, 6)}-${cleaned.slice(6, 8)}`
@@ -161,16 +176,13 @@ function ThumbnailChart({
     return tradeDate
   }, [tradeDate])
 
-  // Parse OHLC points from keyPoints
   const ohlcPoints = useMemo(() => parseKeyPoints(keyPoints), [keyPoints])
 
-  // Sorted points for connecting line
   const sortedPoints = useMemo(() => {
     if (!ohlcPoints) return null
     return [...ohlcPoints].sort((a, b) => a.time - b.time)
   }, [ohlcPoints])
 
-  // Line points for OHLC curve
   const lineCoords = useMemo(() => {
     if (!sortedPoints) return null
     return sortedPoints.flatMap((p) => [
@@ -179,7 +191,6 @@ function ThumbnailChart({
     ])
   }, [sortedPoints, plotLeft, plotWidth, plotTop, plotHeight])
 
-  // Candlestick calculations
   const candle = useMemo(() => {
     if (open == null || close == null || high == null || low == null || preClose == null) {
       return null
@@ -192,7 +203,6 @@ function ThumbnailChart({
     return { openPct, closePct, highPct, lowPct, isUp }
   }, [open, close, high, low, preClose])
 
-  // Score bar segments
   const scoreSegments = useMemo(() => {
     if (!scores) return null
     const total = scores.market + scores.sector + scores.stock
@@ -207,7 +217,6 @@ function ThumbnailChart({
     }
   }, [scores, width])
 
-  // Y position of 0% reference
   const zeroY = priceToY(0, plotTop, plotHeight)
 
   const candleBodyWidth = candleStripWidth
@@ -215,14 +224,15 @@ function ThumbnailChart({
 
   return (
     <div
+      ref={containerRef}
       style={{
-        width,
+        width: '100%',
         height,
         cursor: onClick ? 'pointer' : 'default',
-        display: 'inline-block',
       }}
       onClick={onClick}
     >
+      {measuredWidth > 0 && (
       <Stage width={width} height={height}>
         <Layer>
           {/* Background */}
@@ -398,6 +408,7 @@ function ThumbnailChart({
           )}
         </Layer>
       </Stage>
+      )}
     </div>
   )
 }

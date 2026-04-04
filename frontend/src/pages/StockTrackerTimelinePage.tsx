@@ -16,6 +16,7 @@ import DayChart from '@/components/stock-tracker/DayChart'
 
 const COLS = 10
 const PAGE_SIZE = 20
+const SYNC_DAYS = 20
 
 function chunkArray<T>(arr: T[], size: number): T[][] {
   const chunks: T[][] = []
@@ -23,6 +24,14 @@ function chunkArray<T>(arr: T[], size: number): T[][] {
     chunks.push(arr.slice(i, i + size))
   }
   return chunks
+}
+
+function formatDateShort(dateStr: string): string {
+  const cleaned = dateStr.replace(/-/g, '')
+  if (cleaned.length === 8) {
+    return `${cleaned.slice(4, 6)}-${cleaned.slice(6, 8)}`
+  }
+  return dateStr
 }
 
 export default function StockTrackerTimelinePage() {
@@ -90,7 +99,13 @@ export default function StockTrackerTimelinePage() {
 
   const handleSync = () => {
     if (!tsCode) return
-    syncMutation.mutate({ tsCode, params: { days: 60 } })
+    syncMutation.mutate({
+      tsCode,
+      params: {
+        days: syncInfo.before ? SYNC_DAYS : 60,
+        before: syncInfo.before ?? undefined,
+      },
+    })
   }
 
   const handleCreateEntry = (tradeDate: string) => {
@@ -146,6 +161,24 @@ export default function StockTrackerTimelinePage() {
 
   const rows = useMemo(() => chunkArray(items, COLS), [items])
 
+  const syncInfo = useMemo(() => {
+    if (!items.length) return { label: `最近${SYNC_DAYS}日`, before: undefined }
+    const noEntryItems = items.filter((d) => !d.has_entry)
+    if (noEntryItems.length > 0) {
+      const oldest = noEntryItems[0].trade_date
+      const newest = noEntryItems[noEntryItems.length - 1].trade_date
+      return {
+        label: `${formatDateShort(oldest)} ~ ${formatDateShort(newest)}`,
+        before: undefined,
+      }
+    }
+    const oldestDate = items[0].trade_date
+    return {
+      label: `${formatDateShort(oldestDate)} 之前${SYNC_DAYS}日`,
+      before: oldestDate,
+    }
+  }, [items])
+
   return (
     <div className="flex flex-col h-[calc(100vh-4rem)]">
       <div className="sticky top-0 z-10 bg-background pb-4">
@@ -179,7 +212,9 @@ export default function StockTrackerTimelinePage() {
             <RefreshCw
               className={`h-4 w-4 mr-1 ${syncMutation.isPending ? 'animate-spin' : ''}`}
             />
-            {syncMutation.isPending ? '同步中...' : '同步数据'}
+            {syncMutation.isPending
+              ? '同步中...'
+              : `同步数据 (${syncInfo.label})`}
           </Button>
         </div>
       </div>
