@@ -1,3 +1,4 @@
+import { useMemo } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { ArrowLeft, RefreshCw, Calendar } from 'lucide-react'
 import { useQueryClient } from '@tanstack/react-query'
@@ -11,6 +12,16 @@ import {
 } from '@/api/generated/stock-tracker/stock-tracker'
 import type { TimelineDayRead } from '@/api/generated/schemas'
 import DayChart from '@/components/stock-tracker/DayChart'
+
+const COLS = 10
+
+function chunkArray<T>(arr: T[], size: number): T[][] {
+  const chunks: T[][] = []
+  for (let i = 0; i < arr.length; i += size) {
+    chunks.push(arr.slice(i, i + size))
+  }
+  return chunks
+}
 
 export default function StockTrackerTimelinePage() {
   const { tsCode } = useParams<{ tsCode: string }>()
@@ -42,6 +53,7 @@ export default function StockTrackerTimelinePage() {
   }
 
   const items = timeline || []
+  const rows = useMemo(() => chunkArray(items, COLS), [items])
 
   return (
     <div className="space-y-4">
@@ -80,10 +92,13 @@ export default function StockTrackerTimelinePage() {
       </div>
 
       {isLoading ? (
-        <div className="grid grid-cols-5 sm:grid-cols-6 md:grid-cols-8 lg:grid-cols-10 gap-0">
-          {Array.from({ length: 10 }).map((_, i) => (
-            <div key={i} className="border">
-              <Skeleton className="w-full h-[120px]" />
+        <div className="flex">
+          {Array.from({ length: COLS }).map((_, i) => (
+            <div
+              key={i}
+              className="flex-1 min-w-0 border border-border -ml-px first:ml-0"
+            >
+              <Skeleton className="w-full h-[140px]" />
             </div>
           ))}
         </div>
@@ -98,61 +113,76 @@ export default function StockTrackerTimelinePage() {
           </CardContent>
         </Card>
       ) : (
-        <div className="grid grid-cols-5 sm:grid-cols-6 md:grid-cols-8 lg:grid-cols-10 gap-0">
-          {items.map((day: TimelineDayRead) => {
-            const hasEntry = day.has_entry && day.entry_id
-            const scores = day.scores_summary
-              ? (day.scores_summary as { market: number; sector: number; stock: number })
-              : null
-            const keyPoints = day.key_points
-              ? (day.key_points as Record<string, { time: string; price: number }>)
-              : null
+        <div className="flex flex-col gap-y-3">
+          {rows.map((row, rowIdx) => (
+            <div key={rowIdx} className="flex">
+              {row.map((day: TimelineDayRead) => {
+                const hasEntry = day.has_entry && day.entry_id
+                const scores = day.scores_summary
+                  ? (day.scores_summary as {
+                      market: number
+                      sector: number
+                      stock: number
+                    })
+                  : null
+                const keyPoints = day.key_points
+                  ? (day.key_points as Record<
+                      string,
+                      { time: string; price: number }
+                    >)
+                  : null
 
-            return hasEntry ? (
-              <div
-                key={day.trade_date}
-                className="border hover:border-primary/50 transition-colors cursor-pointer"
-                onClick={() =>
-                  navigate(`/stock-tracker/${tsCode}/${day.entry_id}`)
-                }
-              >
-                <DayChart
-                  mode="thumbnail"
-                  tradeDate={day.trade_date}
-                  open={day.open ?? null}
-                  high={day.high ?? null}
-                  low={day.low ?? null}
-                  close={day.close ?? null}
-                  preClose={day.pre_close ?? null}
-                  pctChg={day.pct_chg ?? null}
-                  keyPoints={keyPoints}
-                  scores={scores}
-                  pattern={day.pattern ?? null}
-                  notes={day.notes ?? null}
-                  width={140}
-                  height={120}
-                />
-              </div>
-            ) : (
-              <div
-                key={day.trade_date}
-                className="border border-dashed opacity-60"
-              >
-                <DayChart
-                  mode="thumbnail"
-                  tradeDate={day.trade_date}
-                  open={day.open ?? null}
-                  high={day.high ?? null}
-                  low={day.low ?? null}
-                  close={day.close ?? null}
-                  preClose={day.pre_close ?? null}
-                  pctChg={day.pct_chg ?? null}
-                  width={140}
-                  height={120}
-                />
-              </div>
-            )
-          })}
+                return hasEntry ? (
+                  <div
+                    key={day.trade_date}
+                    className="flex-1 min-w-0 border border-border -ml-px first:ml-0 hover:border-primary/50 hover:z-10 transition-colors cursor-pointer"
+                    onClick={() =>
+                      navigate(`/stock-tracker/${tsCode}/${day.entry_id}`)
+                    }
+                  >
+                    <DayChart
+                      mode="thumbnail"
+                      tradeDate={day.trade_date}
+                      open={day.open ?? null}
+                      high={day.high ?? null}
+                      low={day.low ?? null}
+                      close={day.close ?? null}
+                      preClose={day.pre_close ?? null}
+                      pctChg={day.pct_chg ?? null}
+                      keyPoints={keyPoints}
+                      scores={scores}
+                      pattern={day.pattern ?? null}
+                      notes={day.notes ?? null}
+                    />
+                  </div>
+                ) : (
+                  <div
+                    key={day.trade_date}
+                    className="flex-1 min-w-0 border border-dashed border-border -ml-px first:ml-0 opacity-60"
+                  >
+                    <DayChart
+                      mode="thumbnail"
+                      tradeDate={day.trade_date}
+                      open={day.open ?? null}
+                      high={day.high ?? null}
+                      low={day.low ?? null}
+                      close={day.close ?? null}
+                      preClose={day.pre_close ?? null}
+                      pctChg={day.pct_chg ?? null}
+                    />
+                  </div>
+                )
+              })}
+              {/* Fill remaining cells in last row if incomplete */}
+              {row.length < COLS &&
+                Array.from({ length: COLS - row.length }).map((_, i) => (
+                  <div
+                    key={`empty-${i}`}
+                    className="flex-1 min-w-0 border border-dashed border-border -ml-px opacity-30"
+                  />
+                ))}
+            </div>
+          ))}
         </div>
       )}
     </div>

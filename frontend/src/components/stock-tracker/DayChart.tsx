@@ -138,16 +138,18 @@ function ThumbnailChart({
   keyPoints,
   scores,
   pattern,
+  notes,
   width = 140,
-  height = 120,
+  height = 140,
   onClick,
 }: Omit<DayChartProps, 'mode' | 'onSave' | 'isSaving' | 'autoPattern'>) {
   const candleStripWidth = Math.round(width / 30)
   const scoreBarHeight = Math.round(height / 20)
+  const noteAreaHeight = 16
   const plotLeft = candleStripWidth
   const plotTop = 18
-  const plotWidth = width - candleStripWidth - 4
-  const plotHeight = height - plotTop - scoreBarHeight
+  const plotWidth = width - candleStripWidth
+  const plotHeight = height - plotTop - scoreBarHeight - noteAreaHeight
 
   // Format date as MM-DD
   const dateLabel = useMemo(() => {
@@ -195,20 +197,21 @@ function ThumbnailChart({
     if (!scores) return null
     const total = scores.market + scores.sector + scores.stock
     if (total <= 0) return null
-    const barWidth = width
+    const MAX_TOTAL = 100
+    const barWidth = (total / MAX_TOTAL) * width
     return {
       market: (scores.market / total) * barWidth,
       sector: (scores.sector / total) * barWidth,
       stock: (scores.stock / total) * barWidth,
       total,
     }
-  }, [scores, plotWidth])
+  }, [scores, width])
 
   // Y position of 0% reference
   const zeroY = priceToY(0, plotTop, plotHeight)
 
-  const candleBodyWidth = Math.max(4, Math.round(candleStripWidth * 0.6))
-  const candleX = Math.round((candleStripWidth - candleBodyWidth) / 2)
+  const candleBodyWidth = candleStripWidth
+  const candleX = 0
 
   return (
     <div
@@ -359,26 +362,39 @@ function ThumbnailChart({
             <Group>
               <Rect
                 x={0}
-                y={height - scoreBarHeight}
+                y={plotTop + plotHeight}
                 width={scoreSegments.market}
                 height={scoreBarHeight}
                 fill="#3b82f6"
               />
               <Rect
                 x={scoreSegments.market}
-                y={height - scoreBarHeight}
+                y={plotTop + plotHeight}
                 width={scoreSegments.sector}
                 height={scoreBarHeight}
                 fill="#22c55e"
               />
               <Rect
                 x={scoreSegments.market + scoreSegments.sector}
-                y={height - scoreBarHeight}
+                y={plotTop + plotHeight}
                 width={scoreSegments.stock}
                 height={scoreBarHeight}
                 fill="#ec4899"
               />
             </Group>
+          )}
+
+          {notes && (
+            <Text
+              x={2}
+              y={plotTop + plotHeight + scoreBarHeight + 2}
+              text={notes}
+              fontSize={9}
+              fill="#9ca3af"
+              width={width - 4}
+              ellipsis={true}
+              wrap="none"
+            />
           )}
         </Layer>
       </Stage>
