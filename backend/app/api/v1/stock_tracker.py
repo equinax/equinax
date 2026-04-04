@@ -86,6 +86,8 @@ class TimelineDayRead(BaseModel):
     notes: Optional[str] = None
     mood: Optional[str] = None
     has_entry: bool = False
+    key_points: Optional[Dict[str, Any]] = None
+    scores_summary: Optional[Dict[str, int]] = None
 
 
 class TrackDailyEntryUpdate(BaseModel):
@@ -324,9 +326,40 @@ async def get_timeline(
     )
     entries_by_date = {e.trade_date: e for e in entry_result.scalars().all()}
 
+    entry_ids = [e.id for e in entries_by_date.values()]
+    sketch_by_entry: Dict[uuid.UUID, DailySketchPoints] = {}
+    scores_by_entry: Dict[uuid.UUID, DailySituationScore] = {}
+
+    if entry_ids:
+        sketch_result = await db.execute(
+            select(DailySketchPoints).where(DailySketchPoints.entry_id.in_(entry_ids))
+        )
+        sketch_by_entry = {s.entry_id: s for s in sketch_result.scalars().all()}
+
+        scores_result = await db.execute(
+            select(DailySituationScore).where(DailySituationScore.entry_id.in_(entry_ids))
+        )
+        scores_by_entry = {s.entry_id: s for s in scores_result.scalars().all()}
+
     timeline: List[TimelineDayRead] = []
     for row in market_rows:
         entry = entries_by_date.get(row.date)
+
+        kp = None
+        ss = None
+        if entry:
+            sketch = sketch_by_entry.get(entry.id)
+            if sketch:
+                kp = sketch.key_points
+
+            score = scores_by_entry.get(entry.id)
+            if score:
+                ss = {
+                    "market": sum(score.scores.get("market", {}).values()),
+                    "sector": sum(score.scores.get("sector", {}).values()),
+                    "stock": sum(score.scores.get("stock", {}).values()),
+                }
+
         timeline.append(
             TimelineDayRead(
                 trade_date=row.date,
@@ -345,6 +378,8 @@ async def get_timeline(
                 notes=entry.notes if entry else None,
                 mood=entry.mood if entry else None,
                 has_entry=entry is not None,
+                key_points=kp,
+                scores_summary=ss,
             )
         )
 

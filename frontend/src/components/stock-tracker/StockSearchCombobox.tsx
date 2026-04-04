@@ -16,12 +16,12 @@ import {
   PopoverTrigger,
 } from '@/components/ui/popover'
 import { useSearchAssetsApiV1StocksSearchGet } from '@/api/generated/stocks/stocks'
-import type { AssetSearchResult, AssetTypeFilter } from '@/api/generated/schemas'
+import type { AssetSearchResult, AppApiV1StocksAssetTypeFilter } from '@/api/generated/schemas'
 
 interface StockSearchComboboxProps {
   value: AssetSearchResult | null
   onSelect: (asset: AssetSearchResult | null) => void
-  assetType?: AssetTypeFilter
+  assetType?: AppApiV1StocksAssetTypeFilter
   placeholder?: string
 }
 

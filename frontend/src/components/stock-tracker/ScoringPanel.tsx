@@ -170,7 +170,7 @@ export default function ScoringPanel({ entryId }: ScoringPanelProps) {
     : null
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-2">
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-2">
           <span className="text-lg font-bold font-mono">{totalScore}</span>
@@ -206,7 +206,7 @@ export default function ScoringPanel({ entryId }: ScoringPanelProps) {
           : ''
 
         return (
-          <div key={section.key} className="space-y-2">
+          <div key={section.key} className="space-y-1.5">
             <div className="flex items-center justify-between text-sm">
               <span className="font-medium">
                 {section.label}
@@ -228,7 +228,7 @@ export default function ScoringPanel({ entryId }: ScoringPanelProps) {
                 key={item.key}
                 className="flex items-center justify-between gap-2"
               >
-                <span className="text-xs text-muted-foreground w-16 shrink-0">
+                <span className="text-xs text-muted-foreground w-14 shrink-0">
                   {item.label}
                 </span>
                 <div className="flex gap-1">
@@ -239,7 +239,7 @@ export default function ScoringPanel({ entryId }: ScoringPanelProps) {
                         handleScoreChange(section.key, item.key, opt)
                       }
                       className={`
-                        w-7 h-7 rounded text-xs font-mono transition-colors
+                        w-6 h-6 rounded text-xs font-mono transition-colors
                         ${
                           scores[section.key]?.[item.key] === opt
                             ? 'bg-primary text-primary-foreground font-bold'

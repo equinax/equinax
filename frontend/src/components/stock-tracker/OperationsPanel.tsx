@@ -139,7 +139,7 @@ export default function OperationsPanel({ entryId }: OperationsPanelProps) {
     isPending: boolean,
     submitLabel: string
   ) => (
-    <div className="space-y-3 border rounded-lg p-3 bg-muted/20">
+    <div className="space-y-2 border rounded-lg p-2 bg-muted/20">
       <div className="grid grid-cols-2 gap-2">
         <div className="grid gap-1">
           <Label className="text-xs">类型</Label>
@@ -211,7 +211,7 @@ export default function OperationsPanel({ entryId }: OperationsPanelProps) {
       <div className="grid gap-1">
         <Label className="text-xs">备注</Label>
         <Textarea
-          className="text-sm min-h-[60px]"
+          className="text-sm min-h-[48px]"
           placeholder="操作理由..."
           rows={2}
           value={formState.notes}
@@ -234,7 +234,7 @@ export default function OperationsPanel({ entryId }: OperationsPanelProps) {
   )
 
   return (
-    <div className="space-y-3">
+    <div className="space-y-2">
       <div className="flex items-center justify-between">
         <span className="text-sm text-muted-foreground">
           {opList.length} 条记录
@@ -265,7 +265,7 @@ export default function OperationsPanel({ entryId }: OperationsPanelProps) {
         )}
 
       {opList.length === 0 && !showAddForm && (
-        <div className="text-center py-8 text-muted-foreground text-sm">
+        <div className="text-center py-4 text-muted-foreground text-sm">
           暂无操作记录
         </div>
       )}
@@ -292,9 +292,9 @@ export default function OperationsPanel({ entryId }: OperationsPanelProps) {
           return (
             <div
               key={op.id}
-              className="flex items-start justify-between gap-2 border rounded-lg p-2.5 bg-muted/10"
+              className="flex items-start justify-between gap-2 border rounded-lg p-2 bg-muted/10"
             >
-              <div className="space-y-1 flex-1 min-w-0">
+              <div className="space-y-0.5 flex-1 min-w-0">
                 <div className="flex items-center gap-2">
                   <Badge variant="outline" className={`text-xs ${opConfig.color}`}>
                     {opConfig.label}

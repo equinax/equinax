@@ -4,6 +4,7 @@ import type { TimelineDayReadAmount } from "./timelineDayReadAmount";
 import type { TimelineDayReadClose } from "./timelineDayReadClose";
 import type { TimelineDayReadEntryId } from "./timelineDayReadEntryId";
 import type { TimelineDayReadHigh } from "./timelineDayReadHigh";
+import type { TimelineDayReadKeyPoints } from "./timelineDayReadKeyPoints";
 import type { TimelineDayReadLow } from "./timelineDayReadLow";
 import type { TimelineDayReadMood } from "./timelineDayReadMood";
 import type { TimelineDayReadNotes } from "./timelineDayReadNotes";
@@ -11,6 +12,7 @@ import type { TimelineDayReadOpen } from "./timelineDayReadOpen";
 import type { TimelineDayReadPattern } from "./timelineDayReadPattern";
 import type { TimelineDayReadPctChg } from "./timelineDayReadPctChg";
 import type { TimelineDayReadPreClose } from "./timelineDayReadPreClose";
+import type { TimelineDayReadScoresSummary } from "./timelineDayReadScoresSummary";
 import type { TimelineDayReadTrackId } from "./timelineDayReadTrackId";
 import type { TimelineDayReadVolume } from "./timelineDayReadVolume";
 
@@ -23,6 +25,7 @@ export interface TimelineDayRead {
   entry_id?: TimelineDayReadEntryId;
   has_entry?: boolean;
   high?: TimelineDayReadHigh;
+  key_points?: TimelineDayReadKeyPoints;
   low?: TimelineDayReadLow;
   mood?: TimelineDayReadMood;
   notes?: TimelineDayReadNotes;
@@ -30,6 +33,7 @@ export interface TimelineDayRead {
   pattern?: TimelineDayReadPattern;
   pct_chg?: TimelineDayReadPctChg;
   pre_close?: TimelineDayReadPreClose;
+  scores_summary?: TimelineDayReadScoresSummary;
   track_id?: TimelineDayReadTrackId;
   trade_date: string;
   ts_code: string;
