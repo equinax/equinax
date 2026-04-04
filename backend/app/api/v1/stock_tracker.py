@@ -67,6 +67,27 @@ class TrackDailyEntryRead(BaseModel):
         from_attributes = True
 
 
+class TimelineDayRead(BaseModel):
+    """A trading day in the timeline - may or may not have an entry."""
+
+    trade_date: date
+    ts_code: str
+    open: Optional[float] = None
+    high: Optional[float] = None
+    low: Optional[float] = None
+    close: Optional[float] = None
+    pre_close: Optional[float] = None
+    volume: Optional[float] = None
+    amount: Optional[float] = None
+    pct_chg: Optional[float] = None
+    entry_id: Optional[str] = None
+    track_id: Optional[str] = None
+    pattern: Optional[str] = None
+    notes: Optional[str] = None
+    mood: Optional[str] = None
+    has_entry: bool = False
+
+
 class TrackDailyEntryUpdate(BaseModel):
     notes: Optional[str] = None
     mood: Optional[str] = None
@@ -267,7 +288,7 @@ async def delete_track(
     await db.commit()
 
 
-@router.get("/tracks/{ts_code}/timeline", response_model=List[TrackDailyEntryRead])
+@router.get("/tracks/{ts_code}/timeline", response_model=List[TimelineDayRead])
 async def get_timeline(
     ts_code: str,
     days: int = Query(default=20, ge=1, le=120),
@@ -279,18 +300,55 @@ async def get_timeline(
     if not track:
         raise HTTPException(status_code=404, detail="Track not found")
 
-    query = (
-        select(TrackDailyEntry)
-        .where(TrackDailyEntry.track_id == track.id)
-        .order_by(TrackDailyEntry.trade_date.desc())
+    market_query = (
+        select(MarketDaily)
+        .where(MarketDaily.code == ts_code)
+        .order_by(MarketDaily.date.desc())
         .limit(days)
     )
     if before:
-        query = query.where(TrackDailyEntry.trade_date < before)
+        market_query = market_query.where(MarketDaily.date < before)
 
-    result = await db.execute(query)
-    entries = result.scalars().all()
-    return [_entry_to_response(e) for e in entries]
+    market_result = await db.execute(market_query)
+    market_rows = market_result.scalars().all()
+
+    if not market_rows:
+        return []
+
+    trade_dates = [row.date for row in market_rows]
+    entry_result = await db.execute(
+        select(TrackDailyEntry).where(
+            TrackDailyEntry.track_id == track.id,
+            TrackDailyEntry.trade_date.in_(trade_dates),
+        )
+    )
+    entries_by_date = {e.trade_date: e for e in entry_result.scalars().all()}
+
+    timeline: List[TimelineDayRead] = []
+    for row in market_rows:
+        entry = entries_by_date.get(row.date)
+        timeline.append(
+            TimelineDayRead(
+                trade_date=row.date,
+                ts_code=ts_code,
+                open=float(row.open) if row.open is not None else None,
+                high=float(row.high) if row.high is not None else None,
+                low=float(row.low) if row.low is not None else None,
+                close=float(row.close) if row.close is not None else None,
+                pre_close=float(row.preclose) if row.preclose is not None else None,
+                volume=float(row.volume) if row.volume is not None else None,
+                amount=float(row.amount) if row.amount is not None else None,
+                pct_chg=float(row.pct_chg) if row.pct_chg is not None else None,
+                entry_id=str(entry.id) if entry else None,
+                track_id=str(track.id) if entry else None,
+                pattern=entry.pattern if entry else None,
+                notes=entry.notes if entry else None,
+                mood=entry.mood if entry else None,
+                has_entry=entry is not None,
+            )
+        )
+
+    return timeline
 
 
 @router.post("/tracks/{ts_code}/sync-daily", response_model=Dict[str, Any])

@@ -28,6 +28,7 @@ import type {
   StockTrackRead,
   SyncDailyApiV1StockTrackerTracksTsCodeSyncDailyPost200,
   SyncDailyApiV1StockTrackerTracksTsCodeSyncDailyPostParams,
+  TimelineDayRead,
   TrackDailyEntryRead,
   TrackDailyEntryUpdate,
   TradeOperationCreate,
@@ -379,7 +380,7 @@ export const getTimelineApiV1StockTrackerTracksTsCodeTimelineGet = (
   params?: GetTimelineApiV1StockTrackerTracksTsCodeTimelineGetParams,
   signal?: AbortSignal,
 ) => {
-  return customInstance<TrackDailyEntryRead[]>({
+  return customInstance<TimelineDayRead[]>({
     url: `/api/v1/stock-tracker/tracks/${tsCode}/timeline`,
     method: "GET",
     params,

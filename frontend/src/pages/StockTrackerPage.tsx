@@ -31,6 +31,8 @@ import {
   useDeleteTrackApiV1StockTrackerTracksTsCodeDelete,
   getListTracksApiV1StockTrackerTracksGetQueryKey,
 } from '@/api/generated/stock-tracker/stock-tracker'
+import type { AssetSearchResult } from '@/api/generated/schemas'
+import StockSearchCombobox from '@/components/stock-tracker/StockSearchCombobox'
 
 const formatDate = (dateStr: string) => {
   const d = new Date(dateStr)
@@ -44,8 +46,7 @@ export default function StockTrackerPage() {
   const [deleteConfirm, setDeleteConfirm] = useState<string | null>(null)
 
   // Form state
-  const [formTsCode, setFormTsCode] = useState('')
-  const [formStockName, setFormStockName] = useState('')
+  const [selectedStock, setSelectedStock] = useState<AssetSearchResult | null>(null)
   const [formWatchReason, setFormWatchReason] = useState('')
   const [formSector, setFormSector] = useState('')
   const [formTags, setFormTags] = useState('')
@@ -72,23 +73,22 @@ export default function StockTrackerPage() {
   })
 
   const resetForm = () => {
-    setFormTsCode('')
-    setFormStockName('')
+    setSelectedStock(null)
     setFormWatchReason('')
     setFormSector('')
     setFormTags('')
   }
 
   const handleCreate = () => {
-    if (!formTsCode.trim()) return
+    if (!selectedStock) return
     const tags = formTags
       .split(',')
       .map((t) => t.trim())
       .filter(Boolean)
     createMutation.mutate({
       data: {
-        ts_code: formTsCode.trim(),
-        stock_name: formStockName.trim() || undefined,
+        ts_code: selectedStock.code,
+        stock_name: selectedStock.name || undefined,
         watch_reason: formWatchReason.trim() || undefined,
         sector: formSector.trim() || undefined,
         tags: tags.length > 0 ? tags : undefined,
@@ -126,26 +126,15 @@ export default function StockTrackerPage() {
             <DialogHeader>
               <DialogTitle>添加股票追踪</DialogTitle>
               <DialogDescription>
-                输入股票代码开始追踪，如 600519.SH
+                搜索并选择要追踪的股票
               </DialogDescription>
             </DialogHeader>
             <div className="grid gap-4 py-4">
               <div className="grid gap-2">
-                <Label htmlFor="ts_code">股票代码 *</Label>
-                <Input
-                  id="ts_code"
-                  placeholder="600519.SH"
-                  value={formTsCode}
-                  onChange={(e) => setFormTsCode(e.target.value)}
-                />
-              </div>
-              <div className="grid gap-2">
-                <Label htmlFor="stock_name">股票名称</Label>
-                <Input
-                  id="stock_name"
-                  placeholder="贵州茅台"
-                  value={formStockName}
-                  onChange={(e) => setFormStockName(e.target.value)}
+                <Label>股票 *</Label>
+                <StockSearchCombobox
+                  value={selectedStock}
+                  onSelect={setSelectedStock}
                 />
               </div>
               <div className="grid gap-2">
@@ -182,7 +171,7 @@ export default function StockTrackerPage() {
               </Button>
               <Button
                 onClick={handleCreate}
-                disabled={!formTsCode.trim() || createMutation.isPending}
+                disabled={!selectedStock || createMutation.isPending}
               >
                 {createMutation.isPending ? '添加中...' : '确认添加'}
               </Button>

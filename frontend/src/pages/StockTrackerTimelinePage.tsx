@@ -10,12 +10,7 @@ import {
   useSyncDailyApiV1StockTrackerTracksTsCodeSyncDailyPost,
   getGetTimelineApiV1StockTrackerTracksTsCodeTimelineGetQueryKey,
 } from '@/api/generated/stock-tracker/stock-tracker'
-import type { TrackDailyEntryRead } from '@/api/generated/schemas'
-
-const formatDate = (dateStr: string) => {
-  const d = new Date(dateStr)
-  return `${d.getMonth() + 1}/${d.getDate()}`
-}
+import type { TimelineDayRead } from '@/api/generated/schemas'
 
 const formatDateFull = (dateStr: string) => {
   const d = new Date(dateStr)
@@ -23,14 +18,14 @@ const formatDateFull = (dateStr: string) => {
   return `${d.getMonth() + 1}月${d.getDate()}日 周${weekdays[d.getDay()]}`
 }
 
-const getPctChgColor = (pctChg: number | null) => {
+const getPctChgColor = (pctChg: number | null | undefined) => {
   if (pctChg === null || pctChg === undefined) return 'text-muted-foreground'
   if (pctChg > 0) return 'text-profit'
   if (pctChg < 0) return 'text-loss'
   return 'text-muted-foreground'
 }
 
-const formatPctChg = (pctChg: number | null) => {
+const formatPctChg = (pctChg: number | null | undefined) => {
   if (pctChg === null || pctChg === undefined) return '-'
   const sign = pctChg > 0 ? '+' : ''
   return `${sign}${pctChg.toFixed(2)}%`
@@ -49,12 +44,137 @@ const patternColors: Record<string, string> = {
   癸: 'bg-indigo-500/20 text-indigo-400',
 }
 
+function FilledDayCard({
+  day,
+  onClick,
+}: {
+  day: TimelineDayRead
+  onClick: () => void
+}) {
+  const pctChg = day.pct_chg ?? null
+  return (
+    <Card
+      className="cursor-pointer hover:bg-muted/50 transition-colors"
+      onClick={onClick}
+    >
+      <CardContent className="p-4">
+        <div className="flex items-center justify-between mb-2">
+          <span className="text-sm font-medium">
+            {formatDateFull(day.trade_date)}
+          </span>
+          {day.pattern && (
+            <Badge
+              variant="secondary"
+              className={`text-xs font-bold ${patternColors[day.pattern] || ''}`}
+            >
+              {day.pattern}
+            </Badge>
+          )}
+        </div>
+
+        <div className="mb-2">
+          <span
+            className={`text-xl font-bold font-mono ${getPctChgColor(pctChg)}`}
+          >
+            {formatPctChg(pctChg)}
+          </span>
+        </div>
+
+        <div className="grid grid-cols-2 gap-x-3 gap-y-0.5 text-xs text-muted-foreground">
+          <span>
+            开{' '}
+            <span className="font-mono text-foreground">
+              {day.open != null ? day.open.toFixed(2) : '-'}
+            </span>
+          </span>
+          <span>
+            高{' '}
+            <span className="font-mono text-foreground">
+              {day.high != null ? day.high.toFixed(2) : '-'}
+            </span>
+          </span>
+          <span>
+            低{' '}
+            <span className="font-mono text-foreground">
+              {day.low != null ? day.low.toFixed(2) : '-'}
+            </span>
+          </span>
+          <span>
+            收{' '}
+            <span className="font-mono text-foreground">
+              {day.close != null ? day.close.toFixed(2) : '-'}
+            </span>
+          </span>
+        </div>
+
+        {day.mood && (
+          <div className="mt-2 text-xs text-muted-foreground">{day.mood}</div>
+        )}
+      </CardContent>
+    </Card>
+  )
+}
+
+function BlankDayCard({ day }: { day: TimelineDayRead }) {
+  const pctChg = day.pct_chg ?? null
+  return (
+    <Card className="border-dashed opacity-60">
+      <CardContent className="p-4">
+        <div className="flex items-center justify-between mb-2">
+          <span className="text-sm font-medium text-muted-foreground">
+            {formatDateFull(day.trade_date)}
+          </span>
+        </div>
+
+        <div className="mb-2">
+          <span
+            className={`text-xl font-bold font-mono ${getPctChgColor(pctChg)}`}
+          >
+            {formatPctChg(pctChg)}
+          </span>
+        </div>
+
+        <div className="grid grid-cols-2 gap-x-3 gap-y-0.5 text-xs text-muted-foreground/60">
+          <span>
+            开{' '}
+            <span className="font-mono">
+              {day.open != null ? day.open.toFixed(2) : '-'}
+            </span>
+          </span>
+          <span>
+            高{' '}
+            <span className="font-mono">
+              {day.high != null ? day.high.toFixed(2) : '-'}
+            </span>
+          </span>
+          <span>
+            低{' '}
+            <span className="font-mono">
+              {day.low != null ? day.low.toFixed(2) : '-'}
+            </span>
+          </span>
+          <span>
+            收{' '}
+            <span className="font-mono">
+              {day.close != null ? day.close.toFixed(2) : '-'}
+            </span>
+          </span>
+        </div>
+
+        <div className="mt-2 text-xs text-muted-foreground/40 italic">
+          未记录
+        </div>
+      </CardContent>
+    </Card>
+  )
+}
+
 export default function StockTrackerTimelinePage() {
   const { tsCode } = useParams<{ tsCode: string }>()
   const navigate = useNavigate()
   const queryClient = useQueryClient()
 
-  const { data: entries, isLoading } =
+  const { data: timeline, isLoading } =
     useGetTimelineApiV1StockTrackerTracksTsCodeTimelineGet(tsCode || '', {
       days: 20,
     })
@@ -78,11 +198,10 @@ export default function StockTrackerTimelinePage() {
     syncMutation.mutate({ tsCode, params: { days: 60 } })
   }
 
-  const items = entries || []
+  const items = timeline || []
 
   return (
     <div className="space-y-4">
-      {/* Header */}
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-4">
           <Button
@@ -117,7 +236,6 @@ export default function StockTrackerTimelinePage() {
         </Button>
       </div>
 
-      {/* Timeline Grid */}
       {isLoading ? (
         <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-3">
           {Array.from({ length: 10 }).map((_, i) => (
@@ -142,87 +260,19 @@ export default function StockTrackerTimelinePage() {
         </Card>
       ) : (
         <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-3">
-          {items.map((entry: TrackDailyEntryRead) => {
-            const pctChg = entry.pct_chg as number | null
-            return (
-              <Card
-                key={entry.id}
-                className="cursor-pointer hover:bg-muted/50 transition-colors"
+          {items.map((day: TimelineDayRead) =>
+            day.has_entry && day.entry_id ? (
+              <FilledDayCard
+                key={day.trade_date}
+                day={day}
                 onClick={() =>
-                  navigate(`/stock-tracker/${tsCode}/${entry.id}`)
+                  navigate(`/stock-tracker/${tsCode}/${day.entry_id}`)
                 }
-              >
-                <CardContent className="p-4">
-                  {/* Date */}
-                  <div className="flex items-center justify-between mb-2">
-                    <span className="text-sm font-medium">
-                      {formatDateFull(entry.trade_date)}
-                    </span>
-                    {entry.pattern && (
-                      <Badge
-                        variant="secondary"
-                        className={`text-xs font-bold ${patternColors[entry.pattern as string] || ''}`}
-                      >
-                        {entry.pattern as string}
-                      </Badge>
-                    )}
-                  </div>
-
-                  {/* Price change */}
-                  <div className="mb-2">
-                    <span
-                      className={`text-xl font-bold font-mono ${getPctChgColor(pctChg)}`}
-                    >
-                      {formatPctChg(pctChg)}
-                    </span>
-                  </div>
-
-                  {/* OHLC mini */}
-                  <div className="grid grid-cols-2 gap-x-3 gap-y-0.5 text-xs text-muted-foreground">
-                    <span>
-                      开{' '}
-                      <span className="font-mono text-foreground">
-                        {entry.open != null
-                          ? (entry.open as number).toFixed(2)
-                          : '-'}
-                      </span>
-                    </span>
-                    <span>
-                      高{' '}
-                      <span className="font-mono text-foreground">
-                        {entry.high != null
-                          ? (entry.high as number).toFixed(2)
-                          : '-'}
-                      </span>
-                    </span>
-                    <span>
-                      低{' '}
-                      <span className="font-mono text-foreground">
-                        {entry.low != null
-                          ? (entry.low as number).toFixed(2)
-                          : '-'}
-                      </span>
-                    </span>
-                    <span>
-                      收{' '}
-                      <span className="font-mono text-foreground">
-                        {entry.close != null
-                          ? (entry.close as number).toFixed(2)
-                          : '-'}
-                      </span>
-                    </span>
-                  </div>
-
-                  {/* Mood */}
-                  {entry.mood && (
-                    <div className="mt-2 text-xs text-muted-foreground">
-                      {entry.mood as string}
-                    </div>
-                  )}
-                </CardContent>
-              </Card>
+              />
+            ) : (
+              <BlankDayCard key={day.trade_date} day={day} />
             )
-          })}
+          )}
         </div>
       )}
     </div>
