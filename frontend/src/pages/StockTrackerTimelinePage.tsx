@@ -1,12 +1,12 @@
-import { useMemo } from 'react'
+import { useMemo, useRef, useCallback, useEffect } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
-import { ArrowLeft, RefreshCw, Calendar } from 'lucide-react'
-import { useQueryClient } from '@tanstack/react-query'
+import { ArrowLeft, RefreshCw, Calendar, Loader2 } from 'lucide-react'
+import { useQueryClient, useInfiniteQuery } from '@tanstack/react-query'
 import { Card, CardContent } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Skeleton } from '@/components/ui/skeleton'
 import {
-  useGetTimelineApiV1StockTrackerTracksTsCodeTimelineGet,
+  getTimelineApiV1StockTrackerTracksTsCodeTimelineGet,
   useSyncDailyApiV1StockTrackerTracksTsCodeSyncDailyPost,
   getGetTimelineApiV1StockTrackerTracksTsCodeTimelineGetQueryKey,
 } from '@/api/generated/stock-tracker/stock-tracker'
@@ -14,6 +14,7 @@ import type { TimelineDayRead } from '@/api/generated/schemas'
 import DayChart from '@/components/stock-tracker/DayChart'
 
 const COLS = 10
+const PAGE_SIZE = 20
 
 function chunkArray<T>(arr: T[], size: number): T[][] {
   const chunks: T[][] = []
@@ -27,11 +28,29 @@ export default function StockTrackerTimelinePage() {
   const { tsCode } = useParams<{ tsCode: string }>()
   const navigate = useNavigate()
   const queryClient = useQueryClient()
+  const sentinelRef = useRef<HTMLDivElement>(null)
 
-  const { data: timeline, isLoading } =
-    useGetTimelineApiV1StockTrackerTracksTsCodeTimelineGet(tsCode || '', {
-      days: 20,
-    })
+  const {
+    data,
+    isLoading,
+    fetchNextPage,
+    hasNextPage,
+    isFetchingNextPage,
+  } = useInfiniteQuery({
+    queryKey: ['stock-tracker-timeline', tsCode],
+    queryFn: ({ pageParam }) =>
+      getTimelineApiV1StockTrackerTracksTsCodeTimelineGet(tsCode || '', {
+        days: PAGE_SIZE,
+        before: pageParam ?? undefined,
+      }),
+    initialPageParam: null as string | null,
+    getNextPageParam: (lastPage) => {
+      if (!lastPage || lastPage.length < PAGE_SIZE) return undefined
+      const oldest = lastPage[lastPage.length - 1]
+      return oldest?.trade_date ?? undefined
+    },
+    enabled: !!tsCode,
+  })
 
   const syncMutation =
     useSyncDailyApiV1StockTrackerTracksTsCodeSyncDailyPost({
@@ -43,6 +62,9 @@ export default function StockTrackerTimelinePage() {
                 tsCode || ''
               ),
           })
+          queryClient.invalidateQueries({
+            queryKey: ['stock-tracker-timeline', tsCode],
+          })
         },
       },
     })
@@ -52,7 +74,32 @@ export default function StockTrackerTimelinePage() {
     syncMutation.mutate({ tsCode, params: { days: 60 } })
   }
 
-  const items = timeline || []
+  const handleObserver = useCallback(
+    (entries: IntersectionObserverEntry[]) => {
+      const [entry] = entries
+      if (entry.isIntersecting && hasNextPage && !isFetchingNextPage) {
+        fetchNextPage()
+      }
+    },
+    [fetchNextPage, hasNextPage, isFetchingNextPage],
+  )
+
+  useEffect(() => {
+    const el = sentinelRef.current
+    if (!el) return
+    const observer = new IntersectionObserver(handleObserver, {
+      rootMargin: '200px',
+    })
+    observer.observe(el)
+    return () => observer.disconnect()
+  }, [handleObserver])
+
+  const items = useMemo(() => {
+    if (!data?.pages) return []
+    const all = data.pages.flatMap((page) => page)
+    return [...all].reverse()
+  }, [data])
+
   const rows = useMemo(() => chunkArray(items, COLS), [items])
 
   return (
@@ -75,7 +122,7 @@ export default function StockTrackerTimelinePage() {
               </span>
             </h1>
             <p className="text-muted-foreground text-sm">
-              最近 20 个交易日走势记录
+              共 {items.length} 个交易日
             </p>
           </div>
         </div>
@@ -183,6 +230,12 @@ export default function StockTrackerTimelinePage() {
                 ))}
             </div>
           ))}
+          <div ref={sentinelRef} className="h-1" />
+          {isFetchingNextPage && (
+            <div className="flex justify-center py-2">
+              <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
+            </div>
+          )}
         </div>
       )}
     </div>

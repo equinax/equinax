@@ -143,7 +143,7 @@ function ThumbnailChart({
   height = 140,
   onClick,
 }: Omit<DayChartProps, 'mode' | 'onSave' | 'isSaving' | 'autoPattern'>) {
-  const candleStripWidth = Math.round(width / 30)
+  const candleStripWidth = Math.round(width / 30) + 1
   const scoreBarHeight = Math.round(height / 20)
   const noteAreaHeight = 16
   const plotLeft = candleStripWidth
@@ -211,7 +211,7 @@ function ThumbnailChart({
   const zeroY = priceToY(0, plotTop, plotHeight)
 
   const candleBodyWidth = candleStripWidth
-  const candleX = 0
+  const candleX = 1
 
   return (
     <div
@@ -269,7 +269,7 @@ function ThumbnailChart({
           <Rect
             x={plotLeft}
             y={plotTop}
-            width={plotWidth}
+            width={plotWidth + 1}
             height={plotHeight}
             fill="rgba(0,0,0,0.01)"
             stroke="rgba(120,120,120,0.1)"
@@ -278,7 +278,7 @@ function ThumbnailChart({
 
           {/* ── Grid: horizontal 0% reference ── */}
           <Line
-            points={[plotLeft, zeroY, plotLeft + plotWidth, zeroY]}
+            points={[plotLeft, zeroY, plotLeft + plotWidth + 1, zeroY]}
             stroke="rgba(120,120,120,0.35)"
             strokeWidth={0.5}
             dash={[3, 3]}
