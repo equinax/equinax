@@ -305,9 +305,9 @@ function ThumbnailChart({
               {/* Wick */}
               <Line
                 points={[
-                  candleX + Math.round(candleBodyWidth / 2),
+                  candleX + Math.round(candleBodyWidth / 2) - 1,
                   priceToY(candle.highPct, plotTop, plotHeight),
-                  candleX + Math.round(candleBodyWidth / 2),
+                  candleX + Math.round(candleBodyWidth / 2) - 1,
                   priceToY(candle.lowPct, plotTop, plotHeight),
                 ]}
                 stroke={candle.isUp ? '#ef4444' : '#22c55e'}
@@ -315,7 +315,7 @@ function ThumbnailChart({
               />
               {/* Body */}
               <Rect
-                x={candleX}
+                x={candleX -1}
                 y={priceToY(
                   Math.max(candle.openPct, candle.closePct),
                   plotTop,

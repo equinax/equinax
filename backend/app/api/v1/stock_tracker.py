@@ -446,6 +446,96 @@ async def sync_daily(
     return {"created": created, "updated": updated, "total_market_rows": len(market_rows)}
 
 
+@router.post("/tracks/{ts_code}/entries/create-for-date", response_model=TrackDailyEntryRead)
+async def create_entry_for_date(
+    ts_code: str,
+    trade_date: date = Query(...),
+    db: AsyncSession = Depends(get_db),
+):
+    result = await db.execute(select(StockTrack).where(StockTrack.ts_code == ts_code))
+    track = result.scalar_one_or_none()
+    if not track:
+        raise HTTPException(status_code=404, detail="Track not found")
+
+    existing = await db.execute(
+        select(TrackDailyEntry).where(
+            TrackDailyEntry.track_id == track.id,
+            TrackDailyEntry.trade_date == trade_date,
+        )
+    )
+    entry = existing.scalar_one_or_none()
+    if entry:
+        return TrackDailyEntryRead(
+            id=str(entry.id),
+            track_id=str(entry.track_id),
+            trade_date=entry.trade_date,
+            ts_code=entry.ts_code,
+            open=float(entry.open) if entry.open is not None else None,
+            high=float(entry.high) if entry.high is not None else None,
+            low=float(entry.low) if entry.low is not None else None,
+            close=float(entry.close) if entry.close is not None else None,
+            pre_close=float(entry.pre_close) if entry.pre_close is not None else None,
+            volume=float(entry.volume) if entry.volume is not None else None,
+            amount=float(entry.amount) if entry.amount is not None else None,
+            pct_chg=float(entry.pct_chg) if entry.pct_chg is not None else None,
+            pattern=entry.pattern,
+            notes=entry.notes,
+            mood=entry.mood,
+            created_at=entry.created_at,
+            updated_at=entry.updated_at,
+        )
+
+    market_result = await db.execute(
+        select(MarketDaily).where(
+            MarketDaily.code == ts_code,
+            MarketDaily.date == trade_date,
+        )
+    )
+    market_row = market_result.scalar_one_or_none()
+    if not market_row:
+        raise HTTPException(
+            status_code=404,
+            detail=f"No market data found for {ts_code} on {trade_date}",
+        )
+
+    entry = TrackDailyEntry(
+        track_id=track.id,
+        trade_date=trade_date,
+        ts_code=ts_code,
+        open=market_row.open,
+        high=market_row.high,
+        low=market_row.low,
+        close=market_row.close,
+        pre_close=market_row.preclose,
+        volume=market_row.volume,
+        amount=market_row.amount,
+        pct_chg=market_row.pct_chg,
+    )
+    db.add(entry)
+    await db.commit()
+    await db.refresh(entry)
+
+    return TrackDailyEntryRead(
+        id=str(entry.id),
+        track_id=str(entry.track_id),
+        trade_date=entry.trade_date,
+        ts_code=entry.ts_code,
+        open=float(entry.open) if entry.open is not None else None,
+        high=float(entry.high) if entry.high is not None else None,
+        low=float(entry.low) if entry.low is not None else None,
+        close=float(entry.close) if entry.close is not None else None,
+        pre_close=float(entry.pre_close) if entry.pre_close is not None else None,
+        volume=float(entry.volume) if entry.volume is not None else None,
+        amount=float(entry.amount) if entry.amount is not None else None,
+        pct_chg=float(entry.pct_chg) if entry.pct_chg is not None else None,
+        pattern=entry.pattern,
+        notes=entry.notes,
+        mood=entry.mood,
+        created_at=entry.created_at,
+        updated_at=entry.updated_at,
+    )
+
+
 # --- Entry endpoints ---
 
 

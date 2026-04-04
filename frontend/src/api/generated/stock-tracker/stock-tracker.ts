@@ -14,6 +14,7 @@ import type {
   UseQueryResult,
 } from "@tanstack/react-query";
 import type {
+  CreateEntryForDateApiV1StockTrackerTracksTsCodeEntriesCreateForDatePostParams,
   GetMinuteDataApiV1StockTrackerEntriesEntryIdMinuteDataGetParams,
   GetScoresApiV1StockTrackerEntriesEntryIdScoresGet200,
   GetSketchApiV1StockTrackerEntriesEntryIdSketchGet200,
@@ -742,6 +743,123 @@ export const useSyncDailyApiV1StockTrackerTracksTsCodeSyncDailyPost = <
 
   return useMutation(mutationOptions);
 };
+/**
+ * @summary Create Entry For Date
+ */
+export const createEntryForDateApiV1StockTrackerTracksTsCodeEntriesCreateForDatePost =
+  (
+    tsCode: string,
+    params: CreateEntryForDateApiV1StockTrackerTracksTsCodeEntriesCreateForDatePostParams,
+  ) => {
+    return customInstance<TrackDailyEntryRead>({
+      url: `/api/v1/stock-tracker/tracks/${tsCode}/entries/create-for-date`,
+      method: "POST",
+      params,
+    });
+  };
+
+export const getCreateEntryForDateApiV1StockTrackerTracksTsCodeEntriesCreateForDatePostMutationOptions =
+  <TError = HTTPValidationError, TContext = unknown>(options?: {
+    mutation?: UseMutationOptions<
+      Awaited<
+        ReturnType<
+          typeof createEntryForDateApiV1StockTrackerTracksTsCodeEntriesCreateForDatePost
+        >
+      >,
+      TError,
+      {
+        tsCode: string;
+        params: CreateEntryForDateApiV1StockTrackerTracksTsCodeEntriesCreateForDatePostParams;
+      },
+      TContext
+    >;
+  }): UseMutationOptions<
+    Awaited<
+      ReturnType<
+        typeof createEntryForDateApiV1StockTrackerTracksTsCodeEntriesCreateForDatePost
+      >
+    >,
+    TError,
+    {
+      tsCode: string;
+      params: CreateEntryForDateApiV1StockTrackerTracksTsCodeEntriesCreateForDatePostParams;
+    },
+    TContext
+  > => {
+    const { mutation: mutationOptions } = options ?? {};
+
+    const mutationFn: MutationFunction<
+      Awaited<
+        ReturnType<
+          typeof createEntryForDateApiV1StockTrackerTracksTsCodeEntriesCreateForDatePost
+        >
+      >,
+      {
+        tsCode: string;
+        params: CreateEntryForDateApiV1StockTrackerTracksTsCodeEntriesCreateForDatePostParams;
+      }
+    > = (props) => {
+      const { tsCode, params } = props ?? {};
+
+      return createEntryForDateApiV1StockTrackerTracksTsCodeEntriesCreateForDatePost(
+        tsCode,
+        params,
+      );
+    };
+
+    return { mutationFn, ...mutationOptions };
+  };
+
+export type CreateEntryForDateApiV1StockTrackerTracksTsCodeEntriesCreateForDatePostMutationResult =
+  NonNullable<
+    Awaited<
+      ReturnType<
+        typeof createEntryForDateApiV1StockTrackerTracksTsCodeEntriesCreateForDatePost
+      >
+    >
+  >;
+
+export type CreateEntryForDateApiV1StockTrackerTracksTsCodeEntriesCreateForDatePostMutationError =
+  HTTPValidationError;
+
+/**
+ * @summary Create Entry For Date
+ */
+export const useCreateEntryForDateApiV1StockTrackerTracksTsCodeEntriesCreateForDatePost =
+  <TError = HTTPValidationError, TContext = unknown>(options?: {
+    mutation?: UseMutationOptions<
+      Awaited<
+        ReturnType<
+          typeof createEntryForDateApiV1StockTrackerTracksTsCodeEntriesCreateForDatePost
+        >
+      >,
+      TError,
+      {
+        tsCode: string;
+        params: CreateEntryForDateApiV1StockTrackerTracksTsCodeEntriesCreateForDatePostParams;
+      },
+      TContext
+    >;
+  }): UseMutationResult<
+    Awaited<
+      ReturnType<
+        typeof createEntryForDateApiV1StockTrackerTracksTsCodeEntriesCreateForDatePost
+      >
+    >,
+    TError,
+    {
+      tsCode: string;
+      params: CreateEntryForDateApiV1StockTrackerTracksTsCodeEntriesCreateForDatePostParams;
+    },
+    TContext
+  > => {
+    const mutationOptions =
+      getCreateEntryForDateApiV1StockTrackerTracksTsCodeEntriesCreateForDatePostMutationOptions(
+        options,
+      );
+
+    return useMutation(mutationOptions);
+  };
 /**
  * @summary Get Entry
  */
