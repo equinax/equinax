@@ -51,8 +51,8 @@ interface OHLCPoint {
 
 const ROLE_CONFIG: Record<PointRole, { label: string; shortLabel: string; color: string }> = {
   open:  { label: '开盘', shortLabel: 'O', color: '#3b82f6' },
-  high:  { label: '最高', shortLabel: 'H', color: '#22c55e' },
-  low:   { label: '最低', shortLabel: 'L', color: '#ef4444' },
+  high:  { label: '最高', shortLabel: 'H', color: '#ef4444' },
+  low:   { label: '最低', shortLabel: 'L', color: '#22c55e' },
   close: { label: '收盘', shortLabel: 'C', color: '#f97316' },
 }
 
@@ -413,7 +413,7 @@ function ThumbnailChart({
 }
 
 // ─── Detail Layout Constants ──────────────────────────────────────────────────
-const DETAIL_PADDING = { top: 0, right: 45, bottom: 20, left: 12 }
+const DETAIL_PADDING = { top: 0, right: 35, bottom: 20, left: 12 }
 const DETAIL_CANDLE_STRIP_WIDTH = 0
 const DETAIL_TIME_MARKERS = [
   9 * 60 + 30,   // 9:30
@@ -600,11 +600,19 @@ function DetailChart({
 
   const lineCoords = useMemo(
     () =>
-      sortedPoints.flatMap((p) => [
-        timeToX(p.time, plotLeft, plotWidth),
-        priceToY(p.price, plotTop, plotHeight),
-      ]),
-    [sortedPoints, plotLeft, plotWidth, plotTop, plotHeight],
+      sortedPoints.flatMap((p) => {
+        const pct = candle
+          ? p.role === 'open' ? candle.openPct
+            : p.role === 'high' ? candle.highPct
+            : p.role === 'low' ? candle.lowPct
+            : candle.closePct
+          : p.price
+        return [
+          timeToX(p.time, plotLeft, plotWidth),
+          priceToY(pct, plotTop, plotHeight),
+        ]
+      }),
+    [sortedPoints, candle, plotLeft, plotWidth, plotTop, plotHeight],
   )
 
   // Score bar segments
@@ -612,14 +620,14 @@ function DetailChart({
     if (!scores) return null
     const total = scores.market + scores.sector + scores.stock
     if (total <= 0) return null
-    const barWidth = plotWidth
+    const barWidth = (total / 100) * width
     return {
       market: (scores.market / total) * barWidth,
       sector: (scores.sector / total) * barWidth,
       stock: (scores.stock / total) * barWidth,
       total,
     }
-  }, [scores, plotWidth])
+  }, [scores, width])
 
   // Candlestick X position (centered in candle strip)
   const candleX = plotLeft - 6
@@ -649,16 +657,17 @@ function DetailChart({
               y={plotTop}
               width={plotWidth}
               height={plotHeight}
-              fill="transparent"
+              fill="rgba(120,120,120,0.03)"
             />
 
             {/* Price grid lines */}
             {priceGridLines.map((gl) => {
               const y = priceToY(gl.pct, plotTop, plotHeight)
+              const isEdge = gl.pct === PRICE_RANGE || gl.pct === -PRICE_RANGE
               return (
                 <Group key={gl.pct}>
                   <Line
-                    points={[plotLeft, y, plotLeft + plotWidth, y]}
+                    points={isEdge ? [0, y, width, y] : [plotLeft, y, plotLeft + plotWidth, y]}
                     stroke={
                       gl.pct === 0
                         ? 'rgba(120,120,120,0.5)'
@@ -671,7 +680,7 @@ function DetailChart({
                   {preClose != null && (
                     <Text
                       x={plotLeft + plotWidth + 5}
-                      y={y - 6}
+                      y={y + (gl.pct === PRICE_RANGE ? 2 : gl.pct === -PRICE_RANGE ? -10 : -4)}
                       text={(preClose * (1 + gl.pct / 100)).toFixed(2)}
                       fontSize={9}
                       fill={
@@ -749,7 +758,13 @@ function DetailChart({
             {snappedPoints.map((p) => {
               const config = ROLE_CONFIG[p.role]
               const cx = timeToX(p.time, plotLeft, plotWidth)
-              const cy = priceToY(p.price, plotTop, plotHeight)
+              const actualPct = candle
+                ? p.role === 'open' ? candle.openPct
+                  : p.role === 'high' ? candle.highPct
+                  : p.role === 'low' ? candle.lowPct
+                  : candle.closePct
+                : p.price
+              const cy = priceToY(actualPct, plotTop, plotHeight)
               const isFixed = p.role === 'open' || p.role === 'close' || snappedRoles.has(p.role)
               const isActive = dragging === p.role
               return (
@@ -779,7 +794,7 @@ function DetailChart({
                       onDragEnd: () => setDragging(null),
                       dragBoundFunc: (pos: { x: number; y: number }) => ({
                         x: pos.x,
-                        y: priceToY(p.price, plotTop, plotHeight),
+                        y: priceToY(actualPct, plotTop, plotHeight),
                       }),
                     })}
                     {...(!isFixed && {
@@ -800,7 +815,7 @@ function DetailChart({
                   <Text
                     x={cx + 12}
                     y={cy - 5}
-                    text={`${p.price >= 0 ? '+' : ''}${p.price.toFixed(1)}%`}
+                    text={`${actualPct >= 0 ? '+' : ''}${actualPct.toFixed(1)}%`}
                     fontSize={9}
                     fill="rgba(120,120,120,0.7)"
                   />
@@ -819,27 +834,25 @@ function DetailChart({
             {scoreSegments && (
               <Group>
                 <Rect
-                  x={plotLeft}
-                  y={height - DETAIL_PADDING.bottom + 2}
+                  x={0}
+                  y={height - DETAIL_PADDING.bottom}
                   width={scoreSegments.market}
-                  height={6}
+                  height={DETAIL_PADDING.bottom}
                   fill="#3b82f6"
-                  cornerRadius={[3, 0, 0, 3]}
                 />
                 <Rect
-                  x={plotLeft + scoreSegments.market}
-                  y={height - DETAIL_PADDING.bottom + 2}
+                  x={scoreSegments.market}
+                  y={height - DETAIL_PADDING.bottom}
                   width={scoreSegments.sector}
-                  height={6}
+                  height={DETAIL_PADDING.bottom}
                   fill="#22c55e"
                 />
                 <Rect
-                  x={plotLeft + scoreSegments.market + scoreSegments.sector}
-                  y={height - DETAIL_PADDING.bottom + 2}
+                  x={scoreSegments.market + scoreSegments.sector}
+                  y={height - DETAIL_PADDING.bottom}
                   width={scoreSegments.stock}
-                  height={6}
+                  height={DETAIL_PADDING.bottom}
                   fill="#ec4899"
-                  cornerRadius={[0, 3, 3, 0]}
                 />
               </Group>
             )}

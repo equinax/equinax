@@ -195,7 +195,12 @@ export default function StockTrackerDetailPage() {
           >
             {formatPctChg(pctChg)}
           </Badge>
-          {entry.pattern && (
+          {sketchData?.auto_pattern && (
+            <Badge variant="outline" className="font-bold">
+              {sketchData.auto_pattern as string}
+            </Badge>
+          )}
+          {entry.pattern && !sketchData?.auto_pattern && (
             <Badge variant="outline" className="font-bold">
               {entry.pattern as string}
             </Badge>
