@@ -3,6 +3,7 @@ import { Stage, Layer, Line, Circle, Text, Rect, Group } from 'react-konva'
 import type Konva from 'konva'
 import { Button } from '@/components/ui/button'
 import { Save } from 'lucide-react'
+import { SCORE_ITEM_COLORS, SCORE_ITEMS_ORDERED } from '@/lib/score-utils'
 
 // ─── Trading Time Constants ───────────────────────────────────────────────────
 const TIME_SLOTS = [
@@ -38,6 +39,18 @@ const snapToSlot = (minutes: number): number => {
     }
   }
   return closest
+}
+
+const snapToMinute = (minutes: number): number => {
+  const morningStart = 9 * 60 + 30
+  const morningEnd = 11 * 60 + 30
+  const afternoonStart = 13 * 60
+  const afternoonEnd = 15 * 60
+  if (minutes <= morningStart) return morningStart
+  if (minutes <= morningEnd) return minutes
+  if (minutes <= afternoonStart) return minutes <= (morningEnd + afternoonStart) / 2 ? morningEnd : afternoonStart
+  if (minutes <= afternoonEnd) return minutes
+  return afternoonEnd
 }
 
 // ─── OHLC Point Types ─────────────────────────────────────────────────────────
@@ -92,6 +105,7 @@ interface DayChartProps {
   keyPoints?: Record<string, { time: string; price: number }> | null
   // Scores
   scores?: { market: number; sector: number; stock: number } | null
+  detailedScores?: Record<string, Record<string, number>> | null
   // Other
   pattern?: string | null
   notes?: string | null
@@ -438,7 +452,7 @@ function DetailChart({
   close,
   preClose,
   keyPoints,
-  scores,
+  detailedScores,
   onSave,
   isSaving = false,
 }: Omit<DayChartProps, 'mode' | 'tradeDate' | 'pctChg' | 'pattern' | 'notes' | 'width' | 'height' | 'onClick' | 'autoPattern'>) {
@@ -493,7 +507,7 @@ function DetailChart({
       } else {
         minutes = 13 * 60 + (elapsed - MORNING_DURATION)
       }
-      return snapToSlot(Math.round(minutes))
+      return snapToMinute(Math.round(minutes))
     },
     [plotLeft, plotWidth],
   )
@@ -616,18 +630,20 @@ function DetailChart({
   )
 
   // Score bar segments
-  const scoreSegments = useMemo(() => {
-    if (!scores) return null
-    const total = scores.market + scores.sector + scores.stock
-    if (total <= 0) return null
-    const barWidth = (total / 100) * width
-    return {
-      market: (scores.market / total) * barWidth,
-      sector: (scores.sector / total) * barWidth,
-      stock: (scores.stock / total) * barWidth,
-      total,
+  const scoreBarSegments = useMemo(() => {
+    if (!detailedScores) return null
+    const segments: { x: number; w: number; color: string }[] = []
+    let x = 0
+    for (const { section, key } of SCORE_ITEMS_ORDERED) {
+      const value = detailedScores[section]?.[key] ?? 0
+      const w = (value / 100) * width
+      if (w > 0) {
+        segments.push({ x, w, color: SCORE_ITEM_COLORS[section]?.[key] ?? '#888' })
+      }
+      x += w
     }
-  }, [scores, width])
+    return segments.length > 0 ? segments : null
+  }, [detailedScores, width])
 
   // Candlestick X position (centered in candle strip)
   const candleX = plotLeft - 6
@@ -831,29 +847,18 @@ function DetailChart({
             })}
 
             {/* Score bar */}
-            {scoreSegments && (
+            {scoreBarSegments && (
               <Group>
-                <Rect
-                  x={0}
-                  y={height - DETAIL_PADDING.bottom}
-                  width={scoreSegments.market}
-                  height={DETAIL_PADDING.bottom}
-                  fill="#3b82f6"
-                />
-                <Rect
-                  x={scoreSegments.market}
-                  y={height - DETAIL_PADDING.bottom}
-                  width={scoreSegments.sector}
-                  height={DETAIL_PADDING.bottom}
-                  fill="#22c55e"
-                />
-                <Rect
-                  x={scoreSegments.market + scoreSegments.sector}
-                  y={height - DETAIL_PADDING.bottom}
-                  width={scoreSegments.stock}
-                  height={DETAIL_PADDING.bottom}
-                  fill="#ec4899"
-                />
+                {scoreBarSegments.map((seg, i) => (
+                  <Rect
+                    key={i}
+                    x={seg.x}
+                    y={height - DETAIL_PADDING.bottom}
+                    width={seg.w}
+                    height={DETAIL_PADDING.bottom}
+                    fill={seg.color}
+                  />
+                ))}
               </Group>
             )}
           </Layer>

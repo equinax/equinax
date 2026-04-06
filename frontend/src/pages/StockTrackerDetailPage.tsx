@@ -6,8 +6,6 @@ import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { Skeleton } from '@/components/ui/skeleton'
 import { Textarea } from '@/components/ui/textarea'
-import { Input } from '@/components/ui/input'
-import { Label } from '@/components/ui/label'
 import {
   useGetEntryApiV1StockTrackerEntriesEntryIdGet,
   useUpdateEntryApiV1StockTrackerEntriesEntryIdPatch,
@@ -20,7 +18,7 @@ import {
 } from '@/api/generated/stock-tracker/stock-tracker'
 import { getSectionSum } from '@/lib/score-utils'
 import DayChart from '@/components/stock-tracker/DayChart'
-import ScoringPanel from '@/components/stock-tracker/ScoringPanel'
+import CompactScoring from '@/components/stock-tracker/CompactScoring'
 import OperationsPanel from '@/components/stock-tracker/OperationsPanel'
 
 const formatDateFull = (dateStr: string) => {
@@ -69,7 +67,6 @@ export default function StockTrackerDetailPage() {
 
   const [editingNotes, setEditingNotes] = useState(false)
   const [notesValue, setNotesValue] = useState('')
-  const [moodValue, setMoodValue] = useState('')
 
   const { data: sketchData } =
     useGetSketchApiV1StockTrackerEntriesEntryIdSketchGet(entryId || '', {
@@ -86,7 +83,6 @@ export default function StockTrackerDetailPage() {
                 entryId || ''
               ),
           })
-          // Also refresh entry to update pattern
           queryClient.invalidateQueries({
             queryKey:
               getGetEntryApiV1StockTrackerEntriesEntryIdGetQueryKey(
@@ -122,7 +118,6 @@ export default function StockTrackerDetailPage() {
 
   const startEditing = () => {
     setNotesValue((entry?.notes as string) || '')
-    setMoodValue((entry?.mood as string) || '')
     setEditingNotes(true)
   }
 
@@ -132,7 +127,6 @@ export default function StockTrackerDetailPage() {
       entryId,
       data: {
         notes: notesValue || undefined,
-        mood: moodValue || undefined,
       },
     })
   }
@@ -143,12 +137,12 @@ export default function StockTrackerDetailPage() {
         <Skeleton className="h-10 w-64" />
         <Skeleton className="h-6 w-96" />
         <div className="grid grid-cols-1 lg:grid-cols-[1fr_340px] gap-4">
+          <div className="space-y-3">
+            <Skeleton className="h-[440px]" />
+            <Skeleton className="h-10" />
+            <Skeleton className="h-24" />
+          </div>
           <Skeleton className="h-[440px]" />
-          <Skeleton className="h-[440px]" />
-        </div>
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-          <Skeleton className="h-64" />
-          <Skeleton className="h-64" />
         </div>
       </div>
     )
@@ -166,7 +160,6 @@ export default function StockTrackerDetailPage() {
 
   return (
     <div className="space-y-4">
-      {/* Header */}
       <div className="flex items-center gap-4 flex-wrap">
         <Button
           variant="ghost"
@@ -237,10 +230,8 @@ export default function StockTrackerDetailPage() {
         </div>
       </div>
 
-      {/* Upper section: DayChart + ScoringPanel */}
-      <div className="grid grid-cols-1 lg:grid-cols-[minmax(0,640px)_340px] gap-4">
-        {/* Left: DayChart in detail mode */}
-        <div className="max-w-[640px]">
+      <div className="grid grid-cols-1 lg:grid-cols-[minmax(0,720px)_1fr] gap-4 items-start">
+        <div className="space-y-3">
           <DayChart
             mode="detail"
             tradeDate={entry.trade_date}
@@ -257,107 +248,63 @@ export default function StockTrackerDetailPage() {
               > | undefined) ?? null
             }
             scores={scores}
+            detailedScores={
+              (scoreData?.scores as Record<string, Record<string, number>> | undefined) ?? null
+            }
             autoPattern={
               (sketchData?.auto_pattern as string | undefined) ?? null
             }
             onSave={handleSketchSave}
             isSaving={sketchMutation.isPending}
           />
-        </div>
 
-        {/* Right: ScoringPanel */}
-        <div className="border rounded-lg p-4">
-          <h3 className="text-sm font-medium mb-2">评分</h3>
-          <ScoringPanel entryId={entryId || ''} />
-        </div>
-      </div>
+          <CompactScoring entryId={entryId || ''} />
 
-      {/* Lower section: OperationsPanel + Notes */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-        {/* Left: OperationsPanel */}
-        <div className="border rounded-lg p-4">
-          <h3 className="text-sm font-medium mb-2">操作记录</h3>
-          <OperationsPanel entryId={entryId || ''} />
-        </div>
-
-        {/* Right: Notes */}
-        <div className="border rounded-lg p-4">
-          <div className="space-y-4">
-            {/* Current info */}
-            <div className="space-y-2">
-              <div className="flex items-center justify-between">
-                <span className="text-sm font-medium">心态</span>
-                <span className="text-sm text-muted-foreground">
-                  {(entry.mood as string) || '未记录'}
-                </span>
-              </div>
-              <div className="flex items-center justify-between">
-                <span className="text-sm font-medium">天干</span>
-                <span className="text-sm">
-                  {(entry.pattern as string) || '未识别'}
-                </span>
-              </div>
-            </div>
-
-            <div className="border-t pt-4">
-              {editingNotes ? (
-                <div className="space-y-3">
-                  <div className="grid gap-2">
-                    <Label>心态</Label>
-                    <Input
-                      value={moodValue}
-                      onChange={(e) => setMoodValue(e.target.value)}
-                      placeholder="乐观 / 焦虑 / 冷静 / ..."
-                    />
-                  </div>
-                  <div className="grid gap-2">
-                    <Label>备注</Label>
-                    <Textarea
-                      value={notesValue}
-                      onChange={(e) => setNotesValue(e.target.value)}
-                      placeholder="今日操作思路、复盘要点..."
-                      rows={6}
-                    />
-                  </div>
-                  <div className="flex gap-2">
-                    <Button
-                      size="sm"
-                      onClick={handleSaveNotes}
-                      disabled={updateMutation.isPending}
-                    >
-                      {updateMutation.isPending
-                        ? '保存中...'
-                        : '保存'}
-                    </Button>
-                    <Button
-                      size="sm"
-                      variant="outline"
-                      onClick={() => setEditingNotes(false)}
-                    >
-                      取消
-                    </Button>
-                  </div>
+          <div>
+            {editingNotes ? (
+              <div className="space-y-2">
+                <Textarea
+                  value={notesValue}
+                  onChange={(e) => setNotesValue(e.target.value)}
+                  placeholder="今日操作思路、复盘要点..."
+                  rows={4}
+                />
+                <div className="flex gap-2">
+                  <Button
+                    size="sm"
+                    onClick={handleSaveNotes}
+                    disabled={updateMutation.isPending}
+                  >
+                    {updateMutation.isPending ? '保存中...' : '保存'}
+                  </Button>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={() => setEditingNotes(false)}
+                  >
+                    取消
+                  </Button>
                 </div>
-              ) : (
-                <div className="space-y-2">
-                  <div className="flex items-center justify-between">
-                    <span className="text-sm font-medium">备注</span>
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      onClick={startEditing}
-                    >
-                      <Pencil className="h-3 w-3 mr-1" />
-                      编辑
-                    </Button>
-                  </div>
-                  <p className="text-sm text-muted-foreground whitespace-pre-wrap">
-                    {(entry.notes as string) || '暂无备注'}
-                  </p>
+              </div>
+            ) : (
+              <div
+                className="group cursor-pointer"
+                onClick={startEditing}
+              >
+                <div className="flex items-center gap-1.5">
+                  <span className="text-xs text-muted-foreground font-medium">备注</span>
+                  <Pencil className="h-3 w-3 text-muted-foreground/0 group-hover:text-muted-foreground transition-colors" />
                 </div>
-              )}
-            </div>
+                <p className="text-sm text-muted-foreground whitespace-pre-wrap mt-0.5">
+                  {(entry.notes as string) || '暂无备注'}
+                </p>
+              </div>
+            )}
           </div>
+        </div>
+
+        <div className="border rounded-lg p-4">
+          <OperationsPanel entryId={entryId || ''} />
         </div>
       </div>
     </div>

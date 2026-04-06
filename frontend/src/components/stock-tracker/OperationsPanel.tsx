@@ -235,23 +235,27 @@ export default function OperationsPanel({ entryId }: OperationsPanelProps) {
 
   return (
     <div className="space-y-2">
-      <div className="flex items-center justify-between">
-        <span className="text-sm text-muted-foreground">
-          {opList.length} 条记录
+      <div className="flex items-center gap-2">
+        <h3 className="text-sm font-medium">操作记录</h3>
+        <span className="text-xs text-muted-foreground">
+          {opList.length} 条
         </span>
-        {!showAddForm && (
-          <Button
-            size="sm"
-            variant="outline"
-            onClick={() => {
-              setForm(EMPTY_FORM)
-              setShowAddForm(true)
-            }}
-          >
-            <Plus className="h-3 w-3 mr-1" />
-            新增
-          </Button>
-        )}
+        <div className="ml-auto">
+          {!showAddForm && (
+            <Button
+              size="sm"
+              variant="outline"
+              className="h-6 text-xs px-2"
+              onClick={() => {
+                setForm(EMPTY_FORM)
+                setShowAddForm(true)
+              }}
+            >
+              <Plus className="h-3 w-3 mr-1" />
+              新增
+            </Button>
+          )}
+        </div>
       </div>
 
       {showAddForm &&
@@ -270,7 +274,7 @@ export default function OperationsPanel({ entryId }: OperationsPanelProps) {
         </div>
       )}
 
-      <div className="space-y-2">
+      <div className="space-y-1">
         {opList.map((op) => {
           const opConfig = getOpLabel(op.op_type)
 
@@ -292,56 +296,52 @@ export default function OperationsPanel({ entryId }: OperationsPanelProps) {
           return (
             <div
               key={op.id}
-              className="flex items-start justify-between gap-2 border rounded-lg p-2 bg-muted/10"
+              className="flex items-center gap-1.5 text-xs group py-1 border-b border-border/30 last:border-0"
             >
-              <div className="space-y-0.5 flex-1 min-w-0">
-                <div className="flex items-center gap-2">
-                  <Badge variant="outline" className={`text-xs ${opConfig.color}`}>
-                    {opConfig.label}
-                  </Badge>
-                  {op.op_time && (
-                    <span className="text-xs text-muted-foreground font-mono">
-                      {op.op_time as string}
-                    </span>
-                  )}
-                  {op.price != null && (
-                    <span className="text-xs font-mono">
-                      ¥{Number(op.price).toFixed(2)}
-                    </span>
-                  )}
-                  {op.quantity != null && (
-                    <span className="text-xs text-muted-foreground">
-                      ×{op.quantity}
-                    </span>
-                  )}
-                </div>
-                {op.emotion && (
-                  <div className="text-xs text-muted-foreground">
-                    心态: {op.emotion as string}
-                  </div>
-                )}
-                {op.notes && (
-                  <div className="text-xs text-muted-foreground truncate">
-                    {op.notes as string}
-                  </div>
-                )}
-              </div>
-              <div className="flex gap-1 shrink-0">
+              <Badge variant="outline" className={`text-[10px] px-1 py-0 h-4 shrink-0 ${opConfig.color}`}>
+                {opConfig.label}
+              </Badge>
+              {op.op_time && (
+                <span className="text-muted-foreground font-mono">
+                  {op.op_time as string}
+                </span>
+              )}
+              {op.price != null && (
+                <span className="font-mono">
+                  ¥{Number(op.price).toFixed(2)}
+                </span>
+              )}
+              {op.quantity != null && (
+                <span className="text-muted-foreground">
+                  ×{op.quantity}
+                </span>
+              )}
+              {op.emotion && (
+                <span className="text-muted-foreground truncate">
+                  {op.emotion as string}
+                </span>
+              )}
+              {op.notes && (
+                <span className="text-muted-foreground truncate flex-1 min-w-0">
+                  {op.notes as string}
+                </span>
+              )}
+              <div className="flex gap-0.5 shrink-0 opacity-0 group-hover:opacity-100 transition-opacity">
                 <Button
                   variant="ghost"
                   size="icon"
-                  className="h-6 w-6"
+                  className="h-5 w-5"
                   onClick={() => startEdit(op)}
                 >
-                  <Pencil className="h-3 w-3" />
+                  <Pencil className="h-2.5 w-2.5" />
                 </Button>
                 <Button
                   variant="ghost"
                   size="icon"
-                  className="h-6 w-6 text-destructive"
+                  className="h-5 w-5 text-destructive"
                   onClick={() => deleteMutation.mutate({ opId: op.id })}
                 >
-                  <Trash2 className="h-3 w-3" />
+                  <Trash2 className="h-2.5 w-2.5" />
                 </Button>
               </div>
             </div>
