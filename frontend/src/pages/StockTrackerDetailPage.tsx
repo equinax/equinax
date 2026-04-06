@@ -85,7 +85,7 @@ export default function StockTrackerDetailPage() {
     })
 
   const invalidateTimeline = () =>
-    queryClient.invalidateQueries({ queryKey: ['stock-tracker-timeline'] })
+    queryClient.removeQueries({ queryKey: ['stock-tracker-timeline'] })
 
   const sketchMutation =
     useUpsertSketchApiV1StockTrackerEntriesEntryIdSketchPut({

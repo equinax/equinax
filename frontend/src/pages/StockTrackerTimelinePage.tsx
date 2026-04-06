@@ -65,6 +65,10 @@ export default function StockTrackerTimelinePage() {
     enabled: !!tsCode,
   })
 
+  useEffect(() => {
+    queryClient.invalidateQueries({ queryKey: ['stock-tracker-timeline', tsCode] })
+  }, [queryClient, tsCode])
+
   const syncMutation =
     useSyncDailyApiV1StockTrackerTracksTsCodeSyncDailyPost({
       mutation: {
