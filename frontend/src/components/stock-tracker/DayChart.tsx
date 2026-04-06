@@ -462,6 +462,11 @@ function DetailChart({
   detailedScores,
   onSave,
   isSaving = false,
+  minuteCandles,
+  showMinuteLine = true,
+  showOhlcPoints = true,
+  minuteLoading = false,
+  minuteError = false,
 }: Omit<DayChartProps, 'mode' | 'tradeDate' | 'pctChg' | 'pattern' | 'notes' | 'width' | 'height' | 'onClick' | 'autoPattern'>) {
   const containerRef = useRef<HTMLDivElement>(null)
   const [dimensions, setDimensions] = useState({ width: 600, height: 500 })
@@ -652,6 +657,35 @@ function DetailChart({
     return segments.length > 0 ? segments : null
   }, [detailedScores, width])
 
+  // Minute line points for intraday price overlay
+  const minuteLinePoints = useMemo(() => {
+    if (!showMinuteLine || !minuteCandles?.length || preClose == null) return null
+    const pts: number[] = []
+    for (const c of minuteCandles) {
+      const [h, m] = c.time.split(':').map(Number)
+      const minutes = h * 60 + m
+      const pct = ((c.close - preClose) / preClose) * 100
+      pts.push(timeToX(minutes, plotLeft, plotWidth), priceToY(pct, plotTop, plotHeight))
+    }
+    return pts
+  }, [showMinuteLine, minuteCandles, preClose, plotLeft, plotWidth, plotTop, plotHeight])
+
+  // Volume bars geometry for intraday volume overlay
+  const volumeBars = useMemo(() => {
+    if (!showMinuteLine || !minuteCandles?.length) return null
+    const maxVol = Math.max(...minuteCandles.map(c => c.volume))
+    if (maxVol <= 0) return null
+    const barW = (plotWidth / minuteCandles.length) * 0.8
+    return minuteCandles.map(c => {
+      const [h, m] = c.time.split(':').map(Number)
+      const minutes = h * 60 + m
+      const x = timeToX(minutes, plotLeft, plotWidth) - barW / 2
+      const barH = (c.volume / maxVol) * plotHeight * 0.2
+      const y = plotTop + plotHeight - barH
+      return { x, y, w: barW, h: barH }
+    })
+  }, [showMinuteLine, minuteCandles, plotLeft, plotWidth, plotTop, plotHeight])
+
   // Candlestick X position (centered in candle strip)
   const candleX = plotLeft - 6
 
@@ -768,17 +802,70 @@ function DetailChart({
               </Group>
             )}
 
-            {/* Connecting line */}
-            <Line
-              points={lineCoords}
-              stroke="rgba(120,120,120,0.4)"
-              strokeWidth={2}
-              lineJoin="round"
-              lineCap="round"
-            />
+            {/* Volume bars */}
+            {volumeBars && volumeBars.map((bar, i) => (
+              <Rect
+                key={i}
+                x={bar.x}
+                y={bar.y}
+                width={bar.w}
+                height={bar.h}
+                fill="rgba(120,120,120,0.15)"
+              />
+            ))}
 
-            {/* OHLC points */}
-            {snappedPoints.map((p) => {
+            {/* Minute loading/error/empty states */}
+            {minuteLoading && (
+              <Text
+                x={plotLeft + plotWidth / 2 - 40}
+                y={plotTop + plotHeight / 2 - 6}
+                text="加载分时数据..."
+                fontSize={12}
+                fill="rgba(120,120,120,0.5)"
+              />
+            )}
+            {minuteError && !minuteLoading && (
+              <Text
+                x={plotLeft + plotWidth / 2 - 50}
+                y={plotTop + plotHeight / 2 - 6}
+                text="分时数据加载失败"
+                fontSize={12}
+                fill="rgba(239,68,68,0.5)"
+              />
+            )}
+            {!minuteLoading && !minuteError && minuteCandles !== undefined && minuteCandles !== null && minuteCandles.length === 0 && (
+              <Text
+                x={plotLeft + plotWidth / 2 - 30}
+                y={plotTop + plotHeight / 2 - 6}
+                text="无分时数据"
+                fontSize={12}
+                fill="rgba(120,120,120,0.4)"
+              />
+            )}
+
+            {/* Minute price line */}
+            {minuteLinePoints && (
+              <Line
+                points={minuteLinePoints}
+                stroke="rgba(59,130,246,0.8)"
+                strokeWidth={1.5}
+                lineJoin="round"
+                lineCap="round"
+              />
+            )}
+
+            {/* Connecting line + OHLC points */}
+            {showOhlcPoints !== false && (
+              <>
+                <Line
+                  points={lineCoords}
+                  stroke="rgba(120,120,120,0.4)"
+                  strokeWidth={2}
+                  lineJoin="round"
+                  lineCap="round"
+                />
+
+                {snappedPoints.map((p) => {
               const config = ROLE_CONFIG[p.role]
               const cx = timeToX(p.time, plotLeft, plotWidth)
               const actualPct = candle
@@ -852,6 +939,8 @@ function DetailChart({
                 </Group>
               )
             })}
+              </>
+            )}
 
             {/* Score bar */}
             {scoreBarSegments && (
