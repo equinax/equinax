@@ -24,12 +24,30 @@ const OP_TYPES = [
 const getOpLabel = (opType: string) =>
   OP_TYPES.find((t) => t.value === opType) ?? { value: opType, label: opType, color: 'text-muted-foreground', bg: '' }
 
-const TIME_PRESETS = [
-  '09:30', '09:35', '09:40', '09:45', '09:50',
-  '10:00', '10:30', '11:00', '11:30',
-  '13:00', '13:30', '14:00', '14:30',
-  '14:45', '14:50', '14:55', '15:00',
-]
+// Trading time slots: 5-min intervals across morning (09:30-11:30) + afternoon (13:00-15:00)
+const TRADING_SLOTS: string[] = []
+for (let m = 9 * 60 + 30; m <= 11 * 60 + 30; m += 5) {
+  TRADING_SLOTS.push(`${String(Math.floor(m / 60)).padStart(2, '0')}:${String(m % 60).padStart(2, '0')}`)
+}
+for (let m = 13 * 60; m <= 15 * 60; m += 5) {
+  TRADING_SLOTS.push(`${String(Math.floor(m / 60)).padStart(2, '0')}:${String(m % 60).padStart(2, '0')}`)
+}
+
+function timeToSlotIndex(time: string): number {
+  const idx = TRADING_SLOTS.indexOf(time)
+  if (idx >= 0) return idx
+  const mins = parseTimeToMinutes(time)
+  if (mins === null) return 0
+  let best = 0
+  let bestDiff = Infinity
+  for (let i = 0; i < TRADING_SLOTS.length; i++) {
+    const sm = parseTimeToMinutes(TRADING_SLOTS[i])
+    if (sm === null) continue
+    const diff = Math.abs(sm - mins)
+    if (diff < bestDiff) { bestDiff = diff; best = i }
+  }
+  return best
+}
 
 function findCandlePrice(time: string, candles: MinuteCandle[] | null | undefined): number | null {
   if (!candles || candles.length === 0) return null
@@ -438,6 +456,20 @@ function OpForm({
   const priceNum = formState.price ? parseFloat(formState.price) : 0
   const qtyNum = formState.quantity ? parseInt(formState.quantity, 10) : 0
 
+  const activePriceRange = useMemo(() => {
+    if (formState.op_time && minuteCandles?.length) {
+      const candle = minuteCandles.find((c) => c.time === formState.op_time)
+      if (candle) {
+        const margin = Math.max((candle.high - candle.low) * 0.1, 0.01)
+        return {
+          min: Math.round((candle.low - margin) * 100) / 100,
+          max: Math.round((candle.high + margin) * 100) / 100,
+        }
+      }
+    }
+    return priceRange
+  }, [formState.op_time, minuteCandles, priceRange])
+
   return (
     <div className="space-y-2 border rounded-lg p-2 bg-muted/20">
       <div className="flex gap-1">
@@ -457,24 +489,21 @@ function OpForm({
         ))}
       </div>
 
-      <div>
-        <div className="flex flex-wrap gap-0.5">
-          {TIME_PRESETS.map((t) => (
-            <button
-              key={t}
-              type="button"
-              className={`text-[10px] font-mono px-1 py-0.5 rounded transition-colors ${
-                formState.op_time === t
-                  ? 'bg-primary/20 text-primary border border-primary/40'
-                  : 'text-muted-foreground hover:text-foreground hover:bg-muted/50'
-              }`}
-              onClick={() => handleTimeSelect(t, formState, setFormState)}
-            >
-              {t}
-            </button>
-          ))}
+      <div className="space-y-1">
+        <div className="flex items-center gap-2">
+          <span className="font-mono text-sm tabular-nums tracking-tight min-w-[3.2rem]">
+            {formState.op_time || '--:--'}
+          </span>
+          <Slider
+            min={0}
+            max={TRADING_SLOTS.length - 1}
+            step={1}
+            value={[formState.op_time ? timeToSlotIndex(formState.op_time) : 0]}
+            onValueChange={([v]) => handleTimeSelect(TRADING_SLOTS[v], formState, setFormState)}
+            className="flex-1"
+          />
           <Input
-            className="h-5 w-14 text-[10px] font-mono px-1 inline-flex"
+            className="h-5 w-14 text-[10px] font-mono px-1 shrink-0"
             placeholder="HH:MM"
             value={formState.op_time}
             onChange={(e) => {
@@ -489,65 +518,68 @@ function OpForm({
             }}
           />
         </div>
+        <div className="flex justify-between text-[9px] text-muted-foreground/50 font-mono px-0.5">
+          <span>09:30</span>
+          <span>11:30</span>
+          <span>13:00</span>
+          <span>15:00</span>
+        </div>
       </div>
 
-      <div className="space-y-1">
-        <div className="flex items-center gap-2">
-          <span className="text-[10px] text-muted-foreground w-6 shrink-0">价格</span>
-          <Input
-            className="h-6 w-20 text-xs font-mono px-1"
-            type="number"
-            step="0.01"
-            placeholder="0.00"
-            value={formState.price}
-            onChange={(e) => setFormState({ ...formState, price: e.target.value })}
-          />
-          {formState.price && (
-            <span className="text-[10px] text-muted-foreground font-mono">
-              ¥{parseFloat(formState.price || '0').toFixed(2)}
-            </span>
+      <div className="grid grid-cols-2 gap-3">
+        <div className="space-y-1">
+          <div className="flex items-center gap-1">
+            <span className="text-[10px] text-muted-foreground shrink-0">价格</span>
+            <Input
+              className="h-6 flex-1 text-xs font-mono px-1"
+              type="number"
+              step="0.01"
+              placeholder="0.00"
+              value={formState.price}
+              onChange={(e) => setFormState({ ...formState, price: e.target.value })}
+            />
+          </div>
+          {activePriceRange && (
+            <Slider
+              min={activePriceRange.min}
+              max={activePriceRange.max}
+              step={0.01}
+              value={[priceNum || activePriceRange.min]}
+              onValueChange={([v]) =>
+                setFormState({ ...formState, price: v.toFixed(2) })
+              }
+              className="py-1"
+            />
           )}
         </div>
-        {priceRange && (
+
+        <div className="space-y-1">
+          <div className="flex items-center gap-1">
+            <span className="text-[10px] text-muted-foreground shrink-0">数量</span>
+            <Input
+              className="h-6 flex-1 text-xs font-mono px-1"
+              type="number"
+              step="1"
+              min="0"
+              placeholder="手"
+              value={formState.quantity}
+              onChange={(e) => setFormState({ ...formState, quantity: e.target.value })}
+            />
+            <span className="text-[10px] text-muted-foreground font-mono shrink-0">
+              {qtyNum > 0 ? `${qtyNum}手` : '手'}
+            </span>
+          </div>
           <Slider
-            min={priceRange.min}
-            max={priceRange.max}
-            step={0.01}
-            value={[priceNum || priceRange.min]}
+            min={0}
+            max={100}
+            step={1}
+            value={[qtyNum]}
             onValueChange={([v]) =>
-              setFormState({ ...formState, price: v.toFixed(2) })
+              setFormState({ ...formState, quantity: String(v) })
             }
             className="py-1"
           />
-        )}
-      </div>
-
-      <div className="space-y-1">
-        <div className="flex items-center gap-2">
-          <span className="text-[10px] text-muted-foreground w-6 shrink-0">数量</span>
-          <Input
-            className="h-6 w-16 text-xs font-mono px-1"
-            type="number"
-            step="1"
-            min="0"
-            placeholder="手"
-            value={formState.quantity}
-            onChange={(e) => setFormState({ ...formState, quantity: e.target.value })}
-          />
-          <span className="text-[10px] text-muted-foreground font-mono">
-            {qtyNum > 0 ? `${qtyNum}手(${qtyNum * 100}股)` : '手'}
-          </span>
         </div>
-        <Slider
-          min={0}
-          max={100}
-          step={1}
-          value={[qtyNum]}
-          onValueChange={([v]) =>
-            setFormState({ ...formState, quantity: String(v) })
-          }
-          className="py-1"
-        />
       </div>
 
       <button
