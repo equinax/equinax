@@ -102,7 +102,7 @@ export default function StockTrackerTimelinePage() {
     syncMutation.mutate({
       tsCode,
       params: {
-        days: syncInfo.before ? SYNC_DAYS : 60,
+        days: syncInfo.days,
         before: syncInfo.before ?? undefined,
       },
     })
@@ -162,19 +162,21 @@ export default function StockTrackerTimelinePage() {
   const rows = useMemo(() => chunkArray(items, COLS), [items])
 
   const syncInfo = useMemo(() => {
-    if (!items.length) return { label: `最近${SYNC_DAYS}日`, before: undefined }
+    if (!items.length) return { label: `最近${SYNC_DAYS}日`, days: SYNC_DAYS, before: undefined }
     const noEntryItems = items.filter((d) => !d.has_entry)
     if (noEntryItems.length > 0) {
       const oldest = noEntryItems[0].trade_date
       const newest = noEntryItems[noEntryItems.length - 1].trade_date
       return {
         label: `${formatDateShort(oldest)} ~ ${formatDateShort(newest)}`,
+        days: items.length,
         before: undefined,
       }
     }
     const oldestDate = items[0].trade_date
     return {
       label: `${formatDateShort(oldestDate)} 之前${SYNC_DAYS}日`,
+      days: SYNC_DAYS,
       before: oldestDate,
     }
   }, [items])
