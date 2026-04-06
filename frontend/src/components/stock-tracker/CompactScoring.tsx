@@ -127,6 +127,9 @@ export default function CompactScoring({ entryId }: CompactScoringProps) {
             queryKey:
               getGetScoresApiV1StockTrackerEntriesEntryIdScoresGetQueryKey(entryId),
           })
+          queryClient.invalidateQueries({
+            queryKey: ['stock-tracker-timeline'],
+          })
         },
       },
     })

@@ -203,14 +203,6 @@ function ThumbnailChart({
     return [...ohlcPoints].sort((a, b) => a.time - b.time)
   }, [ohlcPoints])
 
-  const lineCoords = useMemo(() => {
-    if (!sortedPoints) return null
-    return sortedPoints.flatMap((p) => [
-      timeToX(p.time, plotLeft, plotWidth),
-      priceToY(p.price, plotTop, plotHeight),
-    ])
-  }, [sortedPoints, plotLeft, plotWidth, plotTop, plotHeight])
-
   const candle = useMemo(() => {
     if (open == null || close == null || high == null || low == null || preClose == null) {
       return null
@@ -222,6 +214,21 @@ function ThumbnailChart({
     const isUp = close >= open
     return { openPct, closePct, highPct, lowPct, isUp }
   }, [open, close, high, low, preClose])
+
+  const lineCoords = useMemo(() => {
+    if (!sortedPoints || !candle) return null
+    return sortedPoints.flatMap((p) => {
+      const pct =
+        p.role === 'open' ? candle.openPct
+        : p.role === 'high' ? candle.highPct
+        : p.role === 'low' ? candle.lowPct
+        : candle.closePct
+      return [
+        timeToX(p.time, plotLeft, plotWidth),
+        priceToY(pct, plotTop, plotHeight),
+      ]
+    })
+  }, [sortedPoints, candle, plotLeft, plotWidth, plotTop, plotHeight])
 
   const scoreSegments = useMemo(() => {
     if (!scores) return null
@@ -375,15 +382,22 @@ function ThumbnailChart({
                 lineCap="round"
               />
               {/* Dots at each OHLC point */}
-              {sortedPoints.map((p) => (
-                <Circle
-                  key={p.role}
-                  x={timeToX(p.time, plotLeft, plotWidth)}
-                  y={priceToY(p.price, plotTop, plotHeight)}
-                  radius={3}
-                  fill={ROLE_CONFIG[p.role].color}
-                />
-              ))}
+              {sortedPoints.map((p) => {
+                const pct =
+                  p.role === 'open' ? candle!.openPct
+                  : p.role === 'high' ? candle!.highPct
+                  : p.role === 'low' ? candle!.lowPct
+                  : candle!.closePct
+                return (
+                  <Circle
+                    key={p.role}
+                    x={timeToX(p.time, plotLeft, plotWidth)}
+                    y={priceToY(pct, plotTop, plotHeight)}
+                    radius={3}
+                    fill={ROLE_CONFIG[p.role].color}
+                  />
+                )
+              })}
             </Group>
           )}
 

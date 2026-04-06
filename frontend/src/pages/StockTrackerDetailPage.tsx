@@ -84,6 +84,9 @@ export default function StockTrackerDetailPage() {
       query: { enabled: !!entryId },
     })
 
+  const invalidateTimeline = () =>
+    queryClient.invalidateQueries({ queryKey: ['stock-tracker-timeline'] })
+
   const sketchMutation =
     useUpsertSketchApiV1StockTrackerEntriesEntryIdSketchPut({
       mutation: {
@@ -100,6 +103,7 @@ export default function StockTrackerDetailPage() {
                 entryId || ''
               ),
           })
+          invalidateTimeline()
         },
       },
     })
@@ -122,6 +126,7 @@ export default function StockTrackerDetailPage() {
             entryId || ''
           ),
         })
+        invalidateTimeline()
         setEditingNotes(false)
       },
     },

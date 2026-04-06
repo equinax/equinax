@@ -481,58 +481,47 @@ function OpForm({
 
   return (
     <div className="space-y-2 border rounded-lg p-2 bg-muted/20">
-      <div className="flex gap-1">
+      <div className="flex items-center gap-1.5">
         {OP_TYPES.map((t) => (
           <button
             key={t.value}
             type="button"
-            className={`flex-1 text-xs font-medium py-1 rounded border transition-colors ${
+            className={`text-xs font-medium px-2 py-1 rounded border transition-colors shrink-0 ${
               formState.op_type === t.value
                 ? t.bg + ' ' + t.color
                 : 'border-border/50 text-muted-foreground hover:text-foreground'
             }`}
             onClick={() => setFormState({ ...formState, op_type: t.value })}
           >
-            {t.label}
+            {t.label.charAt(0)}
           </button>
         ))}
-      </div>
-
-      <div className="space-y-1">
-        <div className="flex items-center gap-2">
-          <span className="font-mono text-sm tabular-nums tracking-tight min-w-[3.2rem]">
-            {formState.op_time || '--:--'}
-          </span>
-          <Slider
-            min={0}
-            max={TRADING_SLOTS.length - 1}
-            step={1}
-            value={[formState.op_time ? timeToSlotIndex(formState.op_time) : 0]}
-            onValueChange={([v]) => handleTimeSelect(TRADING_SLOTS[v], formState, setFormState)}
-            className="flex-1"
-          />
-          <Input
-            className="h-5 w-14 text-[10px] font-mono px-1 shrink-0"
-            placeholder="HH:MM"
-            value={formState.op_time}
-            onChange={(e) => {
-              const val = e.target.value
-              setFormState({ ...formState, op_time: val })
-              if (/^\d{2}:\d{2}$/.test(val)) {
-                const price = findCandlePrice(val, minuteCandles)
-                if (price != null) {
-                  setFormState({ ...formState, op_time: val, price: price.toFixed(2) })
-                }
+        <span className="font-mono text-sm tabular-nums tracking-tight min-w-[3rem] text-center shrink-0">
+          {formState.op_time || '--:--'}
+        </span>
+        <Slider
+          min={0}
+          max={TRADING_SLOTS.length - 1}
+          step={1}
+          value={[formState.op_time ? timeToSlotIndex(formState.op_time) : 0]}
+          onValueChange={([v]) => handleTimeSelect(TRADING_SLOTS[v], formState, setFormState)}
+          className="flex-1"
+        />
+        <Input
+          className="h-5 w-14 text-[10px] font-mono px-1 shrink-0"
+          placeholder="HH:MM"
+          value={formState.op_time}
+          onChange={(e) => {
+            const val = e.target.value
+            setFormState({ ...formState, op_time: val })
+            if (/^\d{2}:\d{2}$/.test(val)) {
+              const price = findCandlePrice(val, minuteCandles)
+              if (price != null) {
+                setFormState({ ...formState, op_time: val, price: price.toFixed(2) })
               }
-            }}
-          />
-        </div>
-        <div className="flex justify-between text-[9px] text-muted-foreground/50 font-mono px-0.5">
-          <span>09:30</span>
-          <span>11:30</span>
-          <span>13:00</span>
-          <span>15:00</span>
-        </div>
+            }
+          }}
+        />
       </div>
 
       <div className="grid grid-cols-2 gap-3">
