@@ -2,19 +2,19 @@
 
 Classifies intraday OHLC key points into one of 10 天干 patterns based on
 two dimensions:
-  1. Time coincidences: whether O/C share time with H/L
+  1. Price coincidences: whether real O/C equal H/L
   2. For non-degenerate cases: H-before-L vs L-before-H × close-up vs close-down
 
 Decision tree:
-  Stage 1 — time coincidences (priority order):
-    甲: O_time == L_time AND C_time == H_time  (pure bull: low@open, high@close)
-    乙: O_time == H_time AND C_time == L_time  (pure bear: high@open, low@close)
-    丙: O_time == L_time                        (open = low, main rise)
-    丁: O_time == H_time                        (open = high, main drop)
-    戊: C_time == H_time                        (close = high, valley recovery)
-    己: C_time == L_time                        (close = low, rise then crash)
+  Stage 1 — price coincidences (priority order):
+    甲: O==L AND C==H  (pure bull: low at open, high at close)
+    乙: O==H AND C==L  (pure bear: high at open, low at close)
+    丙: O==L            (open = low, main rise)
+    丁: O==H            (open = high, main drop)
+    戊: C==H            (close = high, valley recovery)
+    己: C==L            (close = low, rise then crash)
 
-  Stage 2 — general case (H/L order × close direction):
+  Stage 2 — general case (H/L time order × close direction):
     庚: H before L, close >= open  (先升后降, 收盘涨)
     癸: H before L, close <  open  (先升后降, 收盘跌)
     壬: L before H, close >= open  (先降后升, 收盘涨)
@@ -40,6 +40,8 @@ def _parse_time_minutes(time_str: str) -> int:
 def recognize_pattern(
     key_points: Dict[str, Any],
     real_open: Optional[float] = None,
+    real_high: Optional[float] = None,
+    real_low: Optional[float] = None,
     real_close: Optional[float] = None,
 ) -> Optional[str]:
     required = {"open", "high", "low", "close"}
@@ -47,34 +49,44 @@ def recognize_pattern(
         return None
 
     try:
-        o_t = _parse_time_minutes(key_points["open"]["time"])
         h_t = _parse_time_minutes(key_points["high"]["time"])
         l_t = _parse_time_minutes(key_points["low"]["time"])
-        c_t = _parse_time_minutes(key_points["close"]["time"])
     except (KeyError, TypeError, ValueError):
         return None
 
-    # Stage 1: time coincidences (check compound cases first)
-    o_is_l = o_t == l_t
-    o_is_h = o_t == h_t
-    c_is_h = c_t == h_t
-    c_is_l = c_t == l_t
+    # Stage 1: price coincidences using real OHLC
+    if (
+        real_open is not None
+        and real_high is not None
+        and real_low is not None
+        and real_close is not None
+    ):
+        o_is_l = real_open <= real_low
+        o_is_h = real_open >= real_high
+        c_is_h = real_close >= real_high
+        c_is_l = real_close <= real_low
+    else:
+        o_t = _parse_time_minutes(key_points["open"]["time"])
+        c_t = _parse_time_minutes(key_points["close"]["time"])
+        o_is_l = o_t == l_t
+        o_is_h = o_t == h_t
+        c_is_h = c_t == h_t
+        c_is_l = c_t == l_t
 
     if o_is_l and c_is_h:
-        return "甲"  # pure bull: low at open, high at close
+        return "甲"
     if o_is_h and c_is_l:
-        return "乙"  # pure bear: high at open, low at close
+        return "乙"
     if o_is_l:
-        return "丙"  # open = low, main rise pattern
+        return "丙"
     if o_is_h:
-        return "丁"  # open = high, main drop pattern
+        return "丁"
     if c_is_h:
-        return "戊"  # close = high, valley recovery
+        return "戊"
     if c_is_l:
-        return "己"  # close = low, rise then crash
+        return "己"
 
-    # Stage 2: general case — H/L time order × close vs open price
-    # Use real OHLC prices when available (key_points price is just canvas position)
+    # Stage 2: H/L time order × close vs open price
     if real_open is not None and real_close is not None:
         close_up = real_close >= real_open
     else:

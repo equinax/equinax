@@ -91,6 +91,40 @@ function priceToY(pctChange: number, plotTop: number, plotHeight: number): numbe
   return plotTop + ((PRICE_RANGE - pctChange) / (2 * PRICE_RANGE)) * plotHeight
 }
 
+function recognizePattern(
+  points: OHLCPoint[],
+  realOpen: number | null,
+  realHigh: number | null,
+  realLow: number | null,
+  realClose: number | null,
+): string | null {
+  const byRole: Record<string, OHLCPoint> = {}
+  for (const p of points) byRole[p.role] = p
+  if (!byRole.open || !byRole.high || !byRole.low || !byRole.close) return null
+
+  const hT = byRole.high.time
+  const lT = byRole.low.time
+
+  if (realOpen != null && realHigh != null && realLow != null && realClose != null) {
+    const oIsL = realOpen <= realLow
+    const oIsH = realOpen >= realHigh
+    const cIsH = realClose >= realHigh
+    const cIsL = realClose <= realLow
+
+    if (oIsL && cIsH) return '甲'
+    if (oIsH && cIsL) return '乙'
+    if (oIsL) return '丙'
+    if (oIsH) return '丁'
+    if (cIsH) return '戊'
+    if (cIsL) return '己'
+
+    const closeUp = realClose >= realOpen
+    return hT < lT ? (closeUp ? '庚' : '癸') : (closeUp ? '壬' : '辛')
+  }
+
+  return null
+}
+
 // ─── Props Interface ──────────────────────────────────────────────────────────
 interface DayChartProps {
   mode: 'thumbnail' | 'detail'
@@ -514,6 +548,11 @@ function DetailChart({
   const [isDirty, setIsDirty] = useState(false)
   const [dragging, setDragging] = useState<PointRole | null>(null)
   const [crosshair, setCrosshair] = useState<{ x: number; y: number } | null>(null)
+
+  const localPattern = useMemo(
+    () => recognizePattern(points, open, high, low, close),
+    [points, open, high, low, close],
+  )
 
   // Update points when keyPoints prop changes
   useEffect(() => {
@@ -1086,8 +1125,10 @@ function DetailChart({
       </div>
 
       <div className="absolute top-1 left-3 z-10 text-[11px] font-mono flex items-center gap-2">
-        {autoPattern && (
-          <span className="text-sm font-bold text-amber-500 not-mono">{autoPattern}</span>
+        {(isDirty ? localPattern : autoPattern) && (
+          <span className={`text-sm font-bold not-mono ${isDirty ? 'text-blue-400' : 'text-amber-500'}`}>
+            {isDirty ? localPattern : autoPattern}
+          </span>
         )}
         {crosshairInfo && (
           <>

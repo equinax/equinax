@@ -628,6 +628,8 @@ async def upsert_sketch(
         auto_pattern = recognize_pattern(
             body.key_points,
             real_open=float(entry.open) if entry.open is not None else None,
+            real_high=float(entry.high) if entry.high is not None else None,
+            real_low=float(entry.low) if entry.low is not None else None,
             real_close=float(entry.close) if entry.close is not None else None,
         )
     except Exception:
