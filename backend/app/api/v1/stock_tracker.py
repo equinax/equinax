@@ -1,3 +1,4 @@
+import asyncio
 import uuid
 from datetime import date, datetime, time
 from typing import List, Optional, Dict, Any
@@ -17,6 +18,7 @@ from app.db.models.stock_tracker import (
     BaostockMinuteCache,
 )
 from app.db.models.asset import MarketDaily
+from app.services.baostock_service import fetch_minute_data_from_baostock, store_minute_data
 
 router = APIRouter()
 
@@ -897,6 +899,7 @@ async def get_minute_data(
     db: AsyncSession = Depends(get_db),
 ):
     entry = await _get_entry(entry_id, db)
+
     result = await db.execute(
         select(BaostockMinuteCache).where(
             BaostockMinuteCache.ts_code == entry.ts_code,
@@ -905,15 +908,50 @@ async def get_minute_data(
         )
     )
     cache = result.scalar_one_or_none()
-    if not cache:
-        raise HTTPException(
-            status_code=404,
-            detail="Minute data not cached. Trigger fetch first.",
+
+    # Invalidate stale cache for today — intraday data keeps updating
+    is_today = entry.trade_date == date.today()
+    if cache and is_today:
+        await db.delete(cache)
+        await db.flush()
+        cache = None
+
+    if cache:
+        return {
+            "ts_code": cache.ts_code,
+            "trade_date": str(cache.trade_date),
+            "frequency": cache.frequency,
+            "candles": cache.candles,
+            "fetched_at": cache.fetched_at,
+        }
+
+    # baostock uses blocking I/O (bs.login/query/logout) — must offload to thread
+    try:
+        candles = await asyncio.to_thread(
+            fetch_minute_data_from_baostock, entry.ts_code, entry.trade_date, freq
         )
+    except Exception:
+        raise HTTPException(
+            status_code=503,
+            detail="Minute data service unavailable",
+        )
+
+    if candles:
+        stored = await store_minute_data(db, entry.ts_code, entry.trade_date, freq, candles)
+        await db.commit()
+        await db.refresh(stored)
+        return {
+            "ts_code": stored.ts_code,
+            "trade_date": str(stored.trade_date),
+            "frequency": stored.frequency,
+            "candles": stored.candles,
+            "fetched_at": stored.fetched_at,
+        }
+
     return {
-        "ts_code": cache.ts_code,
-        "trade_date": str(cache.trade_date),
-        "frequency": cache.frequency,
-        "candles": cache.candles,
-        "fetched_at": cache.fetched_at,
+        "ts_code": entry.ts_code,
+        "trade_date": str(entry.trade_date),
+        "frequency": freq,
+        "candles": [],
+        "fetched_at": None,
     }
