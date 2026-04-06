@@ -61,10 +61,10 @@ export default function StockTrackerDetailPage() {
     })
   const scores = scoreData?.scores
     ? {
-        market: getSectionSum(scoreData.scores.market as Record<string, number>),
-        sector: getSectionSum(scoreData.scores.sector as Record<string, number>),
-        stock: getSectionSum(scoreData.scores.stock as Record<string, number>),
-      }
+      market: getSectionSum(scoreData.scores.market as Record<string, number>),
+      sector: getSectionSum(scoreData.scores.sector as Record<string, number>),
+      stock: getSectionSum(scoreData.scores.stock as Record<string, number>),
+    }
     : null
 
   const [editingNotes, setEditingNotes] = useState(false)
@@ -207,8 +207,8 @@ export default function StockTrackerDetailPage() {
             <span
               className={
                 entry.high != null &&
-                entry.pre_close != null &&
-                (entry.high as number) > (entry.pre_close as number)
+                  entry.pre_close != null &&
+                  (entry.high as number) > (entry.pre_close as number)
                   ? 'text-red-500'
                   : ''
               }
@@ -219,8 +219,8 @@ export default function StockTrackerDetailPage() {
             <span
               className={
                 entry.low != null &&
-                entry.pre_close != null &&
-                (entry.low as number) < (entry.pre_close as number)
+                  entry.pre_close != null &&
+                  (entry.low as number) < (entry.pre_close as number)
                   ? 'text-green-500'
                   : ''
               }
@@ -233,30 +233,32 @@ export default function StockTrackerDetailPage() {
       </div>
 
       {/* Upper section: DayChart + ScoringPanel */}
-      <div className="grid grid-cols-1 lg:grid-cols-[1fr_340px] gap-4">
+      <div className="grid grid-cols-1 lg:grid-cols-[minmax(0,640px)_340px] gap-4">
         {/* Left: DayChart in detail mode */}
-        <DayChart
-          mode="detail"
-          tradeDate={entry.trade_date}
-          open={entry.open as number | null}
-          high={entry.high as number | null}
-          low={entry.low as number | null}
-          close={entry.close as number | null}
-          preClose={entry.pre_close as number | null}
-          pctChg={entry.pct_chg as number | null}
-          keyPoints={
-            (sketchData?.key_points as Record<
-              string,
-              { time: string; price: number }
-            > | undefined) ?? null
-          }
-          scores={scores}
-          autoPattern={
-            (sketchData?.auto_pattern as string | undefined) ?? null
-          }
-          onSave={handleSketchSave}
-          isSaving={sketchMutation.isPending}
-        />
+        <div className="max-w-[640px]">
+          <DayChart
+            mode="detail"
+            tradeDate={entry.trade_date}
+            open={entry.open as number | null}
+            high={entry.high as number | null}
+            low={entry.low as number | null}
+            close={entry.close as number | null}
+            preClose={entry.pre_close as number | null}
+            pctChg={entry.pct_chg as number | null}
+            keyPoints={
+              (sketchData?.key_points as Record<
+                string,
+                { time: string; price: number }
+              > | undefined) ?? null
+            }
+            scores={scores}
+            autoPattern={
+              (sketchData?.auto_pattern as string | undefined) ?? null
+            }
+            onSave={handleSketchSave}
+            isSaving={sketchMutation.isPending}
+          />
+        </div>
 
         {/* Right: ScoringPanel */}
         <div className="border rounded-lg p-4">

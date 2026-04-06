@@ -2,7 +2,6 @@ import { useMemo, useState, useCallback, useRef, useEffect } from 'react'
 import { Stage, Layer, Line, Circle, Text, Rect, Group } from 'react-konva'
 import type Konva from 'konva'
 import { Button } from '@/components/ui/button'
-import { Badge } from '@/components/ui/badge'
 import { Save } from 'lucide-react'
 
 // ─── Trading Time Constants ───────────────────────────────────────────────────
@@ -414,8 +413,15 @@ function ThumbnailChart({
 }
 
 // ─── Detail Layout Constants ──────────────────────────────────────────────────
-const DETAIL_PADDING = { top: 40, right: 60, bottom: 50, left: 60 }
-const DETAIL_CANDLE_STRIP_WIDTH = 30
+const DETAIL_PADDING = { top: 0, right: 45, bottom: 20, left: 12 }
+const DETAIL_CANDLE_STRIP_WIDTH = 0
+const DETAIL_TIME_MARKERS = [
+  9 * 60 + 30,   // 9:30
+  10 * 60 + 30,  // 10:30
+  11 * 60 + 30,  // 11:30 / 13:00 boundary
+  14 * 60,       // 14:00
+  15 * 60,       // 15:00
+]
 
 const DEFAULT_POINTS: OHLCPoint[] = [
   { role: 'open', time: 9 * 60 + 30, price: 0 },
@@ -433,10 +439,9 @@ function DetailChart({
   preClose,
   keyPoints,
   scores,
-  autoPattern,
   onSave,
   isSaving = false,
-}: Omit<DayChartProps, 'mode' | 'tradeDate' | 'pctChg' | 'pattern' | 'notes' | 'width' | 'height' | 'onClick'>) {
+}: Omit<DayChartProps, 'mode' | 'tradeDate' | 'pctChg' | 'pattern' | 'notes' | 'width' | 'height' | 'onClick' | 'autoPattern'>) {
   const containerRef = useRef<HTMLDivElement>(null)
   const [dimensions, setDimensions] = useState({ width: 600, height: 400 })
 
@@ -617,47 +622,14 @@ function DetailChart({
   }, [scores, plotWidth])
 
   // Candlestick X position (centered in candle strip)
-  const candleX = DETAIL_PADDING.left + (DETAIL_CANDLE_STRIP_WIDTH - 12) / 2
+  const candleX = plotLeft - 6
 
   return (
-    <div className="space-y-2">
-      {/* Controls */}
-      <div className="flex items-center justify-between px-1">
-        <div className="flex items-center gap-2">
-          {autoPattern && (
-            <Badge variant="outline" className="font-bold text-base">
-              天干: {autoPattern}
-            </Badge>
-          )}
-          {/* Point legend */}
-          <div className="flex items-center gap-3 text-xs text-muted-foreground">
-            {(['open', 'high', 'low', 'close'] as PointRole[]).map((role) => (
-              <span key={role} className="flex items-center gap-1">
-                <span
-                  className="inline-block w-2.5 h-2.5 rounded-full"
-                  style={{ backgroundColor: ROLE_CONFIG[role].color }}
-                />
-                {ROLE_CONFIG[role].label}
-              </span>
-            ))}
-          </div>
-        </div>
-        {onSave && (
-          <Button
-            size="sm"
-            onClick={handleSave}
-            disabled={!isDirty || isSaving}
-          >
-            <Save className="h-3 w-3 mr-1" />
-            {isSaving ? '保存中...' : '保存'}
-          </Button>
-        )}
-      </div>
-
+    <div className="relative">
       {/* Canvas */}
       <div
         ref={containerRef}
-        className="w-full border rounded-lg overflow-hidden bg-background"
+        className="w-full border overflow-hidden bg-background"
         style={{ height: 400 }}
       >
         <Stage width={width} height={height}>
@@ -677,25 +649,7 @@ function DetailChart({
               y={plotTop}
               width={plotWidth}
               height={plotHeight}
-              fill="rgba(255,255,255,0.02)"
-              stroke="rgba(255,255,255,0.1)"
-              strokeWidth={1}
-            />
-
-            {/* Candle strip background */}
-            <Rect
-              x={DETAIL_PADDING.left}
-              y={plotTop}
-              width={DETAIL_CANDLE_STRIP_WIDTH}
-              height={plotHeight}
-              fill="rgba(255,255,255,0.015)"
-            />
-
-            {/* Candle strip separator */}
-            <Line
-              points={[plotLeft, plotTop, plotLeft, plotTop + plotHeight]}
-              stroke="rgba(255,255,255,0.1)"
-              strokeWidth={1}
+              fill="transparent"
             />
 
             {/* Price grid lines */}
@@ -707,73 +661,43 @@ function DetailChart({
                     points={[plotLeft, y, plotLeft + plotWidth, y]}
                     stroke={
                       gl.pct === 0
-                        ? 'rgba(255,255,255,0.5)'
-                        : 'rgba(255,255,255,0.06)'
+                        ? 'rgba(120,120,120,0.5)'
+                        : 'rgba(120,120,120,0.15)'
                     }
-                    strokeWidth={gl.pct === 0 ? 2 : 0.5}
-                    dash={gl.pct === 0 ? undefined : [4, 4]}
+                    strokeWidth={gl.pct === 0 ? 1 : 0.5}
+                    dash={[3, 3]}
                   />
-                  {gl.pct === 0 && (
-                    <Text
-                      x={DETAIL_PADDING.left + 2}
-                      y={y - 12}
-                      text="昨收"
-                      fontSize={9}
-                      fill="rgba(255,255,255,0.35)"
-                    />
-                  )}
-                  {/* Left labels: percentage (absolute price at extremes) */}
-                  <Text
-                    x={2}
-                    y={y - 6}
-                    text={
-                      (gl.pct === PRICE_RANGE || gl.pct === -PRICE_RANGE) && preClose != null
-                        ? (preClose * (1 + gl.pct / 100)).toFixed(2)
-                        : gl.label
-                    }
-                    fontSize={10}
-                    fill={
-                      gl.pct > 0
-                        ? 'rgba(34,197,94,0.7)'
-                        : gl.pct < 0
-                          ? 'rgba(239,68,68,0.7)'
-                          : 'rgba(255,255,255,0.5)'
-                    }
-                  />
-                  {/* Right labels: absolute price if preClose available */}
+
                   {preClose != null && (
                     <Text
                       x={plotLeft + plotWidth + 5}
                       y={y - 6}
                       text={(preClose * (1 + gl.pct / 100)).toFixed(2)}
                       fontSize={9}
-                      fill="rgba(255,255,255,0.35)"
+                      fill={
+                        gl.pct > 0
+                          ? 'rgba(239,68,68,0.7)'
+                          : gl.pct < 0
+                            ? 'rgba(34,197,94,0.7)'
+                            : 'rgba(120,120,120,0.6)'
+                      }
                     />
                   )}
                 </Group>
               )
             })}
 
-            {/* Time grid lines (major) */}
-            {MAJOR_TIME_SLOTS.map((slot) => {
+            {/* Time grid lines (5 vertical) */}
+            {DETAIL_TIME_MARKERS.map((slot) => {
               const x = timeToX(slot, plotLeft, plotWidth)
-              const isLunchBreak = slot === 690 || slot === 780
               return (
-                <Group key={slot}>
-                  <Line
-                    points={[x, plotTop, x, plotTop + plotHeight]}
-                    stroke={isLunchBreak ? 'rgba(255,255,255,0.2)' : 'rgba(255,255,255,0.06)'}
-                    strokeWidth={isLunchBreak ? 1 : 0.5}
-                    dash={isLunchBreak ? [6, 3] : [4, 4]}
-                  />
-                  <Text
-                    x={x - 12}
-                    y={plotTop + plotHeight + 8}
-                    text={formatMinutes(slot)}
-                    fontSize={10}
-                    fill="rgba(255,255,255,0.4)"
-                  />
-                </Group>
+                <Line
+                  key={slot}
+                  points={[x, plotTop, x, plotTop + plotHeight]}
+                  stroke="rgba(120,120,120,0.2)"
+                  strokeWidth={0.5}
+                  dash={[3, 3]}
+                />
               )
             })}
 
@@ -783,9 +707,9 @@ function DetailChart({
                 {/* Wick */}
                 <Line
                   points={[
-                    candleX + 6,
+                    candleX + 0,
                     priceToY(candle.highPct, plotTop, plotHeight),
-                    candleX + 6,
+                    candleX,
                     priceToY(candle.lowPct, plotTop, plotHeight),
                   ]}
                   stroke={candle.isUp ? '#ef4444' : '#22c55e'}
@@ -793,7 +717,7 @@ function DetailChart({
                 />
                 {/* Body */}
                 <Rect
-                  x={candleX}
+                  x={0}
                   y={priceToY(
                     Math.max(candle.openPct, candle.closePct),
                     plotTop,
@@ -815,7 +739,7 @@ function DetailChart({
             {/* Connecting line */}
             <Line
               points={lineCoords}
-              stroke="rgba(255,255,255,0.6)"
+              stroke="rgba(120,120,120,0.4)"
               strokeWidth={2}
               lineJoin="round"
               lineCap="round"
@@ -878,14 +802,14 @@ function DetailChart({
                     y={cy - 5}
                     text={`${p.price >= 0 ? '+' : ''}${p.price.toFixed(1)}%`}
                     fontSize={9}
-                    fill="rgba(255,255,255,0.6)"
+                    fill="rgba(120,120,120,0.7)"
                   />
                   <Text
                     x={cx - 12}
                     y={cy + 12}
                     text={formatMinutes(p.time)}
                     fontSize={9}
-                    fill="rgba(255,255,255,0.4)"
+                    fill="rgba(120,120,120,0.5)"
                   />
                 </Group>
               )
@@ -922,6 +846,19 @@ function DetailChart({
           </Layer>
         </Stage>
       </div>
+
+      {/* Floating save button — appears only when dirty */}
+      {onSave && isDirty && (
+        <Button
+          size="sm"
+          className="absolute top-2 right-2 z-10"
+          onClick={handleSave}
+          disabled={isSaving}
+        >
+          <Save className="h-3 w-3 mr-1" />
+          {isSaving ? '保存中...' : '保存'}
+        </Button>
+      )}
 
       {/* Dragging hint */}
       {dragging && (
