@@ -15,7 +15,10 @@ import {
   useGetSketchApiV1StockTrackerEntriesEntryIdSketchGet,
   useUpsertSketchApiV1StockTrackerEntriesEntryIdSketchPut,
   getGetSketchApiV1StockTrackerEntriesEntryIdSketchGetQueryKey,
+  useListTracksApiV1StockTrackerTracksGet,
+  useGetScoresApiV1StockTrackerEntriesEntryIdScoresGet,
 } from '@/api/generated/stock-tracker/stock-tracker'
+import { getSectionSum } from '@/lib/score-utils'
 import DayChart from '@/components/stock-tracker/DayChart'
 import ScoringPanel from '@/components/stock-tracker/ScoringPanel'
 import OperationsPanel from '@/components/stock-tracker/OperationsPanel'
@@ -48,6 +51,21 @@ export default function StockTrackerDetailPage() {
 
   const { data: entry, isLoading } =
     useGetEntryApiV1StockTrackerEntriesEntryIdGet(entryId || '')
+
+  const { data: tracks } = useListTracksApiV1StockTrackerTracksGet()
+  const stockName = tracks?.find((t) => t.ts_code === tsCode)?.stock_name
+
+  const { data: scoreData } =
+    useGetScoresApiV1StockTrackerEntriesEntryIdScoresGet(entryId || '', {
+      query: { enabled: !!entryId },
+    })
+  const scores = scoreData?.scores
+    ? {
+        market: getSectionSum(scoreData.scores.market as Record<string, number>),
+        sector: getSectionSum(scoreData.scores.sector as Record<string, number>),
+        stock: getSectionSum(scoreData.scores.stock as Record<string, number>),
+      }
+    : null
 
   const [editingNotes, setEditingNotes] = useState(false)
   const [notesValue, setNotesValue] = useState('')
@@ -149,7 +167,7 @@ export default function StockTrackerDetailPage() {
   return (
     <div className="space-y-4">
       {/* Header */}
-      <div className="flex items-center gap-4">
+      <div className="flex items-center gap-4 flex-wrap">
         <Button
           variant="ghost"
           size="icon"
@@ -157,8 +175,17 @@ export default function StockTrackerDetailPage() {
         >
           <ArrowLeft className="h-5 w-5" />
         </Button>
-        <div className="flex items-center gap-3">
-          <h1 className="text-2xl font-bold font-mono">{tsCode}</h1>
+        <div className="flex items-center gap-3 flex-wrap">
+          <div className="flex items-baseline gap-1.5">
+            <h1 className="text-2xl font-bold truncate max-w-[200px]">
+              {stockName || tsCode}
+            </h1>
+            {stockName && (
+              <span className="text-xs text-muted-foreground font-mono">
+                {tsCode}
+              </span>
+            )}
+          </div>
           <span className="text-lg text-muted-foreground">
             {formatDateFull(entry.trade_date)}
           </span>
@@ -173,45 +200,36 @@ export default function StockTrackerDetailPage() {
               {entry.pattern as string}
             </Badge>
           )}
+          <span className="text-xs text-muted-foreground font-mono">
+            昨收 {entry.pre_close != null ? (entry.pre_close as number).toFixed(2) : '-'}
+            {' | '}开 {entry.open != null ? (entry.open as number).toFixed(2) : '-'}
+            {' | '}高{' '}
+            <span
+              className={
+                entry.high != null &&
+                entry.pre_close != null &&
+                (entry.high as number) > (entry.pre_close as number)
+                  ? 'text-red-500'
+                  : ''
+              }
+            >
+              {entry.high != null ? (entry.high as number).toFixed(2) : '-'}
+            </span>
+            {' | '}低{' '}
+            <span
+              className={
+                entry.low != null &&
+                entry.pre_close != null &&
+                (entry.low as number) < (entry.pre_close as number)
+                  ? 'text-green-500'
+                  : ''
+              }
+            >
+              {entry.low != null ? (entry.low as number).toFixed(2) : '-'}
+            </span>
+            {' | '}收 {entry.close != null ? (entry.close as number).toFixed(2) : '-'}
+          </span>
         </div>
-      </div>
-
-      {/* OHLC Summary Bar */}
-      <div className="flex items-center gap-6 text-sm border-b pb-3">
-        <span className="text-muted-foreground">
-          昨收{' '}
-          <span className="font-mono text-foreground">
-            {entry.pre_close != null
-              ? (entry.pre_close as number).toFixed(2)
-              : '-'}
-          </span>
-        </span>
-        <span className="text-muted-foreground">
-          开{' '}
-          <span className="font-mono text-foreground">
-            {entry.open != null ? (entry.open as number).toFixed(2) : '-'}
-          </span>
-        </span>
-        <span className="text-muted-foreground">
-          高{' '}
-          <span className="font-mono text-foreground">
-            {entry.high != null ? (entry.high as number).toFixed(2) : '-'}
-          </span>
-        </span>
-        <span className="text-muted-foreground">
-          低{' '}
-          <span className="font-mono text-foreground">
-            {entry.low != null ? (entry.low as number).toFixed(2) : '-'}
-          </span>
-        </span>
-        <span className="text-muted-foreground">
-          收{' '}
-          <span className="font-mono text-foreground">
-            {entry.close != null
-              ? (entry.close as number).toFixed(2)
-              : '-'}
-          </span>
-        </span>
       </div>
 
       {/* Upper section: DayChart + ScoringPanel */}
@@ -232,7 +250,7 @@ export default function StockTrackerDetailPage() {
               { time: string; price: number }
             > | undefined) ?? null
           }
-          scores={null}
+          scores={scores}
           autoPattern={
             (sketchData?.auto_pattern as string | undefined) ?? null
           }

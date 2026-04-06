@@ -415,6 +415,7 @@ function ThumbnailChart({
 
 // ─── Detail Layout Constants ──────────────────────────────────────────────────
 const DETAIL_PADDING = { top: 40, right: 60, bottom: 50, left: 60 }
+const DETAIL_CANDLE_STRIP_WIDTH = 30
 
 const DEFAULT_POINTS: OHLCPoint[] = [
   { role: 'open', time: 9 * 60 + 30, price: 0 },
@@ -472,9 +473,9 @@ function DetailChart({
   }, [initialPoints])
 
   const { width, height } = dimensions
-  const plotLeft = DETAIL_PADDING.left
+  const plotLeft = DETAIL_PADDING.left + DETAIL_CANDLE_STRIP_WIDTH
   const plotTop = DETAIL_PADDING.top
-  const plotWidth = width - DETAIL_PADDING.left - DETAIL_PADDING.right
+  const plotWidth = width - DETAIL_PADDING.left - DETAIL_CANDLE_STRIP_WIDTH - DETAIL_PADDING.right
   const plotHeight = height - DETAIL_PADDING.top - DETAIL_PADDING.bottom
 
   // Inverse coordinate transforms (pixel → data)
@@ -492,52 +493,22 @@ function DetailChart({
     [plotLeft, plotWidth],
   )
 
-  const yToPrice = useCallback(
-    (y: number) => {
-      return PRICE_RANGE - ((y - plotTop) / plotHeight) * (2 * PRICE_RANGE)
-    },
-    [plotTop, plotHeight],
-  )
-
-  // Sort points by time for connecting line
-  const sortedPoints = useMemo(
-    () => [...points].sort((a, b) => a.time - b.time),
-    [points],
-  )
-
-  // Line points (flat array)
-  const lineCoords = useMemo(
-    () =>
-      sortedPoints.flatMap((p) => [
-        timeToX(p.time, plotLeft, plotWidth),
-        priceToY(p.price, plotTop, plotHeight),
-      ]),
-    [sortedPoints, plotLeft, plotWidth, plotTop, plotHeight],
-  )
-
-  // Drag handler
+  // Drag handler — only H/L are draggable, only time changes (price locked)
   const handleDrag = useCallback(
     (role: PointRole, e: Konva.KonvaEventObject<DragEvent>) => {
       const node = e.target
       const newTime = xToTime(node.x())
-      const newPrice = Math.max(
-        -PRICE_RANGE,
-        Math.min(PRICE_RANGE, yToPrice(node.y())),
-      )
 
-      // Snap x to time slot
       node.x(timeToX(newTime, plotLeft, plotWidth))
-      // Clamp y
-      node.y(priceToY(newPrice, plotTop, plotHeight))
 
       setPoints((prev) =>
         prev.map((p) =>
-          p.role === role ? { ...p, time: newTime, price: newPrice } : p,
+          p.role === role ? { ...p, time: newTime } : p,
         ),
       )
       setIsDirty(true)
     },
-    [xToTime, yToPrice, plotLeft, plotWidth, plotTop, plotHeight],
+    [xToTime, plotLeft, plotWidth],
   )
 
   // Save handler
@@ -579,6 +550,58 @@ function DetailChart({
     return { openPct, closePct, highPct, lowPct, isUp }
   }, [open, close, high, low, preClose])
 
+  // Auto-snap: derive snapped positions when H/L prices match O/C prices
+  const snappedPoints = useMemo(() => {
+    if (candle == null) return points
+
+    return points.map((p) => {
+      if (p.role === 'high') {
+        if (candle.highPct === candle.openPct) {
+          const openPoint = points.find((pt) => pt.role === 'open')
+          if (openPoint) return { ...p, time: openPoint.time }
+        }
+        if (candle.highPct === candle.closePct) {
+          const closePoint = points.find((pt) => pt.role === 'close')
+          if (closePoint) return { ...p, time: closePoint.time }
+        }
+      }
+      if (p.role === 'low') {
+        if (candle.lowPct === candle.openPct) {
+          const openPoint = points.find((pt) => pt.role === 'open')
+          if (openPoint) return { ...p, time: openPoint.time }
+        }
+        if (candle.lowPct === candle.closePct) {
+          const closePoint = points.find((pt) => pt.role === 'close')
+          if (closePoint) return { ...p, time: closePoint.time }
+        }
+      }
+      return p
+    })
+  }, [points, candle])
+
+  // Which roles are auto-snapped (non-draggable)
+  const snappedRoles = useMemo(() => {
+    const roles = new Set<PointRole>()
+    if (candle == null) return roles
+    if (candle.highPct === candle.openPct || candle.highPct === candle.closePct) roles.add('high')
+    if (candle.lowPct === candle.openPct || candle.lowPct === candle.closePct) roles.add('low')
+    return roles
+  }, [candle])
+
+  const sortedPoints = useMemo(
+    () => [...snappedPoints].sort((a, b) => a.time - b.time),
+    [snappedPoints],
+  )
+
+  const lineCoords = useMemo(
+    () =>
+      sortedPoints.flatMap((p) => [
+        timeToX(p.time, plotLeft, plotWidth),
+        priceToY(p.price, plotTop, plotHeight),
+      ]),
+    [sortedPoints, plotLeft, plotWidth, plotTop, plotHeight],
+  )
+
   // Score bar segments
   const scoreSegments = useMemo(() => {
     if (!scores) return null
@@ -593,8 +616,8 @@ function DetailChart({
     }
   }, [scores, plotWidth])
 
-  // Candlestick X position
-  const candleX = plotLeft + 6
+  // Candlestick X position (centered in candle strip)
+  const candleX = DETAIL_PADDING.left + (DETAIL_CANDLE_STRIP_WIDTH - 12) / 2
 
   return (
     <div className="space-y-2">
@@ -659,6 +682,22 @@ function DetailChart({
               strokeWidth={1}
             />
 
+            {/* Candle strip background */}
+            <Rect
+              x={DETAIL_PADDING.left}
+              y={plotTop}
+              width={DETAIL_CANDLE_STRIP_WIDTH}
+              height={plotHeight}
+              fill="rgba(255,255,255,0.015)"
+            />
+
+            {/* Candle strip separator */}
+            <Line
+              points={[plotLeft, plotTop, plotLeft, plotTop + plotHeight]}
+              stroke="rgba(255,255,255,0.1)"
+              strokeWidth={1}
+            />
+
             {/* Price grid lines */}
             {priceGridLines.map((gl) => {
               const y = priceToY(gl.pct, plotTop, plotHeight)
@@ -668,17 +707,30 @@ function DetailChart({
                     points={[plotLeft, y, plotLeft + plotWidth, y]}
                     stroke={
                       gl.pct === 0
-                        ? 'rgba(255,255,255,0.3)'
+                        ? 'rgba(255,255,255,0.5)'
                         : 'rgba(255,255,255,0.06)'
                     }
-                    strokeWidth={gl.pct === 0 ? 1.5 : 0.5}
+                    strokeWidth={gl.pct === 0 ? 2 : 0.5}
                     dash={gl.pct === 0 ? undefined : [4, 4]}
                   />
-                  {/* Left labels: percentage */}
+                  {gl.pct === 0 && (
+                    <Text
+                      x={DETAIL_PADDING.left + 2}
+                      y={y - 12}
+                      text="昨收"
+                      fontSize={9}
+                      fill="rgba(255,255,255,0.35)"
+                    />
+                  )}
+                  {/* Left labels: percentage (absolute price at extremes) */}
                   <Text
                     x={2}
                     y={y - 6}
-                    text={gl.label}
+                    text={
+                      (gl.pct === PRICE_RANGE || gl.pct === -PRICE_RANGE) && preClose != null
+                        ? (preClose * (1 + gl.pct / 100)).toFixed(2)
+                        : gl.label
+                    }
                     fontSize={10}
                     fill={
                       gl.pct > 0
@@ -705,13 +757,14 @@ function DetailChart({
             {/* Time grid lines (major) */}
             {MAJOR_TIME_SLOTS.map((slot) => {
               const x = timeToX(slot, plotLeft, plotWidth)
+              const isLunchBreak = slot === 690 || slot === 780
               return (
                 <Group key={slot}>
                   <Line
                     points={[x, plotTop, x, plotTop + plotHeight]}
-                    stroke="rgba(255,255,255,0.06)"
-                    strokeWidth={0.5}
-                    dash={[4, 4]}
+                    stroke={isLunchBreak ? 'rgba(255,255,255,0.2)' : 'rgba(255,255,255,0.06)'}
+                    strokeWidth={isLunchBreak ? 1 : 0.5}
+                    dash={isLunchBreak ? [6, 3] : [4, 4]}
                   />
                   <Text
                     x={x - 12}
@@ -768,16 +821,16 @@ function DetailChart({
               lineCap="round"
             />
 
-            {/* Draggable OHLC points */}
-            {points.map((p) => {
+            {/* OHLC points */}
+            {snappedPoints.map((p) => {
               const config = ROLE_CONFIG[p.role]
               const cx = timeToX(p.time, plotLeft, plotWidth)
               const cy = priceToY(p.price, plotTop, plotHeight)
+              const isFixed = p.role === 'open' || p.role === 'close' || snappedRoles.has(p.role)
               const isActive = dragging === p.role
               return (
                 <Group key={p.role}>
-                  {/* Outer glow when dragging */}
-                  {isActive && (
+                  {isActive && !isFixed && (
                     <Circle
                       x={cx}
                       y={cy}
@@ -787,23 +840,30 @@ function DetailChart({
                       strokeWidth={1}
                     />
                   )}
-                  {/* Main point */}
                   <Circle
                     x={cx}
                     y={cy}
-                    radius={isActive ? 10 : 8}
+                    radius={isFixed ? 6 : isActive ? 10 : 8}
                     fill={config.color}
                     stroke="white"
-                    strokeWidth={2}
-                    draggable
-                    onDragStart={() => setDragging(p.role)}
-                    onDragMove={(e) => handleDrag(p.role, e)}
-                    onDragEnd={() => setDragging(null)}
-                    shadowColor={config.color}
-                    shadowBlur={isActive ? 12 : 6}
-                    shadowOpacity={0.5}
+                    strokeWidth={isFixed ? 1 : 2}
+                    opacity={isFixed ? 0.6 : 1}
+                    draggable={!isFixed}
+                    {...(!isFixed && {
+                      onDragStart: () => setDragging(p.role),
+                      onDragMove: (e: Konva.KonvaEventObject<DragEvent>) => handleDrag(p.role, e),
+                      onDragEnd: () => setDragging(null),
+                      dragBoundFunc: (pos: { x: number; y: number }) => ({
+                        x: pos.x,
+                        y: priceToY(p.price, plotTop, plotHeight),
+                      }),
+                    })}
+                    {...(!isFixed && {
+                      shadowColor: config.color,
+                      shadowBlur: isActive ? 12 : 6,
+                      shadowOpacity: 0.5,
+                    })}
                   />
-                  {/* Short label above */}
                   <Text
                     x={cx - 4}
                     y={cy - 22}
@@ -811,8 +871,8 @@ function DetailChart({
                     fontSize={11}
                     fontStyle="bold"
                     fill={config.color}
+                    opacity={isFixed ? 0.6 : 1}
                   />
-                  {/* Price label to right */}
                   <Text
                     x={cx + 12}
                     y={cy - 5}
@@ -820,7 +880,6 @@ function DetailChart({
                     fontSize={9}
                     fill="rgba(255,255,255,0.6)"
                   />
-                  {/* Time label below */}
                   <Text
                     x={cx - 12}
                     y={cy + 12}

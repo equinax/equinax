@@ -3,6 +3,7 @@ import { useQueryClient } from '@tanstack/react-query'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { Save } from 'lucide-react'
+import { getSectionSum } from '@/lib/score-utils'
 import {
   useGetScoresApiV1StockTrackerEntriesEntryIdScoresGet,
   useUpsertScoresApiV1StockTrackerEntriesEntryIdScoresPut,
@@ -70,8 +71,6 @@ const getEmptyScores = (): ScoreValues => {
   return result
 }
 
-const getSectionSum = (sectionScores: Record<string, number>): number =>
-  Object.values(sectionScores).reduce((a, b) => a + b, 0)
 
 const DECISION_CONFIG: Record<string, { label: string; className: string }> = {
   做多日: { label: '做多日', className: 'bg-green-500/15 text-green-400 border-green-500/30' },
