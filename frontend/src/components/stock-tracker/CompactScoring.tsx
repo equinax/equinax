@@ -1,7 +1,13 @@
 import { useState, useEffect, useMemo, useRef, useCallback } from 'react'
 import { useQueryClient } from '@tanstack/react-query'
 import { Badge } from '@/components/ui/badge'
-import { getSectionSum, SCORE_ITEM_COLORS } from '@/lib/score-utils'
+import {
+  Tooltip,
+  TooltipTrigger,
+  TooltipContent,
+  TooltipProvider,
+} from '@/components/ui/tooltip'
+import { getSectionSum, SCORE_ITEM_COLORS, SCORE_ITEM_DESCRIPTIONS, SCORE_ITEM_STEPS, DEFAULT_SCORE_STEPS } from '@/lib/score-utils'
 import {
   useGetScoresApiV1StockTrackerEntriesEntryIdScoresGet,
   useUpsertScoresApiV1StockTrackerEntriesEntryIdScoresPut,
@@ -27,9 +33,9 @@ const SCORE_SECTIONS: ScoreSection[] = [
     label: '大盘',
     maxTotal: 30,
     items: [
-      { key: 'trend', label: '趋势', max: 10 },
-      { key: 'volume', label: '量能', max: 10 },
-      { key: 'sentiment', label: '情绪', max: 10 },
+      { key: 'opening', label: '开盘', max: 10 },
+      { key: 'timepos', label: '分时', max: 10 },
+      { key: 'breadth', label: '广度', max: 10 },
     ],
   },
   {
@@ -37,9 +43,9 @@ const SCORE_SECTIONS: ScoreSection[] = [
     label: '板块',
     maxTotal: 30,
     items: [
-      { key: 'strength', label: '强度', max: 10 },
-      { key: 'flow', label: '资金', max: 10 },
+      { key: 'gain', label: '涨幅', max: 10 },
       { key: 'cohesion', label: '联动', max: 10 },
+      { key: 'capital', label: '资金', max: 10 },
     ],
   },
   {
@@ -47,15 +53,13 @@ const SCORE_SECTIONS: ScoreSection[] = [
     label: '个股',
     maxTotal: 40,
     items: [
-      { key: 'pattern', label: '形态', max: 10 },
-      { key: 'position', label: '位置', max: 10 },
-      { key: 'catalyst', label: '题材', max: 10 },
-      { key: 'risk', label: '风险', max: 10 },
+      { key: 'opening', label: '开盘', max: 10 },
+      { key: 'timepos', label: '分时', max: 15 },
+      { key: 'rebound', label: '反抽', max: 10 },
+      { key: 'volprice', label: '量价', max: 5 },
     ],
   },
 ]
-
-const SCORE_STEPS = [0, 2, 4, 6, 8, 10]
 
 type ScoreValues = Record<string, Record<string, number>>
 
@@ -154,13 +158,15 @@ export default function CompactScoring({ entryId }: CompactScoringProps) {
   const handleBarClick = (
     sectionKey: string,
     itemKey: string,
+    itemMax: number,
     e: React.MouseEvent<HTMLDivElement>
   ) => {
     const rect = e.currentTarget.getBoundingClientRect()
     const x = e.clientX - rect.left
     const pct = x / rect.width
-    const rawValue = pct * 10
-    const snapped = SCORE_STEPS.reduce((prev, curr) =>
+    const rawValue = pct * itemMax
+    const steps = SCORE_ITEM_STEPS[sectionKey]?.[itemKey] ?? DEFAULT_SCORE_STEPS
+    const snapped = steps.reduce((prev, curr) =>
       Math.abs(curr - rawValue) < Math.abs(prev - rawValue) ? curr : prev
     )
     const newScores = {
@@ -193,6 +199,7 @@ export default function CompactScoring({ entryId }: CompactScoringProps) {
     : null
 
   return (
+    <TooltipProvider delayDuration={200}>
     <div className="space-y-1.5">
       <div className="flex items-center gap-2">
         <span className="text-sm font-bold font-mono">{totalScore}</span>
@@ -230,13 +237,20 @@ export default function CompactScoring({ entryId }: CompactScoringProps) {
                     key={item.key}
                     className="flex items-center gap-1 flex-1 min-w-0"
                   >
-                    <span className="text-[10px] text-muted-foreground/70 w-6 shrink-0 text-right">
-                      {item.label}
-                    </span>
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <span className="text-[10px] text-muted-foreground/70 w-6 shrink-0 text-right cursor-help">
+                          {item.label}
+                        </span>
+                      </TooltipTrigger>
+                      <TooltipContent side="top" className="max-w-[200px]">
+                        {SCORE_ITEM_DESCRIPTIONS[section.key]?.[item.key] ?? item.label}
+                      </TooltipContent>
+                    </Tooltip>
                     <div
                       className="h-3 flex-1 rounded-sm bg-muted/30 cursor-pointer relative overflow-hidden"
-                      onClick={(e) => handleBarClick(section.key, item.key, e)}
-                      title={`${item.label}: ${value}/10`}
+                      onClick={(e) => handleBarClick(section.key, item.key, item.max, e)}
+                      title={`${item.label}: ${value}/${item.max}`}
                     >
                       <div
                         className="h-full rounded-sm transition-all duration-150"
@@ -267,5 +281,6 @@ export default function CompactScoring({ entryId }: CompactScoringProps) {
         )
       })}
     </div>
+    </TooltipProvider>
   )
 }
