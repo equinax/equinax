@@ -15,7 +15,9 @@ import {
   getGetSketchApiV1StockTrackerEntriesEntryIdSketchGetQueryKey,
   useListTracksApiV1StockTrackerTracksGet,
   useGetScoresApiV1StockTrackerEntriesEntryIdScoresGet,
+  useGetMinuteDataApiV1StockTrackerEntriesEntryIdMinuteDataGet,
 } from '@/api/generated/stock-tracker/stock-tracker'
+import type { MinuteDataResponse } from '@/types/minute-data'
 import { getSectionSum } from '@/lib/score-utils'
 import DayChart from '@/components/stock-tracker/DayChart'
 import CompactScoring from '@/components/stock-tracker/CompactScoring'
@@ -64,6 +66,18 @@ export default function StockTrackerDetailPage() {
       stock: getSectionSum(scoreData.scores.stock as Record<string, number>),
     }
     : null
+
+  const { data: minuteRawData, isLoading: minuteLoading, isError: minuteError } =
+    useGetMinuteDataApiV1StockTrackerEntriesEntryIdMinuteDataGet(
+      entryId || '',
+      { freq: '5' },
+      { query: { enabled: !!entryId } }
+    )
+  const minuteData = minuteRawData as MinuteDataResponse | undefined
+  const minuteCandles = minuteData?.candles ?? null
+
+  const [showMinuteLine, setShowMinuteLine] = useState(true)
+  const [showOhlcPoints, setShowOhlcPoints] = useState(true)
 
   const [editingNotes, setEditingNotes] = useState(false)
   const [notesValue, setNotesValue] = useState('')
@@ -232,6 +246,20 @@ export default function StockTrackerDetailPage() {
 
       <div className="grid grid-cols-1 lg:grid-cols-[minmax(0,720px)_1fr] gap-4 items-start">
         <div className="space-y-3">
+          <div className="flex items-center gap-2 text-xs">
+            <button
+              className={`px-2 py-0.5 rounded text-xs transition-colors ${showMinuteLine ? 'bg-blue-500/20 text-blue-400' : 'bg-muted text-muted-foreground'}`}
+              onClick={() => setShowMinuteLine(!showMinuteLine)}
+            >
+              分时
+            </button>
+            <button
+              className={`px-2 py-0.5 rounded text-xs transition-colors ${showOhlcPoints ? 'bg-amber-500/20 text-amber-400' : 'bg-muted text-muted-foreground'}`}
+              onClick={() => setShowOhlcPoints(!showOhlcPoints)}
+            >
+              OHLC
+            </button>
+          </div>
           <DayChart
             mode="detail"
             tradeDate={entry.trade_date}
@@ -256,6 +284,11 @@ export default function StockTrackerDetailPage() {
             }
             onSave={handleSketchSave}
             isSaving={sketchMutation.isPending}
+            minuteCandles={minuteCandles}
+            showMinuteLine={showMinuteLine}
+            showOhlcPoints={showOhlcPoints}
+            minuteLoading={minuteLoading}
+            minuteError={minuteError}
           />
 
           <CompactScoring entryId={entryId || ''} />

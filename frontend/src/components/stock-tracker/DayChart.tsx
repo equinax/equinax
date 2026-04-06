@@ -4,6 +4,7 @@ import type Konva from 'konva'
 import { Button } from '@/components/ui/button'
 import { Save } from 'lucide-react'
 import { SCORE_ITEM_COLORS, SCORE_ITEMS_ORDERED } from '@/lib/score-utils'
+import type { MinuteCandle } from '@/types/minute-data'
 
 // ─── Trading Time Constants ───────────────────────────────────────────────────
 const TIME_SLOTS = [
@@ -117,6 +118,12 @@ interface DayChartProps {
   onSave?: (keyPoints: Record<string, { time: string; price: number }>) => void
   isSaving?: boolean
   autoPattern?: string | null
+  // Minute data
+  minuteCandles?: MinuteCandle[] | null
+  showMinuteLine?: boolean
+  showOhlcPoints?: boolean
+  minuteLoading?: boolean
+  minuteError?: boolean
 }
 
 // ─── Thumbnail Grid Lines ─────────────────────────────────────────────────────
