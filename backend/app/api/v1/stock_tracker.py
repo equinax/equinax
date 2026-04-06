@@ -625,7 +625,11 @@ async def upsert_sketch(
     try:
         from app.services.pattern_recognition import recognize_pattern
 
-        auto_pattern = recognize_pattern(body.key_points)
+        auto_pattern = recognize_pattern(
+            body.key_points,
+            real_open=float(entry.open) if entry.open is not None else None,
+            real_close=float(entry.close) if entry.close is not None else None,
+        )
     except Exception:
         pass
 

@@ -32,16 +32,16 @@ from app.db.base import Base
 class PatternType(str, Enum):
     """天干 pattern types for daily candlestick analysis."""
 
-    JIA = "甲"  # 甲 - Simple ascending
-    YI = "乙"  # 乙 - Simple descending
-    BING = "丙"  # 丙 - H in middle
-    DING = "丁"  # 丁 - L in middle
-    WU = "戊"  # 戊 - O.time == L.time (low at open)
-    JI = "己"  # 己 - O.time == H.time, C.time == L.time
-    GENG = "庚"  # 庚 - O,L,H,C sequence
-    XIN = "辛"  # 辛 - O,H,L,C sequence
-    REN = "壬"  # 壬 - L at close, H before
-    GUI = "癸"  # 癸 - H at close, L before
+    JIA = "甲"  # O=L, C=H (pure bull)
+    YI = "乙"  # O=H, C=L (pure bear)
+    BING = "丙"  # O=L (main rise)
+    DING = "丁"  # O=H (main drop)
+    WU = "戊"  # C=H (valley recovery)
+    JI = "己"  # C=L (rise then crash)
+    GENG = "庚"  # H before L, close up
+    XIN = "辛"  # L before H, close down
+    REN = "壬"  # L before H, close up
+    GUI = "癸"  # H before L, close down
 
 
 class OpType(str, Enum):
