@@ -457,7 +457,7 @@ function DetailChart({
   isSaving = false,
 }: Omit<DayChartProps, 'mode' | 'tradeDate' | 'pctChg' | 'pattern' | 'notes' | 'width' | 'height' | 'onClick' | 'autoPattern'>) {
   const containerRef = useRef<HTMLDivElement>(null)
-  const [dimensions, setDimensions] = useState({ width: 600, height: 400 })
+  const [dimensions, setDimensions] = useState({ width: 600, height: 500 })
 
   // Observe container size
   useEffect(() => {
@@ -467,7 +467,7 @@ function DetailChart({
       if (entry) {
         setDimensions({
           width: Math.max(400, entry.contentRect.width),
-          height: Math.max(300, 400),
+          height: Math.max(300, entry.contentRect.height),
         })
       }
     })
@@ -654,7 +654,7 @@ function DetailChart({
       <div
         ref={containerRef}
         className="w-full border overflow-hidden bg-background"
-        style={{ height: 400 }}
+        style={{ height: 500 }}
       >
         <Stage width={width} height={height}>
           <Layer>
