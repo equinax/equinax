@@ -204,16 +204,6 @@ export default function StockTrackerDetailPage() {
           >
             {formatPctChg(pctChg)}
           </Badge>
-          {sketchData?.auto_pattern && (
-            <Badge variant="outline" className="font-bold">
-              {sketchData.auto_pattern as string}
-            </Badge>
-          )}
-          {entry.pattern && !sketchData?.auto_pattern && (
-            <Badge variant="outline" className="font-bold">
-              {entry.pattern as string}
-            </Badge>
-          )}
           <span className="text-xs text-muted-foreground font-mono">
             昨收 {entry.pre_close != null ? (entry.pre_close as number).toFixed(2) : '-'}
             {' | '}开 {entry.open != null ? (entry.open as number).toFixed(2) : '-'}

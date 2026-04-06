@@ -474,12 +474,13 @@ function DetailChart({
   preClose,
   keyPoints,
   detailedScores,
+  autoPattern,
   onSave,
   isSaving = false,
   minuteCandles,
   minuteLoading = false,
   minuteError = false,
-}: Omit<DayChartProps, 'mode' | 'tradeDate' | 'pctChg' | 'pattern' | 'notes' | 'width' | 'height' | 'onClick' | 'autoPattern'>) {
+}: Omit<DayChartProps, 'mode' | 'tradeDate' | 'pctChg' | 'pattern' | 'notes' | 'width' | 'height' | 'onClick'>) {
   const containerRef = useRef<HTMLDivElement>(null)
   const [dimensions, setDimensions] = useState({ width: 600, height: 500 })
 
@@ -1084,18 +1085,22 @@ function DetailChart({
         </Stage>
       </div>
 
-      {/* Crosshair info — rendered in the top padding area */}
-      {crosshairInfo && (
-        <div className="absolute top-1 left-3 z-10 text-[11px] font-mono flex items-center gap-2">
-          <span className="text-blue-400">{crosshairInfo.time}</span>
-          <span className={crosshairInfo.pct >= 0 ? 'text-red-500' : 'text-green-500'}>
-            {crosshairInfo.price} ({crosshairInfo.pctStr})
-          </span>
-          <span className="text-red-500/70">高:{crosshairInfo.high}</span>
-          <span className="text-green-500/70">低:{crosshairInfo.low}</span>
-          <span className="text-muted-foreground/70">量:{crosshairInfo.volume}</span>
-        </div>
-      )}
+      <div className="absolute top-1 left-3 z-10 text-[11px] font-mono flex items-center gap-2">
+        {autoPattern && (
+          <span className="text-sm font-bold text-amber-500 not-mono">{autoPattern}</span>
+        )}
+        {crosshairInfo && (
+          <>
+            <span className="text-blue-400">{crosshairInfo.time}</span>
+            <span className={crosshairInfo.pct >= 0 ? 'text-red-500' : 'text-green-500'}>
+              {crosshairInfo.price} ({crosshairInfo.pctStr})
+            </span>
+            <span className="text-red-500/70">高:{crosshairInfo.high}</span>
+            <span className="text-green-500/70">低:{crosshairInfo.low}</span>
+            <span className="text-muted-foreground/70">量:{crosshairInfo.volume}</span>
+          </>
+        )}
+      </div>
 
       {/* Toggle buttons overlay */}
       <div className="absolute top-1 right-2 z-10 flex items-center gap-1.5">
