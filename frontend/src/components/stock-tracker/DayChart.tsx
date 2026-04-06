@@ -434,7 +434,7 @@ function ThumbnailChart({
 }
 
 // ─── Detail Layout Constants ──────────────────────────────────────────────────
-const DETAIL_PADDING = { top: 0, right: 35, bottom: 20, left: 12 }
+const DETAIL_PADDING = { top: 24, right: 35, bottom: 20, left: 12 }
 const DETAIL_CANDLE_STRIP_WIDTH = 0
 const DETAIL_TIME_MARKERS = [
   9 * 60 + 30,   // 9:30
@@ -463,13 +463,15 @@ function DetailChart({
   onSave,
   isSaving = false,
   minuteCandles,
-  showMinuteLine = true,
-  showOhlcPoints = true,
   minuteLoading = false,
   minuteError = false,
 }: Omit<DayChartProps, 'mode' | 'tradeDate' | 'pctChg' | 'pattern' | 'notes' | 'width' | 'height' | 'onClick' | 'autoPattern'>) {
   const containerRef = useRef<HTMLDivElement>(null)
   const [dimensions, setDimensions] = useState({ width: 600, height: 500 })
+
+  // Internal toggle state (overrides optional props)
+  const [minuteDisplay, setMinuteDisplay] = useState<'off' | 'line' | 'candle'>('line')
+  const [ohlcVisible, setOhlcVisible] = useState(true)
 
   // Observe container size
   useEffect(() => {
@@ -659,32 +661,56 @@ function DetailChart({
 
   // Minute line points for intraday price overlay
   const minuteLinePoints = useMemo(() => {
-    if (!showMinuteLine || !minuteCandles?.length || preClose == null) return null
+    if (minuteDisplay !== 'line' || !minuteCandles?.length || preClose == null) return null
     const pts: number[] = []
+    const firstOpen = minuteCandles[0].open
+    const openPct = ((firstOpen - preClose) / preClose) * 100
+    pts.push(timeToX(9 * 60 + 30, plotLeft, plotWidth), priceToY(openPct, plotTop, plotHeight))
     for (const c of minuteCandles) {
       const [h, m] = c.time.split(':').map(Number)
-      const minutes = h * 60 + m
+      const midMinutes = h * 60 + m - 2.5
       const pct = ((c.close - preClose) / preClose) * 100
-      pts.push(timeToX(minutes, plotLeft, plotWidth), priceToY(pct, plotTop, plotHeight))
+      pts.push(timeToX(midMinutes, plotLeft, plotWidth), priceToY(pct, plotTop, plotHeight))
     }
+    const lastClose = minuteCandles[minuteCandles.length - 1].close
+    const closePct = ((lastClose - preClose) / preClose) * 100
+    pts.push(timeToX(15 * 60, plotLeft, plotWidth), priceToY(closePct, plotTop, plotHeight))
     return pts
-  }, [showMinuteLine, minuteCandles, preClose, plotLeft, plotWidth, plotTop, plotHeight])
+  }, [minuteDisplay, minuteCandles, preClose, plotLeft, plotWidth, plotTop, plotHeight])
 
   // Volume bars geometry for intraday volume overlay
   const volumeBars = useMemo(() => {
-    if (!showMinuteLine || !minuteCandles?.length) return null
+    if (minuteDisplay === 'off' || !minuteCandles?.length) return null
     const maxVol = Math.max(...minuteCandles.map(c => c.volume))
     if (maxVol <= 0) return null
-    const barW = (plotWidth / minuteCandles.length) * 0.8
+    const barW = plotWidth / minuteCandles.length
     return minuteCandles.map(c => {
       const [h, m] = c.time.split(':').map(Number)
-      const minutes = h * 60 + m
-      const x = timeToX(minutes, plotLeft, plotWidth) - barW / 2
+      const midMinutes = h * 60 + m - 2.5
+      const x = timeToX(midMinutes, plotLeft, plotWidth) - barW / 2
       const barH = (c.volume / maxVol) * plotHeight * 0.2
       const y = plotTop + plotHeight - barH
-      return { x, y, w: barW, h: barH }
+      const color = c.close >= c.open ? 'rgba(239,68,68,0.3)' : 'rgba(34,197,94,0.3)'
+      return { x, y, w: barW, h: barH, color }
     })
-  }, [showMinuteLine, minuteCandles, plotLeft, plotWidth, plotTop, plotHeight])
+  }, [minuteDisplay, minuteCandles, plotLeft, plotWidth, plotTop, plotHeight])
+
+  // Minute candlestick bars for candle mode
+  const minuteCandleBars = useMemo(() => {
+    if (minuteDisplay !== 'candle' || !minuteCandles?.length || preClose == null) return null
+    const barW = plotWidth / minuteCandles.length
+    return minuteCandles.map(c => {
+      const [h, m] = c.time.split(':').map(Number)
+      const midMinutes = h * 60 + m - 2.5
+      const x = timeToX(midMinutes, plotLeft, plotWidth)
+      const openPct = ((c.open - preClose) / preClose) * 100
+      const closePct = ((c.close - preClose) / preClose) * 100
+      const highPct = ((c.high - preClose) / preClose) * 100
+      const lowPct = ((c.low - preClose) / preClose) * 100
+      const isUp = c.close >= c.open
+      return { x, openPct, closePct, highPct, lowPct, isUp, barW }
+    })
+  }, [minuteDisplay, minuteCandles, preClose, plotLeft, plotWidth])
 
   // Candlestick X position (centered in candle strip)
   const candleX = plotLeft - 6
@@ -810,7 +836,7 @@ function DetailChart({
                 y={bar.y}
                 width={bar.w}
                 height={bar.h}
-                fill="rgba(120,120,120,0.15)"
+                fill={bar.color}
               />
             ))}
 
@@ -854,8 +880,33 @@ function DetailChart({
               />
             )}
 
+            {/* Minute candlestick bars */}
+            {minuteCandleBars && minuteCandleBars.map((bar, i) => {
+              const bodyTop = priceToY(Math.max(bar.openPct, bar.closePct), plotTop, plotHeight)
+              const bodyBot = priceToY(Math.min(bar.openPct, bar.closePct), plotTop, plotHeight)
+              const wickTop = priceToY(bar.highPct, plotTop, plotHeight)
+              const wickBot = priceToY(bar.lowPct, plotTop, plotHeight)
+              const fill = bar.isUp ? 'rgba(239,68,68,0.5)' : 'rgba(34,197,94,0.5)'
+              return (
+                <Group key={i}>
+                  <Line
+                    points={[bar.x, wickTop, bar.x, wickBot]}
+                    stroke={fill}
+                    strokeWidth={1}
+                  />
+                  <Rect
+                    x={bar.x - bar.barW / 2}
+                    y={bodyTop}
+                    width={bar.barW}
+                    height={Math.max(1, bodyBot - bodyTop)}
+                    fill={fill}
+                  />
+                </Group>
+              )
+            })}
+
             {/* Connecting line + OHLC points */}
-            {showOhlcPoints !== false && (
+            {ohlcVisible && (
               <>
                 <Line
                   points={lineCoords}
@@ -959,6 +1010,48 @@ function DetailChart({
             )}
           </Layer>
         </Stage>
+      </div>
+
+      {/* Toggle buttons overlay */}
+      <div className="absolute top-1 right-10 z-10 flex items-center gap-1.5">
+        <button
+          className={`px-2 py-0.5 rounded text-xs transition-colors ${minuteDisplay !== 'off' ? 'bg-blue-500/20 text-blue-400' : 'bg-muted text-muted-foreground'}`}
+          onClick={() => setMinuteDisplay(prev => prev === 'off' ? 'line' : prev === 'line' ? 'candle' : 'off')}
+        >
+          {minuteDisplay === 'off' ? '分时' : minuteDisplay === 'line' ? '分时·线' : '分时·K'}
+        </button>
+        <button
+          className={`px-2 py-0.5 rounded text-xs transition-colors ${ohlcVisible ? 'bg-amber-500/20 text-amber-400' : 'bg-muted text-muted-foreground'}`}
+          onClick={() => setOhlcVisible(prev => !prev)}
+        >
+          OHLC
+        </button>
+        {ohlcVisible && minuteCandles && minuteCandles.length > 0 && (
+          <button
+            className="px-1.5 py-0.5 rounded text-[10px] bg-muted text-muted-foreground hover:bg-amber-500/20 hover:text-amber-400 transition-colors"
+            onClick={() => {
+              if (!minuteCandles?.length) return
+              let maxHighVal = -Infinity
+              let maxHighTime = 0
+              let minLowVal = Infinity
+              let minLowTime = 0
+              for (const c of minuteCandles) {
+                const [h, m] = c.time.split(':').map(Number)
+                const mid = h * 60 + m - 2.5
+                if (c.high > maxHighVal) { maxHighVal = c.high; maxHighTime = mid }
+                if (c.low < minLowVal) { minLowVal = c.low; minLowTime = mid }
+              }
+              setPoints(prev => prev.map(p => {
+                if (p.role === 'high') return { ...p, time: snapToMinute(Math.round(maxHighTime)) }
+                if (p.role === 'low') return { ...p, time: snapToMinute(Math.round(minLowTime)) }
+                return p
+              }))
+              setIsDirty(true)
+            }}
+          >
+            校
+          </button>
+        )}
       </div>
 
       {/* Floating save button — appears only when dirty */}
