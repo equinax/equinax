@@ -2,10 +2,9 @@ import { useState, useMemo, useCallback } from 'react'
 import { useQueryClient } from '@tanstack/react-query'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
-import { Textarea } from '@/components/ui/textarea'
 import { Badge } from '@/components/ui/badge'
 import { Slider } from '@/components/ui/slider'
-import { Plus, Pencil, Trash2, X, Check, ChevronDown, ChevronUp } from 'lucide-react'
+import { Plus, Pencil, Trash2, X, Check } from 'lucide-react'
 import {
   useListOperationsApiV1StockTrackerEntriesEntryIdOperationsGet,
   useCreateOperationApiV1StockTrackerEntriesEntryIdOperationsPost,
@@ -24,12 +23,12 @@ const OP_TYPES = [
 const getOpLabel = (opType: string) =>
   OP_TYPES.find((t) => t.value === opType) ?? { value: opType, label: opType, color: 'text-muted-foreground', bg: '' }
 
-// Trading time slots: 5-min intervals across morning (09:30-11:30) + afternoon (13:00-15:00)
+// Trading time slots: 1-min intervals across morning (09:30-11:30) + afternoon (13:00-15:00)
 const TRADING_SLOTS: string[] = []
-for (let m = 9 * 60 + 30; m <= 11 * 60 + 30; m += 5) {
+for (let m = 9 * 60 + 30; m <= 11 * 60 + 30; m += 1) {
   TRADING_SLOTS.push(`${String(Math.floor(m / 60)).padStart(2, '0')}:${String(m % 60).padStart(2, '0')}`)
 }
-for (let m = 13 * 60; m <= 15 * 60; m += 5) {
+for (let m = 13 * 60; m <= 15 * 60; m += 1) {
   TRADING_SLOTS.push(`${String(Math.floor(m / 60)).padStart(2, '0')}:${String(m % 60).padStart(2, '0')}`)
 }
 
@@ -76,6 +75,18 @@ function parseTimeToMinutes(t: string): number | null {
   const m = parseInt(parts[1], 10)
   if (isNaN(h) || isNaN(m)) return null
   return h * 60 + m
+}
+
+function findEnclosingCandle(time: string, candles: MinuteCandle[]): MinuteCandle | null {
+  const mins = parseTimeToMinutes(time)
+  if (mins === null) return null
+  for (const c of candles) {
+    const endMins = parseTimeToMinutes(c.time)
+    if (endMins === null) continue
+    const startMins = endMins - 5
+    if (mins > startMins && mins <= endMins) return c
+  }
+  return null
 }
 
 function formatLots(shares: number): string {
@@ -451,14 +462,12 @@ function OpForm({
   minuteCandles,
   handleTimeSelect,
 }: OpFormProps) {
-  const [showExtra, setShowExtra] = useState(false)
-
   const priceNum = formState.price ? parseFloat(formState.price) : 0
   const qtyNum = formState.quantity ? parseInt(formState.quantity, 10) : 0
 
   const activePriceRange = useMemo(() => {
     if (formState.op_time && minuteCandles?.length) {
-      const candle = minuteCandles.find((c) => c.time === formState.op_time)
+      const candle = findEnclosingCandle(formState.op_time, minuteCandles)
       if (candle) {
         const margin = Math.max((candle.high - candle.low) * 0.1, 0.01)
         return {
@@ -582,31 +591,20 @@ function OpForm({
         </div>
       </div>
 
-      <button
-        type="button"
-        className="flex items-center gap-1 text-[10px] text-muted-foreground hover:text-foreground transition-colors"
-        onClick={() => setShowExtra(!showExtra)}
-      >
-        {showExtra ? <ChevronUp className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />}
-        心态 / 备注
-      </button>
-      {showExtra && (
-        <div className="space-y-1.5">
-          <Input
-            className="h-6 text-xs"
-            placeholder="心态: 冷静 / 紧张 / 兴奋..."
-            value={formState.emotion}
-            onChange={(e) => setFormState({ ...formState, emotion: e.target.value })}
-          />
-          <Textarea
-            className="text-xs min-h-[36px]"
-            placeholder="备注..."
-            rows={2}
-            value={formState.notes}
-            onChange={(e) => setFormState({ ...formState, notes: e.target.value })}
-          />
-        </div>
-      )}
+      <div className="flex gap-2">
+        <Input
+          className="h-6 text-xs w-1/4"
+          placeholder="心态"
+          value={formState.emotion}
+          onChange={(e) => setFormState({ ...formState, emotion: e.target.value })}
+        />
+        <Input
+          className="h-6 text-xs flex-1"
+          placeholder="备注..."
+          value={formState.notes}
+          onChange={(e) => setFormState({ ...formState, notes: e.target.value })}
+        />
+      </div>
 
       <div className="flex gap-1.5 justify-end">
         <Button size="sm" variant="outline" className="h-6 text-xs px-2" onClick={onCancel}>
