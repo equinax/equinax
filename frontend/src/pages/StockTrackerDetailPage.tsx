@@ -318,7 +318,15 @@ export default function StockTrackerDetailPage() {
         </div>
 
         <div className="border rounded-lg p-4">
-          <OperationsPanel entryId={entryId || ''} />
+          <OperationsPanel
+            entryId={entryId || ''}
+            minuteCandles={minuteCandles}
+            dayHigh={entry.high as number | null}
+            dayLow={entry.low as number | null}
+            dayOpen={entry.open as number | null}
+            dayClose={entry.close as number | null}
+            preClose={entry.pre_close as number | null}
+          />
         </div>
       </div>
     </div>

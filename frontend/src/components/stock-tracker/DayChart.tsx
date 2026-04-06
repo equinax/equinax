@@ -498,6 +498,7 @@ function DetailChart({
   const [points, setPoints] = useState<OHLCPoint[]>(initialPoints)
   const [isDirty, setIsDirty] = useState(false)
   const [dragging, setDragging] = useState<PointRole | null>(null)
+  const [crosshair, setCrosshair] = useState<{ x: number; y: number } | null>(null)
 
   // Update points when keyPoints prop changes
   useEffect(() => {
@@ -690,7 +691,7 @@ function DetailChart({
       const x = timeToX(midMinutes, plotLeft, plotWidth) - barW / 2
       const barH = (c.volume / maxVol) * plotHeight * 0.2
       const y = plotTop + plotHeight - barH
-      const color = c.close >= c.open ? 'rgba(239,68,68,0.3)' : 'rgba(34,197,94,0.3)'
+      const color = c.close >= c.open ? '#ef4444' : '#22c55e'
       return { x, y, w: barW, h: barH, color }
     })
   }, [minuteDisplay, minuteCandles, plotLeft, plotWidth, plotTop, plotHeight])
@@ -712,6 +713,30 @@ function DetailChart({
     })
   }, [minuteDisplay, minuteCandles, preClose, plotLeft, plotWidth])
 
+  // Crosshair tooltip info — nearest minute candle to cursor X
+  const crosshairInfo = useMemo(() => {
+    if (!crosshair || !minuteCandles?.length || preClose == null) return null
+    const cursorTime = xToTime(crosshair.x)
+    let nearest = minuteCandles[0]
+    let minDist = Infinity
+    for (const c of minuteCandles) {
+      const [h, m] = c.time.split(':').map(Number)
+      const mid = h * 60 + m - 2.5
+      const dist = Math.abs(mid - cursorTime)
+      if (dist < minDist) { minDist = dist; nearest = c }
+    }
+    const pct = ((nearest.close - preClose) / preClose) * 100
+    return {
+      time: nearest.time,
+      price: nearest.close.toFixed(2),
+      pct,
+      pctStr: `${pct >= 0 ? '+' : ''}${pct.toFixed(2)}%`,
+      volume: nearest.volume,
+      high: nearest.high.toFixed(2),
+      low: nearest.low.toFixed(2),
+    }
+  }, [crosshair, minuteCandles, preClose, xToTime])
+
   // Candlestick X position (centered in candle strip)
   const candleX = plotLeft - 6
 
@@ -723,7 +748,22 @@ function DetailChart({
         className="w-full border overflow-hidden bg-background"
         style={{ height: 500 }}
       >
-        <Stage width={width} height={height}>
+        <Stage
+          width={width}
+          height={height}
+          onMouseMove={(e) => {
+            const stage = e.target.getStage()
+            if (!stage) return
+            const pos = stage.getPointerPosition()
+            if (!pos) return
+            if (pos.x >= plotLeft && pos.x <= plotLeft + plotWidth && pos.y >= plotTop && pos.y <= plotTop + plotHeight) {
+              setCrosshair({ x: pos.x, y: pos.y })
+            } else {
+              setCrosshair(null)
+            }
+          }}
+          onMouseLeave={() => setCrosshair(null)}
+        >
           <Layer>
             {/* Background */}
             <Rect
@@ -746,11 +786,10 @@ function DetailChart({
             {/* Price grid lines */}
             {priceGridLines.map((gl) => {
               const y = priceToY(gl.pct, plotTop, plotHeight)
-              const isEdge = gl.pct === PRICE_RANGE || gl.pct === -PRICE_RANGE
               return (
                 <Group key={gl.pct}>
                   <Line
-                    points={isEdge ? [0, y, width, y] : [plotLeft, y, plotLeft + plotWidth, y]}
+                    points={[0, y, width, y]}
                     stroke={
                       gl.pct === 0
                         ? 'rgba(120,120,120,0.5)'
@@ -886,7 +925,7 @@ function DetailChart({
               const bodyBot = priceToY(Math.min(bar.openPct, bar.closePct), plotTop, plotHeight)
               const wickTop = priceToY(bar.highPct, plotTop, plotHeight)
               const wickBot = priceToY(bar.lowPct, plotTop, plotHeight)
-              const fill = bar.isUp ? 'rgba(239,68,68,0.5)' : 'rgba(34,197,94,0.5)'
+              const fill = bar.isUp ? '#ef4444' : '#22c55e'
               return (
                 <Group key={i}>
                   <Line
@@ -904,6 +943,25 @@ function DetailChart({
                 </Group>
               )
             })}
+
+            {/* Crosshair */}
+            {crosshair && (
+              <Group>
+                <Line
+                  points={[crosshair.x, plotTop, crosshair.x, plotTop + plotHeight]}
+                  stroke="rgba(120,120,120,0.5)"
+                  strokeWidth={0.5}
+                  dash={[2, 2]}
+                />
+                <Line
+                  points={[plotLeft, crosshair.y, plotLeft + plotWidth, crosshair.y]}
+                  stroke="rgba(120,120,120,0.5)"
+                  strokeWidth={0.5}
+                  dash={[2, 2]}
+                />
+              </Group>
+            )}
+            {/* Crosshair info rendered as HTML overlay below */}
 
             {/* Connecting line + OHLC points */}
             {ohlcVisible && (
@@ -1012,8 +1070,21 @@ function DetailChart({
         </Stage>
       </div>
 
+      {/* Crosshair info — rendered in the top padding area */}
+      {crosshairInfo && (
+        <div className="absolute top-1 left-3 z-10 text-[11px] font-mono flex items-center gap-2">
+          <span className="text-blue-400">{crosshairInfo.time}</span>
+          <span className={crosshairInfo.pct >= 0 ? 'text-red-500' : 'text-green-500'}>
+            {crosshairInfo.price} ({crosshairInfo.pctStr})
+          </span>
+          <span className="text-red-500/70">高:{crosshairInfo.high}</span>
+          <span className="text-green-500/70">低:{crosshairInfo.low}</span>
+          <span className="text-muted-foreground/70">量:{crosshairInfo.volume}</span>
+        </div>
+      )}
+
       {/* Toggle buttons overlay */}
-      <div className="absolute top-1 right-10 z-10 flex items-center gap-1.5">
+      <div className="absolute top-1 right-2 z-10 flex items-center gap-1.5">
         <button
           className={`px-2 py-0.5 rounded text-xs transition-colors ${minuteDisplay !== 'off' ? 'bg-blue-500/20 text-blue-400' : 'bg-muted text-muted-foreground'}`}
           onClick={() => setMinuteDisplay(prev => prev === 'off' ? 'line' : prev === 'line' ? 'candle' : 'off')}
@@ -1058,7 +1129,7 @@ function DetailChart({
       {onSave && isDirty && (
         <Button
           size="sm"
-          className="absolute top-2 right-2 z-10"
+          className="absolute top-7 right-2 z-10"
           onClick={handleSave}
           disabled={isSaving}
         >
