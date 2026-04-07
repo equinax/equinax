@@ -935,6 +935,55 @@ async def delete_operation(
     await db.commit()
 
 
+# --- Populate draft entry ---
+
+
+@router.post("/entries/{entry_id}/populate", response_model=TrackDailyEntryRead)
+async def populate_draft_entry(
+    entry_id: str,
+    db: AsyncSession = Depends(get_db),
+):
+    entry = await _get_entry(entry_id, db)
+
+    if not entry.is_draft:
+        raise HTTPException(status_code=400, detail="Entry is not a draft")
+
+    market_result = await db.execute(
+        select(MarketDaily).where(
+            MarketDaily.code == entry.ts_code,
+            MarketDaily.date == entry.trade_date,
+        )
+    )
+    market_row = market_result.scalar_one_or_none()
+    if not market_row:
+        raise HTTPException(status_code=404, detail="市场数据尚未可用，请稍后重试")
+
+    entry.open = market_row.open
+    entry.high = market_row.high
+    entry.low = market_row.low
+    entry.close = market_row.close
+    entry.pre_close = market_row.preclose
+    entry.volume = market_row.volume
+    entry.amount = market_row.amount
+    entry.pct_chg = market_row.pct_chg
+    entry.is_draft = False
+
+    await db.commit()
+    await db.refresh(entry)
+
+    try:
+        candles = await asyncio.to_thread(
+            fetch_minute_data_from_baostock, entry.ts_code, entry.trade_date, "5"
+        )
+        if candles:
+            await store_minute_data(db, entry.ts_code, entry.trade_date, "5", candles)
+            await db.commit()
+    except Exception:
+        pass
+
+    return _entry_to_response(entry)
+
+
 # --- Minute data endpoint ---
 
 
