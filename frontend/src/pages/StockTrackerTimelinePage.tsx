@@ -1,15 +1,18 @@
 import { useState, useMemo, useRef, useCallback, useEffect, useLayoutEffect } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
-import { ArrowLeft, RefreshCw, Calendar, Loader2 } from 'lucide-react'
+import { ArrowLeft, RefreshCw, Calendar as CalendarIcon, Loader2, FilePlus } from 'lucide-react'
 import { useQueryClient, useInfiniteQuery } from '@tanstack/react-query'
 import { Card, CardContent } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Skeleton } from '@/components/ui/skeleton'
+import { Popover, PopoverTrigger, PopoverContent } from '@/components/ui/popover'
+import { Calendar } from '@/components/ui/calendar'
 import {
   getTimelineApiV1StockTrackerTracksTsCodeTimelineGet,
   useSyncDailyApiV1StockTrackerTracksTsCodeSyncDailyPost,
   getGetTimelineApiV1StockTrackerTracksTsCodeTimelineGetQueryKey,
   useCreateEntryForDateApiV1StockTrackerTracksTsCodeEntriesCreateForDatePost,
+  useCreateDraftEntryApiV1StockTrackerTracksTsCodeEntriesCreateDraftPost,
 } from '@/api/generated/stock-tracker/stock-tracker'
 import type { TimelineDayRead } from '@/api/generated/schemas'
 import DayChart from '@/components/stock-tracker/DayChart'
@@ -42,6 +45,8 @@ export default function StockTrackerTimelinePage() {
   const scrollContainerRef = useRef<HTMLDivElement>(null)
   const prevScrollHeightRef = useRef<number>(0)
   const [creatingDate, setCreatingDate] = useState<string | null>(null)
+  const [draftOpen, setDraftOpen] = useState(false)
+  const [draftDate, setDraftDate] = useState<Date | undefined>(undefined)
 
   const {
     data,
@@ -100,6 +105,33 @@ export default function StockTrackerTimelinePage() {
         },
       },
     })
+
+  const createDraftMutation =
+    useCreateDraftEntryApiV1StockTrackerTracksTsCodeEntriesCreateDraftPost({
+      mutation: {
+        onSuccess: (entry) => {
+          queryClient.invalidateQueries({
+            queryKey: ['stock-tracker-timeline', tsCode],
+          })
+          setDraftOpen(false)
+          navigate(`/stock-tracker/${tsCode}/${entry.id}`)
+        },
+        onError: (error: unknown) => {
+          const axiosError = error as { response?: { status?: number } }
+          if (axiosError?.response?.status === 409) {
+            alert('该日期已有记录')
+          } else {
+            alert('创建草稿失败')
+          }
+        },
+      },
+    })
+
+  const handleCreateDraft = (date: Date | undefined) => {
+    if (!date || !tsCode) return
+    const dateStr = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`
+    createDraftMutation.mutate({ tsCode, params: { trade_date: dateStr } })
+  }
 
   const handleSync = () => {
     if (!tsCode) return
@@ -199,7 +231,7 @@ export default function StockTrackerTimelinePage() {
             </Button>
             <div>
               <h1 className="text-2xl font-bold flex items-center gap-2">
-                <Calendar className="h-6 w-6 text-primary" />
+                <CalendarIcon className="h-6 w-6 text-primary" />
                 <span className="font-mono">{tsCode}</span>
                 <span className="text-lg font-normal text-muted-foreground">
                   每日时间线
@@ -210,18 +242,39 @@ export default function StockTrackerTimelinePage() {
               </p>
             </div>
           </div>
-          <Button
-            variant="outline"
-            onClick={handleSync}
-            disabled={syncMutation.isPending}
-          >
-            <RefreshCw
-              className={`h-4 w-4 mr-1 ${syncMutation.isPending ? 'animate-spin' : ''}`}
-            />
-            {syncMutation.isPending
-              ? '同步中...'
-              : `同步数据 (${syncInfo.label})`}
-          </Button>
+          <div className="flex items-center gap-2">
+            <Popover open={draftOpen} onOpenChange={setDraftOpen}>
+              <PopoverTrigger asChild>
+                <Button variant="outline" disabled={createDraftMutation.isPending}>
+                  <FilePlus className="h-4 w-4 mr-1" />
+                  {createDraftMutation.isPending ? '创建中...' : '草稿'}
+                </Button>
+              </PopoverTrigger>
+              <PopoverContent className="w-auto p-0" align="end">
+                <Calendar
+                  mode="single"
+                  selected={draftDate}
+                  onSelect={(date) => {
+                    setDraftDate(date)
+                    handleCreateDraft(date)
+                  }}
+                  autoFocus
+                />
+              </PopoverContent>
+            </Popover>
+            <Button
+              variant="outline"
+              onClick={handleSync}
+              disabled={syncMutation.isPending}
+            >
+              <RefreshCw
+                className={`h-4 w-4 mr-1 ${syncMutation.isPending ? 'animate-spin' : ''}`}
+              />
+              {syncMutation.isPending
+                ? '同步中...'
+                : `同步数据 (${syncInfo.label})`}
+            </Button>
+          </div>
         </div>
       </div>
 
@@ -241,7 +294,7 @@ export default function StockTrackerTimelinePage() {
           <Card>
             <CardContent className="py-12 text-center text-muted-foreground">
               <div className="flex flex-col items-center gap-3">
-                <Calendar className="h-10 w-10 opacity-40" />
+                <CalendarIcon className="h-10 w-10 opacity-40" />
                 <p className="text-lg">暂无交易日数据</p>
                 <p className="text-sm">点击「同步数据」从市场日线导入</p>
               </div>
@@ -259,6 +312,7 @@ export default function StockTrackerTimelinePage() {
               <div key={rowIdx} className="flex">
                 {row.map((day: TimelineDayRead) => {
                   const hasEntry = day.has_entry && day.entry_id
+                  const isDraft = day.is_draft === true
                   const scores = day.scores_summary
                     ? (day.scores_summary as {
                         market: number
@@ -274,7 +328,33 @@ export default function StockTrackerTimelinePage() {
                     : null
                   const isCreating = creatingDate === day.trade_date
 
-                  return hasEntry ? (
+                  return hasEntry && isDraft ? (
+                    <div
+                      key={day.trade_date}
+                      className="flex-1 min-w-0 border border-dashed border-primary/30 -ml-px first:ml-0 hover:border-primary/50 hover:z-10 transition-colors cursor-pointer opacity-70 relative"
+                      onClick={() =>
+                        navigate(`/stock-tracker/${tsCode}/${day.entry_id}`)
+                      }
+                    >
+                      <DayChart
+                        mode="thumbnail"
+                        tradeDate={day.trade_date}
+                        open={day.open ?? null}
+                        high={day.high ?? null}
+                        low={day.low ?? null}
+                        close={day.close ?? null}
+                        preClose={day.pre_close ?? null}
+                        pctChg={day.pct_chg ?? null}
+                        keyPoints={keyPoints}
+                        scores={scores}
+                        pattern={day.pattern ?? null}
+                        notes={day.notes ?? null}
+                      />
+                      <span className="absolute top-1 right-1 text-[10px] bg-amber-100 dark:bg-amber-900/50 text-amber-700 dark:text-amber-300 px-1 rounded font-medium">
+                        草稿
+                      </span>
+                    </div>
+                  ) : hasEntry ? (
                     <div
                       key={day.trade_date}
                       className="flex-1 min-w-0 border border-border -ml-px first:ml-0 hover:border-primary/50 hover:z-10 transition-colors cursor-pointer"

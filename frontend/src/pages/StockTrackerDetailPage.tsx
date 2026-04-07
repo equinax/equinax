@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
-import { ArrowLeft, Pencil } from 'lucide-react'
+import { ArrowLeft, FileEdit, Loader2, Pencil } from 'lucide-react'
 import { useQueryClient } from '@tanstack/react-query'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
@@ -16,6 +16,7 @@ import {
   useListTracksApiV1StockTrackerTracksGet,
   useGetScoresApiV1StockTrackerEntriesEntryIdScoresGet,
   useGetMinuteDataApiV1StockTrackerEntriesEntryIdMinuteDataGet,
+  usePopulateDraftEntryApiV1StockTrackerEntriesEntryIdPopulatePost,
 } from '@/api/generated/stock-tracker/stock-tracker'
 import type { MinuteDataResponse } from '@/types/minute-data'
 import { getSectionSum } from '@/lib/score-utils'
@@ -132,6 +133,28 @@ export default function StockTrackerDetailPage() {
     },
   })
 
+  const populateMutation =
+    usePopulateDraftEntryApiV1StockTrackerEntriesEntryIdPopulatePost({
+      mutation: {
+        onSuccess: () => {
+          queryClient.invalidateQueries({
+            queryKey: getGetEntryApiV1StockTrackerEntriesEntryIdGetQueryKey(
+              entryId || ''
+            ),
+          })
+          invalidateTimeline()
+        },
+        onError: (error: any) => {
+          const status = error?.response?.status || error?.status
+          if (status === 404) {
+            alert('市场数据尚未可用，请稍后重试')
+          } else {
+            alert('填充数据失败')
+          }
+        },
+      },
+    })
+
   const startEditing = () => {
     setNotesValue((entry?.notes as string) || '')
     setEditingNotes(true)
@@ -235,6 +258,29 @@ export default function StockTrackerDetailPage() {
           </span>
         </div>
       </div>
+
+      {entry.is_draft && (
+        <div className="flex items-center justify-between gap-3 rounded-lg border border-amber-200 bg-amber-50 dark:border-amber-800 dark:bg-amber-950/50 px-4 py-3">
+          <div className="flex items-center gap-2 text-amber-700 dark:text-amber-300">
+            <FileEdit className="h-4 w-4 shrink-0" />
+            <span className="text-sm font-medium">此条目为草稿 — 日线和分钟数据待填充</span>
+          </div>
+          <Button
+            size="sm"
+            onClick={() => populateMutation.mutate({ entryId: entryId || '' })}
+            disabled={populateMutation.isPending}
+          >
+            {populateMutation.isPending ? (
+              <>
+                <Loader2 className="h-4 w-4 mr-1 animate-spin" />
+                填充中...
+              </>
+            ) : (
+              '填充数据'
+            )}
+          </Button>
+        </div>
+      )}
 
       <div className="grid grid-cols-1 lg:grid-cols-[minmax(0,720px)_1fr] gap-4 items-start">
         <div className="space-y-3">
