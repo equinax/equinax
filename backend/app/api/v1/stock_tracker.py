@@ -62,6 +62,7 @@ class TrackDailyEntryRead(BaseModel):
     pattern: Optional[str]
     notes: Optional[str]
     mood: Optional[str]
+    is_draft: bool = False
     created_at: datetime
     updated_at: datetime
 
@@ -88,6 +89,7 @@ class TimelineDayRead(BaseModel):
     notes: Optional[str] = None
     mood: Optional[str] = None
     has_entry: bool = False
+    is_draft: bool = False
     key_points: Optional[Dict[str, Any]] = None
     scores_summary: Optional[Dict[str, int]] = None
 
@@ -199,6 +201,7 @@ def _entry_to_response(e: TrackDailyEntry) -> TrackDailyEntryRead:
         pattern=e.pattern,
         notes=e.notes,
         mood=e.mood,
+        is_draft=e.is_draft,
         created_at=e.created_at,
         updated_at=e.updated_at,
     )
@@ -380,6 +383,7 @@ async def get_timeline(
                 notes=entry.notes if entry else None,
                 mood=entry.mood if entry else None,
                 has_entry=entry is not None,
+                is_draft=entry.is_draft if entry else False,
                 key_points=kp,
                 scores_summary=ss,
             )
@@ -452,6 +456,39 @@ async def sync_daily(
     return {"created": created, "updated": updated, "total_market_rows": len(market_rows)}
 
 
+@router.post("/tracks/{ts_code}/entries/create-draft", response_model=TrackDailyEntryRead)
+async def create_draft_entry(
+    ts_code: str,
+    trade_date: date = Query(...),
+    db: AsyncSession = Depends(get_db),
+):
+    result = await db.execute(select(StockTrack).where(StockTrack.ts_code == ts_code))
+    track = result.scalar_one_or_none()
+    if not track:
+        raise HTTPException(status_code=404, detail="Track not found")
+
+    existing = await db.execute(
+        select(TrackDailyEntry).where(
+            TrackDailyEntry.track_id == track.id,
+            TrackDailyEntry.trade_date == trade_date,
+        )
+    )
+    if existing.scalar_one_or_none():
+        raise HTTPException(status_code=409, detail="该日期已有记录")
+
+    entry = TrackDailyEntry(
+        track_id=track.id,
+        trade_date=trade_date,
+        ts_code=ts_code,
+        is_draft=True,
+    )
+    db.add(entry)
+    await db.commit()
+    await db.refresh(entry)
+
+    return _entry_to_response(entry)
+
+
 @router.post("/tracks/{ts_code}/entries/create-for-date", response_model=TrackDailyEntryRead)
 async def create_entry_for_date(
     ts_code: str,
@@ -487,6 +524,7 @@ async def create_entry_for_date(
             pattern=entry.pattern,
             notes=entry.notes,
             mood=entry.mood,
+            is_draft=entry.is_draft,
             created_at=entry.created_at,
             updated_at=entry.updated_at,
         )
@@ -537,6 +575,7 @@ async def create_entry_for_date(
         pattern=entry.pattern,
         notes=entry.notes,
         mood=entry.mood,
+        is_draft=entry.is_draft,
         created_at=entry.created_at,
         updated_at=entry.updated_at,
     )
