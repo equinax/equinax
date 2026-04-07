@@ -14,6 +14,7 @@ import type {
   UseQueryResult,
 } from "@tanstack/react-query";
 import type {
+  CreateDraftEntryApiV1StockTrackerTracksTsCodeEntriesCreateDraftPostParams,
   CreateEntryForDateApiV1StockTrackerTracksTsCodeEntriesCreateForDatePostParams,
   GetMinuteDataApiV1StockTrackerEntriesEntryIdMinuteDataGetParams,
   GetScoresApiV1StockTrackerEntriesEntryIdScoresGet200,
@@ -743,6 +744,123 @@ export const useSyncDailyApiV1StockTrackerTracksTsCodeSyncDailyPost = <
 
   return useMutation(mutationOptions);
 };
+/**
+ * @summary Create Draft Entry
+ */
+export const createDraftEntryApiV1StockTrackerTracksTsCodeEntriesCreateDraftPost =
+  (
+    tsCode: string,
+    params: CreateDraftEntryApiV1StockTrackerTracksTsCodeEntriesCreateDraftPostParams,
+  ) => {
+    return customInstance<TrackDailyEntryRead>({
+      url: `/api/v1/stock-tracker/tracks/${tsCode}/entries/create-draft`,
+      method: "POST",
+      params,
+    });
+  };
+
+export const getCreateDraftEntryApiV1StockTrackerTracksTsCodeEntriesCreateDraftPostMutationOptions =
+  <TError = HTTPValidationError, TContext = unknown>(options?: {
+    mutation?: UseMutationOptions<
+      Awaited<
+        ReturnType<
+          typeof createDraftEntryApiV1StockTrackerTracksTsCodeEntriesCreateDraftPost
+        >
+      >,
+      TError,
+      {
+        tsCode: string;
+        params: CreateDraftEntryApiV1StockTrackerTracksTsCodeEntriesCreateDraftPostParams;
+      },
+      TContext
+    >;
+  }): UseMutationOptions<
+    Awaited<
+      ReturnType<
+        typeof createDraftEntryApiV1StockTrackerTracksTsCodeEntriesCreateDraftPost
+      >
+    >,
+    TError,
+    {
+      tsCode: string;
+      params: CreateDraftEntryApiV1StockTrackerTracksTsCodeEntriesCreateDraftPostParams;
+    },
+    TContext
+  > => {
+    const { mutation: mutationOptions } = options ?? {};
+
+    const mutationFn: MutationFunction<
+      Awaited<
+        ReturnType<
+          typeof createDraftEntryApiV1StockTrackerTracksTsCodeEntriesCreateDraftPost
+        >
+      >,
+      {
+        tsCode: string;
+        params: CreateDraftEntryApiV1StockTrackerTracksTsCodeEntriesCreateDraftPostParams;
+      }
+    > = (props) => {
+      const { tsCode, params } = props ?? {};
+
+      return createDraftEntryApiV1StockTrackerTracksTsCodeEntriesCreateDraftPost(
+        tsCode,
+        params,
+      );
+    };
+
+    return { mutationFn, ...mutationOptions };
+  };
+
+export type CreateDraftEntryApiV1StockTrackerTracksTsCodeEntriesCreateDraftPostMutationResult =
+  NonNullable<
+    Awaited<
+      ReturnType<
+        typeof createDraftEntryApiV1StockTrackerTracksTsCodeEntriesCreateDraftPost
+      >
+    >
+  >;
+
+export type CreateDraftEntryApiV1StockTrackerTracksTsCodeEntriesCreateDraftPostMutationError =
+  HTTPValidationError;
+
+/**
+ * @summary Create Draft Entry
+ */
+export const useCreateDraftEntryApiV1StockTrackerTracksTsCodeEntriesCreateDraftPost =
+  <TError = HTTPValidationError, TContext = unknown>(options?: {
+    mutation?: UseMutationOptions<
+      Awaited<
+        ReturnType<
+          typeof createDraftEntryApiV1StockTrackerTracksTsCodeEntriesCreateDraftPost
+        >
+      >,
+      TError,
+      {
+        tsCode: string;
+        params: CreateDraftEntryApiV1StockTrackerTracksTsCodeEntriesCreateDraftPostParams;
+      },
+      TContext
+    >;
+  }): UseMutationResult<
+    Awaited<
+      ReturnType<
+        typeof createDraftEntryApiV1StockTrackerTracksTsCodeEntriesCreateDraftPost
+      >
+    >,
+    TError,
+    {
+      tsCode: string;
+      params: CreateDraftEntryApiV1StockTrackerTracksTsCodeEntriesCreateDraftPostParams;
+    },
+    TContext
+  > => {
+    const mutationOptions =
+      getCreateDraftEntryApiV1StockTrackerTracksTsCodeEntriesCreateDraftPostMutationOptions(
+        options,
+      );
+
+    return useMutation(mutationOptions);
+  };
 /**
  * @summary Create Entry For Date
  */
@@ -2262,6 +2380,104 @@ export const useDeleteOperationApiV1StockTrackerOperationsOpIdDelete = <
 
   return useMutation(mutationOptions);
 };
+/**
+ * @summary Populate Draft Entry
+ */
+export const populateDraftEntryApiV1StockTrackerEntriesEntryIdPopulatePost = (
+  entryId: string,
+) => {
+  return customInstance<TrackDailyEntryRead>({
+    url: `/api/v1/stock-tracker/entries/${entryId}/populate`,
+    method: "POST",
+  });
+};
+
+export const getPopulateDraftEntryApiV1StockTrackerEntriesEntryIdPopulatePostMutationOptions =
+  <TError = HTTPValidationError, TContext = unknown>(options?: {
+    mutation?: UseMutationOptions<
+      Awaited<
+        ReturnType<
+          typeof populateDraftEntryApiV1StockTrackerEntriesEntryIdPopulatePost
+        >
+      >,
+      TError,
+      { entryId: string },
+      TContext
+    >;
+  }): UseMutationOptions<
+    Awaited<
+      ReturnType<
+        typeof populateDraftEntryApiV1StockTrackerEntriesEntryIdPopulatePost
+      >
+    >,
+    TError,
+    { entryId: string },
+    TContext
+  > => {
+    const { mutation: mutationOptions } = options ?? {};
+
+    const mutationFn: MutationFunction<
+      Awaited<
+        ReturnType<
+          typeof populateDraftEntryApiV1StockTrackerEntriesEntryIdPopulatePost
+        >
+      >,
+      { entryId: string }
+    > = (props) => {
+      const { entryId } = props ?? {};
+
+      return populateDraftEntryApiV1StockTrackerEntriesEntryIdPopulatePost(
+        entryId,
+      );
+    };
+
+    return { mutationFn, ...mutationOptions };
+  };
+
+export type PopulateDraftEntryApiV1StockTrackerEntriesEntryIdPopulatePostMutationResult =
+  NonNullable<
+    Awaited<
+      ReturnType<
+        typeof populateDraftEntryApiV1StockTrackerEntriesEntryIdPopulatePost
+      >
+    >
+  >;
+
+export type PopulateDraftEntryApiV1StockTrackerEntriesEntryIdPopulatePostMutationError =
+  HTTPValidationError;
+
+/**
+ * @summary Populate Draft Entry
+ */
+export const usePopulateDraftEntryApiV1StockTrackerEntriesEntryIdPopulatePost =
+  <TError = HTTPValidationError, TContext = unknown>(options?: {
+    mutation?: UseMutationOptions<
+      Awaited<
+        ReturnType<
+          typeof populateDraftEntryApiV1StockTrackerEntriesEntryIdPopulatePost
+        >
+      >,
+      TError,
+      { entryId: string },
+      TContext
+    >;
+  }): UseMutationResult<
+    Awaited<
+      ReturnType<
+        typeof populateDraftEntryApiV1StockTrackerEntriesEntryIdPopulatePost
+      >
+    >,
+    TError,
+    { entryId: string },
+    TContext
+  > => {
+    const mutationOptions =
+      getPopulateDraftEntryApiV1StockTrackerEntriesEntryIdPopulatePostMutationOptions(
+        options,
+      );
+
+    return useMutation(mutationOptions);
+  };
 /**
  * @summary Get Minute Data
  */

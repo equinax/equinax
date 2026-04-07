@@ -18,6 +18,7 @@ export interface TrackDailyEntryRead {
   created_at: string;
   high: TrackDailyEntryReadHigh;
   id: string;
+  is_draft?: boolean;
   low: TrackDailyEntryReadLow;
   mood: TrackDailyEntryReadMood;
   notes: TrackDailyEntryReadNotes;

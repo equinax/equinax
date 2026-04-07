@@ -25,6 +25,7 @@ export interface TimelineDayRead {
   entry_id?: TimelineDayReadEntryId;
   has_entry?: boolean;
   high?: TimelineDayReadHigh;
+  is_draft?: boolean;
   key_points?: TimelineDayReadKeyPoints;
   low?: TimelineDayReadLow;
   mood?: TimelineDayReadMood;
