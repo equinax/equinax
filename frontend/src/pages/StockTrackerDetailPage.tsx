@@ -144,8 +144,9 @@ export default function StockTrackerDetailPage() {
           })
           invalidateTimeline()
         },
-        onError: (error: any) => {
-          const status = error?.response?.status || error?.status
+        onError: (error: unknown) => {
+          const err = error as { response?: { status?: number }; status?: number }
+          const status = err.response?.status || err.status
           if (status === 404) {
             alert('市场数据尚未可用，请稍后重试')
           } else {
