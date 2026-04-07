@@ -319,9 +319,6 @@ async def get_timeline(
     market_result = await db.execute(market_query)
     market_rows = market_result.scalars().all()
 
-    if not market_rows:
-        return []
-
     trade_dates = [row.date for row in market_rows]
     entry_result = await db.execute(
         select(TrackDailyEntry).where(
@@ -388,6 +385,62 @@ async def get_timeline(
                 scores_summary=ss,
             )
         )
+
+    draft_query = select(TrackDailyEntry).where(
+        TrackDailyEntry.track_id == track.id,
+        TrackDailyEntry.is_draft == True,
+        TrackDailyEntry.trade_date.notin_(trade_dates),
+    )
+    if before:
+        draft_query = draft_query.where(TrackDailyEntry.trade_date < before)
+
+    draft_result = await db.execute(draft_query)
+    draft_entries = draft_result.scalars().all()
+
+    if draft_entries:
+        draft_ids = [de.id for de in draft_entries]
+
+        draft_sketch_result = await db.execute(
+            select(DailySketchPoints).where(DailySketchPoints.entry_id.in_(draft_ids))
+        )
+        draft_sketches = {s.entry_id: s for s in draft_sketch_result.scalars().all()}
+
+        draft_scores_result = await db.execute(
+            select(DailySituationScore).where(DailySituationScore.entry_id.in_(draft_ids))
+        )
+        draft_scores = {s.entry_id: s for s in draft_scores_result.scalars().all()}
+
+        for de in draft_entries:
+            kp = None
+            ss = None
+            sketch = draft_sketches.get(de.id)
+            if sketch:
+                kp = sketch.key_points
+            score = draft_scores.get(de.id)
+            if score:
+                ss = {
+                    "market": sum(score.scores.get("market", {}).values()),
+                    "sector": sum(score.scores.get("sector", {}).values()),
+                    "stock": sum(score.scores.get("stock", {}).values()),
+                }
+
+            timeline.append(
+                TimelineDayRead(
+                    trade_date=de.trade_date,
+                    ts_code=ts_code,
+                    entry_id=str(de.id),
+                    track_id=str(track.id),
+                    has_entry=True,
+                    is_draft=True,
+                    pattern=de.pattern,
+                    notes=de.notes,
+                    mood=de.mood,
+                    key_points=kp,
+                    scores_summary=ss,
+                )
+            )
+
+        timeline.sort(key=lambda x: x.trade_date, reverse=True)
 
     return timeline
 
