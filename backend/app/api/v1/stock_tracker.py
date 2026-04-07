@@ -434,6 +434,7 @@ async def sync_daily(
             entry.volume = row.volume
             entry.amount = row.amount
             entry.pct_chg = row.pct_chg
+            entry.is_draft = False
             updated += 1
         else:
             entry = TrackDailyEntry(
