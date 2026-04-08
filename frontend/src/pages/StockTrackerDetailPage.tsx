@@ -1,7 +1,17 @@
 import { useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
-import { ArrowLeft, FileEdit, Loader2, Pencil } from 'lucide-react'
+import { ArrowLeft, FileEdit, Loader2, Pencil, Trash2 } from 'lucide-react'
 import { useQueryClient } from '@tanstack/react-query'
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { Skeleton } from '@/components/ui/skeleton'
@@ -17,6 +27,7 @@ import {
   useGetScoresApiV1StockTrackerEntriesEntryIdScoresGet,
   useGetMinuteDataApiV1StockTrackerEntriesEntryIdMinuteDataGet,
   usePopulateDraftEntryApiV1StockTrackerEntriesEntryIdPopulatePost,
+  useDeleteDraftEntryApiV1StockTrackerEntriesEntryIdDelete,
 } from '@/api/generated/stock-tracker/stock-tracker'
 import type { MinuteDataResponse } from '@/types/minute-data'
 import { getSectionSum } from '@/lib/score-utils'
@@ -79,6 +90,7 @@ export default function StockTrackerDetailPage() {
 
   const [editingNotes, setEditingNotes] = useState(false)
   const [notesValue, setNotesValue] = useState('')
+  const [showDeleteDialog, setShowDeleteDialog] = useState(false)
 
   const { data: sketchData } =
     useGetSketchApiV1StockTrackerEntriesEntryIdSketchGet(entryId || '', {
@@ -152,6 +164,19 @@ export default function StockTrackerDetailPage() {
           } else {
             alert('填充数据失败')
           }
+        },
+      },
+    })
+
+  const deleteMutation =
+    useDeleteDraftEntryApiV1StockTrackerEntriesEntryIdDelete({
+      mutation: {
+        onSuccess: () => {
+          invalidateTimeline()
+          navigate(`/stock-tracker/${tsCode}`)
+        },
+        onError: () => {
+          alert('删除失败')
         },
       },
     })
@@ -266,20 +291,31 @@ export default function StockTrackerDetailPage() {
             <FileEdit className="h-4 w-4 shrink-0" />
             <span className="text-sm font-medium">此条目为草稿 — 日线和分钟数据待填充</span>
           </div>
-          <Button
-            size="sm"
-            onClick={() => populateMutation.mutate({ entryId: entryId || '' })}
-            disabled={populateMutation.isPending}
-          >
-            {populateMutation.isPending ? (
-              <>
-                <Loader2 className="h-4 w-4 mr-1 animate-spin" />
-                填充中...
-              </>
-            ) : (
-              '填充数据'
-            )}
-          </Button>
+          <div className="flex items-center gap-2">
+            <Button
+              size="sm"
+              onClick={() => populateMutation.mutate({ entryId: entryId || '' })}
+              disabled={populateMutation.isPending}
+            >
+              {populateMutation.isPending ? (
+                <>
+                  <Loader2 className="h-4 w-4 mr-1 animate-spin" />
+                  填充中...
+                </>
+              ) : (
+                '填充数据'
+              )}
+            </Button>
+            <Button
+              variant="ghost"
+              size="sm"
+              className="text-red-600 dark:text-red-400 hover:text-red-700 hover:bg-red-50 dark:hover:bg-red-950/50"
+              onClick={() => setShowDeleteDialog(true)}
+              disabled={deleteMutation.isPending}
+            >
+              <Trash2 className="h-4 w-4" />
+            </Button>
+          </div>
         </div>
       )}
 
@@ -371,6 +407,26 @@ export default function StockTrackerDetailPage() {
           />
         </div>
       </div>
+
+      <AlertDialog open={showDeleteDialog} onOpenChange={setShowDeleteDialog}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>确认删除</AlertDialogTitle>
+            <AlertDialogDescription>
+              删除此草稿条目及其所有评分、操作和笔记？此操作不可撤销。
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>取消</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={() => deleteMutation.mutate({ entryId: entryId || '' })}
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+            >
+              删除
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   )
 }
