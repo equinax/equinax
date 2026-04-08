@@ -1037,6 +1037,21 @@ async def populate_draft_entry(
     return _entry_to_response(entry)
 
 
+# --- Delete draft entry ---
+
+
+@router.delete("/entries/{entry_id}", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_draft_entry(
+    entry_id: str,
+    db: AsyncSession = Depends(get_db),
+):
+    entry = await _get_entry(entry_id, db)
+    if not entry.is_draft:
+        raise HTTPException(status_code=400, detail="Only draft entries can be deleted")
+    await db.delete(entry)
+    await db.commit()
+
+
 # --- Minute data endpoint ---
 
 
