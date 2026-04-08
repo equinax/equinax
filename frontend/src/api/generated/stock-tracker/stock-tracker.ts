@@ -1243,6 +1243,92 @@ export const useUpdateEntryApiV1StockTrackerEntriesEntryIdPatch = <
   return useMutation(mutationOptions);
 };
 /**
+ * @summary Delete Draft Entry
+ */
+export const deleteDraftEntryApiV1StockTrackerEntriesEntryIdDelete = (
+  entryId: string,
+) => {
+  return customInstance<void>({
+    url: `/api/v1/stock-tracker/entries/${entryId}`,
+    method: "DELETE",
+  });
+};
+
+export const getDeleteDraftEntryApiV1StockTrackerEntriesEntryIdDeleteMutationOptions =
+  <TError = HTTPValidationError, TContext = unknown>(options?: {
+    mutation?: UseMutationOptions<
+      Awaited<
+        ReturnType<typeof deleteDraftEntryApiV1StockTrackerEntriesEntryIdDelete>
+      >,
+      TError,
+      { entryId: string },
+      TContext
+    >;
+  }): UseMutationOptions<
+    Awaited<
+      ReturnType<typeof deleteDraftEntryApiV1StockTrackerEntriesEntryIdDelete>
+    >,
+    TError,
+    { entryId: string },
+    TContext
+  > => {
+    const { mutation: mutationOptions } = options ?? {};
+
+    const mutationFn: MutationFunction<
+      Awaited<
+        ReturnType<typeof deleteDraftEntryApiV1StockTrackerEntriesEntryIdDelete>
+      >,
+      { entryId: string }
+    > = (props) => {
+      const { entryId } = props ?? {};
+
+      return deleteDraftEntryApiV1StockTrackerEntriesEntryIdDelete(entryId);
+    };
+
+    return { mutationFn, ...mutationOptions };
+  };
+
+export type DeleteDraftEntryApiV1StockTrackerEntriesEntryIdDeleteMutationResult =
+  NonNullable<
+    Awaited<
+      ReturnType<typeof deleteDraftEntryApiV1StockTrackerEntriesEntryIdDelete>
+    >
+  >;
+
+export type DeleteDraftEntryApiV1StockTrackerEntriesEntryIdDeleteMutationError =
+  HTTPValidationError;
+
+/**
+ * @summary Delete Draft Entry
+ */
+export const useDeleteDraftEntryApiV1StockTrackerEntriesEntryIdDelete = <
+  TError = HTTPValidationError,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<
+      ReturnType<typeof deleteDraftEntryApiV1StockTrackerEntriesEntryIdDelete>
+    >,
+    TError,
+    { entryId: string },
+    TContext
+  >;
+}): UseMutationResult<
+  Awaited<
+    ReturnType<typeof deleteDraftEntryApiV1StockTrackerEntriesEntryIdDelete>
+  >,
+  TError,
+  { entryId: string },
+  TContext
+> => {
+  const mutationOptions =
+    getDeleteDraftEntryApiV1StockTrackerEntriesEntryIdDeleteMutationOptions(
+      options,
+    );
+
+  return useMutation(mutationOptions);
+};
+/**
  * @summary Get Sketch
  */
 export const getSketchApiV1StockTrackerEntriesEntryIdSketchGet = (
