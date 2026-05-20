@@ -15,6 +15,7 @@ import LimitUpFocusPage from '@/pages/LimitUpFocusPage'
 import SettingsPage from '@/pages/SettingsPage'
 import DataSyncPage from '@/pages/DataSyncPage'
 import AlphaRadarPage from '@/pages/AlphaRadarPage'
+import LowPositionPage from '@/pages/LowPositionPage'
 import MultiStockBrowsePage from '@/pages/MultiStockBrowsePage'
 import MultiBrowseEntryPage from '@/pages/MultiBrowseEntryPage'
 import IndustryRotationPage from '@/pages/IndustryRotationPage'
@@ -49,6 +50,7 @@ function App() {
           <Route path="data-sync" element={<DataSyncPage />} />
           <Route path="data-map" element={<DataMapPage />} />
           <Route path="alpha-radar" element={<AlphaRadarPage />} />
+          <Route path="low-position" element={<LowPositionPage />} />
           <Route path="alpha-radar/multi-browse" element={<MultiStockBrowsePage />} />
           <Route path="multi-browse" element={<MultiBrowseEntryPage />} />
           <Route path="industry-rotation" element={<IndustryRotationPage />} />

@@ -106,7 +106,7 @@ class SyncAnalysis(BaseModel):
 
     latest_data_date: Optional[str] = None
     latest_trading_day: Optional[str] = None
-    trading_day_source: str = "baostock"  # baostock, akshare, rule-based
+    trading_day_source: str = "tushare"  # tushare, rule-based
     today: str
     days_to_update: int
     needs_sync: bool
@@ -599,6 +599,7 @@ async def analyze_sync_requirements(
     Compares with latest trading day (not today) to account for weekends/holidays.
     """
     from datetime import date
+    import asyncio
     from workers.trading_days import (
         get_latest_trading_day_with_source,
         get_trading_days_between,
@@ -611,8 +612,10 @@ async def analyze_sync_requirements(
     today = date.today()
     today_str = today.strftime("%Y-%m-%d")
 
-    # Get latest trading day (accounting for weekends/holidays) with source info
-    latest_trading_day, trading_day_source = get_latest_trading_day_with_source()
+    # 在线程池执行 TuShare 同步网络调用，避免阻塞 FastAPI 事件循环
+    latest_trading_day, trading_day_source = await asyncio.to_thread(
+        get_latest_trading_day_with_source
+    )
     latest_trading_day_str = latest_trading_day.strftime("%Y-%m-%d")
 
     # Get latest data date for each data type
@@ -651,7 +654,9 @@ async def analyze_sync_requirements(
             stale_types.append(f"指数:{index_date or '空'}")
 
         # Calculate trading days from the oldest date
-        missing_days = get_trading_days_between(latest_date, latest_trading_day)
+        missing_days = await asyncio.to_thread(
+            get_trading_days_between, latest_date, latest_trading_day
+        )
         days_diff = len(missing_days)
 
         if len(stale_types) == 1:

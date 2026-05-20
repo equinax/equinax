@@ -14,6 +14,7 @@ import {
   Activity,
   ListChecks,
   BookMarked,
+  TrendingUp,
 } from 'lucide-react'
 import {
   Tooltip,
@@ -28,6 +29,7 @@ const navigation = [
   { name: '回测执行', href: '/backtest', icon: PlayCircle },
   { name: '结果分析', href: '/results', icon: BarChart3 },
   { name: '选股雷达', href: '/alpha-radar', icon: Radar },
+  { name: '主线低位', href: '/low-position', icon: TrendingUp },
   { name: '多股评估', href: '/multi-browse', icon: ListChecks },
   { name: '市场发现', href: '/universe', icon: Database },
   { name: '市场研究', href: '/market-research', icon: Microscope },

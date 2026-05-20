@@ -2083,3 +2083,68 @@ async def evaluate_performance(
         base_price=request.base_price,
         period_dates=result.get("period_dates"),
     )
+
+
+# ============================================
+# Low Position Radar (主线低位)
+# ============================================
+
+
+class SectorHeatItem(BaseModel):
+    name: str
+    heat_score: float
+    limit_up_count: int
+    median_change_pct: float
+    volume_expansion: float
+    main_inflow_yi: float
+    max_board_height: int
+    promotion_rate: float
+    stock_count: int
+
+
+class RadarStockItem(BaseModel):
+    code: str
+    name: str
+    industry_l1: Optional[str] = None
+    close: Optional[float] = None
+    change_pct: Optional[float] = None
+    radar_score: float
+    price_position_60d: Optional[float] = None
+    rs_vs_sector: Optional[float] = None
+    elg_net_percentile: Optional[float] = None
+    ma_alignment_score: Optional[float] = None
+    volume_buildup_quality: Optional[float] = None
+    tags: List[str] = Field(default_factory=list)
+
+
+class LowPositionRadarResponse(BaseModel):
+    date: str
+    sectors: List[SectorHeatItem]
+    stocks: List[RadarStockItem]
+
+
+@router.get("/low-position", response_model=LowPositionRadarResponse)
+async def get_low_position_radar(
+    date: Optional[datetime.date] = Query(
+        default=None, description="Trading date (default: latest)"
+    ),
+    db: AsyncSession = Depends(get_db),
+):
+    """主线低位雷达 — sector heat + low-position stock candidates (single-day mode)."""
+    from app.services.alpha_radar.low_position_radar_service import (
+        LowPositionRadarService,
+    )
+
+    if date is None:
+        from sqlalchemy import text as _text
+
+        row = (await db.execute(_text("SELECT MAX(date) FROM market_daily"))).first()
+        if not row or row[0] is None:
+            raise HTTPException(status_code=404, detail="No market data available")
+        target = row[0].isoformat() if hasattr(row[0], "isoformat") else str(row[0])
+    else:
+        target = date.isoformat()
+
+    service = LowPositionRadarService(db)
+    result = await service.compute(target)
+    return LowPositionRadarResponse(**result)

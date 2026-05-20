@@ -1,0 +1,86 @@
+# Mainline Low-Position Radar (主线低位) — sector-leader catchup picks
+# Reuses generic YAML-config scoring engine (score_from_config).
+
+strategy: mainline
+version: "1"
+head: true
+description: "主线低位 — 强势板块内的低位补涨与首板蓄势候选"
+
+label_cn: 主线低位
+score_column: mainline_score
+eval_period: 5
+requires_moneyflow: true
+backtest_top_n: 5
+
+scoring:
+  positive_factors:
+    - signal: volume_buildup_component
+      source: volume_buildup_quality
+      fill_null: 40.0
+      weight: 0.25
+
+    - signal: ma_alignment_component
+      source: ma_alignment_score
+      transform: "col.clip(0.0, 100.0)"
+      fill_null: 50.0
+      weight: 0.20
+
+    - signal: catchup_component
+      source: catchup_score
+      fill_null: 0.0
+      weight: 0.20
+
+    - signal: rs_vs_sector_component
+      source: rs_vs_sector
+      fill_null: 50.0
+      weight: 0.15
+
+    - signal: low_first_board_component
+      source: low_first_board_flag
+      fill_null: 0.0
+      weight: 0.10
+
+    - signal: elg_flow_component
+      source: elg_net_percentile
+      fill_null: 50.0
+      weight: 0.10
+
+  penalties:
+    - signal: resistance_penalty
+      source: resistance_proximity_penalty
+      fill_null: 0.0
+      weight: 0.05
+
+  pre_filters:
+    - column: is_st
+      op: neq
+      value: 1
+      fill_null: 0
+    - column: near_limit_up
+      op: neq
+      value: 1
+      fill_null: 0
+    - column: amount
+      op: gte
+      value: 50000000.0
+      fill_null: 0.0
+
+  regime_discount:
+    enabled: true
+
+parameter_bounds:
+  weights:
+    min: 0.05
+    max: 0.30
+    step: 0.01
+  total_positive_weight:
+    target: 1.00
+    min: 0.80
+    max: 1.00
+  total_penalty_weight:
+    target: 0.05
+    min: 0.00
+    max: 0.20
+  backtest_top_n:
+    min: 3
+    max: 10

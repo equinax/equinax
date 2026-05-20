@@ -12,8 +12,8 @@ import yaml
 
 CONFIGS_DIR = Path(__file__).resolve().parent.parent.parent.parent.parent / "alpha_lab" / "configs"
 
-ScreenerTabKey = Literal["weekly", "rally", "dragon", "overnight"]
-VALID_TABS: frozenset[str] = frozenset(("weekly", "rally", "dragon", "overnight"))
+ScreenerTabKey = Literal["weekly", "rally", "dragon", "overnight", "mainline"]
+VALID_TABS: frozenset[str] = frozenset(("weekly", "rally", "dragon", "overnight", "mainline"))
 
 _SAFE_OPERATORS = {
     ast.Add: operator.add,

@@ -25,6 +25,7 @@ interface TimeControllerProps {
   disabled?: boolean
   /** The default active date from API response (used when no date is explicitly selected) */
   defaultActiveDate?: string
+  showModeToggle?: boolean
 }
 
 // Quick date presets for period mode
@@ -96,6 +97,7 @@ export function TimeController({
   onDateRangeChange,
   disabled = false,
   defaultActiveDate,
+  showModeToggle = true,
 }: TimeControllerProps) {
   const today = useMemo(() => new Date(), [])
 
@@ -516,32 +518,34 @@ export function TimeController({
     <Card ref={cardRef} className="p-2" style={{ overscrollBehaviorX: 'contain', touchAction: 'pan-y' }}>
       <div className="flex items-center gap-1">
         {/* Mode Toggle */}
-        <div className="flex items-center p-0.5 bg-muted rounded-md shrink-0">
-          <Button
-            variant="ghost"
-            size="sm"
-            className={cn(
-              'h-7 px-2.5 text-xs rounded-sm',
-              mode === 'snapshot' && 'bg-background shadow-sm'
-            )}
-            onClick={() => onModeChange('snapshot')}
-          >
-            <Calendar className="h-3.5 w-3.5 mr-1" />
-            单日
-          </Button>
-          <Button
-            variant="ghost"
-            size="sm"
-            className={cn(
-              'h-7 px-2.5 text-xs rounded-sm',
-              mode === 'period' && 'bg-background shadow-sm'
-            )}
-            onClick={() => onModeChange('period')}
-          >
-            <CalendarRange className="h-3.5 w-3.5 mr-1" />
-            区间
-          </Button>
-        </div>
+        {showModeToggle && (
+          <div className="flex items-center p-0.5 bg-muted rounded-md shrink-0">
+            <Button
+              variant="ghost"
+              size="sm"
+              className={cn(
+                'h-7 px-2.5 text-xs rounded-sm',
+                mode === 'snapshot' && 'bg-background shadow-sm'
+              )}
+              onClick={() => onModeChange('snapshot')}
+            >
+              <Calendar className="h-3.5 w-3.5 mr-1" />
+              单日
+            </Button>
+            <Button
+              variant="ghost"
+              size="sm"
+              className={cn(
+                'h-7 px-2.5 text-xs rounded-sm',
+                mode === 'period' && 'bg-background shadow-sm'
+              )}
+              onClick={() => onModeChange('period')}
+            >
+              <CalendarRange className="h-3.5 w-3.5 mr-1" />
+              区间
+            </Button>
+          </div>
+        )}
 
         {mode === 'snapshot' ? (
           <>

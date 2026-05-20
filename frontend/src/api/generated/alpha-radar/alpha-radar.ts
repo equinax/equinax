@@ -35,12 +35,14 @@ import type {
   GetEtfScreenerApiV1AlphaRadarEtfScreenerGetParams,
   GetEtfSubcategoryListApiV1AlphaRadarEtfSubcategoryListGetParams,
   GetIndustryEtfMappingApiV1AlphaRadarIndustryEtfMappingIndustryGetParams,
+  GetLowPositionRadarApiV1AlphaRadarLowPositionGetParams,
   GetScreenerApiV1AlphaRadarScreenerGetParams,
   GetSectorHeatmapApiV1AlphaRadarSectorHeatmapGetParams,
   GetSectorRotationApiV1AlphaRadarSectorRotationGetParams,
   GetStrategyVersionsApiV1AlphaRadarStrategyVersionsGetParams,
   HTTPValidationError,
   IndustryEtfMappingResponse,
+  LowPositionRadarResponse,
   PerformanceEvalRequest,
   PerformanceEvalResponse,
   PredictionConfigInput,
@@ -3638,4 +3640,224 @@ export const useEvaluatePerformanceApiV1AlphaRadarEvaluatePerformancePost = <
     );
 
   return useMutation(mutationOptions);
+};
+/**
+ * 主线低位雷达 — sector heat + low-position stock candidates (single-day mode).
+ * @summary Get Low Position Radar
+ */
+export const getLowPositionRadarApiV1AlphaRadarLowPositionGet = (
+  params?: GetLowPositionRadarApiV1AlphaRadarLowPositionGetParams,
+  signal?: AbortSignal,
+) => {
+  return customInstance<LowPositionRadarResponse>({
+    url: `/api/v1/alpha-radar/low-position`,
+    method: "GET",
+    params,
+    signal,
+  });
+};
+
+export const getGetLowPositionRadarApiV1AlphaRadarLowPositionGetQueryKey = (
+  params?: GetLowPositionRadarApiV1AlphaRadarLowPositionGetParams,
+) => {
+  return [
+    `/api/v1/alpha-radar/low-position`,
+    ...(params ? [params] : []),
+  ] as const;
+};
+
+export const getGetLowPositionRadarApiV1AlphaRadarLowPositionGetInfiniteQueryOptions =
+  <
+    TData = InfiniteData<
+      Awaited<
+        ReturnType<typeof getLowPositionRadarApiV1AlphaRadarLowPositionGet>
+      >,
+      GetLowPositionRadarApiV1AlphaRadarLowPositionGetParams["page"]
+    >,
+    TError = HTTPValidationError,
+  >(
+    params?: GetLowPositionRadarApiV1AlphaRadarLowPositionGetParams,
+    options?: {
+      query?: Partial<
+        UseInfiniteQueryOptions<
+          Awaited<
+            ReturnType<typeof getLowPositionRadarApiV1AlphaRadarLowPositionGet>
+          >,
+          TError,
+          TData,
+          Awaited<
+            ReturnType<typeof getLowPositionRadarApiV1AlphaRadarLowPositionGet>
+          >,
+          QueryKey,
+          GetLowPositionRadarApiV1AlphaRadarLowPositionGetParams["page"]
+        >
+      >;
+    },
+  ) => {
+    const { query: queryOptions } = options ?? {};
+
+    const queryKey =
+      queryOptions?.queryKey ??
+      getGetLowPositionRadarApiV1AlphaRadarLowPositionGetQueryKey(params);
+
+    const queryFn: QueryFunction<
+      Awaited<
+        ReturnType<typeof getLowPositionRadarApiV1AlphaRadarLowPositionGet>
+      >,
+      QueryKey,
+      GetLowPositionRadarApiV1AlphaRadarLowPositionGetParams["page"]
+    > = ({ signal, pageParam }) =>
+      getLowPositionRadarApiV1AlphaRadarLowPositionGet(
+        { ...params, page: pageParam || params?.["page"] },
+        signal,
+      );
+
+    return { queryKey, queryFn, ...queryOptions } as UseInfiniteQueryOptions<
+      Awaited<
+        ReturnType<typeof getLowPositionRadarApiV1AlphaRadarLowPositionGet>
+      >,
+      TError,
+      TData,
+      Awaited<
+        ReturnType<typeof getLowPositionRadarApiV1AlphaRadarLowPositionGet>
+      >,
+      QueryKey,
+      GetLowPositionRadarApiV1AlphaRadarLowPositionGetParams["page"]
+    > & { queryKey: QueryKey };
+  };
+
+export type GetLowPositionRadarApiV1AlphaRadarLowPositionGetInfiniteQueryResult =
+  NonNullable<
+    Awaited<ReturnType<typeof getLowPositionRadarApiV1AlphaRadarLowPositionGet>>
+  >;
+export type GetLowPositionRadarApiV1AlphaRadarLowPositionGetInfiniteQueryError =
+  HTTPValidationError;
+
+/**
+ * @summary Get Low Position Radar
+ */
+export const useGetLowPositionRadarApiV1AlphaRadarLowPositionGetInfinite = <
+  TData = InfiniteData<
+    Awaited<
+      ReturnType<typeof getLowPositionRadarApiV1AlphaRadarLowPositionGet>
+    >,
+    GetLowPositionRadarApiV1AlphaRadarLowPositionGetParams["page"]
+  >,
+  TError = HTTPValidationError,
+>(
+  params?: GetLowPositionRadarApiV1AlphaRadarLowPositionGetParams,
+  options?: {
+    query?: Partial<
+      UseInfiniteQueryOptions<
+        Awaited<
+          ReturnType<typeof getLowPositionRadarApiV1AlphaRadarLowPositionGet>
+        >,
+        TError,
+        TData,
+        Awaited<
+          ReturnType<typeof getLowPositionRadarApiV1AlphaRadarLowPositionGet>
+        >,
+        QueryKey,
+        GetLowPositionRadarApiV1AlphaRadarLowPositionGetParams["page"]
+      >
+    >;
+  },
+): UseInfiniteQueryResult<TData, TError> & { queryKey: QueryKey } => {
+  const queryOptions =
+    getGetLowPositionRadarApiV1AlphaRadarLowPositionGetInfiniteQueryOptions(
+      params,
+      options,
+    );
+
+  const query = useInfiniteQuery(queryOptions) as UseInfiniteQueryResult<
+    TData,
+    TError
+  > & { queryKey: QueryKey };
+
+  query.queryKey = queryOptions.queryKey;
+
+  return query;
+};
+
+export const getGetLowPositionRadarApiV1AlphaRadarLowPositionGetQueryOptions = <
+  TData = Awaited<
+    ReturnType<typeof getLowPositionRadarApiV1AlphaRadarLowPositionGet>
+  >,
+  TError = HTTPValidationError,
+>(
+  params?: GetLowPositionRadarApiV1AlphaRadarLowPositionGetParams,
+  options?: {
+    query?: Partial<
+      UseQueryOptions<
+        Awaited<
+          ReturnType<typeof getLowPositionRadarApiV1AlphaRadarLowPositionGet>
+        >,
+        TError,
+        TData
+      >
+    >;
+  },
+) => {
+  const { query: queryOptions } = options ?? {};
+
+  const queryKey =
+    queryOptions?.queryKey ??
+    getGetLowPositionRadarApiV1AlphaRadarLowPositionGetQueryKey(params);
+
+  const queryFn: QueryFunction<
+    Awaited<ReturnType<typeof getLowPositionRadarApiV1AlphaRadarLowPositionGet>>
+  > = ({ signal }) =>
+    getLowPositionRadarApiV1AlphaRadarLowPositionGet(params, signal);
+
+  return { queryKey, queryFn, ...queryOptions } as UseQueryOptions<
+    Awaited<
+      ReturnType<typeof getLowPositionRadarApiV1AlphaRadarLowPositionGet>
+    >,
+    TError,
+    TData
+  > & { queryKey: QueryKey };
+};
+
+export type GetLowPositionRadarApiV1AlphaRadarLowPositionGetQueryResult =
+  NonNullable<
+    Awaited<ReturnType<typeof getLowPositionRadarApiV1AlphaRadarLowPositionGet>>
+  >;
+export type GetLowPositionRadarApiV1AlphaRadarLowPositionGetQueryError =
+  HTTPValidationError;
+
+/**
+ * @summary Get Low Position Radar
+ */
+export const useGetLowPositionRadarApiV1AlphaRadarLowPositionGet = <
+  TData = Awaited<
+    ReturnType<typeof getLowPositionRadarApiV1AlphaRadarLowPositionGet>
+  >,
+  TError = HTTPValidationError,
+>(
+  params?: GetLowPositionRadarApiV1AlphaRadarLowPositionGetParams,
+  options?: {
+    query?: Partial<
+      UseQueryOptions<
+        Awaited<
+          ReturnType<typeof getLowPositionRadarApiV1AlphaRadarLowPositionGet>
+        >,
+        TError,
+        TData
+      >
+    >;
+  },
+): UseQueryResult<TData, TError> & { queryKey: QueryKey } => {
+  const queryOptions =
+    getGetLowPositionRadarApiV1AlphaRadarLowPositionGetQueryOptions(
+      params,
+      options,
+    );
+
+  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
+    queryKey: QueryKey;
+  };
+
+  query.queryKey = queryOptions.queryKey;
+
+  return query;
 };
