@@ -1,9 +1,12 @@
-import { useState, useMemo } from 'react'
+import { useState, useMemo, useEffect } from 'react'
+import { useNavigate } from 'react-router-dom'
+import { AnimatePresence, motion } from 'motion/react'
 import { format } from 'date-fns'
-import { RefreshCw, TrendingUp, X } from 'lucide-react'
+import { BarChart3, RefreshCw, TrendingUp, X } from 'lucide-react'
 import { TimeController } from '@/components/alpha-radar/TimeController'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
+import { Checkbox } from '@/components/ui/checkbox'
 import { Skeleton } from '@/components/ui/skeleton'
 import {
   Table,
@@ -73,9 +76,11 @@ function moneyClass(v: number | null | undefined): string {
 }
 
 export default function LowPositionPage() {
+  const navigate = useNavigate()
   const [selectedDate, setSelectedDate] = useState<Date | undefined>(new Date())
   const [dateRange, setDateRange] = useState<{ from?: Date; to?: Date }>({})
   const [selectedSector, setSelectedSector] = useState<string | null>(null)
+  const [rowSelection, setRowSelection] = useState<Record<string, boolean>>({})
 
   const dateStr = selectedDate ? format(selectedDate, 'yyyy-MM-dd') : ''
 
@@ -96,6 +101,44 @@ export default function LowPositionPage() {
       : list
     return [...filtered].sort((a, b) => b.radar_score - a.radar_score)
   }, [data?.stocks, selectedSector])
+
+  useEffect(() => {
+    setRowSelection({})
+  }, [dateStr, selectedSector])
+
+  const selectedCount = Object.keys(rowSelection).length
+  const allSelected = stocks.length > 0 && stocks.every((s) => rowSelection[s.code])
+  const someSelected = selectedCount > 0 && !allSelected
+
+  const handleToggleAll = (checked: boolean) => {
+    if (checked) {
+      const next: Record<string, boolean> = {}
+      stocks.forEach((s) => {
+        next[s.code] = true
+      })
+      setRowSelection(next)
+    } else {
+      setRowSelection({})
+    }
+  }
+
+  const handleSelectTopN = (n: number) => {
+    const next: Record<string, boolean> = {}
+    for (let i = 0; i < Math.min(n, stocks.length); i++) {
+      next[stocks[i].code] = true
+    }
+    setRowSelection(next)
+  }
+
+  const handleMultiBrowse = () => {
+    const codes = Object.keys(rowSelection)
+    if (codes.length === 0) return
+    const params = new URLSearchParams()
+    params.set('codes', codes.join(','))
+    const dateParam = data?.date ?? dateStr
+    if (dateParam) params.set('date', dateParam)
+    navigate(`/alpha-radar/multi-browse?${params.toString()}`)
+  }
 
   return (
     <div className="space-y-4">
@@ -258,6 +301,31 @@ export default function LowPositionPage() {
                       全部
                     </Button>
                   )}
+                  {stocks.length > 0 && (
+                    <div className="flex items-center gap-1">
+                      {[3, 5, 10, 20].map((n) => (
+                        <Button
+                          key={n}
+                          variant="ghost"
+                          size="sm"
+                          className="h-6 px-2 text-xs text-muted-foreground hover:text-foreground"
+                          onClick={() => handleSelectTopN(n)}
+                        >
+                          前{n}
+                        </Button>
+                      ))}
+                      {selectedCount > 0 && (
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          className="h-6 px-2 text-xs text-muted-foreground hover:text-foreground"
+                          onClick={() => setRowSelection({})}
+                        >
+                          清空
+                        </Button>
+                      )}
+                    </div>
+                  )}
                   <span className="text-xs text-muted-foreground">
                     {stocks.length} 只
                   </span>
@@ -280,6 +348,13 @@ export default function LowPositionPage() {
                   <Table>
                     <TableHeader>
                       <TableRow className="bg-muted/40 hover:bg-muted/40">
+                        <TableHead className="h-8 w-10">
+                          <Checkbox
+                            checked={allSelected ? true : someSelected ? 'indeterminate' : false}
+                            onCheckedChange={(c) => handleToggleAll(c === true)}
+                            aria-label="全选"
+                          />
+                        </TableHead>
                         <TableHead className="h-8 text-xs whitespace-nowrap">代码</TableHead>
                         <TableHead className="h-8 text-xs whitespace-nowrap">名称</TableHead>
                         <TableHead className="h-8 text-xs whitespace-nowrap">行业</TableHead>
@@ -295,7 +370,24 @@ export default function LowPositionPage() {
                     </TableHeader>
                     <TableBody>
                       {stocks.map((s) => (
-                        <TableRow key={s.code}>
+                        <TableRow
+                          key={s.code}
+                          data-state={rowSelection[s.code] ? 'selected' : undefined}
+                        >
+                          <TableCell className="py-1.5 w-10">
+                            <Checkbox
+                              checked={!!rowSelection[s.code]}
+                              onCheckedChange={(c) =>
+                                setRowSelection((prev) => {
+                                  const next = { ...prev }
+                                  if (c === true) next[s.code] = true
+                                  else delete next[s.code]
+                                  return next
+                                })
+                              }
+                              aria-label={`选择 ${s.code}`}
+                            />
+                          </TableCell>
                           <TableCell className="py-1.5 font-mono text-xs whitespace-nowrap">
                             {s.code}
                           </TableCell>
@@ -346,6 +438,40 @@ export default function LowPositionPage() {
           </Card>
         </div>
       )}
+
+      <AnimatePresence>
+        {selectedCount > 0 && (
+          <motion.div
+            initial={{ y: 100, opacity: 0 }}
+            animate={{ y: 0, opacity: 1 }}
+            exit={{ y: 100, opacity: 0 }}
+            transition={{ type: 'spring', damping: 25, stiffness: 300 }}
+            className="fixed bottom-6 left-1/2 -translate-x-1/2 z-50"
+          >
+            <div className="flex items-center gap-3 bg-background/95 backdrop-blur-sm border rounded-full shadow-lg px-4 py-2">
+              <span className="text-sm text-muted-foreground">
+                已选 <span className="font-medium text-foreground">{selectedCount}</span> 只
+              </span>
+              <Button
+                size="sm"
+                onClick={handleMultiBrowse}
+                className="rounded-full gap-1.5"
+              >
+                <BarChart3 className="h-4 w-4" />
+                浏览K线
+              </Button>
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => setRowSelection({})}
+                className="rounded-full h-8 w-8 p-0"
+              >
+                <X className="h-4 w-4" />
+              </Button>
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </div>
   )
 }
